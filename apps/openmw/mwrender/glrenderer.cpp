@@ -794,7 +794,7 @@ namespace MWRender
         mWorld->emitWaterRipple(position);
     }
 
-    void GlRenderer::notifyWorldSpaceChanged()
+    void GlRenderer::notifyCut()
     {
         mWorld->clearRipples();
     }

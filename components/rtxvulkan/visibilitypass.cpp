@@ -15,6 +15,7 @@
 #include <components/rtx/lightgrid.hpp>
 #include <components/rtx/material.hpp>
 #include <components/rtx/parallel.hpp>
+#include <components/rtx/reconstruction.hpp>
 #include <components/rtx/shaders/bindings.h>
 #include <components/rtx/shaders/hosttypes.h>
 #include <components/rtx/shaders/scene.h>
@@ -43,7 +44,6 @@ namespace Rtx
 {
     namespace
     {
-        /// How many workgroups cover `extent` columns at `workgroup` of them apiece.
         /// Whether every table has an address, and each is aligned as the reference that reads it
         /// declares. Debug-only, through the assert that calls it.
         [[maybe_unused]] bool everyTableAddressed(const Shaders::GpuTables& tables)
@@ -61,6 +61,22 @@ namespace Rtx
                 && at(tables.mBlueNoise, Shaders::TABLE_ALIGN_ROWS) && at(tables.mSprites, Shaders::TABLE_ALIGN_ROWS)
                 && at(tables.mEmitters, Shaders::TABLE_ALIGN_ROWS)
                 && at(tables.mSpriteTileList, Shaders::TABLE_ALIGN_ROWS);
+        }
+
+        /// The word `lib/variants.glsl` is compiled with as `REORDER`.
+        std::uint32_t reorderWordOf(const Reorder reorder)
+        {
+            switch (reorder)
+            {
+                case Reorder::Shader:
+                    return Shaders::REORDER_SHADER;
+                case Reorder::Texture:
+                    return Shaders::REORDER_TEXTURE;
+                case Reorder::None:
+                    break;
+            }
+
+            return Shaders::REORDER_NONE;
         }
 
         /// Every stage on every binding, because one description of set zero serves the trace's
@@ -178,12 +194,13 @@ namespace Rtx
 
     VisibilityPass::VisibilityPass(const Device& device, const std::filesystem::path& shaderDirectory,
         const SetLayout& textureLayout, const SetLayout& channelLayout, const SetLayout& volumeLayout, bool countHits,
-        const bool specialize)
+        const bool specialize, const Reorder reorder)
         : mDevice(device)
         , mBlueNoise(uploadBlueNoise(device))
         , mConstants(Buffer::deviceLocal(device, sizeof(Shaders::VisibilityConstants),
               VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, "frame constants"))
         , mCountHits(countHits ? 1u : 0u)
+        , mReorder(reorderWordOf(reorder))
         , mSpecialize(specialize)
         , mChannelLayout(channelLayout.get())
         , mVolumeLayout(volumeLayout.get())
@@ -255,8 +272,8 @@ namespace Rtx
                 // One word per `constant_id`, in the order `lib/variants.glsl` declares them. The
                 // volume traces no primary ray, so it counts none whatever the build asked for;
                 // every other constant it takes is the tuple's own.
-                const std::array<std::uint32_t, 4> specialization{ volume ? 0u : mCountHits, variant.mSun ? 1u : 0u,
-                    variant.mMoons ? 1u : 0u, variant.mSea ? 1u : 0u };
+                const std::array<std::uint32_t, 5> specialization{ volume ? 0u : mCountHits, variant.mSun ? 1u : 0u,
+                    variant.mMoons ? 1u : 0u, variant.mSea ? 1u : 0u, mReorder };
 
                 if (volume)
                     mScatterPipelines[variant.index()]
@@ -450,6 +467,8 @@ namespace Rtx
         inputs.mBuffers->describeTables(inputs.mSlot, described.mTables);
         described.mTables.mBlueNoise = mBlueNoise.addressFor();
         described.mTables.mIndexBlocks = inputs.mIndexBlocks;
+        described.mTables.mPoseBlocks = inputs.mPoseBlocks;
+        described.mTables.mPreviousPoseBlocks = inputs.mPreviousPoseBlocks;
 
         // The trace's own, shaded and binned for this camera ahead of it, or the list of nothing
         // for a camera that draws no sprites and binned none.

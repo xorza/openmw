@@ -15,12 +15,13 @@
 
 #include "lib/hitstage.glsl"
 
-layout(location = RTX_PAYLOAD) rayPayloadInEXT VisibilityPayload answer;
+layout(location = RTX_PAYLOAD) rayPayloadInEXT VisibilityPayload packed;
 hitAttributeEXT vec2 barycentrics;
 
 void main()
 {
-    clearAnswer(answer);
+    Answer answer = noAnswer();
     answerSolid(
         answer, resolveFor(stageHit(barycentrics), gl_WorldRayOriginEXT, gl_WorldRayDirectionEXT, true));
+    packed = packAnswer(answer);
 }

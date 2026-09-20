@@ -247,9 +247,11 @@ namespace MWRender
         /// traversal, with the frame `describeFrame` was handed.
         virtual void renderFrame(const SceneFrame& frame) = 0;
 
-        /// The world under the camera has been replaced rather than moved through, which a ray
-        /// tracer reconstructing across frames needs telling and a rasterizer does not.
-        virtual void notifyWorldSpaceChanged() {}
+        /// The eye did not travel here: a change of worldspace, a teleport inside one, a time
+        /// skip. What the last frame showed is not what this one is a step from, which a renderer
+        /// reconstructing across frames needs telling and a rasterizer does not. Only the
+        /// simulation knows, because a cell load looks like a step from below the seam.
+        virtual void notifyCut() {}
 
         /// A picture made somewhere other than the eye, for the GUI to show. What goes in the
         /// picture arrives in the spec; how it is drawn is the renderer's, which hands back a

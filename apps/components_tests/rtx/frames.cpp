@@ -7,6 +7,7 @@
 #include <gtest/gtest.h>
 
 #include <osg/Matrixf>
+#include <osg/Vec2f>
 #include <osg/Vec3f>
 
 #include <components/rtx/camera.hpp>
@@ -16,6 +17,8 @@
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/visibility.h>
 #include <components/rtx/slot.hpp>
+
+#include <components/rtxvulkan/sceneacceleration.hpp>
 
 #include "geometry.hpp"
 #include "harness.hpp"
@@ -337,6 +340,140 @@ namespace Rtx
             EXPECT_EQ(finishedHits(), 0u) << "the second, moved behind it";
             EXPECT_EQ(finishedHits(), sEveryPixel) << "the third, moved back";
             EXPECT_FALSE(mRenderer->finishFrame().has_value());
+        }
+
+        /// A surface moved by its pose reprojects exactly as the same surface moved by its instance:
+        /// the motion vector knows where the triangle stood, and not only where the body did.
+        ///
+        /// **The other copy of the poses is last frame's, and this is what reads it.** A frame
+        /// traces the copy its placement synced; the copy it did not trace was synced the frame
+        /// before, so it holds every pose as of then — `GpuTables::mPreviousPoseBlocks` — and a
+        /// hit on a body takes its own step off the pair. Four units along +x at two hundred units
+        /// off is the 1.1085 pixels `aMotionVectorSaysWhereItsSurfaceWasAndNotWhereTheWorldIs`
+        /// derives for a stepping camera, with the sign the surface's own: it went right, so the
+        /// point now under the centre pixel was to its left. Read twice, so the sign is not a
+        /// guess about the instance path, and once more on a frame nothing moved, which is the
+        /// copies agreeing.
+        TEST_F(RtxFramesTest, aPoseMovesAMotionVectorAsAnInstanceDoes)
+        {
+            constexpr std::size_t centre = std::size_t{ sSize / 2 } * sSize + sSize / 2;
+            const auto centreMotion = [&] {
+                std::vector<float> motion;
+                mRenderer->readChannel(Channel::Motion, motion);
+                return osg::Vec2f(motion[centre * 2], motion[centre * 2 + 1]);
+            };
+
+            // By the instance, as the reprojection always knew how to.
+            mRenderer->renderFrame(ahead(), FrameOptions{});
+            mScene.placements().move(mInstance, osg::Matrixf::translate(4.0f, 0.0f, 0.0f));
+            mRenderer->placeScene(Rtx::SceneSlot::world(), mScene);
+            mRenderer->renderFrame(ahead(), FrameOptions{});
+            const osg::Vec2f byInstance = centreMotion();
+            EXPECT_NEAR(byInstance.x(), -1.1085f, 0.02f) << "the surface went right, so the point came from the left";
+            EXPECT_NEAR(byInstance.y(), 0.0f, 1e-3f);
+
+            // Back where it was, and then by the pose alone: the instance stands still and the
+            // bone carries the wall the same four units.
+            mScene.placements().move(mInstance, osg::Matrixf::identity());
+            mRenderer->placeScene(Rtx::SceneSlot::world(), mScene);
+            mRenderer->renderFrame(ahead(), FrameOptions{});
+            mScene.clearPlacement();
+            Testing::poseByOneBone(mScene, mWall, osg::Matrixf::translate(4.0f, 0.0f, 0.0f));
+            mRenderer->placeScene(Rtx::SceneSlot::world(), mScene);
+            mRenderer->renderFrame(ahead(), FrameOptions{});
+            const osg::Vec2f byPose = centreMotion();
+            EXPECT_NEAR(byPose.x(), byInstance.x(), 1e-3f) << "a pose and an instance moved the same four units";
+            EXPECT_NEAR(byPose.y(), byInstance.y(), 1e-3f);
+
+            // A frame on which the body did not move: the copy this frame traces and the copy it
+            // did not hold the same pose, so the step is nought exactly and not a rounding.
+            mScene.clearPlacement();
+            mRenderer->placeScene(Rtx::SceneSlot::world(), mScene);
+            mRenderer->renderFrame(ahead(), FrameOptions{});
+            const osg::Vec2f still = centreMotion();
+            EXPECT_EQ(still.x(), 0.0f) << "nothing moved and the vector says something did";
+            EXPECT_EQ(still.y(), 0.0f);
+
+            while (mRenderer->finishFrame().has_value())
+            {
+            }
+        }
+
+        /// A refitted structure is built whole again on a rota: the posed body built longest ago,
+        /// once `sRebuildEvery` posed placements have passed, one a placement.
+        ///
+        /// **Counted through the scene's report and driven through the placements a frame makes**,
+        /// so the rule is read where a run reads it. The wall arrived on placement nought; the
+        /// first sixty-three posed placements refit it and the sixty-fourth builds it whole. A
+        /// second body then shares the rota with it and the two alternate, sixty-four apart each,
+        /// so no placement builds two. A body posed once and left standing is not in a placement's
+        /// `deformed` and is never picked, however long it stands.
+        TEST_F(RtxFramesTest, aRefittedStructureIsBuiltWholeAgainOnARota)
+        {
+            // The fixture's `setScene` left the wall among the arrivals, as the uploader would not
+            // have: an extension below must bring the second body alone, or it builds the wall
+            // again and notes it built.
+            mScene.clearArrivals();
+
+            const auto rebuilt = [&] { return mRenderer->getSceneStats().mRebuilt; };
+
+            for (std::uint64_t placement = 1; placement < SceneAcceleration::sRebuildEvery; ++placement)
+            {
+                deformTo(200.0f + static_cast<float>(placement % 4));
+                ASSERT_EQ(rebuilt(), 0u) << "built whole on placement " << placement << ", short of the rota";
+            }
+            deformTo(201.0f);
+            EXPECT_EQ(rebuilt(), 1u) << "the sixty-fourth posed placement builds it whole";
+            deformTo(202.0f);
+            EXPECT_EQ(rebuilt(), 1u) << "and the one after refits again";
+
+            // Frames, so the placements above are drawn and the rebuilt structure is traced: a
+            // structure built whole in place of a refit is the same wall to a ray.
+            mRenderer->renderFrame(ahead(), FrameOptions{});
+            EXPECT_EQ(finishedHits(), sEveryPixel);
+
+            // A second body, arriving now: its arrival builds it whole and the rota counts from
+            // there, so the placement that brings it builds nothing whole again, and neither do the
+            // sixty-two after — the wall's turn comes first, sixty-four placements after its own.
+            const Index second = Testing::addOneBoneBody(
+                mScene, MeshArrays{ .mPositions = Testing::wallAt(300.0f), .mIndices = Testing::sQuadIndices })
+                                     .mMesh;
+            mScene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = second });
+            Testing::poseByOneBone(mScene, second, osg::Matrixf::identity());
+            mRenderer->extendScene(Rtx::SceneSlot::world(), mScene, {});
+            mScene.clearArrivals();
+            EXPECT_EQ(rebuilt(), 1u) << "an arrival is not built twice on the placement that brings it";
+
+            const auto deformBoth = [&](float x) {
+                mScene.clearPlacement();
+                Testing::poseByOneBone(mScene, mWall, osg::Matrixf::translate(x, 0.0f, 0.0f));
+                Testing::poseByOneBone(mScene, second, osg::Matrixf::translate(-x, 0.0f, 0.0f));
+                mRenderer->placeScene(Rtx::SceneSlot::world(), mScene);
+            };
+            // The wall was built whole on the sixty-fourth posed placement and the arrival on the
+            // sixty-fifth, and the extension's own placement was the sixty-sixth. Sixty-one more
+            // bring the clock to one short of the wall's turn.
+            for (std::uint64_t placement = 0; placement < SceneAcceleration::sRebuildEvery - 3; ++placement)
+                deformBoth(static_cast<float>(placement % 3));
+            EXPECT_EQ(rebuilt(), 1u) << "neither is due yet";
+            deformBoth(1.0f);
+            EXPECT_EQ(rebuilt(), 2u) << "the wall's turn, sixty-four placements after its last";
+            deformBoth(2.0f);
+            EXPECT_EQ(rebuilt(), 3u) << "and the second body's the placement after: one a placement";
+            deformBoth(0.0f);
+            EXPECT_EQ(rebuilt(), 3u) << "and then neither, for another sixty-three";
+
+            // And a placement that poses neither is not a placement of the rota at all, however
+            // long it has been.
+            mScene.clearPlacement();
+            mRenderer->placeScene(Rtx::SceneSlot::world(), mScene);
+            EXPECT_EQ(rebuilt(), 3u);
+
+            // A frame over the placements above, because the zones a placement opens are the next
+            // frame's report: drawn here they are this test's, and the shared renderer's next
+            // frame is its own again.
+            mRenderer->renderFrame(ahead(), FrameOptions{});
+            EXPECT_EQ(finishedHits(), sEveryPixel);
         }
 
         /// A picture still deferred traces the copy it was placed with, however many placements of

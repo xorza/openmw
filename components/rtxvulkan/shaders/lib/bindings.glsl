@@ -217,6 +217,19 @@ NormalBlock normalBlockOf(uint vertex)
     return NormalBlock(BlockTable(frame.mTables.mNormalBlocks).at[vertex / VERTEX_BLOCK]);
 }
 
+/// The pose blocks are laid out as the normals are — `SlotBlocks` of `VERTEX_BLOCK` positions —
+/// so a `NormalBlock` reads one; what differs is the id, which is the mesh's bind offset plus
+/// the vertex's index within the mesh, and the table, this frame's copy or the last one's.
+NormalBlock poseBlockOf(uint posed)
+{
+    return NormalBlock(BlockTable(frame.mTables.mPoseBlocks).at[posed / VERTEX_BLOCK]);
+}
+
+NormalBlock previousPoseBlockOf(uint posed)
+{
+    return NormalBlock(BlockTable(frame.mTables.mPreviousPoseBlocks).at[posed / VERTEX_BLOCK]);
+}
+
 TexCoordBlock texCoordBlockOf(uint vertex)
 {
     return TexCoordBlock(BlockTable(frame.mTables.mTexCoordBlocks).at[vertex / VERTEX_BLOCK]);

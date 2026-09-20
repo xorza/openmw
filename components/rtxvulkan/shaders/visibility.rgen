@@ -36,12 +36,18 @@
 #include "lib/underwater.glsl"
 #include "lib/water.glsl"
 
-layout(location = RTX_PAYLOAD) rayPayloadEXT VisibilityPayload answer;
+layout(location = RTX_PAYLOAD) rayPayloadEXT VisibilityPayload packed;
 
 /// What crosses traversal, which is nothing anything reads. `RTX_TRAVERSAL_PAYLOAD` says why it
 /// exists at all: the any-hit shader a traversal reaches wants a smaller payload than the shader
 /// the execute runs, and this is how small.
 layout(location = RTX_TRAVERSAL_PAYLOAD) rayPayloadEXT uint traversed;
+
+/// Where on its triangle the hit object's ray landed, read back off the object for the motion
+/// vector of a surface that deforms: `hitObjectGetAttributesEXT` writes here and nowhere else.
+/// A literal at the call, as `RTX_PAYLOAD` is.
+#define RTX_LANDED 0
+layout(location = RTX_LANDED) hitObjectAttributeEXT vec2 landed;
 
 /// What the media in front of a point along the ray scattered in, and what they let through.
 struct MediumAhead
@@ -105,11 +111,39 @@ MediumAhead mediumAhead(uvec2 pixel, vec3 origin, vec3 direction, float air, flo
     hitObjectTraceRayEXT(object, sceneTop, gl_RayFlagsNoneEXT, (mask), (layer), 0u, MISS_RECORD_SKY, (from), \
         (tmin), (along), frame.mFar, RTX_TRAVERSAL_PAYLOAD);
 
+/// Runs the shader the hit object names, sorted first where the build asked.
+///
+/// **The one place the launch's threads may be reordered, and why it is a constant.** Between
+/// the trace and the execute the hit object says which shader each thread is about to run, and
+/// `reorderThreadEXT` groups the threads that agree so a warp runs one shader rather than three
+/// — the shader index is the key the driver sorts on with no hint at all. What crosses it is
+/// the payload the execute fills afterwards, so nothing is written into it before this; the
+/// driver note in `visibility.h` is what that keeps out. `REORDER` is `RenderProfile::mReorder`.
+#define RTX_SHADE(object)                                                                                   \
+    {                                                                                                       \
+        if (REORDER == REORDER_SHADER)                                                                      \
+            reorderThreadEXT(object);                                                                       \
+        else if (REORDER == REORDER_TEXTURE)                                                                \
+            reorderThreadEXT(object, textureHintOf(object), 8);                                             \
+        hitObjectExecuteShaderEXT(object, RTX_PAYLOAD);                                                     \
+    }
+
 #define RTX_TRACE_AND_SHADE(object, from, tmin, along, mask, layer)                                         \
     {                                                                                                       \
         RTX_TRACE(object, from, tmin, along, mask, layer)                                                   \
-        hitObjectExecuteShaderEXT(object, RTX_PAYLOAD);                                                     \
+        RTX_SHADE(object)                                                                                   \
     }
+
+/// The low eight bits of the diffuse texture slot the hit's material names, as a coherence hint:
+/// two dependent loads the hit shader makes again, spent here so that a warp reads one sheet.
+/// Nought for a miss, which names no material.
+uint textureHintOf(hitObjectEXT object)
+{
+    if (!hitObjectIsHitEXT(object))
+        return 0u;
+
+    return materialAt(instanceAt(uint(hitObjectGetInstanceCustomIndexEXT(object))).mMaterial).mDiffuse & 0xFFu;
+}
 
 void main()
 {
@@ -144,7 +178,8 @@ void main()
         const Ray ray = rayAt(frame.mCamera, vec2(pixel));
         RTX_TRACE(found, frame.mOrigin + ray.mOffset, 0.0, ray.mDirection, worldMask(frame.mRayMask), 0u)
     }
-    hitObjectExecuteShaderEXT(found, RTX_PAYLOAD);
+    RTX_SHADE(found)
+    Answer answer = unpackAnswer(packed);
 
     // What every ray after the eye's own casts with along this pixel's ray: past the arms, the
     // peel may meet the world behind them as well as the next layer of them.
@@ -221,6 +256,7 @@ void main()
         // The layer this trace is for, which on the last one the budget allows is the record that
         // says whatever it finds is to be shaded as a solid.
         RTX_TRACE_AND_SHADE(found, origin, distance + SHADOW_BIAS, direction, peelMask, layer + 1u)
+        answer = unpackAnswer(packed);
 
         origin = hitObjectGetWorldRayOriginEXT(found);
         direction = hitObjectGetWorldRayDirectionEXT(found);
@@ -230,9 +266,9 @@ void main()
         instance = hitObjectGetInstanceCustomIndexEXT(found);
     }
 
-    // **The last shader's answer, read where it is.** The payload holds what the surface behind the
-    // stack sent back, and everything below composes over it; the rest of the payload is read at
-    // the stores, and nothing between here and there changes it.
+    // **The last shader's answer, unpacked once.** `answer` holds what the surface behind the
+    // stack sent back, and everything below composes over it; the rest of it is read at the
+    // stores, and nothing between here and there changes it.
     vec3 shaded = answer.mRadiance;
 
     // **What the surface is, kept apart from what the path did to it.** An albedo multiplied by
@@ -361,9 +397,17 @@ void main()
     // frame, so nothing in it moves with a puff.
     // Projected through the eye it was found by: the arms' plane is wider than the world's by
     // `mArmsSpread`, and a point on them reprojects through that.
-    const vec2 moved = hit
-        ? motionOf(pixel, origin, direction, distance, instance, arms ? frame.mArmsSpread : vec2(1.0))
-        : skyMotionOf(pixel, direction);
+    // A deforming surface says where its own triangle stood, off the hit object: the primitive,
+    // the barycentrics and the instance's basis all ride on it, so nothing crosses the payload.
+    vec2 moved;
+    if (hit)
+    {
+        hitObjectGetAttributesEXT(found, RTX_LANDED);
+        moved = motionOf(pixel, origin, direction, distance, instance, uint(hitObjectGetPrimitiveIndexEXT(found)),
+            landed, hitObjectGetObjectToWorldEXT(found), arms ? frame.mArmsSpread : vec2(1.0));
+    }
+    else
+        moved = skyMotionOf(pixel, direction);
     imageStore(motion, at, vec4(moved, 0.0, 0.0));
 
     // **The one surface in this frame that shows something standing somewhere else.** Water is

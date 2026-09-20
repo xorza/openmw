@@ -96,6 +96,21 @@ namespace Rtx
             .pPipelineCreationFeedback = &feedback,
         };
 
+        // What the pipeline promises the driver it will never do, so the driver may leave those
+        // paths out of traversal: no procedural geometry anywhere in this renderer, so no AABB is
+        // ever traversed — which is also why no promise about intersection shaders is made, since
+        // a launch of ray queries alone binds no hit table for the layers to check one against;
+        // and where a stage kind is present at all, every group names one, so no null shader of
+        // that kind is ever called. NVIDIA's best-practice list asks for each of these "whenever
+        // possible".
+        VkPipelineCreateFlags promises = VK_PIPELINE_CREATE_RAY_TRACING_SKIP_AABBS_BIT_KHR;
+        if (!shaders.mMiss.empty())
+            promises |= VK_PIPELINE_CREATE_RAY_TRACING_NO_NULL_MISS_SHADERS_BIT_KHR;
+        if (!shaders.mHit.empty())
+            promises |= VK_PIPELINE_CREATE_RAY_TRACING_NO_NULL_CLOSEST_HIT_SHADERS_BIT_KHR;
+        if (anyHitWanted)
+            promises |= VK_PIPELINE_CREATE_RAY_TRACING_NO_NULL_ANY_HIT_SHADERS_BIT_KHR;
+
         const VkRayTracingPipelineCreateInfoKHR pipeline{
             .sType = VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR,
             .pNext = &timed,
@@ -103,7 +118,7 @@ namespace Rtx
             // every compute pipeline in this renderer and none at all for a ray tracing one —
             // `Device::reportPipeline` is where that shows. The flag stays because it costs the
             // frame nothing and is what makes the report appear the day a driver answers.
-            .flags = VK_PIPELINE_CREATE_CAPTURE_STATISTICS_BIT_KHR,
+            .flags = VK_PIPELINE_CREATE_CAPTURE_STATISTICS_BIT_KHR | promises,
             .stageCount = static_cast<std::uint32_t>(stages.size()),
             .pStages = stages.data(),
             .groupCount = static_cast<std::uint32_t>(groups.size()),

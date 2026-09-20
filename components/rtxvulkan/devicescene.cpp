@@ -158,6 +158,7 @@ namespace Rtx
         // answer. `BottomLevelStore::getCompactableBytes` says why it is not asked for sooner.
         stats.mCompactableBytes = mAcceleration.getCompactableBytes();
         stats.mCompactableNowBytes = mAcceleration.getCompactableNowBytes();
+        stats.mRebuilt = mAcceleration.getRebuildCount();
     }
 
     void DeviceScene::readStats(SceneStats& stats) const

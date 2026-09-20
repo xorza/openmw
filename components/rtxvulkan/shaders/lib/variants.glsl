@@ -1,6 +1,8 @@
 #ifndef OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_VARIANTS_GLSL
 #define OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_VARIANTS_GLSL
 
+#include "visibility.h"
+
 // What kind of frame this is, told to the compiler rather than to the branch predictor.
 //
 // **The trace is occupancy-bound, so a path nothing takes still costs the pixels that take
@@ -54,5 +56,13 @@ layout(constant_id = 2) const bool HAS_MOONS = true;
 /// Whether this frame holds any water: a surface the eye can meet, or a level the eye can stand
 /// under. False takes the waves, the caustics and the whole underwater column out of a room.
 layout(constant_id = 3) const bool HAS_SEA = true;
+
+/// Whether the launch sorts its threads by what they hit before the hit's shader runs —
+/// `reorderThreadEXT` between the trace and the execute — and by what: `REORDER_NONE`,
+/// `REORDER_SHADER` on the shader the hit names alone, `REORDER_TEXTURE` with the low bits of the
+/// hit material's diffuse texture slot as the hint, for the data the shader is about to read. A
+/// run's decision and not a frame's, so a constant: `RenderProfile::mReorder`, and the bench is
+/// what sets it.
+layout(constant_id = 4) const uint REORDER = REORDER_NONE;
 
 #endif

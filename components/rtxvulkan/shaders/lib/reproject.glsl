@@ -9,6 +9,7 @@
 // frame, so nothing in it moves with one.
 
 #include "bindings.glsl"
+#include "geometry.glsl"
 #include "records.glsl"
 
 /// How far a point moved between the last frame and this one, in world units.
@@ -18,9 +19,9 @@
 /// device is the mistake the camera path avoids for the same reason. The matrix is exactly the
 /// identity for anything that did not move, so `motion * p - p` is bit-exactly zero and a static
 /// world produces no motion at all rather than a drift of rounding.
-vec3 movedBy(uint index, vec3 position)
+vec3 movedBy(GpuInstance instance, vec3 position)
 {
-    const vec4 rows[3] = instanceAt(index).mMotion;
+    const vec4 rows[3] = instance.mMotion;
     const vec3 was = vec3(dot(rows[0], vec4(position, 1.0)), dot(rows[1], vec4(position, 1.0)),
         dot(rows[2], vec4(position, 1.0)));
 
@@ -125,13 +126,51 @@ vec2 reprojected(uvec2 pixel, vec3 was)
     return reprojected(pixel, was, vec2(1.0));
 }
 
+/// How far a point of a deforming mesh moved between the last frame and this one, in world
+/// units, past what its instance's rigid motion says: the pose's own step, carried into the
+/// world by the instance's basis and into the previous frame by its motion's.
+///
+/// **The rigid half and the posed half added, and neither subtracted from a world point.** The
+/// previous position of the point is `M · toWorld · q_was`, with `M` the instance's motion and
+/// `q_was` where the point stood in the mesh last frame; written out, that is `M · point` plus
+/// `M_lin · toWorld_lin · (q_was − q_now)`. The first term is `movedBy`'s exact delta and the
+/// second is a small vector rotated twice, so the six-figure coordinates never meet a small one.
+vec3 deformedBy(GpuInstance instance, GpuMesh mesh, uint primitive, vec2 bary, mat4x3 toWorld)
+{
+    // Asked before the corners are looked up: most of the frame is a mesh that stands, and the
+    // index block the corners come out of is a dependent load a mesh with no pose has no use for.
+    if (mesh.mBindOffset == NO_STREAM)
+        return vec3(0.0);
+
+    const vec3 step = triangleDeformation(mesh, triangleCorners(mesh, primitive), cornerWeights(bary));
+
+    // The step is this frame less the last, and what is wanted is where the point was: the other
+    // way round. A step of nought comes out as nought, so a body that did not move adds nothing
+    // to the rigid half and no lane leaves early to say so.
+    const vec3 back = mat3(toWorld) * -step;
+    const vec4 rows[3] = instance.mMotion;
+
+    return vec3(dot(rows[0].xyz, back), dot(rows[1].xyz, back), dot(rows[2].xyz, back));
+}
+
 /// @param spread which image plane the surface projects through — the eye's at one, or the arms'
 ///        at `frame.mArmsSpread` for a surface the arms' ray found.
-vec2 motionOf(uvec2 pixel, vec3 origin, vec3 direction, float distance, uint instance, vec2 spread)
+/// @param primitive which triangle of the instance's mesh the ray landed on, and `bary` where
+///        on it: what a deforming mesh needs to say where that point stood last frame. Read
+///        only for a mesh that deforms.
+vec2 motionOf(uvec2 pixel, vec3 origin, vec3 direction, float distance, uint instance, uint primitive, vec2 bary,
+    mat4x3 toWorld, vec2 spread)
 {
     const vec3 point = origin + direction * distance;
 
-    return reprojected(pixel, direction * distance + frame.mCameraMotion + movedBy(instance, point), spread);
+    // One load of the row, which both halves of the motion read.
+    const GpuInstance placed = instanceAt(instance);
+    const GpuMesh mesh = meshAt(placed.mMesh);
+
+    return reprojected(pixel,
+        direction * distance + frame.mCameraMotion + movedBy(placed, point)
+            + deformedBy(placed, mesh, primitive, bary, toWorld),
+        spread);
 }
 
 /// Where what a water surface reflects stood on the previous frame's screen, in pixels.
@@ -161,7 +200,7 @@ vec2 mirrorMotionOf(uvec2 pixel, vec3 origin, WaterMirror mirror)
     // The plane's own reflection, which is linear on differences: the constant cancels in the
     // subtraction below, so only `z` changes sign.
     const vec3 seen = vec3(mirror.mAt.xy, 2.0 * frame.mWaterLevel - mirror.mAt.z);
-    const vec3 went = movedBy(mirror.mInstance, mirror.mAt);
+    const vec3 went = movedBy(instanceAt(mirror.mInstance), mirror.mAt);
 
     return reprojected(pixel, seen - origin + frame.mCameraMotion + vec3(went.xy, -went.z));
 }

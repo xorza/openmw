@@ -65,7 +65,7 @@ namespace Rtx
     }
 
     void BottomLevelStore::build(Batch& batch, const SceneDesc& scene, std::span<const Index> meshes,
-        const BlockedBuffer& poses, const BlockedBuffer& indices)
+        const BlockedBuffer& poses, const BlockedBuffer& indices, const std::uint64_t placement)
     {
         const DeviceFunctions& functions = mDevice.getFunctions();
         const std::size_t held = scene.meshes().getRows().size();
@@ -205,8 +205,12 @@ namespace Rtx
             scratchTotal = alignUp(scratchTotal + sizes.buildScratchSize, scratchAlignment);
 
             // Kept so a refit of this one mesh does not have to ask the driver its size again. The
-            // same geometry describes it, so the answer cannot have changed.
+            // same geometry describes it, so the answer cannot have changed. The build's own scratch
+            // beside it, for the rota that builds a refitted structure whole again, which counts
+            // from this build.
             row.mUpdateScratch = sizes.updateScratchSize;
+            row.mBuildScratch = sizes.buildScratchSize;
+            row.mRebuiltAt = placement;
 
             mBuild.mRanges[at] = VkAccelerationStructureBuildRangeInfoKHR{ .primitiveCount = triangles };
         }

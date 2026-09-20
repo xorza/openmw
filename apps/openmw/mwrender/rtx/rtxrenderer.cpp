@@ -34,6 +34,7 @@
 #include <components/rtx/camera.hpp>
 #include <components/rtx/cellgrid.hpp>
 #include <components/rtx/error.hpp>
+#include <components/rtx/frameextents.hpp>
 #include <components/rtx/frameimage.hpp>
 #include <components/rtx/framespend.hpp>
 #include <components/rtx/frameworld.hpp>
@@ -688,7 +689,7 @@ namespace MWRender
             std::move(manager), getResources().getVFS(), resourcePath, logPath);
     }
 
-    void RtxRenderer::notifyWorldSpaceChanged()
+    void RtxRenderer::notifyCut()
     {
         mPhase.expect(Phase::Between);
         // **Told rather than worked out.** The mirror grows and recycles its slots and is never

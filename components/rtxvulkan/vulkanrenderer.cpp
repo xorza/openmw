@@ -120,7 +120,7 @@ namespace Rtx
         , mFogVolumeLayout(FogVolume::describeLayout(mDevice))
         , mTextureLayout(TextureArray::describeLayout(mDevice))
         , mPass(mDevice, options.mShaderDirectory, mTextureLayout, mChannelLayout, mFogVolumeLayout, mCountHits,
-              mProfile.mSpecializeLaunches)
+              mProfile.mSpecializeLaunches, mProfile.mReorder)
         , mComposite(mDevice, options.mShaderDirectory)
         , mSpriteBin(mDevice, options.mShaderDirectory)
         , mSpriteShade(mDevice, options.mShaderDirectory)
@@ -350,6 +350,8 @@ namespace Rtx
             .mChannels = &chain.getChannels(),
             .mCounts = &counts,
             .mIndexBlocks = held.getAcceleration().getIndexBlocks(),
+            .mPoseBlocks = held.getAcceleration().getPoseBlocks(held.getSlot()),
+            .mPreviousPoseBlocks = held.getAcceleration().getPreviousPoseBlocks(held.getSlot()),
             .mTextures = held.getTextures(),
             .mWaves = &mWaves,
             .mRipples = &mRipples,
@@ -372,6 +374,13 @@ namespace Rtx
         // sequence belongs to the frame index, which is the renderer's to walk.
         if (reconstruction.mJitter)
             sampled.mCamera.mJitter = haltonJitter(camera.mFrame);
+
+        // The two consequences of the reconstruction the trace reads for itself: where its draws
+        // come from, and how far the shown pixel narrows every texture level. A picture's
+        // `Reconstruction{}` says the tile and nought.
+        sampled.mNoise
+            = reconstruction.mNoise == NoiseSource::WhiteHash ? Shaders::NOISE_WHITE_HASH : Shaders::NOISE_BLUE_TILE;
+        sampled.mLevelBias = reconstruction.mLevelBias;
 
         // The arms' eye samples where the world's does, or the two halves of one frame would be
         // reconstructed from two grids.
@@ -760,7 +769,8 @@ namespace Rtx
         // What reconstructs this frame, decided once and by one rule. Every switch below reads
         // this rather than working the interaction out again; the same value goes back in the frame
         // result, so what a run reports and what it did are one answer.
-        const Reconstruction reconstruction = Reconstruction::resolve(mProfile.mUpscaling, options.mReconstruction);
+        const Reconstruction reconstruction
+            = Reconstruction::resolve(mProfile.mUpscaling, options.mReconstruction, getExtents());
         frame.mReconstruction = reconstruction;
 
         Shaders::VisibilityConstants sampled = sampleCamera(camera, *mWorld, reconstruction, &mPreviousCamera);

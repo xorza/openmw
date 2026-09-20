@@ -287,6 +287,26 @@ namespace RtxTool
             "the same picture by lib/variants.glsl's argument, for measuring what the tuples are "
             "worth against the sixteen launches the driver compiles for them");
 
+        option(sFramed, "noise", bpo::value<std::string>()->default_value("auto"),
+            std::format("where the trace's per-pixel draws come from: auto, {}. Auto follows the "
+                        "denoiser — the tile under the wavelet, the hash under Ray Reconstruction, "
+                        "which asks for independent draws. Naming one is the A/B",
+                Rtx::sNoiseSourceNames.list())
+                .c_str());
+
+        option(sFramed, "level-epsilon", bpo::value<float>()->default_value(0.0f),
+            "levels added to the texture level bias past the ratio the upscaler sets: the DLSS "
+            "guide's epsilon, negative for sharper. Nought is the ratio alone, and off the "
+            "upscaler nothing is biased");
+
+        option(sFramed, "reorder", bpo::value<std::string>()->default_value("none"),
+            std::format("sort the launch's threads by what they hit before the hit's shader runs "
+                        "(reorderThreadEXT): {}. Shader sorts by the hit's shader alone, texture by "
+                        "the shader and the low bits of the hit material's diffuse texture. A no-op "
+                        "on a card without the unit",
+                Rtx::sReorderNames.list())
+                .c_str());
+
         option(sFramed, "hold", bpo::value<double>()->default_value(0.0),
             "hold the queue this many milliseconds behind the host after every frame's trace; "
             "`check` holds eight unless told otherwise. The other leg of `repeat` runs under it, "

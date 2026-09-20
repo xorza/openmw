@@ -50,8 +50,8 @@ namespace Rtx
         /// costs no memory, so every channel carries it rather than only the five DLSS reads today.
         constexpr VkImageUsageFlags sUsage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 
-        /// The channels a caller can ask to read back: the bounce, the two motion fields and the
-        /// depth. See `Rtx::Channel`.
+        /// The channels a caller can ask to read back: the bounce, the two albedos, the guide,
+        /// the two motion fields and the depth. See `Rtx::Channel`.
         constexpr VkImageUsageFlags sReadable = sUsage | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
 
         struct ChannelFormat
@@ -69,9 +69,9 @@ namespace Rtx
                 std::array<ChannelFormat, sChannelCount> every{};
                 every[bindingOf(Channel::Direct)] = { VK_FORMAT_UNDEFINED, sUsage };
                 every[bindingOf(Channel::Indirect)] = { VK_FORMAT_UNDEFINED, sReadable };
-                every[bindingOf(Channel::Albedo)] = { sAlbedo, sUsage };
-                every[bindingOf(Channel::Specular)] = { sAlbedo, sUsage };
-                every[bindingOf(Channel::Guide)] = { sGuide, sUsage };
+                every[bindingOf(Channel::Albedo)] = { sAlbedo, sReadable };
+                every[bindingOf(Channel::Specular)] = { sAlbedo, sReadable };
+                every[bindingOf(Channel::Guide)] = { sGuide, sReadable };
                 every[bindingOf(Channel::Motion)] = { sMotion, sReadable };
                 every[bindingOf(Channel::Depth)] = { sDepth, sReadable };
                 every[bindingOf(Channel::ReflectionMotion)] = { sMotion, sReadable };

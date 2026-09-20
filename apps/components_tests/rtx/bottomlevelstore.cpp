@@ -80,7 +80,7 @@ namespace Rtx
             void build(BottomLevelStore& store, std::span<const Index> meshes)
             {
                 Batch batch(getPool());
-                store.build(batch, mScene, meshes, mPoses.at(FrameSlot{}), mIndices);
+                store.build(batch, mScene, meshes, mPoses.at(FrameSlot{}), mIndices, 0);
                 batch.flush();
             }
 
@@ -88,7 +88,7 @@ namespace Rtx
             void buildDeferred(BottomLevelStore& store, std::span<const Index> meshes)
             {
                 Batch batch(getPool());
-                store.build(batch, mScene, meshes, mPoses.at(FrameSlot{}), mIndices);
+                store.build(batch, mScene, meshes, mPoses.at(FrameSlot{}), mIndices, 0);
                 batch.defer();
             }
 

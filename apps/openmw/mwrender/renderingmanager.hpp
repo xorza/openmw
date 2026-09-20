@@ -211,6 +211,12 @@ namespace MWRender
         /// Clear all worldspace-specific data
         void notifyWorldSpaceChanged();
 
+        /// The player was put somewhere rather than walked there, inside a worldspace the
+        /// renderer is still drawing: `ActionTeleport` — a door, `coc`, Recall, a boat. The
+        /// world's effects stay, which is what tells it from `notifyWorldSpaceChanged`; the
+        /// renderer is told the same thing either way.
+        void notifyTeleport();
+
         void update(float dt, bool paused);
 
         /// Describes this frame and hands it to the renderer, then asks for it drawn: two calls,

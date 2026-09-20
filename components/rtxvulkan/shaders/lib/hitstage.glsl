@@ -79,7 +79,7 @@ uvec2 stagePixel()
 /// shader would look at its own opacity, find one more pane, and shade it as a pane however deep the
 /// stack went — so a launch that had run out of layers would draw a hole through the world rather
 /// than the surface standing in it.
-void answerSolid(inout VisibilityPayload answer, Surface surface)
+void answerSolid(inout Answer answer, Surface surface)
 {
     const uvec2 pixel = stagePixel();
 
@@ -122,7 +122,7 @@ void answerSolid(inout VisibilityPayload answer, Surface surface)
 /// and a trace that started past it found nothing, kept the whole water, and drew the line it was
 /// there to remove as a bright hair. Solids only: nothing solid is nearer than a surface the eye's
 /// own trace found first, so what this finds is the bed.
-void answerWater(inout VisibilityPayload answer, Surface surface)
+void answerWater(inout Answer answer, Surface surface)
 {
     const uvec2 pixel = stagePixel();
     const vec3 origin = gl_WorldRayOriginEXT;

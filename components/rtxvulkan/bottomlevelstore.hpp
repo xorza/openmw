@@ -69,8 +69,10 @@ namespace Rtx
         /// @param poses the first copy of the deforming vertices, which is what a deforming mesh's
         ///        structure is built over — `SkinPass` has written the pose into it.
         /// @param indices the shared index blocks, which every structure is built through.
+        /// @param placement which placement this is, on the clock the rebuild rota reads: what
+        ///        `getRebuiltAt` answers for each of `meshes` until the rota comes round.
         void build(Batch& batch, const SceneDesc& scene, std::span<const Index> meshes, const BlockedBuffer& poses,
-            const BlockedBuffer& indices);
+            const BlockedBuffer& indices, std::uint64_t placement);
 
         /// Destroys the structures of `meshes` and gives their storage back. Idempotent, because
         /// both the frame that places and the one that appends run it. The structures go to the
@@ -89,6 +91,14 @@ namespace Rtx
         /// What a refit of `mesh` asks for, so a frame does not have to ask the driver again.
         /// Nought for a mesh that was not built to be refitted.
         VkDeviceSize getUpdateScratch(const Index mesh) const { return mRows[mesh].mUpdateScratch; }
+
+        /// What a build of `mesh` from nothing asks for, which a rebuild into the same room reads.
+        VkDeviceSize getBuildScratch(const Index mesh) const { return mRows[mesh].mBuildScratch; }
+
+        /// Which placement last built `mesh` whole rather than refitting it — its arrival's, until
+        /// the rota comes round — and the rota's own note of a rebuild.
+        std::uint64_t getRebuiltAt(const Index mesh) const { return mRows[mesh].mRebuiltAt; }
+        void noteRebuilt(const Index mesh, const std::uint64_t placement) { mRows[mesh].mRebuiltAt = placement; }
 
         /// Reads every compaction answer whose placement has certainly run, and makes a tight
         /// structure for as many of the answered as this placement's budget takes. The set it
@@ -184,9 +194,14 @@ namespace Rtx
         {
             AccelerationStructure mStructure;
 
-            /// What a refit asks for, kept so a frame does not ask the driver again. Nought for a
-            /// mesh not built to be refitted.
+            /// What a refit asks for, and what a build from nothing asks for, kept so a frame does
+            /// not ask the driver again. The first is nought for a mesh not built to be refitted.
             VkDeviceSize mUpdateScratch = 0;
+            VkDeviceSize mBuildScratch = 0;
+
+            /// The placement that last built the structure whole: its arrival's, and then the
+            /// rota's.
+            std::uint64_t mRebuiltAt = 0;
 
             /// Whether the structure was built with `ALLOW_UPDATE`.
             bool mUpdatable = false;

@@ -806,7 +806,12 @@ namespace MWRender
     void RenderingManager::notifyWorldSpaceChanged()
     {
         mEffectManager->clear();
-        mRenderer.notifyWorldSpaceChanged();
+        mRenderer.notifyCut();
+    }
+
+    void RenderingManager::notifyTeleport()
+    {
+        mRenderer.notifyCut();
     }
 
     void RenderingManager::clear()

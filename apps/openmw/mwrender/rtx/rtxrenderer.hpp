@@ -142,7 +142,7 @@ namespace MWRender
 
         void renderFrame(const SceneFrame& frame) override;
 
-        void notifyWorldSpaceChanged() override;
+        void notifyCut() override;
 
         /// A trace into a texture the GUI draws from. A picture of the world traces against the
         /// scene this renderer holds; a subject that stands in no cell is mirrored into a scene of

@@ -118,6 +118,12 @@ namespace Rtx::Shaders
     /// end along the same line.
     const uint STREAM_WATER = 3u;
 
+    /// What `VisibilityConstants::mNoise` says the per-pixel draws come from: the tile, turned
+    /// by an irrational step each frame, or a hashed counter seeded by the pixel, the frame and
+    /// the stream. `Rtx::NoiseSource` is the host's spelling and `randomAt` the reader.
+    const uint NOISE_BLUE_TILE = 0u;
+    const uint NOISE_WHITE_HASH = 1u;
+
     /// Edge of the blue-noise tile, in pixels.
     ///
     /// **Small enough that generating it costs a fraction of a second, large enough that the repeat
@@ -445,7 +451,7 @@ namespace Rtx::Shaders
         /// What the fold found this mesh's triangles to be — `MESH_SHEET` and `MESH_CLOSED`.
         ///
         /// **Bits and not two words, because this row is read on every hit.** A mesh table entry is
-        /// five words and every ray that lands fetches one.
+        /// six words and every ray that lands fetches one.
         uint mShape;
 
         /// Where this mesh's second set of texture coordinates begins in the blocks of their own,
@@ -458,6 +464,12 @@ namespace Rtx::Shaders
         /// this says which stream that unit reads, because the material is shared across geometries
         /// and the binding is each geometry's own.
         uint mUnitStreams;
+
+        /// Where this mesh's posed vertices sit among the deforming meshes' — `Rtx::MeshRange::
+        /// mBindOffset`, the index the pose blocks are addressed by — or `NO_STREAM` for a mesh
+        /// that stands. What lets a hit on a body read where its triangle stood last frame: the
+        /// one field a moving surface's motion cannot do without, and the sixth word of the row.
+        uint mBindOffset;
     };
 
     /// A mesh with no second set of texture coordinates.
@@ -590,6 +602,16 @@ namespace Rtx::Shaders
 
         /// The sprite tiles' list, in the same shape over the screen's tiles.
         uint64 mSpriteTileList;
+
+        /// The pose blocks, this copy's and the other's: every deforming mesh's vertices as this
+        /// frame traces them and as the previous frame did, by `GpuMesh::mBindOffset` plus the
+        /// vertex's index within the mesh. The copies are owed every write and paid at every
+        /// sync, so the copy this frame does not trace holds the pose as of the frame before —
+        /// and for a mesh that did not move, the same numbers as this one's, so its delta is
+        /// exactly nought. `reproject.glsl` reads the pair, in object space, where a difference
+        /// of two positions is exact.
+        uint64 mPoseBlocks;
+        uint64 mPreviousPoseBlocks;
     };
 
     /// What a reference to each table may claim about its address, and so what the host checks.
@@ -873,7 +895,7 @@ namespace Rtx::Shaders
     // produces a plausible wrong image rather than an error. GLSL is pinned separately, by the
     // `--scalar-block-layout` the build hands the validator.
 #ifdef RTX_HOST
-    static_assert(sizeof(GpuMesh) == 20, "GpuMesh must be scalar-packed on every side");
+    static_assert(sizeof(GpuMesh) == 24, "GpuMesh must be scalar-packed on every side");
     static_assert(sizeof(GpuInstance) == 60, "GpuInstance must be scalar-packed on every side");
     static_assert(sizeof(GpuLight) == 40, "GpuLight must be scalar-packed on every side");
     static_assert(sizeof(GpuLightGrid) == 28, "GpuLightGrid must be scalar-packed on every side");
@@ -881,7 +903,7 @@ namespace Rtx::Shaders
     static_assert(sizeof(GpuMaterial) == 88, "GpuMaterial must be scalar-packed on every side");
     static_assert(sizeof(GpuSprite) == 56, "GpuSprite must be scalar-packed on every side");
     static_assert(sizeof(GpuEmitter) == 40, "GpuEmitter must be scalar-packed on every side");
-    static_assert(sizeof(GpuTables) == 128, "GpuTables must be scalar-packed on every side");
+    static_assert(sizeof(GpuTables) == 144, "GpuTables must be scalar-packed on every side");
 
 #endif
 

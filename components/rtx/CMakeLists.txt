@@ -49,6 +49,7 @@ set(RTX_FILES
     frameimage.cpp
     frameimage.hpp
     framespend.hpp
+    frameextents.hpp
     frameworld.cpp
     frameworld.hpp
     groundreader.cpp

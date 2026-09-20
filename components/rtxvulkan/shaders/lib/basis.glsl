@@ -18,4 +18,32 @@ vec3 tangentTo(vec3 axis)
     return normalize(cross(aside, axis));
 }
 
+/// A unit vector as a point of the square, and back: Cigolle et al.'s octahedral map, which folds
+/// the lower hemisphere out over the upper one's corners so that the whole sphere is one square
+/// with no seam a filter would notice and no pole where precision runs out.
+///
+/// **In one word of two signed halves**, which is the payload's use of it. Sixteen bits an axis is
+/// a direction to a hundredth of a degree — finer than the half-float channels the guide is
+/// stored in downstream, so nothing the frame keeps is lost across the execute.
+///
+/// @param unit a unit vector; a nought vector has no direction and is the caller's to keep apart.
+uint packDirection(vec3 unit)
+{
+    const vec3 folded = unit / (abs(unit.x) + abs(unit.y) + abs(unit.z));
+    const vec2 upper = folded.xy;
+    const vec2 lower = (1.0 - abs(folded.yx)) * vec2(folded.x >= 0.0 ? 1.0 : -1.0, folded.y >= 0.0 ? 1.0 : -1.0);
+
+    return packSnorm2x16(folded.z >= 0.0 ? upper : lower);
+}
+
+vec3 unpackDirection(uint packed)
+{
+    const vec2 square = unpackSnorm2x16(packed);
+    vec3 unit = vec3(square, 1.0 - abs(square.x) - abs(square.y));
+    if (unit.z < 0.0)
+        unit.xy = (1.0 - abs(unit.yx)) * vec2(unit.x >= 0.0 ? 1.0 : -1.0, unit.y >= 0.0 ? 1.0 : -1.0);
+
+    return normalize(unit);
+}
+
 #endif

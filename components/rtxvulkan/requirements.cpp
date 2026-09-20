@@ -123,6 +123,10 @@ namespace Rtx
                 +[](DeviceFeatures& f) -> VkBool32& { return f.mRayTracingMaintenance1.rayTracingMaintenance1; } },
             RequiredFeature{ "rayTracingPipeline",
                 +[](DeviceFeatures& f) -> VkBool32& { return f.mRayTracingPipeline.rayTracingPipeline; } },
+            // What `VK_PIPELINE_CREATE_RAY_TRACING_SKIP_AABBS_BIT_KHR` is gated on: the promise
+            // every launch makes that no procedural geometry is anywhere in the scene.
+            RequiredFeature{ "rayTraversalPrimitiveCulling",
+                +[](DeviceFeatures& f) -> VkBool32& { return f.mRayTracingPipeline.rayTraversalPrimitiveCulling; } },
             RequiredFeature{ "rayTracingInvocationReorder",
                 +[](DeviceFeatures& f) -> VkBool32& { return f.mInvocationReorder.rayTracingInvocationReorder; } },
             RequiredFeature{ "pipelineExecutableInfo",

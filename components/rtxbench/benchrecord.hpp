@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include <components/rtx/frameextents.hpp>
 #include <components/rtx/framespend.hpp>
 #include <components/rtx/guirenderer.hpp>
 #include <components/rtx/memoryreport.hpp>
@@ -208,6 +209,13 @@ namespace Rtx
         /// or `Off` and `Default` where nothing did. **Read off a frame and not off the renderer**,
         /// which answers the mode alone.
         Upscaling mUpscaling{ .mMode = Upscale::Off, .mPreset = Preset::Default };
+
+        /// Where the trace drew from and what its texture levels were offset by, as the frame's
+        /// `Reconstruction` resolved them; and whether the launch sorted its threads, which is
+        /// the profile's.
+        NoiseSource mNoise = NoiseSource::BlueNoiseTile;
+        float mLevelBias = 0.0f;
+        Reorder mReorder = Reorder::None;
 
         std::uint32_t mMeasured = 0;
         std::uint32_t mWarmup = 0;

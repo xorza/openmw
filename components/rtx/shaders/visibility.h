@@ -41,9 +41,9 @@ namespace Rtx::Shaders
     /// payload before `hitObjectExecuteShaderEXT` is not what the closest-hit shader reads once a
     /// `reorderThreadEXT` with a key stands anywhere in the launch: on driver 610.57.04 a per-pixel
     /// signature written that way arrives wrong at nearly every pixel, and the answers written back
-    /// arrive right. No launch here sorts, and the record is what keeps that a choice: it is read by
-    /// the shader the hit object names, through the index traversal computed, whatever stands
-    /// between the trace and the execute.
+    /// arrive right. No launch sorts unless `RenderProfile::mReorder` asks, and the record is what
+    /// keeps that a choice: it is read by the shader the hit object names, through the index
+    /// traversal computed, whatever stands between the trace and the execute.
     struct HitRecord
     {
         /// Which layer of the peel the shader is standing at, counting the eye's own hit as nought.
@@ -55,6 +55,13 @@ namespace Rtx::Shaders
     /// The sky, which is the only miss record the trace has.
     const uint MISS_RECORD_SKY = 0u;
     const uint MISS_RECORD_COUNT = 1u;
+
+    /// What `lib/variants.glsl`'s `REORDER` constant may be, which is `Rtx::Reorder` as the host
+    /// spells it: no sort, a sort on the shader the hit names, or on that and the hit material's
+    /// diffuse texture.
+    const uint REORDER_NONE = 0u;
+    const uint REORDER_SHADER = 1u;
+    const uint REORDER_TEXTURE = 2u;
 
     /// What the frame is: where the eye stands, how it turns a pixel into a ray, and everything
     /// about the world that a ray needs to be answered.
@@ -454,6 +461,18 @@ namespace Rtx::Shaders
         /// within a frame.
         uvec2 mFogColumns;
 
+        /// Where the trace's per-pixel draws come from: `NOISE_BLUE_TILE` or `NOISE_WHITE_HASH`,
+        /// as `Rtx::Reconstruction::mNoise` resolved it. One uniform branch in `randomAt`.
+        uint mNoise;
+
+        /// What every texture level is offset by, in levels: `Rtx::Reconstruction::mLevelBias`,
+        /// the DLSS guide's mip bias for the pixel that is shown rather than the one that is
+        /// traced, below nought under an upscaler and whatever the epsilon says past that. Added
+        /// where a level is chosen from a cone — `coneBase`, `waveLevel`, `rippleLevel` — and
+        /// nowhere else, because `mSpreadAngle` also sizes the sun's disc and the wave filter's
+        /// taps, which are not levels.
+        float mLevelBias;
+
         /// Where every table a hit reads is. `GpuTables` says why it rides here.
         ///
         /// **Last, because it is eight-aligned and nothing before it is.** Anywhere else it would
@@ -475,8 +494,8 @@ namespace Rtx::Shaders
 
     // Pinned for the reason `scene.h` gives: the side that writes these bytes and the side that
     // reads them are different compilers.
-    static_assert(offsetof(VisibilityConstants, mTables) == 1152, "GpuTables must land eight-aligned and last");
-    static_assert(sizeof(VisibilityConstants) == 1280, "VisibilityConstants must be scalar-packed on every side");
+    static_assert(offsetof(VisibilityConstants, mTables) == 1160, "GpuTables must land eight-aligned and last");
+    static_assert(sizeof(VisibilityConstants) == 1304, "VisibilityConstants must be scalar-packed on every side");
 #endif
 
 #ifdef RTX_HOST

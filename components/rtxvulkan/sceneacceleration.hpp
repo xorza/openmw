@@ -102,6 +102,17 @@ namespace Rtx
         /// them — and their account, which is what tells that pass which meshes each copy owes.
         SlotBlocks& getPoses() { return mPoses; }
 
+        /// Where `slot`'s copy keeps its poses, as a shader reads them at a hit: every deforming
+        /// mesh as this frame traces it. And the copy `slot` does not trace, which by the account
+        /// `SlotBlocks` keeps is every deforming mesh as the previous frame traced it —
+        /// `GpuTables::mPreviousPoseBlocks` says why.
+        VkDeviceAddress getPoseBlocks(const FrameSlot slot) const { return mPoses.at(slot).getTableAddress(); }
+        VkDeviceAddress getPreviousPoseBlocks(const FrameSlot slot) const
+        {
+            static_assert(sFrameSlots == 2, "the copy a frame does not trace is the previous frame's only with two");
+            return mPoses.at(slot.next()).getTableAddress();
+        }
+
         /// The room the structures were given, and what they occupy in it — a pair, because a
         /// structure copied tight gives its loose room back and a block is returned to the device
         /// only when nothing is left in it. Neither counts the geometry they were built from.
@@ -110,6 +121,15 @@ namespace Rtx
 
         VkDeviceSize getCompactableBytes() const { return mBottomLevel.getCompactableBytes(); }
         VkDeviceSize getCompactableNowBytes() const { return mBottomLevel.getCompactableNowBytes(); }
+
+        /// How many placements a refitted structure is left to its refits before the rota builds
+        /// it whole again. Sixty-four is about a second of a walking crowd at the frame rates this
+        /// runs at, and a crowd of that many bodies comes round in as many.
+        static constexpr std::uint64_t sRebuildEvery = 64;
+
+        /// How many structures the rota has built whole again since the scene was made, for the
+        /// scene's report.
+        std::uint64_t getRebuildCount() const { return mRebuildCount; }
 
     private:
         /// Reserves room for the scene's geometry and copies in the runs `meshes` names. Per mesh
@@ -120,6 +140,13 @@ namespace Rtx
         /// Fills the refit build infos and sizes the scratch. Leaves `mRefitBuilds` holding exactly
         /// this frame's rebuilds, which is what both the caller and `recordRefit` read.
         void prepareRefit(const SceneDesc& scene, FrameSlot slot);
+
+        /// What `mesh`'s place in this placement's refit works in: a whole build's scratch for the
+        /// one the rota picked, an update's for the rest.
+        VkDeviceSize refitScratchOf(Index mesh) const
+        {
+            return mesh == mRebuilt ? mBottomLevel.getBuildScratch(mesh) : mBottomLevel.getUpdateScratch(mesh);
+        }
 
         /// Brings the host rows up to what `changed` names, and to whatever the table grew by.
         void writeRows(std::span<const InstanceRecord> records, std::span<const Index> changed);
@@ -149,9 +176,17 @@ namespace Rtx
         /// `MeshRange::mBindOffset`, so the table is as long as the bodies rather than the cell — a
         /// static mesh's vertices are a build input `BottomLevelStore::build` stages. Blocked, so a
         /// scene that grows keeps the poses it was already given: a pose is on the device and
-        /// nowhere else. Nothing reads these at a hit, which gets its vertices out of the structure
-        /// through position fetch.
+        /// nowhere else. A hit gets its vertices out of the structure through position fetch and
+        /// reads these for one thing only: where its triangle stood on the previous frame, out of
+        /// the other copy — `GpuTables::mPreviousPoseBlocks`.
         SlotBlocks mPoses{ Shaders::VERTEX_BLOCK, sizeof(osg::Vec3f) };
+
+        /// How many placements this has prepared that posed something, which is the clock the
+        /// rebuild rota reads: a placement that poses nothing refits nothing and is not a tick of
+        /// it. And which posed mesh the last one built whole.
+        std::uint64_t mPlacements = 0;
+        std::uint64_t mRebuildCount = 0;
+        Index mRebuilt = sNoIndex;
 
         BlockedBuffer mIndices{ Shaders::INDEX_BLOCK, sizeof(std::uint32_t) };
 

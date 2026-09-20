@@ -1,10 +1,14 @@
 #pragma once
 
 #include <array>
+#include <cassert>
+#include <cmath>
+#include <cstdint>
 #include <optional>
 #include <string_view>
 #include <utility>
 
+#include "frameextents.hpp"
 #include "namedenum.hpp"
 #include "upscale.hpp"
 
@@ -61,6 +65,51 @@ namespace Rtx
         std::pair{ Preset::E, std::string_view("e") },
     } };
 
+    /// Where the trace's per-pixel draws come from — the shadow ray's place on the source, the
+    /// bounce's direction, the fog's and the water's — as against the reservoirs, which step a
+    /// hashed counter whichever this says.
+    enum class NoiseSource
+    {
+        /// The blue-noise tile turned by the golden ratio each frame: an arrangement across the
+        /// screen, which is what makes one sample per pixel filter well. `Rtx::BlueNoise` says why
+        /// the wavelet wants it.
+        BlueNoiseTile,
+
+        /// A hashed counter seeded by the pixel, the frame and the stream: independent draws with
+        /// no arrangement at all, which is what a network trained on independent samples asks
+        /// for — the DLSS-RR integration guide, section 3.5, and the reason the tile is not
+        /// handed to it.
+        WhiteHash,
+    };
+
+    /// How a `NoiseSource` is spelled on a command line and in a report.
+    inline constexpr NamedEnum sNoiseSourceNames{ std::array{
+        std::pair{ NoiseSource::BlueNoiseTile, std::string_view("blue-noise") },
+        std::pair{ NoiseSource::WhiteHash, std::string_view("white-hash") },
+    } };
+
+    /// Whether the launch sorts its threads by what they hit before the shader the hit names
+    /// runs, and by what. A run's decision and not a frame's — `lib/variants.glsl` `REORDER` is
+    /// the constant it becomes — and off until the bench says a hint pays.
+    enum class Reorder
+    {
+        None,
+
+        /// By the shader the hit names alone, which is the key the driver sorts on with no hint.
+        Shader,
+
+        /// By the shader and the low bits of the hit material's diffuse texture, for the sheet the
+        /// shader is about to read.
+        Texture,
+    };
+
+    /// How a `Reorder` is spelled on a command line and in a report.
+    inline constexpr NamedEnum sReorderNames{ std::array{
+        std::pair{ Reorder::None, std::string_view("none") },
+        std::pair{ Reorder::Shader, std::string_view("shader") },
+        std::pair{ Reorder::Texture, std::string_view("texture") },
+    } };
+
     /// What the upscaler is built with, decided once per set of targets: the mode says whether an
     /// upscaler runs and at what ratio, and the preset which network it runs. A feature is created
     /// per resolution with both.
@@ -83,6 +132,17 @@ namespace Rtx
 
         /// Whether the primary ray was wanted moved inside its pixel.
         bool mJitter = false;
+
+        /// Where the trace's draws come from, where a run names a source. Nothing hands the
+        /// choice to `resolve`, which follows the denoiser; naming one is the A/B.
+        std::optional<NoiseSource> mNoise;
+
+        /// What is added to the texture level bias past the ratio the upscaler sets, in levels:
+        /// the DLSS programming guide's epsilon (section 3.5), which a run walks on a sign and a
+        /// book. Nought is the ratio alone. Without an upscaler the ratio is nought and this is
+        /// the whole of the bias, which is what lets a test and an A/B read a level off the
+        /// unupscaled path.
+        float mLevelEpsilon = 0.0f;
 
         bool operator==(const ReconstructionRequest& other) const = default;
     };
@@ -112,18 +172,37 @@ namespace Rtx
         /// sample.
         bool mJitterForced = false;
 
+        /// Where the trace drew from: the tile under the wavelet or nothing, and the hash under an
+        /// upscaler, unless the request named one. A consequence of the denoiser, because the
+        /// tile is an arrangement the wavelet reads and the network does not want.
+        NoiseSource mNoise = NoiseSource::BlueNoiseTile;
+
+        /// What every texture level is offset by, in levels: the shown pixel's cone is narrower
+        /// than the traced one by the upscaler's ratio, and a level chosen for the traced pixel
+        /// reads every texture that much coarser than the picture shows. The DLSS programming
+        /// guide, section 3.5: `log2(render / display)`, plus the request's epsilon. The ratio is
+        /// nought where nothing upscales, and the epsilon stands on its own there.
+        float mLevelBias = 0.0f;
+
         /// Whether the wavelet ran over the indirect channel — one comparison, because the backend
         /// records the accumulator where this holds.
         bool filtered() const { return mDenoiser == Denoiser::Wavelet; }
 
         /// The whole of the rule, and the only copy of it.
-        static Reconstruction resolve(const Upscaling& upscaling, const ReconstructionRequest& asked)
+        ///
+        /// @param extents what the frame is traced at and shown at, read only under an upscaler
+        ///        and only for its widths — the DLSS guide states its ratio in X, and the pixels
+        ///        are square.
+        static Reconstruction resolve(
+            const Upscaling& upscaling, const ReconstructionRequest& asked, const FrameExtents& extents)
         {
             if (upscaling.mMode == Upscale::Off)
             {
                 return Reconstruction{
                     .mDenoiser = asked.mFilter ? Denoiser::Wavelet : Denoiser::None,
                     .mJitter = asked.mJitter,
+                    .mNoise = asked.mNoise.value_or(NoiseSource::BlueNoiseTile),
+                    .mLevelBias = asked.mLevelEpsilon,
                 };
             }
 
@@ -133,7 +212,19 @@ namespace Rtx
                 .mJitter = true,
                 .mFilterSuppressed = asked.mFilter,
                 .mJitterForced = !asked.mJitter,
+                .mNoise = asked.mNoise.value_or(NoiseSource::WhiteHash),
+                .mLevelBias = levelBiasOf(extents, asked.mLevelEpsilon),
             };
+        }
+
+    private:
+        /// The guide's formula with the epsilon the request adds.
+        static float levelBiasOf(const FrameExtents& extents, const float epsilon)
+        {
+            assert(extents.mRenderWidth > 0 && extents.mOutputWidth > 0 && "an upscaler with no extents to bias by");
+
+            return std::log2(static_cast<float>(extents.mRenderWidth) / static_cast<float>(extents.mOutputWidth))
+                + epsilon;
         }
     };
 
@@ -203,5 +294,7 @@ namespace Rtx
         /// whether a run sums its frames or shows them. The reference's width unless a run says
         /// it only shows its frames, so that a run that forgot to say is exact rather than fast.
         RadianceWidth mRadianceWidth = RadianceWidth::Summed;
+
+        Reorder mReorder = Reorder::None;
     };
 }

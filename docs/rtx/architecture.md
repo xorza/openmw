@@ -159,7 +159,7 @@ adopted camera after the frame is described, and a renderer reads it at the mome
 | `OMW::Engine::frame`               | `getStartTick`, `getStats`, `eventTraversal`, `updateTraversal`                                     |
 | `RenderingManager` ctor and dtor   | `createSceneRoot`, `attachWorld`, `getCamera`, `getCompileOperation`, `detachWorld`                 |
 | `RenderingManager` per frame       | `describeFrame(frame)` between the traversals, `renderFrame(frame)` after the update                |
-| `RenderingManager` on events       | `addCell`, `removeCell`, `add/removeWaterRippleEmitter`, `emitWaterRipple`, `notifyWorldSpaceChanged`, `toggleRenderMode`, `capture`, `processChangedSettings`, `createGround`, `listAssetsToPreload`, `suspendDraw`, `resumeDraw` |
+| `RenderingManager` on events       | `addCell`, `removeCell`, `add/removeWaterRippleEmitter`, `emitWaterRipple`, `notifyCut`, `toggleRenderMode`, `capture`, `processChangedSettings`, `createGround`, `listAssetsToPreload`, `suspendDraw`, `resumeDraw` |
 | `MWGui::WindowManager`             | `createGuiPlatform`, `getWindow`, `showWorld`, `setViewMask`, `renderGuiFrame`, `setVSync`, `getPostProcessor` |
 | `MWGui::LoadingScreen`             | `beginLoading`, `endLoading`, `freezeFrame`, `renderLoadingFrame`                                   |
 | `LocalMap`, `CharacterPreview`, `GlobalMap` | `createWorldView`, `getGroundReach`; `createSubjectView`; `createMapOverlay`               |
@@ -225,7 +225,7 @@ settings registry is read for the renderer. The core reads no settings.
 Between ──► Walking ──► Placing ──► Views ──► Tracing ──► Run ──► Gui ──► Between
    ▲            │                                                   ▲
    │            └───── world hidden: straight to Gui ───────────────┘
-   └── the engine's own calls (addCell, attachWorld, notifyWorldSpaceChanged, ...) land here
+   └── the engine's own calls (addCell, attachWorld, notifyCut, ...) land here
 ```
 
 **Class masks.** `rayMaskOf(cullMask)` turns a camera's cull mask into the `MASK_*` bits its
@@ -540,11 +540,15 @@ world-space grid. Water: `WaveSpectrum` and `WaveCascade` are the sea's tiles;
 ### 7.8 Profiles and reconstruction
 
 File: `reconstruction.hpp`. `RenderProfile` is everything a run decides once: the upscaling
-(mode and Ray Reconstruction preset), the reconstruction request (filter, jitter), the delight
-factor, a fixed exposure, the stress hold, the radiance width. `Reconstruction::resolve` is the
-whole rule and its only copy: under an upscaler the denoiser is Ray Reconstruction and jitter
-is forced; without one the wavelet runs where asked. `NamedEnum` is the one list of spellings
-for each enum, read by the parser, the report and the menus.
+(mode and Ray Reconstruction preset), the reconstruction request (filter, jitter, a named noise
+source, a level epsilon), the delight factor, a fixed exposure, the stress hold, the radiance
+width, whether the launch reorders. `Reconstruction::resolve` is the whole rule and its only
+copy, and it answers every consequence of how a frame is put back together: under an upscaler
+the denoiser is Ray Reconstruction, jitter is forced, the trace draws from a hashed counter
+(`NoiseSource::WhiteHash`, because the network assumes independent samples) and every texture
+level is biased by `log2(render / output)` for the pixel that is shown; without one the wavelet
+runs where asked and the trace draws from the blue-noise tile. `NamedEnum` is the one list of
+spellings for each enum, read by the parser, the report and the menus.
 
 Infrastructure worth knowing: `Stepped` (a step of a fixed order, asserted), `OwnedBy` and
 `Worker` (a thread and who owns what), `Monitor`, `Spares` (pools that lend stable addresses),
@@ -568,10 +572,13 @@ path. `Graveyard` holds what a submit may still read until the timeline says it 
 
 **`DeviceScene`** (`devicescene.hpp`): everything one scene is traced against, the world's or a
 picture's, the same objects for both. `InstanceRecord`s (one row per slot, every decision
-taken), `SceneAcceleration` (the top level, the refit over deforming meshes, the
-`BottomLevelStore` in blocks nothing moves), `SceneBuffers` (the attribute blocks and the
-tables a hit reads), `SkinTables`, `TextureArray` (bindless, sRGB). Every table has
-`sFrameSlots` (two) copies, and `getSlot()` says which copy the last placement wrote.
+taken), `SceneAcceleration` (the top level, the refit over deforming meshes with one of them
+built whole again each placement on a rota of `sRebuildEvery`, the `BottomLevelStore` in
+blocks nothing moves), `SceneBuffers` (the attribute blocks and the tables a hit reads),
+`SkinTables`, `TextureArray` (bindless, sRGB). Every table has `sFrameSlots` (two) copies, and
+`getSlot()` says which copy the last placement wrote. The copy a frame does not trace holds
+every pose as of the frame before, by the account `SlotBlocks` keeps, and the trace reads it for
+where a deforming triangle stood (`GpuTables::mPreviousPoseBlocks`).
 
 **`FrameRing`** (`framering.hpp`): two slots. The CPU works one frame ahead: frame N+1 is
 walked and placed while N is traced, and the frame after next takes N's slot and waits for it
@@ -617,7 +624,10 @@ runtime is raised on the first mode that wants one and outlives a mode being tur
 | `wave*.comp`, `ripple*.comp`, `digest.comp`, `stress.comp` | the sea, the wake, the frame hash, the queue hold                |
 
 `lib/*.glsl` are the shared pieces. Nothing crosses the payload inwards: what a hit shader is
-told rides its shader-table record.
+told rides its shader-table record. What crosses it outwards is `VisibilityPayload`, seventeen
+words packed once at each end of the execute (`packAnswer`, `unpackAnswer`); `Answer` is the
+same record unpacked, which the shaders write and the launch reads. `RTX_SHADE` is the one
+place the launch's threads may be reordered before the execute, under the `REORDER` constant.
 
 ---
 
@@ -945,8 +955,11 @@ the presenter whether the swapchain wants a rebuild before it compares the exten
 
 ### 11.7 Between worlds and on a setting
 
-- `notifyWorldSpaceChanged` → `resetHistory`: the denoiser, the air and the ripples start
-  without a past. The mirror is never cleared, because a cell load looks like a step.
+- `notifyCut` → `resetHistory`: the denoiser, the air and the ripples start without a past.
+  Raised by `RenderingManager::notifyWorldSpaceChanged` on a change of worldspace or a time
+  skip, and by `RenderingManager::notifyTeleport` from `World::updateWeather` on the frame the
+  player was put somewhere by an `ActionTeleport` — a door, `coc`, Recall, a boat. The mirror
+  is never cleared, because a cell load looks like a step.
 - `addCell` → `WorldMirror::standSea`. `removeCell` drops the cell's wading emitters.
 - `detachWorld`: `SkyReader::detach` gives its holds back; `WorldMirror::detach` points the
   ring at no world (the thread stops, every hold goes back), then retires at a fresh epoch. The

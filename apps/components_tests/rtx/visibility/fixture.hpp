@@ -268,6 +268,14 @@ namespace Rtx::Testing
         /// and is what several of them cover between them.
         bool mJitter = false;
 
+        /// Levels added to every texture level the trace chooses — `ReconstructionRequest`'s
+        /// epsilon, which with no upscaler in the fixture is the whole of the bias.
+        float mLevelEpsilon = 0.0f;
+
+        /// Where the trace draws from, or nothing for the reconstruction's own choice, which with
+        /// no upscaler is the tile every figure over this fixture was derived against.
+        std::optional<NoiseSource> mNoise;
+
         /// Throws the denoiser's history away before the run.
         ///
         /// **A one-frame baseline taken after a longer run is a baseline that already has a history
@@ -325,7 +333,10 @@ namespace Rtx::Testing
 
                 mRenderer->renderFrame(sampled,
                     FrameOptions{ .mAccumulate = shot.mFrames > 0 && shot.mAverage ? frame + 1 : 0,
-                        .mReconstruction = { .mFilter = shot.mFilter, .mJitter = shot.mJitter },
+                        .mReconstruction = { .mFilter = shot.mFilter,
+                            .mJitter = shot.mJitter,
+                            .mNoise = shot.mNoise,
+                            .mLevelEpsilon = shot.mLevelEpsilon },
                         .mExposure = shot.mExposure,
                         .mDebug = shot.mDebug });
 

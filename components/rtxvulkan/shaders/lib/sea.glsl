@@ -149,9 +149,11 @@ float resolvedShare(uint cascade, float level)
 /// A level of the chain is the mean of the four texels above it, so the level whose texels are as
 /// wide as the cone carries the mean of exactly what the cone covers. Never above the finest level:
 /// a cone narrower than a texel has nothing further to be shown.
+/// Biased by the frame like every other level, for the pixel that is shown and not the one that
+/// is traced — `VisibilityConstants::mLevelBias`.
 float waveLevel(uint cascade, float footprint)
 {
-    return max(log2(footprint / frame.mWaveTexel[cascade]), 0.0);
+    return max(log2(footprint / frame.mWaveTexel[cascade]) + frame.mLevelBias, 0.0);
 }
 
 /// Where `at` lands on the ripple field, in its texture's coordinates, or nothing where the field
@@ -173,7 +175,7 @@ bool rippleCoordinate(vec2 at, out vec2 uv)
 /// Which level of the ripple field's chain a cone this wide can still tell apart.
 float rippleLevel(float footprint)
 {
-    return max(log2(footprint / RIPPLE_TEXEL), 0.0);
+    return max(log2(footprint / RIPPLE_TEXEL) + frame.mLevelBias, 0.0);
 }
 
 /// What walked through the water: the ripple field's slope at `at`, and what the cone averaged

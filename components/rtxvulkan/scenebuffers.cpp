@@ -167,7 +167,7 @@ namespace Rtx
                     range.mSecondTexCoords.in(scene.meshes().getSecondTexCoords()));
         }
 
-        // Whole, and it is twelve bytes a slot. A mesh arriving moves nothing already in this,
+        // Whole, and it is twenty-four bytes a slot. A mesh arriving moves nothing already in this,
         // but sizing it to the scene means growing it, and growing means writing it — so the rows
         // that did not change are written again for the price of not having to know which did.
         mMeshScratch.clear();
@@ -181,6 +181,7 @@ namespace Rtx
                 .mSecondTexCoordOffset
                 = mesh.mSecondTexCoords.empty() ? Shaders::NO_STREAM : mesh.mSecondTexCoords.mOffset,
                 .mUnitStreams = mesh.mUnitStreams,
+                .mBindOffset = mesh.mDeform != Deform::None ? mesh.mBindOffset : Shaders::NO_STREAM,
             });
 
         // **A new table on every arrival, and the old one buried**, because the frame behind is

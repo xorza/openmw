@@ -517,6 +517,69 @@ namespace Rtx::Testing
             }
         }
 
+        /// What crosses the execute comes back as it went in: the guide the upscaler reads is the
+        /// surface's own normal, roughness and albedo, through the halves and the octahedral word
+        /// `payload.glsl` packs them into.
+        ///
+        /// **An oblique normal, because a cardinal one packs exactly and proves nothing about the
+        /// fold.** The wall is turned thirty degrees about z and twenty about x, so its normal has
+        /// three non-zero components and lands off every axis of the octahedron's square. A signed
+        /// half an axis is one part in thirty-two thousand, and the guide is stored in halves at
+        /// one in two thousand, so the read-back is held to the channel's precision and not the
+        /// packing's. The albedo is the ladder texture's finest level, 40 of 255, which is a byte
+        /// a half carries exactly.
+        TEST_F(RtxVisibilityTest, theGuideCarriesTheSurfacesNormalAndAlbedoAcrossThePackedPayload)
+        {
+            constexpr std::uint32_t size = 64;
+
+            TestTexture ladder;
+            paintMipLadder(ladder);
+            const std::span<const TextureData> textures(&ladder.mData, 1);
+
+            const osg::Matrixf turned = osg::Matrixf::rotate(osg::DegreesToRadians(20.0f), osg::Vec3f(1.0f, 0.0f, 0.0f))
+                * osg::Matrixf::rotate(osg::DegreesToRadians(30.0f), osg::Vec3f(0.0f, 0.0f, 1.0f));
+            const osg::Vec3f expected = osg::Matrixf::transform3x3(osg::Vec3f(0.0f, -1.0f, 0.0f), turned);
+
+            // The four-hundred-unit wall and not the card that just fills the frame: turned, the
+            // card's corners leave it.
+            std::array<osg::Vec3f, 4> positions = sWallQuad;
+            for (osg::Vec3f& corner : positions)
+                corner = osg::Matrixf::transform3x3(corner, turned);
+            const std::array<osg::Vec3f, 4> normals{ expected, expected, expected, expected };
+
+            SceneDesc scene;
+            const Index mesh = scene.addMesh(MeshArrays{
+                .mPositions = positions, .mNormals = normals, .mTexCoords = sQuadUv, .mIndices = sQuadIndices });
+            const Index material
+                = scene.addMaterial(Material{ .mDiffuse = scene.textures().add(VFS::Path::NormalizedView("mip.dds")) });
+            scene.addInstance(
+                MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = mesh, .mMaterial = material });
+
+            Shaders::VisibilityConstants camera = makeCamera(
+                osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
+            camera.mDelight = 0.0f;
+
+            // A level down, because the turned card is seen obliquely and its cone would read a
+            // third of a level into the ladder's next grey; the claim is the packing, not the level.
+            std::vector<std::uint8_t> pixels;
+            ASSERT_EQ(countHits(scene, textures, camera, size, pixels, Shot{ .mLevelEpsilon = -1.0f }), size * size)
+                << "the turned card fills the frame";
+
+            std::vector<float> guide;
+            mRenderer->readChannel(Channel::Guide, guide);
+            const std::size_t at = centreValueOf(size);
+            EXPECT_NEAR(guide[at], expected.x(), 1e-3f);
+            EXPECT_NEAR(guide[at + 1], expected.y(), 1e-3f);
+            EXPECT_NEAR(guide[at + 2], expected.z(), 1e-3f);
+            EXPECT_EQ(guide[at + 3], 1.0f) << "Lambert's roughness, which a half holds exactly";
+
+            std::vector<float> albedo;
+            mRenderer->readChannel(Channel::Albedo, albedo);
+            EXPECT_NEAR(albedo[at], 40.0f / 255.0f, 1e-3f);
+            EXPECT_NEAR(albedo[at + 1], 40.0f / 255.0f, 1e-3f);
+            EXPECT_NEAR(albedo[at + 2], 40.0f / 255.0f, 1e-3f);
+        }
+
         /// The vertex colour a hit lands on, and what the content's mode says it replaces.
         ///
         /// **The tint replaces the material's own colour rather than multiplying it**, which is
@@ -884,13 +947,16 @@ namespace Rtx::Testing
 
             const auto centreOf = [](const std::vector<std::uint8_t>& pixels) { return pixels[centreValueOf(size)]; };
 
-            const auto renderAt = [&](float distance) {
+            // The bias goes in as the request's epsilon and comes out through `resolve` and
+            // `sampleCamera`, the way a frame's does, so the test reads the whole path and not a
+            // field a test set by hand.
+            const auto renderAt = [&](float distance, float levelBias) {
                 Shaders::VisibilityConstants camera = makeCamera(
                     osg::Vec3f(0.0f, -distance, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
                 camera.mShowAlbedo = 1u;
 
                 std::vector<std::uint8_t> pixels;
-                countHits(scene, textures, camera, size, pixels);
+                countHits(scene, textures, camera, size, pixels, Shot{ .mLevelEpsilon = levelBias });
                 return centreOf(pixels);
             };
 
@@ -898,11 +964,21 @@ namespace Rtx::Testing
             // bytes apart once encoded — no rounding difference between the shader's transfer
             // function and this one can make a level look like its neighbour. Exact equality would
             // fail on the third, whose encoded value happens to land on 207.51.
-            EXPECT_NEAR(renderAt(100.0f), encodeSrgb(40.0f / 255.0f), 1);
-            EXPECT_NEAR(renderAt(200.0f), encodeSrgb(70.0f / 255.0f), 1);
+            EXPECT_NEAR(renderAt(100.0f, 0.0f), encodeSrgb(40.0f / 255.0f), 1);
+            EXPECT_NEAR(renderAt(200.0f, 0.0f), encodeSrgb(70.0f / 255.0f), 1);
 
             // And the far end of the ladder, so a shader that clamped at level one would be caught.
-            EXPECT_NEAR(renderAt(1600.0f), encodeSrgb(160.0f / 255.0f), 1);
+            EXPECT_NEAR(renderAt(1600.0f, 0.0f), encodeSrgb(160.0f / 255.0f), 1);
+
+            // **The frame's bias moves every level by the same amount**: what an upscaler's
+            // shown pixel, half the traced one across, reads one level finer. Level one at two
+            // hundred units reads as level nought under a bias of minus one, level four at sixteen
+            // hundred as level three, and the finest level cannot go finer. Plus one reads coarser,
+            // so the sign is pinned and not only the size.
+            EXPECT_NEAR(renderAt(200.0f, -1.0f), encodeSrgb(40.0f / 255.0f), 1);
+            EXPECT_NEAR(renderAt(1600.0f, -1.0f), encodeSrgb(130.0f / 255.0f), 1);
+            EXPECT_NEAR(renderAt(100.0f, -1.0f), encodeSrgb(40.0f / 255.0f), 1) << "nothing finer than the finest";
+            EXPECT_NEAR(renderAt(200.0f, 1.0f), encodeSrgb(100.0f / 255.0f), 1);
         }
 
         /// Ground: layers summed by their masks, at the weights the mask grid names.

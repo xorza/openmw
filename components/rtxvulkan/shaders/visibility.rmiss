@@ -20,7 +20,7 @@
 #include "lib/sky.glsl"
 #include "lib/variants.glsl"
 
-layout(location = RTX_PAYLOAD) rayPayloadInEXT VisibilityPayload answer;
+layout(location = RTX_PAYLOAD) rayPayloadInEXT VisibilityPayload packed;
 
 void main()
 {
@@ -29,19 +29,16 @@ void main()
     if (COUNT_HITS)
         atomicAdd(counts.mMisses, 1u);
 
-    clearAnswer(answer);
+    Answer answer = noAnswer();
 
     const vec3 origin = gl_WorldRayOriginEXT;
     const vec3 direction = gl_WorldRayDirectionEXT;
 
     // **A ray that goes down from under the surface and finds nothing found water, and water is not
     // the sky.** `waterUnbounded` is the whole argument, and the launch asks it again for the column
-    // the pixel is then seen through.
-    if (waterUnbounded(false, origin, direction))
-        return;
+    // the pixel is then seen through. A picture's background is nothing as well.
+    if (!waterUnbounded(false, origin, direction) && frame.mTransparentBackground == 0u)
+        answer.mRadiance = skyRadiance(origin, direction, pixelBlur(frame.mCamera), answer.mSkyShown);
 
-    if (frame.mTransparentBackground != 0u)
-        return;
-
-    answer.mRadiance = skyRadiance(origin, direction, pixelBlur(frame.mCamera), answer.mSkyShown);
+    packed = packAnswer(answer);
 }

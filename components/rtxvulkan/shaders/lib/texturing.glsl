@@ -63,7 +63,10 @@ float coneBase(vec2 uv0, vec2 uv1, vec2 uv2, SurfaceCone cone, float coneWidth)
     if (!(uvArea > 0.0))
         return TEXTURE_FINEST_BASE;
 
-    return 0.5 * log2(uvArea / cone.mArea) + log2(coneWidth) - log2(cone.mFacing);
+    // The frame's bias rides in the base, so every read through a `TexturePoint` — the albedo,
+    // the mask, the emissive map, each ground layer — moves by the same levels. `mLevelBias`
+    // says what it is for.
+    return 0.5 * log2(uvArea / cone.mArea) + log2(coneWidth) - log2(cone.mFacing) + frame.mLevelBias;
 }
 
 /// Where on a texture a hit lands, and how coarse a level the ray's cone can still tell apart

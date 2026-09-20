@@ -3322,6 +3322,7 @@ namespace MWWorld
 
             const ESM::RefId& playerRegion = getPlayerPtr().getCell()->getCell()->getRegion();
             mWeatherManager->playerTeleported(playerRegion, isExterior);
+            mRendering->notifyTeleport();
         }
 
         const TimeStamp time = getTimeStamp();

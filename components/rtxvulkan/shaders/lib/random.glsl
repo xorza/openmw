@@ -117,28 +117,34 @@ const float STREAM_TURN[RANDOM_STREAMS] = float[](0.6180340, 0.7548777, 0.569840
 /// than through the frames: each step turns by the same two irrationals the frames turn by.
 const vec2 R2_STEPS = vec2(STREAM_TURN[STREAM_BOUNCE], STREAM_TURN[STREAM_BOUNCE + 1u]);
 
-/// One number in `[0, 1)` for `pixel`, from this frame's `stream`th draw.
+/// A key for one pixel, which a caller offsets by a `SEED_` constant to say which sequence it wants.
 ///
-/// **Blue noise across the screen, a low-discrepancy sequence along time.** The tile decides how a
-/// pixel's draw differs from its neighbours' — deliberately, so that the error between them
-/// alternates rather than clumping into blotches a filter would read as shading. The turn decides
-/// how it differs from its own last frame, so the samples a pixel accumulates sweep the interval
-/// instead of stumbling about in it.
-///
-/// Shifting every value by the same amount and wrapping is Cranley and Patterson's rotation: it
-/// moves which pixel holds which number and leaves the arrangement's spectrum where it was.
-float randomAt(uvec2 pixel, uint stream)
+/// Two odd multipliers rather than two shifts: a shift leaves the low bits of one axis where the
+/// other's are, and two pixels a power of two apart then share a prefix.
+uint pixelKey(uvec2 pixel)
 {
-    const uvec2 tile = pixel % BLUE_NOISE_EXTENT;
-    const uint at = (tile.y * BLUE_NOISE_EXTENT + tile.x) * RANDOM_STREAMS + stream;
-
-    return fract(blueNoiseAt(at) + float(frame.mFrame) * STREAM_TURN[stream]);
+    return pixel.x * 73856093u ^ pixel.y * 19349663u;
 }
 
-/// Two numbers in `[0, 1)` for one pixel, from `stream` and the one after it.
-vec2 unitPair(uvec2 pixel, uint stream)
+/// A key for one froxel of the fog volume, which a caller offsets the same way.
+///
+/// **A third multiplier and not a shift of the pair above**, for the reason that one gives: a shift
+/// would leave the depth's low bits where a column's are, and two froxels a power of two apart down
+/// one ray would then draw what two columns a power of two apart across the screen draw.
+uint froxelKey(uvec2 column, uint slice)
 {
-    return vec2(randomAt(pixel, stream), randomAt(pixel, stream + 1u));
+    return pixelKey(column) ^ slice * 83492791u;
+}
+
+float randomNext(inout uint state)
+{
+    state = state * 747796405u + 2891336453u;
+
+    uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    word ^= word >> 22u;
+
+    // Twenty-four bits, which is every one a float can hold without rounding two of them together.
+    return float(word >> 8u) * (1.0 / 16777216.0);
 }
 
 /// A key stepped by the multiplier every sequence here starts from.
@@ -177,34 +183,41 @@ uint randomSeed(uint key)
     return state;
 }
 
-/// A key for one pixel, which a caller offsets by a `SEED_` constant to say which sequence it wants.
+/// One number in `[0, 1)` for `pixel`, from this frame's `stream`th draw.
 ///
-/// Two odd multipliers rather than two shifts: a shift leaves the low bits of one axis where the
-/// other's are, and two pixels a power of two apart then share a prefix.
-uint pixelKey(uvec2 pixel)
+/// **Two sources, and the frame says which** — `frame.mNoise`, resolved once per frame with the
+/// denoiser, so the branch is uniform and every lane takes the same side.
+///
+/// **The tile: blue noise across the screen, a low-discrepancy sequence along time.** The tile
+/// decides how a pixel's draw differs from its neighbours' — deliberately, so that the error
+/// between them alternates rather than clumping into blotches a filter would read as shading. The
+/// turn decides how it differs from its own last frame, so the samples a pixel accumulates sweep
+/// the interval instead of stumbling about in it. Shifting every value by the same amount and
+/// wrapping is Cranley and Patterson's rotation: it moves which pixel holds which number and
+/// leaves the arrangement's spectrum where it was.
+///
+/// **The hash: independent draws with no arrangement.** Every pixel, every frame and every stream
+/// seeds a counter of its own, and nothing about one draw says anything about its neighbour's or
+/// its own last frame's. What a network trained on independent samples was trained on, and what
+/// the tile — one sequence, rotated, repeated every sixty-four pixels — is not.
+float randomAt(uvec2 pixel, uint stream)
 {
-    return pixel.x * 73856093u ^ pixel.y * 19349663u;
+    if (frame.mNoise == NOISE_WHITE_HASH)
+    {
+        uint state = randomSeed(pixelKey(pixel) ^ stream * 0x68E31DA4u);
+        return randomNext(state);
+    }
+
+    const uvec2 tile = pixel % BLUE_NOISE_EXTENT;
+    const uint at = (tile.y * BLUE_NOISE_EXTENT + tile.x) * RANDOM_STREAMS + stream;
+
+    return fract(blueNoiseAt(at) + float(frame.mFrame) * STREAM_TURN[stream]);
 }
 
-/// A key for one froxel of the fog volume, which a caller offsets the same way.
-///
-/// **A third multiplier and not a shift of the pair above**, for the reason that one gives: a shift
-/// would leave the depth's low bits where a column's are, and two froxels a power of two apart down
-/// one ray would then draw what two columns a power of two apart across the screen draw.
-uint froxelKey(uvec2 column, uint slice)
+/// Two numbers in `[0, 1)` for one pixel, from `stream` and the one after it.
+vec2 unitPair(uvec2 pixel, uint stream)
 {
-    return pixelKey(column) ^ slice * 83492791u;
-}
-
-float randomNext(inout uint state)
-{
-    state = state * 747796405u + 2891336453u;
-
-    uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
-    word ^= word >> 22u;
-
-    // Twenty-four bits, which is every one a float can hold without rounding two of them together.
-    return float(word >> 8u) * (1.0 / 16777216.0);
+    return vec2(randomAt(pixel, stream), randomAt(pixel, stream + 1u));
 }
 
 /// A direction inside the cone about `axis` that a source subtends, drawn evenly over its solid

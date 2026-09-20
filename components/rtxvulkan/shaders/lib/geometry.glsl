@@ -77,6 +77,30 @@ vec3 triangleNormal(uvec3 corner, vec3 weight)
     return block.at[at.x] * weight.x + block.at[at.y] * weight.y + block.at[at.z] * weight.z;
 }
 
+/// How far the point a hit landed on moved since the previous frame, in the mesh's own space:
+/// this frame's pose less the previous frame's at the same barycentric point of the same
+/// triangle. Nought exactly for a mesh that did not move, whose two copies hold the same numbers.
+/// The caller has asked whether the mesh deforms — `GpuMesh::mBindOffset`.
+///
+/// **In object space, because a difference of two positions is exact there.** Both poses are
+/// a body's own coordinates, a few hundred units at most, and a limb's step between frames is
+/// a few of them; the world's six-figure coordinates would spend the step in rounding, which is
+/// the argument `movedBy` makes for the rigid half.
+///
+/// @param corner the global vertex ids `triangleCorners` hands back, which are the mesh's
+///        vertex offset plus the index within the mesh; the pose blocks are addressed by the
+///        bind offset plus that index.
+vec3 triangleDeformation(GpuMesh mesh, uvec3 corner, vec3 weight)
+{
+    const uvec3 posed = corner - mesh.mVertexOffset + mesh.mBindOffset;
+    const uvec3 at = posed % VERTEX_BLOCK;
+    NormalBlock now = poseBlockOf(posed.x);
+    NormalBlock was = previousPoseBlockOf(posed.x);
+
+    return (now.at[at.x] - was.at[at.x]) * weight.x + (now.at[at.y] - was.at[at.y]) * weight.y
+        + (now.at[at.z] - was.at[at.z]) * weight.z;
+}
+
 /// The vertex colour interpolated across the triangle a hit landed on, in linear light.
 ///
 /// **White where the mesh brought none, because that is what the table holds.** A colour is a

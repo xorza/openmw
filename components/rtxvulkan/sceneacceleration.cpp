@@ -59,7 +59,7 @@ namespace Rtx
         assert(mBottomLevel.size() == 0 && mTopLevel.isEmpty() && "a scene built twice");
 
         // The rows after the structures, because a row names the address of the structure it places.
-        mBottomLevel.build(batch, scene, mEveryMesh, mPoses.at(FrameSlot{}), mIndices);
+        mBottomLevel.build(batch, scene, mEveryMesh, mPoses.at(FrameSlot{}), mIndices, mPlacements);
         writeRows(records, {});
         prepareTopLevel(scene, FrameSlot{});
         recordTopLevel(batch.getCommands(), nullptr);
@@ -116,7 +116,7 @@ namespace Rtx
         // frame whose report says nothing about what made it slow.
         openZone(timer, batch.getCommands(), "blas");
 
-        mBottomLevel.build(batch, scene, scene.meshes().getArrived(), mPoses.at(FrameSlot{}), mIndices);
+        mBottomLevel.build(batch, scene, scene.meshes().getArrived(), mPoses.at(FrameSlot{}), mIndices, mPlacements);
 
         closeZone(timer, batch.getCommands());
     }
@@ -144,13 +144,35 @@ namespace Rtx
 
         const VkDeviceSize scratchAlignment = mDevice.getPhysicalDevice().getStructureScratchAlignment();
 
-        VkDeviceSize scratchTotal = 0;
+        // **One of them is built whole again, on a rota.** A refit keeps the tree the first pose
+        // was built over and moves its boxes, and the boxes of a body met crouched fit it badly
+        // once it stands: every ray through it pays for the mismatch, for as long as the body
+        // lives. So the posed mesh that was built whole longest ago is rebuilt this placement, if
+        // that was `sRebuildEvery` placements or more ago — one a placement, so a crowd comes
+        // round in as many placements as it has bodies and no frame carries two. Into the same
+        // room and handle, which every top-level row already names, with the flags the first build
+        // used, so the refits after it are updates of a structure built to allow them.
+        ++mPlacements;
+        mRebuilt = sNoIndex;
         for (const Index mesh : deformed)
         {
             assert(mesh < mBottomLevel.size() && "a mesh this holds no structure for");
             assert(mBottomLevel.isUpdatable(mesh) && "a mesh posed that was not built to be refitted");
-            scratchTotal = alignUp(scratchTotal + mBottomLevel.getUpdateScratch(mesh), scratchAlignment);
+
+            const std::uint64_t builtAt = mBottomLevel.getRebuiltAt(mesh);
+            if (mPlacements - builtAt >= sRebuildEvery
+                && (mRebuilt == sNoIndex || builtAt < mBottomLevel.getRebuiltAt(mRebuilt)))
+                mRebuilt = mesh;
         }
+        if (mRebuilt != sNoIndex)
+        {
+            mBottomLevel.noteRebuilt(mRebuilt, mPlacements);
+            ++mRebuildCount;
+        }
+
+        VkDeviceSize scratchTotal = 0;
+        for (const Index mesh : deformed)
+            scratchTotal = alignUp(scratchTotal + refitScratchOf(mesh), scratchAlignment);
 
         growTo(mRefitScratch, mDevice, BufferKind::DeviceLocal, scratchTotal, sScratchUsage, "refit scratch");
 
@@ -181,22 +203,26 @@ namespace Rtx
 
             // Into the structure that is already there, rather than into a new one beside it:
             // its handle is what every top-level row already points at. An update, with the same
-            // flags as the build that allowed one, which the update requires.
+            // flags as the build that allowed one, which the update requires — or, for the one
+            // the rota picked, a build from nothing into the same handle, with the same flags so
+            // the updates after it are allowed again.
+            const bool whole = index == mRebuilt;
             mRefit.mBuilds[i] = VkAccelerationStructureBuildGeometryInfoKHR{
                 .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR,
                 .type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
                 .flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR
                     | VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DATA_ACCESS_BIT_KHR
                     | VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR,
-                .mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_UPDATE_KHR,
-                .srcAccelerationStructure = mBottomLevel.getStructure(index),
+                .mode = whole ? VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR
+                              : VK_BUILD_ACCELERATION_STRUCTURE_MODE_UPDATE_KHR,
+                .srcAccelerationStructure = whole ? VK_NULL_HANDLE : mBottomLevel.getStructure(index),
                 .dstAccelerationStructure = mBottomLevel.getStructure(index),
                 .geometryCount = 1,
                 .pGeometries = &mRefit.mGeometries[i],
                 .scratchData = { .deviceAddress = scratchAddress + scratchAt },
             };
 
-            scratchAt = alignUp(scratchAt + mBottomLevel.getUpdateScratch(index), scratchAlignment);
+            scratchAt = alignUp(scratchAt + refitScratchOf(index), scratchAlignment);
         }
     }
 

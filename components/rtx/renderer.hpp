@@ -167,6 +167,10 @@ namespace Rtx
         std::uint64_t mCompactableBytes = 0;
         std::uint64_t mCompactableNowBytes = 0;
 
+        /// How many refitted structures the rota has built whole again since the scene was made —
+        /// `SceneAcceleration::sRebuildEvery` says the rule.
+        std::uint64_t mRebuilt = 0;
+
         /// Every texture the renderer holds and what those come to, from one walk of the array, so
         /// the two cannot disagree about which slots they counted.
         std::uint32_t mTextureCount = 0;

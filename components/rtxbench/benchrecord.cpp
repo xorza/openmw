@@ -57,11 +57,11 @@ namespace Rtx
         {
             return std::format(R"({{"instances": {}, "cutoutInstances": {}, )"
                                R"("waterInstances": {}, "mediumInstances": {}, )"
-                               R"("structureBytes": {}, "structureLiveBytes": {}, )"
+                               R"("structureBytes": {}, "structureLiveBytes": {}, "rebuilt": {}, )"
                                R"("tableBytes": {}, "textureCount": {}, "textureBytes": {}}})",
                 scene.mInstances.mPlaced, scene.mInstances.mCutout, scene.mInstances.mWater, scene.mInstances.mMedium,
-                scene.mStructureBytes, scene.mStructureLiveBytes, scene.mTableBytes, scene.mTextureCount,
-                scene.mTextureBytes);
+                scene.mStructureBytes, scene.mStructureLiveBytes, scene.mRebuilt, scene.mTableBytes,
+                scene.mTextureCount, scene.mTextureBytes);
         }
 
         std::string asJson(const Arrivals& arrivals)
@@ -294,6 +294,9 @@ namespace Rtx
              << '\n'
              << std::format(R"(  "upscale": "{}",)", sUpscaleNames.name(header.mUpscaling.mMode)) << '\n'
              << std::format(R"(  "preset": "{}",)", sPresetNames.name(header.mUpscaling.mPreset)) << '\n'
+             << std::format(R"(  "noise": "{}", "levelBias": {:.3f}, "reorder": "{}",)",
+                    sNoiseSourceNames.name(header.mNoise), header.mLevelBias, sReorderNames.name(header.mReorder))
+             << '\n'
              << std::format(R"(  "frames": {}, "warmup": {}, "validation": {},)", header.mMeasured, header.mWarmup,
                     header.mValidating)
              << '\n'

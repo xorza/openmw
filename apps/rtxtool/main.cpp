@@ -233,6 +233,10 @@ namespace RtxTool
             profile.mExposure = parseExposure(variables["exposure"].as<std::string>());
             profile.mStressOverlapMs = variables["hold"].as<double>();
             profile.mSpecializeLaunches = variables["variants"].as<bool>();
+            if (const std::string& noise = variables["noise"].as<std::string>(); noise != "auto")
+                profile.mReconstruction.mNoise = Rtx::sNoiseSourceNames.require(noise, "a noise source");
+            profile.mReconstruction.mLevelEpsilon = variables["level-epsilon"].as<float>();
+            profile.mReorder = Rtx::sReorderNames.require(variables["reorder"].as<std::string>(), "a reorder key");
 
             return framed;
         }
