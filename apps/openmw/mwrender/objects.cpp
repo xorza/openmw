@@ -1,6 +1,7 @@
 #include "objects.hpp"
 
 #include <osg/Group>
+#include <osg/Node>
 #include <osg/UserDataContainer>
 
 #include <components/misc/resourcehelpers.hpp>
@@ -36,6 +37,21 @@ namespace MWRender
         for (CellMap::iterator iter = mCellSceneNodes.begin(); iter != mCellSceneNodes.end(); ++iter)
             iter->second->getParent(0)->removeChild(iter->second);
         mCellSceneNodes.clear();
+    }
+
+    void PtrHolder::hold(osg::Node& node, const MWWorld::Ptr& ptr)
+    {
+        osg::UserDataContainer& held = *node.getOrCreateUserDataContainer();
+        for (unsigned int i = 0; i < held.getNumUserObjects(); ++i)
+        {
+            if (dynamic_cast<PtrHolder*>(held.getUserObject(i)) != nullptr)
+            {
+                held.setUserObject(i, new PtrHolder(ptr));
+                return;
+            }
+        }
+
+        held.addUserObject(new PtrHolder(ptr));
     }
 
     void Objects::insertBegin(const MWWorld::Ptr& ptr)
@@ -219,13 +235,7 @@ namespace MWRender
             cellnode = mCellSceneNodes[newCell];
         }
 
-        osg::UserDataContainer* userDataContainer = objectNode->getUserDataContainer();
-        if (userDataContainer)
-            for (unsigned int i = 0; i < userDataContainer->getNumUserObjects(); ++i)
-            {
-                if (dynamic_cast<PtrHolder*>(userDataContainer->getUserObject(i)))
-                    userDataContainer->setUserObject(i, new PtrHolder(cur));
-            }
+        PtrHolder::hold(*objectNode, cur);
 
         if (objectNode->getNumParents())
             objectNode->getParent(0)->removeChild(objectNode);

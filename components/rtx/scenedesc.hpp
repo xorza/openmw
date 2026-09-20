@@ -184,7 +184,7 @@ namespace Rtx
         std::span<const RippleImpulse> ripples() const { return mRipples; }
         void addRipple(const RippleImpulse& impulse)
         {
-            mTurn.expect(Turn::Open);
+            mTurn.expect(Turn::Open, Turn::Walked);
             mRipples.push_back(impulse);
         }
 
@@ -205,20 +205,37 @@ namespace Rtx
         osg::BoundingBoxf getContentBoundsWithin(const osg::BoundingBoxf& region) const;
 
         /// Sorts the lights so that a frame's own order is a fact about the world. `SceneUploader`
-        /// makes it at the one point every path passes, because a walk may run twice.
+        /// makes it at the one point every path passes, because a walk may run twice — which is
+        /// also where the hand-over of a scene a walk left unswept is refused (`Turn`).
         void orderLights();
 
         /// Forgets what arrived and what was freed, which a hand-over does once it has read both.
         void clearArrivals();
 
+        /// Says a walk is placing into this scene, and that the sweep after it has run: the
+        /// extractor's two calls, at every walk and at every `retire`. What they keep is the turn
+        /// below, which is what refuses a hand-over of a scene a walk left unswept.
+        void noteWalked();
+        void noteSwept();
+
     private:
-        /// Where the per-frame lists stand: open to the walks that fill them, or handed to a
-        /// backend that has read them. A light, an emitter or a ripple added after the hand-over
-        /// and before the next `clearPlacement` is one the frame lost or the next frame doubled,
-        /// and it is asserted where it is added.
+        /// Where the frame stands: open to the walks that fill its lists, walked and owing the
+        /// sweep after it, or handed to a backend that has read them.
+        ///
+        /// **A walk marks the scene until the sweep clears it, and a hand-over refuses the
+        /// mark.** A walk stamps what it met and leaves what it did not standing; only the sweep
+        /// takes that. Handed over between the two, the scene still holds every slot the walk
+        /// stopped finding, where the last frame left it — a crate picked up traced once more, a
+        /// body whose identity moved traced twice. The mark survives `clearPlacement`, because
+        /// clearing the frame's lists settles nothing of the sweep.
+        ///
+        /// A light, an emitter or a ripple added after the hand-over and before the next
+        /// `clearPlacement` is one the frame lost or the next frame doubled, and it is asserted
+        /// where it is added.
         enum class Turn
         {
             Open,
+            Walked,
             Handed,
         };
 

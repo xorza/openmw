@@ -13,6 +13,7 @@
 namespace osg
 {
     class Group;
+    class Node;
 }
 
 namespace Resource
@@ -51,6 +52,12 @@ namespace MWRender
         }
 
         META_Object(MWRender, PtrHolder)
+
+        /// Makes `node` carry `ptr`, in place of whatever holder it carried. The container is
+        /// kept and the holder swapped, because the node's user data slot is the
+        /// `SceneUtil::StableIdentity` a mirror knows the node by, and a container made afresh
+        /// took the stamp with it.
+        static void hold(osg::Node& node, const MWWorld::Ptr& ptr);
 
         MWWorld::Ptr mPtr;
     };

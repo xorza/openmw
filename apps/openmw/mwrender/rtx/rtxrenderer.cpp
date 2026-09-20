@@ -731,9 +731,9 @@ namespace MWRender
         mWindow.fit(*mRenderer, getCamera());
 
         // **A frame with the world hidden is the interface and nothing else.** No walk, because the
-        // update traversal did not run either; no trace, because the interface covers every pixel of
-        // it; and no sweep, because a walk that did not happen has marked nothing and the sweep
-        // would take the world.
+        // update traversal did not run either, and no trace, because the interface covers every
+        // pixel of it. The sweep goes with the walk: a walk that did not happen has marked nothing
+        // and a sweep would take the world.
         //
         // **The emitter clock stops with it**, which is what a clock of its own is for: it counts
         // the seconds this renderer has shown, so a plume resumes where it left off rather than
@@ -759,9 +759,8 @@ namespace MWRender
         if (!frame.mPaused)
             mRipples.update(frame.mWorld.mWater);
 
-        // **Where the benchmark's `walk ms` starts**, because that row means the whole mirror. The
-        // harness times the same stretch, which is what lets the two rows be read against each
-        // other.
+        // **Where the benchmark's `walk ms` starts**, because that row means the whole mirror: the
+        // walk and the sweep behind it.
         const std::chrono::steady_clock::time_point walked = std::chrono::steady_clock::now();
         mWalked.mFound = mMirror.mirror(frame, view, when.getFrameNumber());
         report.mSpend.at(Rtx::Timing::Walk) = Rtx::since(walked, std::chrono::steady_clock::now());
@@ -780,12 +779,6 @@ namespace MWRender
 
         renderGui();
 
-        // **After the frame and not before the walk**, and on the frames the trace refused as well:
-        // the walk still ran, so its epoch is still the one the next walk has to be measured
-        // against.
-        mMirror.settle();
-
-        // After the sweep, because the sweep is this renderer's and not the game's.
         mTimer.leave(std::chrono::steady_clock::now());
     }
 

@@ -72,7 +72,10 @@ namespace MWRender
         /// destructor asserts. `SkyReader::detach` gives the sky's own back before this.
         void detach();
 
-        /// Walks this frame's world into the scene, and says what the walk found.
+        /// Walks this frame's world into the scene, drops what the walk did not find, and says
+        /// what the walk found. The sweep is here and not after the frame, so what `hand` hands
+        /// over is what this walk met: a slot the walk stopped finding — a crate picked up, a
+        /// body whose identity moved — would otherwise be traced once more where it last stood.
         ///
         /// The precipitation and the sea go in as roots of their own: the precipitation because it
         /// hangs under a camera-relative transform the world walk is masked out of, the sea because
@@ -131,10 +134,6 @@ namespace MWRender
         /// cells load around it, then stands the camera on the same coordinates. What that traced
         /// was a boot and a trouser leg thirteen units from the eye, filling a third of the frame.
         void setShowsPlayer(bool shows);
-
-        /// Drops what the walk did not find. After the trace and not before the walk, because the
-        /// sweep bumps the epoch the next walk is measured against.
-        void settle();
 
         const Rtx::SceneDesc& getScene() const { return mScene; }
         Rtx::SceneDesc& getScene() { return mScene; }

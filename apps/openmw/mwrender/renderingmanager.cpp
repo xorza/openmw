@@ -851,11 +851,13 @@ namespace MWRender
             mPlayerNode->setNodeMask(Mask_Player);
             mPlayerNode->setName("Player Root");
             mSceneRoot->addChild(mPlayerNode);
+
+            // Once, with the node: the stamp is what a mirror knows the body by across every cell
+            // it enters, and a fresh one per cell was a new body on every crossing.
+            SceneUtil::StableIdentity::stamp(*mPlayerNode, mObjects->takeIdentity());
         }
 
-        mPlayerNode->setUserDataContainer(new osg::DefaultUserDataContainer);
-        mPlayerNode->getUserDataContainer()->addUserObject(new PtrHolder(player));
-        SceneUtil::StableIdentity::stamp(*mPlayerNode, mObjects->takeIdentity());
+        PtrHolder::hold(*mPlayerNode, player);
 
         player.getRefData().setBaseNode(mPlayerNode);
 

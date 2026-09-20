@@ -716,5 +716,38 @@ namespace Rtx::Testing
             }
             EXPECT_EQ(mScene.materials().getRows()[0].mDiffuse, Rtx::sNoIndex) << "the stone's row was kept";
         }
+
+#ifndef NDEBUG
+        /// **A walked scene is handed over after its sweep and never before it.** Between the two
+        /// the scene still holds every slot the walk stopped finding, where the last frame left it,
+        /// and a backend handed that traces it once more: the world's frame swept after its trace,
+        /// and the player's body — stamped afresh on every cell it entered — drew as a double of
+        /// itself a frame behind. The mark a walk leaves outlives a clear of the frame's lists,
+        /// because clearing them settles nothing of the sweep; only the sweep does.
+        TEST_F(RtxSceneExtractorTest, aWalkedSceneHandedOverBeforeItsSweepDies)
+        {
+            osg::ref_ptr<osg::Geometry> quad = makeQuad();
+
+            // A scene nothing walked is handed over as it is: what a test builds by hand.
+            mScene.orderLights();
+            mScene.clearPlacement();
+
+            walk(*quad);
+            EXPECT_DEATH(mScene.orderLights(), "a call out of its turn");
+            mScene.clearPlacement();
+            EXPECT_DEATH(mScene.orderLights(), "a call out of its turn") << "a clear settled the sweep";
+
+            ASSERT_TRUE(mExtractor.retire().empty());
+            mScene.orderLights();
+            mScene.orderLights();
+
+            // And a walk on the frame after: the same again.
+            mScene.clearPlacement();
+            walk(*quad, 0, 1);
+            EXPECT_DEATH(mScene.orderLights(), "a call out of its turn");
+            ASSERT_TRUE(mExtractor.retire().empty());
+            mScene.orderLights();
+        }
+#endif
     }
 }

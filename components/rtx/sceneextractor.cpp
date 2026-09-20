@@ -515,6 +515,10 @@ namespace Rtx
         ExtractionStats stats;
         const WalkGuard walking(mPass, mPhase, stats, falls);
 
+        // Before anything is placed, so a walk that threw has still marked the scene: what it
+        // stamped before the throw is standing, and the sweep is owed for the rest.
+        mScene.noteWalked();
+
         mWalk->begin(transform, frame, mTraversals.next(), identitySeed(anchor));
         mWalk->setTraversalMask(mTraversalMask);
 
@@ -609,6 +613,9 @@ namespace Rtx
         // one this is measured against. Every entry that survived is still carrying the old stamp
         // and would be dropped on the spot otherwise.
         ++mPass.mEpoch;
+
+        // What stands is what the walks met, which is what lets the scene be handed over.
+        mScene.noteSwept();
 
         // Every live texture and deformer is held and every placement stands on live rows: what
         // the sweeps above leave true, asked here because a slot taken and never held is one no

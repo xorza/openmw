@@ -255,7 +255,16 @@ namespace MWRender
         mRing.follow(around);
 
         // One walk over the whole graph, where every path is already distinct.
-        return mExtractor.extractWorld(frame.mScene, osg::Matrixf::identity(), Anchor::World, frameNumber, mRing);
+        const Rtx::ExtractionStats found
+            = mExtractor.extractWorld(frame.mScene, osg::Matrixf::identity(), Anchor::World, frameNumber, mRing);
+
+        // What the walks did not find has gone. The graph is the whole world every frame, which is
+        // what makes mark and sweep sound; the identity maps hold their keys alive until it runs.
+        // After every walk of the frame and never before one, because the sweep bumps the epoch
+        // the next walk is measured against.
+        mExtractor.retire();
+
+        return found;
     }
 
     void WorldMirror::addRipples(std::span<const Rtx::RippleImpulse> impulses)
@@ -276,11 +285,4 @@ namespace MWRender
                 .mSpend = &spend });
     }
 
-    void WorldMirror::settle()
-    {
-        // What the walk did not find has gone. The graph is the whole world every frame, which is
-        // what makes mark and sweep sound; the identity maps hold their keys alive until it runs.
-        // Last, because it bumps the epoch the next walk is measured against.
-        mExtractor.retire();
-    }
 }

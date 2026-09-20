@@ -1,6 +1,7 @@
 #ifndef OPENMW_COMPONENTS_SCENEUTIL_STABLEIDENTITY_H
 #define OPENMW_COMPONENTS_SCENEUTIL_STABLEIDENTITY_H
 
+#include <cassert>
 #include <cstdint>
 
 #include <osg/CopyOp>
@@ -38,7 +39,15 @@ namespace SceneUtil
 
         std::uint64_t getId() const { return mId; }
 
-        static void stamp(osg::Node& node, const std::uint64_t id) { node.setUserData(new StableIdentity(id)); }
+        /// Stamps `node`, once for its life. A node stamped again is one a mirror meets as
+        /// something new: it is stood again under the new identity, with no history for a
+        /// reprojection to read, for nothing that changed — so a second stamp is refused rather
+        /// than taken.
+        static void stamp(osg::Node& node, const std::uint64_t id)
+        {
+            assert(find(node) == nullptr && "a node stamped twice: a stable identity is for the node's life");
+            node.setUserData(new StableIdentity(id));
+        }
 
         /// The identity `node` carries, or null where the engine stamped none.
         static const StableIdentity* find(const osg::Node& node)

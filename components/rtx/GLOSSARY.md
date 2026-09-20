@@ -17,7 +17,6 @@ that owns each. Read this once and the headers read as the field's.
 | stamp, reached | marked live this generation | `Kept::stamp` |
 | whole | no stale entry, sweep skippable | `Kept::whole` |
 | retire, sweep | mark-and-sweep collection | `SceneExtractor::retire`, `SlotRows::sweep` |
-| settle | end of frame: run the sweep | `WorldMirror::settle` |
 | turn, phase, step | state machine, lifecycle assert | `Stepped`, `RtxRenderer::Phase` |
 | the ring | residency set, streaming window | `CellRing` |
 | supply, reader | streaming thread and its queue | `CellSupply`, `CellReader` |

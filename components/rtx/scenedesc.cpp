@@ -89,14 +89,14 @@ namespace Rtx
 
     void SceneDesc::addLight(const Light& light)
     {
-        mTurn.expect(Turn::Open);
+        mTurn.expect(Turn::Open, Turn::Walked);
         mLights.push_back(light);
     }
 
     void SceneDesc::addEmitter(
         std::span<const Sprite> sprites, Index texture, bool additive, float width, Index lighting, bool falls)
     {
-        mTurn.expect(Turn::Open);
+        mTurn.expect(Turn::Open, Turn::Walked);
         if (sprites.empty())
             return;
 
@@ -201,10 +201,25 @@ namespace Rtx
             && mDeformers.getLiveCount() == 0 && mPlacements.getCounts().mPlaced == 0;
     }
 
+    void SceneDesc::noteWalked()
+    {
+        mTurn.step(Turn::Walked, Turn::Open, Turn::Walked);
+    }
+
+    void SceneDesc::noteSwept()
+    {
+        // A sweep of a scene nothing walked since the last clear or the last hand-over — a world
+        // detached, a second sweep — settles nothing and moves nothing.
+        if (mTurn.get() == Turn::Walked)
+            mTurn.step(Turn::Open, Turn::Walked);
+    }
+
     void SceneDesc::orderLights()
     {
-        // From either: a scene handed over twice between clears is handed the same lists twice,
-        // which is what a picture asked for again is. What may not come between is an addition.
+        // From open or handed, and never from walked: a scene handed over twice between clears is
+        // handed the same lists twice, which is what a picture asked for again is, and a scene
+        // built by hand was never walked. What may not come between is an addition, and what may
+        // not come before is a walk whose sweep has not run.
         mTurn.step(Turn::Handed, Turn::Open, Turn::Handed);
 
         // A total order, so that two lights the walk could hand over either way round come out the
@@ -218,7 +233,9 @@ namespace Rtx
 
     void SceneDesc::clearPlacement()
     {
-        mTurn.step(Turn::Open, Turn::Open, Turn::Handed);
+        // A walked scene stays walked: the lists go, the sweep is still owed.
+        if (mTurn.get() != Turn::Walked)
+            mTurn.step(Turn::Open, Turn::Open, Turn::Handed);
 
         mLights.clear();
 

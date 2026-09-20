@@ -164,10 +164,15 @@ namespace Rtx
         Retirement detach(CellRing& ring);
 
         /// Drops everything the walks since the last call did not find — placements included — and
-        /// compacts the scene. Mark and sweep, so only sound where the walks were the whole world:
-        /// the game re-walks its whole graph every frame and can call this; the harness keeps a
-        /// snapshot and does not. Also the only thing that lets go: the identity maps own their
+        /// compacts the scene. Mark and sweep, so only sound where the walks were the whole of what
+        /// the scene is of, which every caller's are: the world's frame and a picture's subject
+        /// are each re-walked whole. Also the only thing that lets go: the identity maps own their
         /// keys, so a caller that never sweeps holds every drawable it has ever walked.
+        ///
+        /// **Between the last walk and the hand-over, which the scene enforces.** Handed over
+        /// before this, the scene still holds what the walk stopped finding, where the last frame
+        /// left it: `SceneDesc::noteWalked` marks the scene at every walk and this is what clears
+        /// the mark, and a hand-over of a marked scene is a call out of its turn.
         Retirement retire();
 
         /// Places one light. The graph and not the content files, because that is where a light

@@ -5,7 +5,7 @@ calls whom, and in what order a frame is computed. Read this once before you ope
 Each section names the files that hold the detail. The headers in those files carry the
 reasoning behind each decision, so this document states what is and points at why.
 
-The tree's own words (walk, mirror, hand over, stand, settle, slot, run, hold, epoch, ring) are
+The tree's own words (walk, mirror, hand over, stand, sweep, slot, run, hold, epoch, ring) are
 listed beside the field's words in [`components/rtx/GLOSSARY.md`](../../components/rtx/GLOSSARY.md).
 
 1. [What the fork is](#1-what-the-fork-is)
@@ -175,7 +175,7 @@ adopted camera after the frame is described, and a renderer reads it at the mome
 | scene root          | `SceneUtil::LightManager`                       | a plain `osg::Group`; lights are gathered on the walk            |
 | model shaders       | the scene manager's shader visitor              | off; state is read as the loader left it                         |
 | ground              | `GlGround`: quad tree, paging, groundcover      | `TracedGround`: no chunks, plus the cell ring                    |
-| a frame             | `viewer->frame()`: cull and draw                | walk, hand over, views, trace, GUI, present, settle              |
+| a frame             | `viewer->frame()`: cull and draw                | walk and sweep, hand over, views, trace, GUI, present            |
 | offscreen pictures  | `GlOffscreenView`: RTT cameras                  | `TracedView` over `Rtx::OffscreenTrace`                          |
 | map overlay         | `GlMapOverlay`: a camera blit                   | `TracedOverlay`: composited in main memory                       |
 | GUI                 | MyGUI's OSG platform, hung in the graph         | `MyGUIRtx::RenderManager`, called by the frame directly          |
@@ -753,7 +753,6 @@ graph LR
         mirror["WorldMirror::mirror"]
         tw["traceWorld"]
         gui["renderGui"]
-        settle["WorldMirror::settle"]
         fb["finishBehind"]
         ho["handOver → WorldMirror::hand"]
         dv["drawViews → ViewQueue::draw"]
@@ -765,7 +764,6 @@ graph LR
         rf --> mirror
         rf --> tw
         rf --> gui
-        rf --> settle
         tw --> fb
         tw --> ho
         tw --> dv
@@ -797,9 +795,9 @@ graph LR
     ut --> upd
     render --> rf
     mirror --> ext
+    mirror --> retire
     ho --> up
     up --> be
-    settle --> retire
     dv --> tvd
     tvd --> gt
     tr --> vrf
@@ -855,11 +853,11 @@ Lua worker; `RenderingManager::renderFrame` → `RtxRenderer::renderFrame(frame)
 | 3    | Walking | `RtxWindow::fit`: once the size has settled, `Renderer::resize` (a comparison where nothing changed) and the viewport      |            |
 | 4    | Walking | if `!drawsWorld()`: `renderGui()` and return                                                                              |            |
 | 5    | Walking | `setShowsPlayer(frame.mEye.mPlayersEye)`; the view matrix off the camera; `RippleEmitters::update` unless paused          |            |
-| 6    | Walking | `WorldMirror::mirror(frame, view, frameNumber)` (11.3)                                                                    | `Walk`, `Fold` |
+| 6    | Walking | `WorldMirror::mirror(frame, view, frameNumber)` (11.3), which ends in `SceneExtractor::retire()`: mark and sweep, the epoch up by one | `Walk`, `Fold` |
 | 7    | Walking | a second walk, only where the run asked; then `addRipples`                                                                |            |
 | 8    |         | `traceWorld` (below)                                                                                                      |            |
 | 9    | Gui     | `renderGui()`: `collectDrawCalls` → `drawGui`; `presentFrame`                                                             | `Present`  |
-| 10   | Between | `WorldMirror::settle()` → `SceneExtractor::retire()`: mark and sweep, the epoch up by one; `FrameTimer::leave`             |            |
+| 10   | Between | `FrameTimer::leave`                                                                                                       |            |
 
 `traceWorld`:
 
@@ -889,6 +887,10 @@ Lua worker; `RenderingManager::renderFrame` → `RtxRenderer::renderFrame(frame)
    every drawable to a mesh, a material and a placement slot (moved in place, or new); every
    deforming mesh is posed, and an unchanged pose writes nothing; inside the walk the ring
    collects (11.5); the guard closes the pass.
+8. `SceneExtractor::retire()`: every placement, mesh and material the walks did not find goes,
+   and the epoch moves on. Before the hand-over, so the scene handed over is what this walk
+   met — a slot the walk stopped finding would otherwise be traced once more where it last
+   stood, which a body whose identity moved showed as a one-frame double of itself.
 
 ### 11.4 The hand-over: `SceneUploader::hand`
 
