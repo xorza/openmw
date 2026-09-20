@@ -20,10 +20,11 @@
 
 #include <components/nifosg/particle.hpp>
 
-#include "../mwbase/environment.hpp"
-#include "../mwbase/world.hpp"
 #include "../mwworld/datetimemanager.hpp"
 #include "../mwworld/weather.hpp"
+
+#include "../mwbase/environment.hpp"
+#include "../mwbase/world.hpp"
 
 #include "renderbin.hpp"
 #include "skyutil.hpp"

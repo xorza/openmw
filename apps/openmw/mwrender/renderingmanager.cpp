@@ -11,7 +11,6 @@
 #include <osg/Stats>
 #include <osg/UserDataContainer>
 
-#include <osgUtil/IncrementalCompileOperation>
 #include <osgUtil/LineSegmentIntersector>
 
 #include <components/nifosg/nifloader.hpp>
@@ -25,7 +24,6 @@
 #include <components/resource/keyframemanager.hpp>
 #include <components/resource/resourcesystem.hpp>
 
-#include <components/fallback/fallback.hpp>
 #include <components/settings/values.hpp>
 #include <components/sky/moonstate.hpp>
 #include <components/sky/sundisc.hpp>
@@ -82,7 +80,6 @@
 #include "precipitation.hpp"
 #include "recastmesh.hpp"
 #include "renderer.hpp"
-#include "sceneframe.hpp"
 #include "skystate.hpp"
 #include "terrainstorage.hpp"
 #include "util.hpp"

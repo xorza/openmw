@@ -1081,7 +1081,7 @@ Logs and settings changed through the launcher and in-game will be saved here.</
     </message>
     <message>
         <source> cells</source>
-        <translation type="unfinished"></translation>
+        <translation type="unfinished"> Zellen</translation>
     </message>
     <message>
         <source>Shadows</source>
