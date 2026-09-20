@@ -693,10 +693,7 @@ namespace Rtx
 
         // Back where everything else expects it: the presenter blits out of `GENERAL` and so
         // does a read back.
-        mTargets.current().transition(commands,
-            ImageUse{ VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-                VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT },
-            Use::sAnyGeneralRead);
+        mTargets.current().transition(commands, Use::sColourAttachment, Use::sAnyGeneralRead);
 
         mDevice.getPool().submit(commands);
         ++mGuiFrame;
@@ -810,14 +807,11 @@ namespace Rtx
             sampled.mRippleExtent = RipplePass::getExtent();
         }
 
-        // The first write needs no contents and nothing to wait on; every one after reads what
-        // the last left, which the queue orders and does not make visible.
-        if (!mSum.isEmpty())
-            mSum.transition(commands,
-                ImageUse{ fresh ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_GENERAL,
-                    fresh ? VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT : VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                    fresh ? 0 : VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT },
-                Use::sComputeReadWrite);
+        // The first write needs no contents and nothing to wait on, and it is the one that takes
+        // the image out of the layout it was made in; every frame after reads what the last left,
+        // which the head barrier `CommandPool::begin` recorded orders and makes visible.
+        if (fresh)
+            mSum.transition(commands, Use::sUndefined, Use::sComputeReadWrite);
 
         // Ray Reconstruction is itself the denoiser, and handing it a frame the wavelet already
         // blurred is asking it to recover what was thrown away — which is why `resolve` never

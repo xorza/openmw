@@ -4,7 +4,6 @@
 
 #include <components/rtx/shaders/glare.h>
 
-#include "barriers.hpp"
 #include "dispatch.hpp"
 #include "imageuse.hpp"
 
@@ -31,9 +30,8 @@ namespace Rtx
 
     void SunGlarePass::begin(const VkCommandBuffer commands) const
     {
-        // Against the previous frame's easing, which read the counts: an execution dependency is
-        // all a write-after-read needs, and the launch that adds to them is behind the clear.
-        mCounts.transition(commands, Use::sBufferComputeRead, Use::sBufferClearWrite);
+        // The previous frame's easing, which read the counts, is behind the head barrier
+        // `CommandPool::begin` recorded; the launch that adds to them is behind the clear.
         mCounts.clear(commands);
         mCounts.transition(commands, Use::sBufferClearWrite,
             BufferUse{ VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
@@ -42,14 +40,12 @@ namespace Rtx
 
     void SunGlarePass::record(const VkCommandBuffer commands, const float elapsedSeconds, const bool reset) const
     {
-        // The counts the launch added to, and the share the previous frame's curve read and this
-        // easing moves — read as well as written, so the write before it has to be visible.
-        Barriers before(commands);
-        before.add(mCounts.describeBarrier(
+        // The counts the launch added to. The share this easing moves was last read by the
+        // previous frame's curve and written by its easing, both behind the head barrier
+        // `CommandPool::begin` recorded.
+        mCounts.transition(commands,
             BufferUse{ VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT },
-            Use::sBufferComputeRead));
-        before.add(mShare.describeBarrier(Use::sBufferComputeReadWrite, Use::sBufferComputeReadWrite));
-        before.flush();
+            Use::sBufferComputeRead);
 
         DescriptorWrites<2> writes;
         writes.buffer(0, mCounts.describe());

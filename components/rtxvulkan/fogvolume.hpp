@@ -61,11 +61,12 @@ namespace Rtx
         /// last trace, the same pair and the lamps to write this one, and the integrated pair.
         VkDescriptorSet getSet(const FrameSlot trace) const { return mSets.get(trace.get()); }
 
-        /// Takes every image for what the trace ahead does to it, waiting on whatever read them for
-        /// the trace before. Only what is written whole before it is read comes from undefined.
+        /// Discards every image the trace ahead writes whole before it reads it. The history rests
+        /// where the last trace left it, behind the head barrier the command buffer opened with.
         void begin(VkCommandBuffer commands, FrameSlot trace) const;
 
-        /// Orders the pass that finds each column's surface against the pass that fills the froxels.
+        /// Orders the pass that finds each column's surface against every pass that loads it: the
+        /// one that fills the froxels, the one that integrates the columns, and the trace.
         void depthTaken(VkCommandBuffer commands) const;
 
         /// Orders the pass that fills the froxels against the pass that integrates the columns, and

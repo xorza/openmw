@@ -72,32 +72,21 @@ namespace Rtx
         const std::size_t previous = mCurrent;
         mCurrent = 1 - mCurrent;
 
-        // The first frame after a resize has nothing behind it, and an image whose contents were
-        // never written is not zero — it is whatever the allocation held. Discarding it is what makes
-        // the reset below a statement about the history rather than about the memory.
+        // Every image this frame writes is written whole before it is read, so each is discarded;
+        // the last frame's accesses to all of them — the cascade's writes over the blend among them —
+        // are behind the head barrier `CommandPool::begin` recorded. The first frame after a resize
+        // has nothing behind it, and an image whose contents were never written is not zero — it is
+        // whatever the allocation held, in no layout at all. Discarding the history too is what
+        // makes the reset below a statement about the history rather than about the memory; on
+        // every frame after, it rests where the last frame's writes left it.
         Barriers barriers(commands);
 
-        const VkImageLayout held = mFresh ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_GENERAL;
-        for (const Image* image : { &mColour[previous], &mSurface[previous], &mMoments[previous] })
-            barriers.add(image->describeTransition(
-                ImageUse{ held, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT },
-                Use::sComputeRead));
+        if (mFresh)
+            for (const Image* image : { &mColour[previous], &mSurface[previous], &mMoments[previous] })
+                barriers.add(image->describeTransition(Use::sUndefined, Use::sComputeRead));
 
-        for (const Image* image : { &mColour[mCurrent], &mSurface[mCurrent], &mMoments[mCurrent] })
-            barriers.add(image->describeTransition(
-                ImageUse{ VK_IMAGE_LAYOUT_UNDEFINED, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                    VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_SAMPLED_READ_BIT },
-                Use::sComputeWrite));
-
-        // Waiting on both of the cascade's accesses and not only its read. Two frames are in
-        // flight over one blend image, and the levels of the cascade write it as well as read it —
-        // so a frame arriving here has to wait for the previous frame's odd levels to finish
-        // writing, which a dependency naming the read alone would not order.
-        barriers.add(
-            mBlended.describeTransition(ImageUse{ VK_IMAGE_LAYOUT_UNDEFINED, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                                            VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_SAMPLED_READ_BIT
-                                                | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT },
-                Use::sComputeWrite));
+        for (const Image* image : { &mColour[mCurrent], &mSurface[mCurrent], &mMoments[mCurrent], &mBlended })
+            barriers.add(image->describeTransition(Use::sUndefined, Use::sComputeWrite));
 
         barriers.flush();
 

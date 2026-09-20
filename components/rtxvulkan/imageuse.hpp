@@ -30,8 +30,9 @@ namespace Rtx
         /// Nothing before this: the first write into a fresh image, or a discard at the start of a
         /// frame. A discard waits for nothing of its own because the head barrier every command
         /// buffer opens with (`CommandPool::begin`) has already ordered it after whatever the last
-        /// frame did.
-        inline constexpr ImageUse sUndefined{ VK_IMAGE_LAYOUT_UNDEFINED, VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 0 };
+        /// frame did — so the source is `NONE`, which is what synchronization2 deprecated
+        /// `TOP_OF_PIPE` in favour of for a first scope.
+        inline constexpr ImageUse sUndefined{ VK_IMAGE_LAYOUT_UNDEFINED, VK_PIPELINE_STAGE_2_NONE, 0 };
 
         inline constexpr ImageUse sComputeWrite{ VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
             VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT };
@@ -51,8 +52,6 @@ namespace Rtx
         inline constexpr ImageUse sTraceReadWrite{ VK_IMAGE_LAYOUT_GENERAL,
             VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
             VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT };
-        inline constexpr ImageUse sTraceSample{ VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
-            VK_ACCESS_2_SHADER_SAMPLED_READ_BIT };
 
         /// Sampled by the trace and by a dispatch alike, in `GENERAL`: what the wave tiles and the
         /// fog volume's slices are left as.
@@ -78,9 +77,6 @@ namespace Rtx
             VK_ACCESS_2_TRANSFER_READ_BIT };
         inline constexpr ImageUse sBlitWrite{ VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_2_BLIT_BIT,
             VK_ACCESS_2_TRANSFER_WRITE_BIT };
-
-        /// A level about to be blitted over whole, holding whatever the last frame left in it.
-        inline constexpr ImageUse sDiscardForBlit{ VK_IMAGE_LAYOUT_UNDEFINED, VK_PIPELINE_STAGE_2_BLIT_BIT, 0 };
         inline constexpr ImageUse sBlitRead{ VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_PIPELINE_STAGE_2_BLIT_BIT,
             VK_ACCESS_2_TRANSFER_READ_BIT };
         inline constexpr ImageUse sClearWrite{ VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_2_CLEAR_BIT,
@@ -92,9 +88,10 @@ namespace Rtx
             VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
             VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT };
 
-        /// Handed to the presentation engine, which reads it at no stage a barrier can name.
-        inline constexpr ImageUse sPresent{ VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT,
-            0 };
+        /// Handed to the presentation engine, which reads it at no stage a barrier can name: the
+        /// semaphore the present waits on is what orders it, and the second scope is `NONE`, which
+        /// is what synchronization2 deprecated `BOTTOM_OF_PIPE` in favour of there.
+        inline constexpr ImageUse sPresent{ VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_PIPELINE_STAGE_2_NONE, 0 };
 
         /// Whatever came before or comes after, in `GENERAL`: the widest dependency, for an image
         /// handed between owners that do not know each other.

@@ -6,7 +6,6 @@
 
 #include <components/rtx/shaders/exposure.h>
 
-#include "barriers.hpp"
 #include "dispatch.hpp"
 #include "image.hpp"
 #include "imageuse.hpp"
@@ -53,21 +52,11 @@ namespace Rtx
     void ExposurePass::record(
         VkCommandBuffer commands, const Image& frame, float elapsedSeconds, bool reset, float bias) const
     {
-        // Against the previous frame and not this one: two frames in flight share one set of these
-        // buffers, so the measurement about to overwrite them may start while the curve reading
-        // them is still running. An execution dependency is all a write-after-read needs — and
-        // the exposure is read as well as written, because the reduction moves the previous
-        // frame's exposure toward this frame's measurement, so the write before it has to be
-        // visible and not merely ordered.
-        constexpr BufferUse touched{ VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_CLEAR_BIT,
-            VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT
-                | VK_ACCESS_2_TRANSFER_WRITE_BIT };
-
-        Barriers before(commands);
-        before.add(mHistogram.describeBarrier(touched, Use::sBufferClearWrite));
-        before.add(mExposure.describeBarrier(touched, Use::sBufferComputeReadWrite));
-        before.flush();
-
+        // Two frames in flight share one set of these buffers, and the previous frame's curve
+        // reading them, its reduction writing the exposure this one moves toward, and its clear are
+        // all behind the head barrier `CommandPool::begin` recorded — which is why the clear waits
+        // for nothing of its own.
+        //
         // Cleared here and not in a shader: the workgroups accumulate into it, so one of them
         // zeroing it would race with the rest.
         mHistogram.clear(commands);

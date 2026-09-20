@@ -46,8 +46,8 @@ namespace Rtx
 
         openZone(timer, commands, "digest");
 
-        // Cleared on the queue, after the last frame's copy out of it.
-        mLanes.transition(commands, Use::sBufferCopyRead, Use::sBufferClearWrite);
+        // Cleared on the queue; the last frame's copy out of it is behind the head barrier
+        // `CommandPool::begin` recorded.
         mLanes.clear(commands);
         mLanes.transition(commands, Use::sBufferClearWrite, Use::sBufferComputeReadWrite);
 
@@ -59,8 +59,9 @@ namespace Rtx
         dispatch(commands, mPipeline, writes.get(), constants, groupsFor(first.getWidth(), Shaders::DIGEST_WORKGROUP),
             groupsFor(first.getHeight(), Shaders::DIGEST_WORKGROUP));
 
+        // The host's read of what `into` held before is behind the submit that carries this — a
+        // host read finished before the queue took the commands needs no dependency of its own.
         mLanes.transition(commands, Use::sBufferComputeWrite, Use::sBufferCopyRead);
-        into.transition(commands, Use::sBufferHostRead, Use::sBufferCopyWrite);
         mLanes.copyTo(commands, into, sBytes);
 
         into.orderForHostRead(commands);

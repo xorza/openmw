@@ -226,8 +226,8 @@ namespace Rtx
         frame.transition(commands, Use::sAnyGeneralWrite, Use::sBlitRead);
 
         // The source scope names the stage the acquire semaphore is waited at, or the transition
-        // is ordered against nothing and can run before the image is ours. `TOP_OF_PIPE` as a source
-        // scope means exactly that: nothing.
+        // is ordered against nothing and can run before the image is ours — which is what
+        // `sUndefined`'s `NONE` says, and why it is not the discard used here.
         const VkImage presented = mSwapchain->getImage(index);
         Barriers taken(commands);
         taken.add(imageBarrier(

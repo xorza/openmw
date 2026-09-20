@@ -174,31 +174,28 @@ namespace Rtx
         const std::size_t written = trace.get();
 
         // Discarded, because every texel of it is written before any is read; the other half of
-        // the pair is this frame's history and survives, one loop down. The point pair, the lamps
-        // and the column images are written by the two launches, the integrated ones by the
-        // dispatch after them. The last frame's readers are behind the head barrier
-        // `CommandPool::begin` recorded.
+        // the pair is this frame's history and survives. The point pair, the lamps and the column
+        // images are written by the two launches, the integrated ones by the dispatch after them.
+        // The last frame's readers are behind the head barrier `CommandPool::begin` recorded — and
+        // so is the launch that wrote the history, which is why the history takes no barrier of
+        // its own: it rests in `GENERAL`, and the head barrier made the write visible to every
+        // read after it.
         Barriers barriers(commands);
         for (const Image* image : { &mScatter[written], &mSunward[written], &mLamps, &mColumnDepth, &mColumnMoons })
             barriers.add(image->describeTransition(Use::sUndefined, Use::sTraceWrite));
         for (const Image* image : { &mAir, &mAirSunward, &mSlice, &mSliceSunward })
             barriers.add(image->describeTransition(Use::sUndefined, Use::sComputeWrite));
 
-        // From `GENERAL` and not from undefined, which is the whole of what makes a history a
-        // history: the frame that wrote it two frames ago left it here, and discarding it would hand
-        // this frame a volume of nothing to average against.
-        for (const Image* image : { &mScatter[1 - written], &mSunward[1 - written] })
-            barriers.add(image->describeTransition(Use::sAnyGeneral, Use::sTraceSample));
-
         barriers.flush();
     }
 
     void FogVolume::depthTaken(VkCommandBuffer commands) const
     {
+        // The depth is loaded by the scatter launch, by the integrate dispatch and by the trace,
+        // so the one hand-over names both stages; the moons by the scatter launch alone.
         Barriers barriers(commands);
-        for (const Image* image : { &mColumnDepth, &mColumnMoons })
-            barriers.add(image->describeTransition(Use::sTraceWrite, Use::sTraceRead));
-
+        barriers.add(mColumnDepth.describeTransition(Use::sTraceWrite, Use::sShaderStorageRead));
+        barriers.add(mColumnMoons.describeTransition(Use::sTraceWrite, Use::sTraceRead));
         barriers.flush();
     }
 
@@ -221,10 +218,6 @@ namespace Rtx
         Barriers barriers(commands);
         for (const Image* image : { &mAir, &mAirSunward, &mSlice, &mSliceSunward })
             barriers.add(image->describeTransition(Use::sComputeWrite, Use::sShaderSample));
-
-        // The column depth the trace reads beside them, which `depthTaken` ordered only against the
-        // launch and the dispatch between.
-        barriers.add(mColumnDepth.describeTransition(Use::sTraceWrite, Use::sShaderStorageRead));
 
         barriers.flush();
     }

@@ -8,7 +8,6 @@
 #include "dispatch.hpp"
 #include "gbuffer.hpp"
 #include "image.hpp"
-#include "imageuse.hpp"
 
 namespace Rtx
 {
@@ -37,15 +36,10 @@ namespace Rtx
         assert(constants.mAccumulate == 0 || sum != nullptr);
         assert(sum == nullptr || (sum->getWidth() >= constants.mWidth && sum->getHeight() >= constants.mHeight));
 
+        // The real sum is the caller's to order; the stand-in is touched by one composite a
+        // command buffer, and the head barrier `CommandPool::begin` recorded orders that after the
+        // last one.
         const Image& bound = sum != nullptr ? *sum : mNoSum;
-
-        // The stand-in is ordered here, and the real sum is the caller's to order. Nothing
-        // writes this one texel — the shader's store sits behind `mAccumulate`, and a stand-in is
-        // bound only where that is nought — but synchronization validation reasons from the
-        // descriptor set rather than from the branch, so two frames' composites read to it as two
-        // unordered writes. One barrier on one texel is cheaper than a check nobody can leave on.
-        if (sum == nullptr)
-            mNoSum.transition(commands, Use::sComputeWrite, Use::sComputeReadWrite);
 
         DescriptorWrites<5> writes;
         writes.image(0, buffer.get(Channel::Direct).describeStorage());

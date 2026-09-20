@@ -30,7 +30,7 @@ namespace Rtx
 
     private:
         /// The longest runs this renderer has: the G-buffer's channels, which change state
-        /// together twice a frame, and the exposure's two buffers. A run longer than this emits
+        /// together twice a frame, and a test's pair of readings. A run longer than this emits
         /// what it holds and carries on, so the figures bound the arrays rather than the caller.
         static constexpr std::size_t sMostImages = 16;
         static constexpr std::size_t sMostBuffers = 4;

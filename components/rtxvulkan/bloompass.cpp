@@ -99,13 +99,11 @@ namespace Rtx
         assert(mLevels.front().getWidth() == frame.getWidth() / 2 && "record before resize");
 
         // Nothing has written the levels yet this frame, so the halvings may discard whatever the
-        // last one left.
+        // last one left; the curve that sampled it is behind the head barrier `CommandPool::begin`
+        // recorded.
         Barriers opened(commands);
         for (const Image& level : mLevels)
-            opened.add(
-                level.describeTransition(ImageUse{ VK_IMAGE_LAYOUT_UNDEFINED, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                                             VK_ACCESS_2_SHADER_SAMPLED_READ_BIT },
-                    Use::sComputeWrite));
+            opened.add(level.describeTransition(Use::sUndefined, Use::sComputeWrite));
 
         opened.flush();
 
@@ -118,17 +116,28 @@ namespace Rtx
         }
 
         // Back up the pyramid, each level mixed into the one above it. The coarsest has nothing
-        // coarser to take, which is why this starts one below the end.
+        // coarser to take, which is why this starts one below the end. The finer level is about to
+        // be read as well as written, and what it holds is its own halving from the loop above — a
+        // write after a read after a write, all in one stage. The level the last spread wrote is
+        // handed over in the same command, so the queue drains once between two spreads and not
+        // twice.
+        const Image* written = nullptr;
         for (std::size_t level = mLevels.size() - 1; level > 0; --level)
         {
             const Image& finer = mLevels[level - 1];
 
-            // The finer level is about to be read as well as written, and what it holds is its own
-            // halving from the loop above — a write after a read after a write, all in one stage.
-            finer.transition(commands, Use::sComputeWrite, Use::sComputeReadWrite);
+            Barriers between(commands);
+            between.add(finer.describeTransition(Use::sComputeWrite, Use::sComputeReadWrite));
+            if (written != nullptr)
+                between.add(written->describeTransition(Use::sComputeWrite, Use::sComputeSample));
+            between.flush();
 
             run(commands, mSpreadPipeline, mLevels[level], finer, Shaders::BLOOM_SCATTER);
-            handOver(commands, finer);
+            written = &finer;
         }
+
+        // What the curve samples: the finest level, which a pyramid of one level handed over above.
+        if (written != nullptr)
+            handOver(commands, *written);
     }
 }

@@ -282,9 +282,12 @@ namespace Rtx
             return;
 
         // The written level becomes the first source; the rest hold whatever the last frame left,
-        // which every blit below overwrites whole.
-        transitionLevels(commands, 0, 1, Use::sComputeWrite, Use::sBlitRead);
-        transitionLevels(commands, 1, mMipLevels - 1, Use::sDiscardForBlit, Use::sBlitWrite);
+        // which every blit below overwrites whole. One command for both, so the queue drains the
+        // dispatch once and not twice.
+        Barriers opened(commands);
+        opened.add(describeLevels(0, 1, Use::sComputeWrite, Use::sBlitRead));
+        opened.add(describeLevels(1, mMipLevels - 1, Use::sUndefined, Use::sBlitWrite));
+        opened.flush();
 
         std::uint32_t width = mWidth;
         std::uint32_t height = mHeight;

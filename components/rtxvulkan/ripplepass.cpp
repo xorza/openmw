@@ -120,6 +120,8 @@ namespace Rtx
             mSteppedTick = tickOf(skySeconds);
             mReset = false;
 
+            // The tiles too, because the step below is due only on the next tick and the trace
+            // samples them in between.
             const VkClearColorValue still{ .float32 = { 0.0f, 0.0f, 0.0f, 0.0f } };
             for (const Image& field : mFields)
                 field.clear(commands, Use::sComputeReadWrite, still, Use::sComputeReadWrite);
@@ -184,9 +186,13 @@ namespace Rtx
         // The step wrote what the compose reads, and what the next step reads back.
         handOver(commands, Use::sBufferComputeWrite, Use::sBufferComputeReadWrite);
 
+        // Every level of both tiles is written whole below — the first by the compose, the rest by
+        // the chain — so none needs what the last frame left in it. Whatever last touched them,
+        // the trace that sampled them or a reset's clear, is behind the head barrier
+        // `CommandPool::begin` recorded: a reset's own frame stands at its tick and never gets here.
         Barriers opened(commands);
         for (const Image* image : { &mSurface, &mCurvature })
-            opened.add(image->describeTransition(Use::sShaderSample, Use::sComputeWrite));
+            opened.add(image->describeTransition(Use::sUndefined, Use::sComputeWrite));
         opened.flush();
 
         DescriptorWrites<3> composes;
