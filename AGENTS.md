@@ -43,6 +43,8 @@ backend ever arrives.
 - `components/myguirtx/` — MyGUI's backend.
 - `apps/openmw/mwrender/rtx/` — the game-side owner. `apps/rtxtool/` — the harness.
   `MWRender::Renderer` — the seam, and `GlRenderer` beside upstream's files in `mwrender/`.
+- `docs/rtx/architecture.md` — the whole of the above as a reader meets it: the seam, the
+  entities, who owns whom, who calls whom, and the order a frame is computed in.
 
 ## Verification
 

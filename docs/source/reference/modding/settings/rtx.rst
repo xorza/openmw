@@ -10,7 +10,8 @@ hardware ray tracing, Turing or later: acceleration structures, ray query, ray t
 position fetch and the hit objects of the invocation-reorder extension are all required, and a device
 missing any of them refuses to start rather than falling back.
 
-Every setting here is read once, at startup.
+Most settings here are read once, at startup. :code:`upscale` and :code:`distant land cells`
+also follow the settings window while the game runs.
 
 .. omw-setting::
    :title: enabled
@@ -34,14 +35,14 @@ Every setting here is read once, at startup.
    different question for a renderer that culls: at 7168 units against a cell of 8192 it barely
    leaves the active grid.
 
-   Read once at start, together with :code:`object paging` and :code:`object paging min size` from
-   the terrain section, which decide whether and how the distance's statics stand. Changing any of
-   the three takes effect on the next start.
+   Takes effect at once: the ring, the air and the map follow the new reach. :code:`object paging`
+   and :code:`object paging min size` from the terrain section decide whether and how the distance's
+   statics stand, and those two are read once at start.
 
 .. omw-setting::
    :title: upscale
    :type: string
-   :range: off, performance, balanced, quality, dlaa
+   :range: off, ultraperformance, performance, balanced, quality, dlaa
    :default: quality
 
    Put DLSS Ray Reconstruction between the trace and the screen. The window's size is what comes
@@ -54,8 +55,10 @@ Every setting here is read once, at startup.
    of what it does. :code:`off` traces at the window's size and uses the à-trous filter instead,
    which is what an A/B against the unupscaled path needs.
 
-   A name this does not know is refused rather than quietly defaulted, and a build without
-   :code:`-DOPENMW_RTX_DLSS=ON` refuses anything but :code:`off`.
+   Takes effect at once. A mode this machine cannot reach is refused, the renderer keeps the mode
+   it had, and the setting is put back to that mode. A name this does not know is refused rather
+   than quietly defaulted, and a build without :code:`-DOPENMW_RTX_DLSS=ON` refuses anything but
+   :code:`off`.
 
 .. omw-setting::
    :title: preset
@@ -71,4 +74,5 @@ Every setting here is read once, at startup.
    SDK versions and between the convolutional and transformer models, so two machines under it do
    not run the same network — which is why this is pinned rather than left to it.
 
-   A name this does not know is refused rather than quietly defaulted.
+   Takes effect on the next start. A name this does not know is refused rather than quietly
+   defaulted.
