@@ -27,6 +27,13 @@ namespace Rtx::Shaders
     /// sky's point sources are drawn here.
     struct ToneConstants
     {
+        /// The frame's sprite tile list, `VisibilityConstants::mTables`'s, and whether the frame
+        /// holds an additive mesh: with the traced puff depth, what says where the composite wrote
+        /// nothing and the frame's alpha is not the puffs' — `puffsCoverNothing`. First, so the
+        /// address lands eight-aligned on both sides.
+        uint64 mSpriteTileList;
+        uint mAdditiveInFrame;
+
         /// The trace's own extent, which is what `GBuffer::getStarsShown` is written at.
         ///
         /// **Two extents because an upscaler stands between them**, and the other is the camera's.
@@ -37,8 +44,8 @@ namespace Rtx::Shaders
         uint mTracedHeight;
 
         /// Whether the frame's alpha carries the puffs' transmittance, which `spritecomposite.rgen`
-        /// leaves there for the star field to be drawn through — the frame's; a picture's alpha
-        /// is its coverage, and its stars are not drawn through anything.
+        /// leaves there for the star field to be drawn through wherever it drew one — the frame's;
+        /// a picture's alpha is its coverage, and its stars are not drawn through anything.
         uint mCoverAlpha;
 
         /// The frame's camera at *this* pass's extent, with no jitter — and so the extent the pass

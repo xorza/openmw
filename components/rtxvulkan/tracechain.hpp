@@ -29,6 +29,7 @@ namespace Rtx
     class SpriteShadePass;
     class VisibilityPass;
     struct TraceRecording;
+    struct VisibilityInputs;
 
     /// Everything one camera's trace writes, at one extent — one chain however many cameras have
     /// one, so a barrier cannot go missing from a second copy. What differs between two of these
@@ -88,6 +89,12 @@ namespace Rtx
 
         /// Where the air is integrated, one column to a block of pixels.
         const FogVolume& getFogVolume() const { return *mFogVolume; }
+
+        /// The sprite tile list the trace of `inputs` reads: the camera's own where it was handed
+        /// one, which is the list of nothing, and the slot's bin otherwise. The one rule, which
+        /// the block is written by and the display's `puffsCoverNothing` asks after the trace —
+        /// after, because the bin's `take` may have grown the table.
+        VkDeviceAddress getSpriteTileList(const VisibilityInputs& inputs) const;
 
         /// Records one camera's whole trace, from the discards it opens with to the barrier after
         /// the composite, and hands back the composite's output. What the caller keeps is what a

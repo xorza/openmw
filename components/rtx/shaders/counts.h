@@ -16,9 +16,10 @@ namespace Rtx::Shaders
 
     struct FrameCounts
     {
-        /// Primary rays that hit something, summed by the trace where it was built to count them
-        /// — `COUNT_HITS`.
-        uint mHits;
+        /// Primary rays that reached nothing, summed by the sky's miss shader where the trace was
+        /// built to count — `COUNT_HITS`. The host reports the hits, which are the launch less
+        /// these: `FrameRing::finishOldest`.
+        uint mMisses;
 
         /// What the hold's own clock said the hold came to, in nanoseconds, written by the loop
         /// `check` appends to the frame — `stress.comp`. Left alone by a frame with no hold.

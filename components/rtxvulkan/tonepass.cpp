@@ -20,13 +20,14 @@ namespace Rtx
         /// The frame in, the picture out, what the star field is drawn through, the one float the
         /// curve scales by, the bloom pyramid the lens is spread from, and the one float the glare
         /// fader is laid on by. All pushed.
-        constexpr std::array<VkDescriptorSetLayoutBinding, 6> sBindings{
+        constexpr std::array<VkDescriptorSetLayoutBinding, 7> sBindings{
             computeBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             computeBinding(1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             computeBinding(2, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             computeBinding(3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
             computeBinding(4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER),
             computeBinding(5, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            computeBinding(6, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
         };
     }
 
@@ -40,8 +41,8 @@ namespace Rtx
     }
 
     void TonePass::record(VkCommandBuffer commands, const Image& colour, const Buffer& exposure, const Buffer& sunGlare,
-        const Image& starsShown, const Image* bloom, VkDescriptorSet textures, const Image& target,
-        Shaders::ToneConstants constants) const
+        const Image& starsShown, const Image& puffsDepth, const Image* bloom, VkDescriptorSet textures,
+        const Image& target, Shaders::ToneConstants constants) const
     {
         assert(constants.mCamera.mWidth <= target.getWidth() && constants.mCamera.mHeight <= target.getHeight());
 
@@ -53,13 +54,14 @@ namespace Rtx
         constants.mBloomTexel
             = osg::Vec2f(1.0f / static_cast<float>(spread.getWidth()), 1.0f / static_cast<float>(spread.getHeight()));
 
-        DescriptorWrites<6> writes;
+        DescriptorWrites<7> writes;
         writes.image(0, colour.describeStorage());
         writes.image(1, target.describeStorage());
         writes.image(2, starsShown.describeStorage());
         writes.buffer(3, exposure.describe());
         writes.image(4, spread.describeSampled(mSampler.get()), VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
         writes.buffer(5, sunGlare.describe());
+        writes.image(6, puffsDepth.describeStorage());
 
         // The scene's textures before the launch and beside set zero, which the two are
         // independent of: a pushed set and a bound one only have to be in place by the dispatch.

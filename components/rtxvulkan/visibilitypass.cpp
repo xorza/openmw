@@ -400,7 +400,8 @@ namespace Rtx
     }
 
     void VisibilityPass::writeFrame(VkCommandBuffer commands, const VisibilityInputs& inputs, const SpriteBin& bin,
-        const Shaders::VisibilityConstants& constants, const bool historyLost) const
+        const VkDeviceAddress spriteTileList, const Shaders::VisibilityConstants& constants,
+        const bool historyLost) const
     {
         assert(inputs.mWaves != nullptr && "a trace with no sea synthesised for it");
         assert(inputs.mFogVolume != nullptr && "a trace with no air integrated for it");
@@ -453,7 +454,7 @@ namespace Rtx
         // The trace's own, shaded and binned for this camera ahead of it, or the list of nothing
         // for a camera that draws no sprites and binned none.
         described.mTables.mSprites = bin.getSpritesAddress();
-        described.mTables.mSpriteTileList = inputs.mSpriteList != 0 ? inputs.mSpriteList : bin.getTileListAddress();
+        described.mTables.mSpriteTileList = spriteTileList;
 
         // Nothing addressed here may be nothing, and every address must be what its reference
         // claims. A descriptor bound as a null handle cost this renderer a device with no message;

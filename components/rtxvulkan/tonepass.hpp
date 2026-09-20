@@ -46,8 +46,8 @@ namespace Rtx
         ///        nothing built one — a doll, a map tile, a frame too small to halve.
         /// @param target the displayable image, in `VK_IMAGE_LAYOUT_GENERAL`.
         void record(VkCommandBuffer commands, const Image& colour, const Buffer& exposure, const Buffer& sunGlare,
-            const Image& starsShown, const Image* bloom, VkDescriptorSet textures, const Image& target,
-            Shaders::ToneConstants constants) const;
+            const Image& starsShown, const Image& puffsDepth, const Image* bloom, VkDescriptorSet textures,
+            const Image& target, Shaders::ToneConstants constants) const;
 
     private:
         ComputePipeline mPipeline;

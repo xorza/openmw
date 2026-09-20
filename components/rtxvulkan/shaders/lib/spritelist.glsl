@@ -54,6 +54,33 @@ uint spriteStartSlot(uint tile)
     return tile;
 }
 
+/// Which tile a traced pixel is in, on a frame `width` pixels across.
+uint spriteTileOf(uvec2 pixel, uint width)
+{
+    return (pixel.y / SPRITE_TILE) * spriteTilesOver(width) + pixel.x / SPRITE_TILE;
+}
+
+/// Whether the puff layer holds nothing at a traced pixel: no sprite binned into its tile, no cloud
+/// shell in front of it, and no additive mesh anywhere in the frame — so the composite there would
+/// leave the frame as it found it, with a transmittance of one in its alpha.
+///
+/// **Asked by the composite and by the curve, which have to agree pixel for pixel.** The composite
+/// skips such a pixel, and the curve reads a transmittance of one there in place of an alpha the
+/// composite never wrote. That is most of every frame at the shown extent: on a clear day every
+/// pixel paid three loads and a store to write a one, which was 0.46 ms of a 4K frame and 0.27
+/// with the writes gone. A frame whose runs did not fit binned nothing, and every pixel of it
+/// walks every sprite — `SPRITE_LIST_UNBINNED`.
+///
+/// @param shellsThrough what the cloud shells let through at the pixel, `puffsDepth`'s second word.
+bool puffsCoverNothing(SpriteTileList list, uint tracedWidth, uvec2 traced, float shellsThrough, uint additiveInFrame)
+{
+    if (list.at[0] == SPRITE_LIST_UNBINNED || additiveInFrame != 0u || shellsThrough < 1.0)
+        return false;
+
+    const uint tile = spriteTileOf(traced, tracedWidth);
+    return list.at[spriteStartSlot(tile)] == list.at[spriteStartSlot(tile + 1u)];
+}
+
 /// A tile rect as one `uvec2`: the corner in `x` and the far corner in `y`, sixteen bits a
 /// coordinate. Sixteen bits reaches a frame 1,048,576 pixels wide.
 uvec2 packSpriteRect(uvec2 from, uvec2 to)

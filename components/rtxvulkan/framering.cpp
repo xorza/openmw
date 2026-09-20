@@ -134,8 +134,10 @@ namespace Rtx
         if (frame.mDigest.has_value())
             readDigest(frame.mDigestLanes, *frame.mDigest);
 
+        assert(counted.mMisses <= frame.mCountedRays && "more primary rays missed than were launched");
+
         FrameResult& report = mReports.emplace_back(FrameResult{
-            .mHits = counted.mHits,
+            .mHits = frame.mCountedRays - counted.mMisses,
             .mHeldMs = counted.mHeldNs * 1.0e-6,
             .mWaitMs = waited,
             .mInFlight = frame.mInFlight,

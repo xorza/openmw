@@ -49,6 +49,11 @@ namespace Rtx
         /// The camera the trace sampled, which the curve and the lines are told.
         const Shaders::VisibilityConstants& mSampled;
 
+        /// The sprite tile list the trace read, `TraceChain::getSpriteTileList`: what the curve
+        /// tests for where the puffs' composite drew nothing. Not `mSampled`'s, whose tables are
+        /// filled on the copy the block is written from.
+        VkDeviceAddress mSpriteTileList = 0;
+
         /// What the curve writes into, at least `mExtent` large.
         Image& mTarget;
 

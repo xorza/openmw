@@ -25,11 +25,16 @@ namespace Rtx
     {
         /// The display pass's own description of the frame, on the picture's grid. The alpha
         /// carries the puffs' transmittance wherever it is not the picture's coverage, which is
-        /// the same test `spritecomposite.rgen` makes.
-        Shaders::ToneConstants toneFor(const Shaders::VisibilityConstants& frame, std::uint32_t width,
-            std::uint32_t height, std::uint32_t tracedWidth, std::uint32_t tracedHeight)
+        /// the same test `spritecomposite.rgen` makes — and where that composite drew nothing, the
+        /// pass finds out for itself from what it is handed here.
+        Shaders::ToneConstants toneFor(const Shaders::VisibilityConstants& frame, const VkDeviceAddress spriteTileList,
+            std::uint32_t width, std::uint32_t height, std::uint32_t tracedWidth, std::uint32_t tracedHeight)
         {
+            assert(spriteTileList != 0 && "a curve told no tile list to test the puffs by");
+
             return Shaders::ToneConstants{
+                .mSpriteTileList = spriteTileList,
+                .mAdditiveInFrame = frame.mAdditiveInFrame,
                 .mTracedWidth = tracedWidth,
                 .mTracedHeight = tracedHeight,
                 .mCoverAlpha = frame.mTransparentBackground == 0 ? 1u : 0u,
@@ -120,8 +125,10 @@ namespace Rtx
 
         openZone(what.mTimer, commands, "tone");
         mTone.record(commands, what.mShown, *exposure, *share, channels.get(Channel::StarsShown),
-            what.mBloom ? mBloom.getPyramid() : nullptr, what.mInputs.mTextures, what.mTarget,
-            toneFor(what.mSampled, what.mExtent.width, what.mExtent.height, channels.getWidth(), channels.getHeight()));
+            channels.get(Channel::PuffsDepth), what.mBloom ? mBloom.getPyramid() : nullptr, what.mInputs.mTextures,
+            what.mTarget,
+            toneFor(what.mSampled, what.mSpriteTileList, what.mExtent.width, what.mExtent.height, channels.getWidth(),
+                channels.getHeight()));
         closeZone(what.mTimer, commands);
 
         recordDebugLines(commands, what);

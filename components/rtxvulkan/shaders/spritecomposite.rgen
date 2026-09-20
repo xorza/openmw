@@ -37,6 +37,7 @@
 #include "lib/fog.glsl"
 #include "lib/frame.glsl"
 #include "lib/medium.glsl"
+#include "lib/pixels.glsl"
 #include "lib/sprites.glsl"
 
 /// The frame as it will be shown, read and written in place.
@@ -50,15 +51,20 @@ void main()
     const uvec2 extent = gl_LaunchSizeEXT.xy;
     const uvec2 tracedExtent = uvec2(frame.mCamera.mWidth, frame.mCamera.mHeight);
 
-    // Where this pixel's centre lands on the traced grid. Nearest and not filtered: a depth is
-    // not a quantity that averages, and the bin is a list.
+    // Where this pixel's centre lands on the traced grid.
     const vec2 across = vec2(tracedExtent) / vec2(extent);
-    const uvec2 traced = min(uvec2((vec2(pixel) + 0.5) * across), tracedExtent - 1u);
+    const uvec2 traced = tracedPixelUnder(pixel, extent, tracedExtent);
 
     // What the trace left at that pixel: how far the puffs stand, what the shells let through, and
     // which eye the ray was cast from — the arms' where the arms were found, so the march here runs
     // along the same ray the trace lit them on.
     const vec3 stood = imageLoad(puffsDepth, ivec2(traced)).xyz;
+
+    // **Nothing to draw and nothing to write.** The curve makes the same test and reads a one
+    // where this wrote nothing; `puffsCoverNothing` says what it saves.
+    if (puffsCoverNothing(SpriteTileList(frame.mTables.mSpriteTileList), frame.mCamera.mWidth, traced, stood.y,
+            frame.mAdditiveInFrame))
+        return;
 
     // The traced camera on this grid — `cameraOnGrid` says why it is the same basis.
     const Camera camera = cameraOnGrid(stood.z > 0.5 ? frame.mArms : frame.mCamera, extent.x, extent.y);

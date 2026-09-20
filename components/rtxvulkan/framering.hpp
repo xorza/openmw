@@ -72,6 +72,11 @@ namespace Rtx
         GpuTimer mTimer;
         Buffer mCounts;
 
+        /// How many primary rays the trace launched, where the frame counts them, and nought
+        /// where it does not: the device sums the misses, and the hits the report carries are
+        /// the launch less those.
+        std::uint32_t mCountedRays = 0;
+
         Reconstruction mReconstruction;
 
         /// What the GUI is drawn out of, rewritten every frame it has anything in it and grown

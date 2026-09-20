@@ -18,11 +18,17 @@
 #include "lib/frame.glsl"
 #include "lib/payload.glsl"
 #include "lib/sky.glsl"
+#include "lib/variants.glsl"
 
 layout(location = RTX_PAYLOAD) rayPayloadInEXT VisibilityPayload answer;
 
 void main()
 {
+    // Before either early return: a ray that found water from under it, or a picture's background,
+    // reached nothing all the same. `COUNT_HITS` in `variants.glsl` says why the count is taken here.
+    if (COUNT_HITS)
+        atomicAdd(counts.mMisses, 1u);
+
     clearAnswer(answer);
 
     const vec3 origin = gl_WorldRayOriginEXT;

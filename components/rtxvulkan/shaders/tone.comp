@@ -22,6 +22,7 @@
 
 #include "lib/bloom.glsl"
 #include "lib/pixels.glsl"
+#include "lib/spritelist.glsl"
 #include "lib/starfield.glsl"
 
 layout(local_size_x = TONE_WORKGROUP, local_size_y = TONE_WORKGROUP) in;
@@ -51,6 +52,10 @@ layout(set = 0, binding = 5, scalar) readonly buffer SunGlareShare
 {
     float sunGlareShare;
 };
+
+/// What the trace left of the puffs at the traced extent: the shells' transmittance in `y` is what
+/// `puffsCoverNothing` reads.
+layout(set = 0, binding = 6, GBUFFER_PUFF_DEPTH) uniform readonly image2D puffsDepth;
 
 layout(push_constant, scalar) uniform Push
 {
@@ -94,8 +99,18 @@ void main()
         const vec3 shown = imageLoad(starsShown, ivec2(vec2(pixel) * across)).rgb;
 
         // And through the puffs, whose transmittance the composite left in the frame's alpha at
-        // this pass's own resolution — `ToneConstants::mCoverAlpha`.
-        const float puffs = frame.mCoverAlpha != 0u ? lit.a : 1.0;
+        // this pass's own resolution — `ToneConstants::mCoverAlpha` — wherever it drew one; where
+        // it drew none it wrote nothing, and the alpha there is whatever the upscaler left.
+        float puffs = 1.0;
+        if (frame.mCoverAlpha != 0u)
+        {
+            const uvec2 traced = tracedPixelUnder(pixel, extent, uvec2(frame.mTracedWidth, frame.mTracedHeight));
+            const float shellsThrough = imageLoad(puffsDepth, ivec2(traced)).y;
+            puffs = puffsCoverNothing(SpriteTileList(frame.mSpriteTileList), frame.mTracedWidth, traced,
+                        shellsThrough, frame.mAdditiveInFrame)
+                ? 1.0
+                : lit.a;
+        }
 
         if (any(greaterThan(shown, vec3(0.0))) && puffs > 0.0)
             lit.rgb += shown * puffs

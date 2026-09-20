@@ -104,6 +104,11 @@ namespace Rtx
         return indirect;
     }
 
+    VkDeviceAddress TraceChain::getSpriteTileList(const VisibilityInputs& inputs) const
+    {
+        return inputs.mSpriteList != 0 ? inputs.mSpriteList : mBins.at(inputs.mTraceSlot).getTileListAddress();
+    }
+
     const Image& TraceChain::record(const VkCommandBuffer commands, const TraceRecording& what)
     {
         assert(isBuilt() && "a trace into a chain that has no extent");
@@ -141,7 +146,7 @@ namespace Rtx
         if (bins)
             bin.take(sprites, what.mAsked.mCamera, commands);
 
-        mVisibility.writeFrame(commands, inputs, bin, what.mSampled, what.mAirLost);
+        mVisibility.writeFrame(commands, inputs, bin, getSpriteTileList(inputs), what.mSampled, what.mAirLost);
 
         if (bins)
         {

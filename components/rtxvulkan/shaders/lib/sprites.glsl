@@ -466,7 +466,7 @@ PuffLayer spritesAlong(uvec2 pixel, Cone cone, vec3 origin, vec3 direction, floa
 
     // **The tiles are derived and not carried**, from the same function the bin uses, so the two
     // cannot disagree about how many there are across.
-    const uint tile = (pixel.y / SPRITE_TILE) * spriteTilesOver(frame.mCamera.mWidth) + pixel.x / SPRITE_TILE;
+    const uint tile = spriteTileOf(pixel, frame.mCamera.mWidth);
 
     // **Every sprite where the runs did not fit**, which is the list's own degenerate form and the
     // march as it was before the tiles: `SPRITE_LIST_UNBINNED` says when a frame is handed it. The

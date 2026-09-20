@@ -34,6 +34,14 @@
 /// unconditional `atomicAdd` was a debug write compiled into the shipping kernel. Specialized rather
 /// than branched on a uniform because the branch is what has to go, not just the write: with this
 /// false the constant folds away and the buffer is never touched.
+///
+/// **Counted as misses, in the miss shader, and turned into hits on the host.** Every lane adding
+/// to one word serialises at that word: a million hits took four tenths of a millisecond of the
+/// trace in a room where every ray hits, which the shading of a street hid and a room's did not — a
+/// harness figure that read the room's frame nine percent slow. The sky's shader runs exactly once
+/// for every primary ray that ends in nothing, so the misses are the same count from the other side,
+/// and a room adds nought. A ballot would add one word a subgroup instead, and a subgroup operation
+/// in the launch loses the device on this driver — `visibility.rgen` holds hit objects.
 layout(constant_id = 0) const bool COUNT_HITS = false;
 
 /// Whether the sun is over the horizon: the constant half of `sunUp`, which says the rest.

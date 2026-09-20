@@ -753,7 +753,7 @@ namespace Rtx
             : (mLastFrameAt.has_value() ? std::chrono::duration<float, std::milli>(now - *mLastFrameAt).count() : 0.0f);
         mLastFrameAt = now;
 
-        // The hit count is an atomic sum over the frame, so the block starts each one at nothing
+        // The miss count is an atomic sum over the frame, so the block starts each one at nothing
         // — and it is not started at all where nothing reads it back, which is the other half of
         // taking the counter out of the game: the atomic went with `COUNT_HITS`, and this is the
         // write a frame that never reads it was still paying for.
@@ -767,6 +767,9 @@ namespace Rtx
         frame.mReconstruction = reconstruction;
 
         Shaders::VisibilityConstants sampled = sampleCamera(camera, *mWorld, reconstruction, &mPreviousCamera);
+
+        // The launch the misses are counted against, which is the traced extent and not the shown one.
+        frame.mCountedRays = mCountHits ? sampled.mCamera.mWidth * sampled.mCamera.mHeight : 0u;
 
         // The puffs are composited over the reconstruction where something upscales, and over the
         // trace's own composite where nothing does. Named before the trace, because the set that
@@ -902,6 +905,7 @@ namespace Rtx
                 .mExtent = VkExtent2D{ mOutputWidth, mOutputHeight },
                 .mInputs = inputs,
                 .mSampled = sampled,
+                .mSpriteTileList = mFrame.getSpriteTileList(inputs),
                 .mTarget = target,
                 .mExposure = exposure,
                 .mBloom = true,
@@ -1058,6 +1062,7 @@ namespace Rtx
                     .mExtent = extent,
                     .mInputs = inputs,
                     .mSampled = sampled,
+                    .mSpriteTileList = mView.getSpriteTileList(inputs),
                     .mTarget = mViewTarget,
                     .mExposure = Display::Picture{},
                 });
