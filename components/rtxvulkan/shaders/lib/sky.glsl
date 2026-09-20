@@ -9,10 +9,12 @@
 // sun's disc, which `gather` already asks about directly.
 
 #include "colour.h"
+#include "look.h"
 #include "scene.h"
 #include "sky.h"
 #include "bindings.glsl"
 #include "frame.glsl"
+#include "variants.glsl"
 
 /// The sky's own glow along a direction, with nothing drawn in it.
 ///
@@ -59,24 +61,47 @@ vec2 cloudUvAt(vec2 crossing, vec2 bearing)
 /// the band it takes the deck out over.
 vec4 cloudSheetAt(vec2 crossing)
 {
+    // Unconditionally, and with no test on the sheet ahead: the host names the near sheet twice
+    // where the weather ahead has none — `CloudDeck::mNext` — so the mix is one path however the
+    // weather stands.
     const vec4 near
         = textureLod(textures[nonuniformEXT(frame.mClouds.mTexture)], cloudUvAt(crossing, frame.mClouds.mBearing), 0.0);
-    const vec4 far = frame.mClouds.mNext == NO_TEXTURE
-        ? near
-        : textureLod(
-              textures[nonuniformEXT(frame.mClouds.mNext)], cloudUvAt(crossing, frame.mClouds.mNextBearing), 0.0);
+    const vec4 far = textureLod(
+        textures[nonuniformEXT(frame.mClouds.mNext)], cloudUvAt(crossing, frame.mClouds.mNextBearing), 0.0);
 
     return mix(near, far, frame.mClouds.mBlend);
 }
 
-/// How high the layer stands over a point, or nothing at all where it stands under one.
+/// How high the deck stands over a point, or nothing at all: where there is no deck, and where
+/// the point stands over it, which is what an eye above the clouds is.
 ///
 /// **A world height rather than one over the eye**, which is what a shadow needs: a layer that rose
 /// with the camera would cast a shadow that moved with it. What still follows the eye is the deck's
 /// *extent*, because the fade rings are the mesh's own and are measured from there.
-float cloudLayerOver(vec3 at)
+///
+/// **One statement of whether there is a deck**, asked by the eye and by a shadow ray alike.
+float deckOver(vec3 at)
 {
+    if (!(frame.mClouds.mOpacity > 0.0) || frame.mClouds.mTexture == NO_TEXTURE)
+        return 0.0;
+
     return max(frame.mClouds.mAltitude - at.z, 0.0);
+}
+
+/// The chord across a cap of angular `radius`: `2 sin(r / 2)`, which is what a direction is tested
+/// against and what the cap's solid angle `pi chord^2` is built from.
+float capChord(float radius)
+{
+    return 2.0 * sin(0.5 * radius);
+}
+
+/// Whether a direction lies within a cap of that `chord` about an axis, both unit, by the chord
+/// rather than the cosine of the angle: at half a degree the cosine is 0.999988 — five of a
+/// float's seven digits spent before the question is asked — where `|a - b|` is `2 sin(theta / 2)`
+/// for unit vectors and loses nothing. The sun's disc and the glare fader's query both ask it.
+bool insideCap(vec3 direction, vec3 axis, float chord)
+{
+    return length(direction - axis) < chord;
 }
 
 /// What a ray that reached nothing finds in the cloud deck, and how much of the sky it hides.
@@ -98,11 +123,10 @@ float cloudLayerOver(vec3 at)
 vec3 cloudDeck(vec3 origin, vec3 direction, out float covered)
 {
     covered = 0.0;
-    if (!(frame.mClouds.mOpacity > 0.0) || frame.mClouds.mTexture == NO_TEXTURE || direction.z <= 0.0)
+    if (direction.z <= 0.0)
         return vec3(0.0);
 
-    // A ray that starts over the layer finds no deck, which is what an eye above the clouds sees.
-    const float height = cloudLayerOver(origin);
+    const float height = deckOver(origin);
     if (height <= 0.0)
         return vec3(0.0);
 
@@ -175,10 +199,10 @@ vec3 cloudDeck(vec3 origin, vec3 direction, out float covered)
 /// `CLOUD_SHADOW_DEPTH` says why it is the alpha *over the sheet's own mean* that darkens.
 float cloudShadow(vec3 position, vec3 towards)
 {
-    if (!(frame.mClouds.mOpacity > 0.0) || frame.mClouds.mTexture == NO_TEXTURE || towards.z <= 0.0)
+    if (towards.z <= 0.0)
         return 1.0;
 
-    const float height = cloudLayerOver(position);
+    const float height = deckOver(position);
     if (height <= 0.0)
         return 1.0;
 
@@ -259,16 +283,16 @@ vec3 moonFace(MoonDisc moon, vec3 direction, float blur, out float covered)
     // A moon that is down, or one the far side of the sky. **The hemisphere test is not optional**:
     // the offsets below are the same for a direction and its opposite, so without it every ray
     // pointing away from a moon would land in the middle of its face.
-    if (moon.mAlpha <= 0.0 || dot(direction, moon.mDirection) <= 0.0)
+    if (moon.mAlpha <= 0.0 || dot(direction, moon.mSource.mDirection) <= 0.0)
         return vec3(0.0);
 
-    const vec2 at = discAt(direction, moon.mRight, moon.mUp, moon.mLimb);
+    const vec2 at = discAt(direction, moon.mRight, moon.mUp, moon.mSource.mLimb);
     const float across = length(at);
 
     // The pixel's own spread in the same units, so the silhouette is antialiased rather than
     // stepped. A moon is degrees wide and a pixel a thousandth of one, so this is a hair either
     // side of the limb and nothing anywhere else.
-    const float fade = max(blur / moon.mLimb, 1.0e-5);
+    const float fade = max(blur / moon.mSource.mLimb, 1.0e-5);
     covered = (1.0 - smoothstep(1.0 - fade, 1.0 + fade, across)) * moon.mAlpha;
     if (covered <= 0.0)
         return vec3(0.0);
@@ -363,17 +387,12 @@ vec3 skyRadiance(vec3 origin, vec3 direction, float blur, out float shown)
     // field belongs here too and is the one layer drawn outside this, which `shown` is what for.
     vec3 colour = frame.mStars.mFade > 0.0 ? frame.mStars.mFade * skyPatches(direction) : vec3(0.0);
 
-    // The chord across the disc rather than the cosine of its angle. Both answer "is this direction
-    // inside it", and at half a degree the cosine is 0.999988 — five of a float's seven digits spent
-    // before the question is asked. `|a - b|` is `2 sin(theta / 2)` for unit vectors, which loses
-    // nothing, and it is the same quantity the cap's solid angle is built from: `pi * chord^2`.
-    //
     // **Drawn on exactly the frames the sun lights anything**, because they are one fact: the
     // irradiance is nought whenever the sun is not over the horizon, and fades to it across dusk. A
     // second field saying whether to draw the disc is what once let a sun shadow out of an empty
     // sky, and there is no longer one to disagree with.
-    const float edge = 2.0 * sin(0.5 * (SUN_ANGULAR_RADIUS + blur));
-    if (sunUp() && length(direction - frame.mSun.mDirection) < edge)
+    const float edge = capChord(SUN_ANGULAR_RADIUS + blur);
+    if (sunUp() && insideCap(direction, frame.mSun.mDirection, edge))
     {
         // **The sun's radiance is five orders of magnitude above the sky's** and this does not
         // pretend otherwise, so it saturates until there is an exposure stage to bring it down.

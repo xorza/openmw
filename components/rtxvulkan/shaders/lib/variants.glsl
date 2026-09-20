@@ -65,4 +65,7 @@ layout(constant_id = 3) const bool HAS_SEA = true;
 /// what sets it.
 layout(constant_id = 4) const uint REORDER = REORDER_NONE;
 
+// Constants five and six are the hit module's own — `visibilityhit.rchit` — and stand after these
+// so that one table of words serves every stage of a pipeline.
+
 #endif

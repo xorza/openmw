@@ -1,41 +1,53 @@
-#ifndef OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_HITSTAGE_GLSL
-#define OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_HITSTAGE_GLSL
+#version 460
 
-// What every shader the trace's hit table names has in common: the hit its own stage already
-// answered, and the two ways of filling the payload in.
-//
-// **Written once and compiled three times.** The three closest-hit shaders differ in one literal
-// apiece — which albedo `resolve` is allowed to build, and whether the surface is shaded as water —
-// and everything else about them is here. Three copies of this is how they would come to disagree
-// about a hit the launch can no longer see for itself.
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_ray_tracing : require
 
 // `gl_HitTriangleVertexPositionsEXT`, which is the stage's own reading of what `traversal.glsl`
 // reads off a query.
 #extension GL_EXT_ray_tracing_position_fetch : require
 
+// The one closest-hit shader the trace's hit table names, compiled three times.
+//
+// **Picked by traversal and not by a branch.** `SceneAcceleration::placeRow` writes each
+// instance's shader-table offset from its material kind, so the hardware follows an index to the
+// stage for that kind — and the three stages are this module under three settings of the two
+// constants below: which albedo `resolve` is allowed to build, and whether the surface is shaded
+// as water. One module is how the three cannot come to disagree about a hit the launch can no
+// longer see for itself.
+//
+// **`LAYERED` folds the layer stack's loop and the four tables it walks out of the two stages no
+// terrain can reach.** `WATER` picks the water's answer, and a frame with no sea still binds that
+// record — an instance's offset is its material's kind, and a scene can hold water the build was
+// told to ignore — so `HAS_SEA` is what says whether it shades as water or as the solid it then is.
+
 #include "camera.h"
 #include "scene.h"
+#include "visibility.h"
 
-#include "bindings.glsl"
-#include "frame.glsl"
-#include "payload.glsl"
-#include "shading.glsl"
-#include "traversal.glsl"
-#include "water.glsl"
+#include "lib/bindings.glsl"
+#include "lib/frame.glsl"
+#include "lib/hitrecord.glsl"
+#include "lib/payload.glsl"
+#include "lib/random.glsl"
+#include "lib/shading.glsl"
+#include "lib/traversal.glsl"
+#include "lib/variants.glsl"
+#include "lib/water.glsl"
 
-/// What the launch told this shader, through the record the hit landed on: `HitRecord` in
-/// `visibility.h` says why it is here and not in the payload.
-layout(shaderRecordEXT, scalar) buffer HitRecordBlock
-{
-    HitRecord record;
-};
+/// The two the hit module is specialized on, after the frame's tuple in `variants.glsl`: whether
+/// ground that kept its layer stack can reach this stage, and whether a hit is shaded as water.
+/// `VisibilityPass` hands each of the three stages its pair.
+layout(constant_id = 5) const bool LAYERED = false;
+layout(constant_id = 6) const bool WATER = false;
+
+layout(location = RTX_PAYLOAD) rayPayloadInEXT VisibilityPayload packed;
+hitAttributeEXT vec2 barycentrics;
 
 /// What this stage's own builtins say the ray found, in the form `resolve` takes.
 ///
-/// **The cone is the camera's, because only the camera's rays reach this table.** The launch traces
-/// the eye's ray and the one behind a pane it peeled, and both leave the same point through the same
-/// lens — so the width at the hit is the lens's own, opened over the distance the stage was handed.
-/// Every other ray in the frame is an inline query inside a shader and never comes through here.
+/// **The cone is the eye's the record names**, opened over the distance the stage was handed:
+/// `stageCone` says which eye and why.
 ///
 /// @param bary the stage's `hitAttributeEXT`, which cannot be read through a function boundary and
 ///        so is passed in.
@@ -46,7 +58,7 @@ Hit stageHit(vec2 bary)
     corners[1] = gl_HitTriangleVertexPositionsEXT[1];
     corners[2] = gl_HitTriangleVertexPositionsEXT[2];
 
-    const Cone cone = coneAt(frame.mCamera);
+    const Cone cone = stageCone();
 
     return committedHit(uint(gl_InstanceCustomIndexEXT), uint(gl_PrimitiveID), bary, gl_HitTEXT,
         cone.mWidth + cone.mSpread * gl_HitTEXT, corners, gl_ObjectToWorldEXT);
@@ -127,11 +139,11 @@ void answerWater(inout Answer answer, Surface surface)
     const uvec2 pixel = stagePixel();
     const vec3 origin = gl_WorldRayOriginEXT;
     const vec3 direction = gl_WorldRayDirectionEXT;
-    const Cone cone = coneAt(frame.mCamera);
+    const Cone cone = stageCone();
 
     answer.mWater = true;
 
-    const WaterShading water = shadeWater(surface, direction, pixel);
+    const WaterShading water = shadeWater(surface, direction, pixel, cone);
     answer.mRadiance = water.mRadiance;
     answer.mResponse = water.mResponse;
     answer.mMirror = water.mMirror;
@@ -157,4 +169,17 @@ void answerWater(inout Answer answer, Surface surface)
         mix(lambert.mRoughness, answer.mResponse.mRoughness, shore));
 }
 
-#endif
+void main()
+{
+    Answer answer = noAnswer();
+
+    const Surface surface
+        = resolveFor(stageHit(barycentrics), gl_WorldRayOriginEXT, gl_WorldRayDirectionEXT, LAYERED);
+
+    if (WATER && HAS_SEA)
+        answerWater(answer, surface);
+    else
+        answerSolid(answer, surface);
+
+    packed = packAnswer(answer);
+}

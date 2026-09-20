@@ -51,7 +51,7 @@ vec2 pressed(vec2 heights, GpuRippleImpulse impulse, vec2 texel)
 vec2 was(ivec2 texel)
 {
     const ivec2 old = texel + step.mShift;
-    if (any(lessThan(old, ivec2(0))) || any(greaterThanEqual(old, ivec2(RIPPLE_GRID))))
+    if (outsideOf(old, uvec2(RIPPLE_GRID)))
         return vec2(0.0);
 
     return imageLoad(before, old).xy;

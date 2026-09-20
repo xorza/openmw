@@ -14,6 +14,7 @@
 #include "bindings.glsl"
 #include "frame.glsl"
 #include "lights.glsl"
+#include "random.glsl"
 #include "sea.glsl"
 #include "traversal.glsl"
 
@@ -35,14 +36,11 @@ vec3 waterTransmittance(float path)
 /// lighting the bottom as though the water were not there makes the same column of water read
 /// differently from above and below, which is what the invariant test measures.
 ///
-/// White above the surface, and for a cell with no water at all.
+/// White above the surface, and for a cell with no water at all: `waterOver` is nought there and
+/// `exp(0)` is white, so no test stands in front of the arithmetic.
 vec3 daylightReaching(vec3 position)
 {
-    const float depth = waterOver(position);
-    if (!(depth > 0.0))
-        return vec3(1.0);
-
-    return waterTransmittance(depth);
+    return waterTransmittance(waterOver(position));
 }
 
 /// Which way the sun travels once it is under the surface, and how far it goes to reach a depth.

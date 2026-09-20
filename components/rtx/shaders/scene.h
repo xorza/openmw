@@ -21,10 +21,29 @@ namespace Rtx::Shaders
 
     /// A slot of the bindless texture array that is not one.
     ///
-    /// **Every slot, and not only a material's.** A cloud deck, a star sheet and a moon's face index
-    /// the same array a diffuse map does, so what stands for *nothing loaded* is one value with one
-    /// meaning.
+    /// **Every optional map, and never a material's diffuse.** A cloud deck, a star sheet, a moon's
+    /// face, a dark, an emissive and an environment map index the same array a diffuse does, so
+    /// what stands for *nothing loaded* is one value with one meaning — and a reader of any of
+    /// them tests for it before the read. The diffuse is not optional: a material with none names
+    /// `TEXTURE_NEUTRAL`, so the albedo, the opacity, the cutout and the crossing read one path.
     const uint NO_TEXTURE = 0xFFFFFFFFu;
+
+    /// How many slots the bindless array holds, which is what the backend's descriptor count and
+    /// the scene's table are both bounded by.
+    const uint TEXTURE_SLOTS = 4096u;
+
+    /// The one slot the scene never hands out: one texel of `NO_TEXTURE_ALBEDO` with an alpha of
+    /// one, stood by the backend when the array is made, under the neutral shading map.
+    ///
+    /// **A texture and not a sentinel, so no reader tests for it.** A material with no diffuse
+    /// read `NO_TEXTURE` before every sample it made, and the test was per material, which is per
+    /// lane. Naming a real slot instead makes the untextured surface the same path as the textured
+    /// one: a one-texel image reads level nought at any cone, and its map is the neutral one every
+    /// texture without an estimate already has.
+    ///
+    /// **The last slot and not the first**, so the scene's own slots stay what they were: its
+    /// table hands out from nought, and every test that names a slot by number still does.
+    const uint TEXTURE_NEUTRAL = TEXTURE_SLOTS - 1u;
 
     /// Elements in one block of the shared vertex buffers, and of the index buffer.
     ///
@@ -420,6 +439,12 @@ namespace Rtx::Shaders
     /// `additiveAlong` and to nothing that shades a hit — so no bit here says so twice.
     const uint MATERIAL_ADD_WHOLE = 0x08u;
 
+    /// Ground that kept its layer stack: the albedo is the sum over `mLayerOffset`'s run and the
+    /// diffuse is the neutral slot. A chunk far enough to be flattened names its composite as the
+    /// diffuse instead and carries this bit no longer — `CellPlacer::wantsFlattening` is where the
+    /// two swap, and this is the host's one rule for which a row is, written where the row is.
+    const uint MATERIAL_STACKED = 0x10u;
+
     /// Which texture unit the dark map is bound at, in these bits of `mFlags` —
     /// `GpuMesh::mUnitStreams` says which stream that unit reads.
     const uint MATERIAL_DARK_UNIT_SHIFT = 8u;
@@ -612,6 +637,13 @@ namespace Rtx::Shaders
         /// of two positions is exact.
         uint64 mPoseBlocks;
         uint64 mPreviousPoseBlocks;
+
+        /// One `uint` per slot of the bindless array: how many texels its texture holds, which is
+        /// the one term of a mip level that is the texture's own — `coneLod`. A load where a
+        /// `textureSize` was a texture-header read on every sample, and stated over the same
+        /// integer so the level the shader takes its logarithm of is the number it always was.
+        /// The backend's texture array owns and writes it, a slot at a time as textures arrive.
+        uint64 mTextureTexels;
     };
 
     /// What a reference to each table may claim about its address, and so what the host checks.
@@ -903,7 +935,7 @@ namespace Rtx::Shaders
     static_assert(sizeof(GpuMaterial) == 88, "GpuMaterial must be scalar-packed on every side");
     static_assert(sizeof(GpuSprite) == 56, "GpuSprite must be scalar-packed on every side");
     static_assert(sizeof(GpuEmitter) == 40, "GpuEmitter must be scalar-packed on every side");
-    static_assert(sizeof(GpuTables) == 144, "GpuTables must be scalar-packed on every side");
+    static_assert(sizeof(GpuTables) == 152, "GpuTables must be scalar-packed on every side");
 
 #endif
 

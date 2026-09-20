@@ -18,36 +18,11 @@
 // lands in the slot's copy of the positions and the normals, at the mesh's own run — which is what
 // the structure is refitted from and what a hit reads its shading normal out of.
 
-#include "scene.h"
 #include "skinning.h"
 
+#include "lib/runs.glsl"
+
 layout(local_size_x = SKIN_WORKGROUP) in;
-
-// Four, because a twelve-byte element at an arbitrary index is only ever float-aligned.
-layout(buffer_reference, buffer_reference_align = TABLE_ALIGN_ROWS, scalar) readonly buffer Vectors
-{
-    vec3 at[];
-};
-
-layout(buffer_reference, buffer_reference_align = TABLE_ALIGN_ROWS, scalar) writeonly buffer Written
-{
-    vec3 at[];
-};
-
-layout(buffer_reference, buffer_reference_align = TABLE_ALIGN_ROWS, scalar) readonly buffer Runs
-{
-    uint at[];
-};
-
-layout(buffer_reference, buffer_reference_align = TABLE_ALIGN_ROWS, scalar) readonly buffer Influences
-{
-    GpuInfluence at[];
-};
-
-layout(buffer_reference, buffer_reference_align = BONE_ALIGN, scalar) readonly buffer Bones
-{
-    GpuBone at[];
-};
 
 layout(push_constant, scalar) uniform Push
 {
@@ -60,7 +35,7 @@ void main()
     if (vertex >= skin.mCount)
         return;
 
-    const uint run = Runs(skin.mRuns).at[vertex];
+    const uint run = UintRun(skin.mRuns).at[vertex];
     const uint first = run >> RUN_COUNT_BITS;
     const uint count = run & RUN_COUNT_MASK;
 
@@ -69,17 +44,17 @@ void main()
     vec4 rows[3] = vec4[3](vec4(0.0), vec4(0.0), vec4(0.0));
     for (uint at = 0u; at < count; ++at)
     {
-        const GpuInfluence share = Influences(skin.mInfluences).at[first + at];
-        const GpuBone bone = Bones(skin.mBones).at[share.mBone];
+        const GpuInfluence share = InfluenceRun(skin.mInfluences).at[first + at];
+        const GpuBone bone = BoneRun(skin.mBones).at[share.mBone];
         rows[0] += share.mWeight * bone.mRows[0];
         rows[1] += share.mWeight * bone.mRows[1];
         rows[2] += share.mWeight * bone.mRows[2];
     }
 
-    const vec4 point = vec4(Vectors(skin.mBindPositions).at[vertex], 1.0);
-    const vec3 normal = Vectors(skin.mBindNormals).at[vertex];
+    const vec4 point = vec4(Vec3Run(skin.mBindPositions).at[vertex], 1.0);
+    const vec3 normal = Vec3Run(skin.mBindNormals).at[vertex];
 
-    Written(skin.mPositions).at[vertex] = vec3(dot(rows[0], point), dot(rows[1], point), dot(rows[2], point));
-    Written(skin.mNormals).at[vertex]
+    Vec3Written(skin.mPositions).at[vertex] = vec3(dot(rows[0], point), dot(rows[1], point), dot(rows[2], point));
+    Vec3Written(skin.mNormals).at[vertex]
         = vec3(dot(rows[0].xyz, normal), dot(rows[1].xyz, normal), dot(rows[2].xyz, normal));
 }

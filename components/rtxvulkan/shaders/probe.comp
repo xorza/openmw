@@ -8,7 +8,7 @@
 //   1. through a storage-buffer descriptor, which is what the renderer does today;
 //   2. through a pointer the host handed over whole, as a push constant;
 //   3. through a pointer read out of a table and indexed by block, which is what a scene made of
-//      blocks would do — `Block(blockAddresses[id / BLOCK]).values[id % BLOCK]`;
+//      blocks would do — `Vec3Run(blockAddresses[id / BLOCK]).at[id % BLOCK]`;
 //   4. through a pointer read out of a uniform block, which is how the frame block carries where
 //      every table is.
 //
@@ -22,6 +22,8 @@
 
 #include "probe.h"
 #include "scene.h"
+
+#include "lib/runs.glsl"
 
 layout(local_size_x = PROBE_WORKGROUP) in;
 
@@ -53,13 +55,6 @@ layout(set = 0, binding = 4, scalar) writeonly buffer RowReadings
     ProbeRow rowReadings[];
 };
 
-// The alignment the packed `vec3` tables in `SceneBuffers` would be reached at: four, because a
-// twelve-byte element at an arbitrary index is only ever float-aligned.
-layout(buffer_reference, buffer_reference_align = TABLE_ALIGN_ROWS, scalar) readonly buffer Block
-{
-    vec3 values[];
-};
-
 layout(buffer_reference, buffer_reference_align = PROBE_ROW_ALIGN, scalar) readonly buffer Rows
 {
     ProbeRow rows[];
@@ -77,9 +72,9 @@ void main()
         return;
 
     readings[at] = sourceValues[at];
-    readings[probe.mCount + at] = Block(probe.mSource).values[at];
-    readings[2u * probe.mCount + at] = Block(blockAddresses[at / probe.mBlock]).values[at % probe.mBlock];
-    readings[3u * probe.mCount + at] = Block(addressed.mSource).values[at];
+    readings[probe.mCount + at] = Vec3Run(probe.mSource).at[at];
+    readings[2u * probe.mCount + at] = Vec3Run(blockAddresses[at / probe.mBlock]).at[at % probe.mBlock];
+    readings[3u * probe.mCount + at] = Vec3Run(addressed.mSource).at[at];
 
     rowReadings[at] = Rows(addressed.mRows).rows[at];
 }

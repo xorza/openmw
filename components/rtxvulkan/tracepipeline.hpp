@@ -16,6 +16,15 @@ namespace Rtx
 {
     class Device;
 
+    /// One closest-hit stage: a module, and the specialization words of its own that follow the
+    /// pipeline's in the table `constant_id` indexes — so three stages may be one module under
+    /// three settings.
+    struct HitShader
+    {
+        std::filesystem::path mModule;
+        std::span<const std::uint32_t> mSpecialization;
+    };
+
     /// Which shader stands at each record of a trace's shader binding table. One miss record
     /// apiece, in the order given: a missed hit object naming index `i` runs entry
     /// `i` of `mMiss`. A closest-hit shader stands behind `mHitRecordsPerShader` records in turn, so
@@ -26,7 +35,7 @@ namespace Rtx
     {
         std::filesystem::path mRaygen;
         std::span<const std::filesystem::path> mMiss;
-        std::span<const std::filesystem::path> mHit;
+        std::span<const HitShader> mHit;
 
         /// How many records each closest-hit shader stands behind.
         std::uint32_t mHitRecordsPerShader = 1;
@@ -57,7 +66,8 @@ namespace Rtx
         /// @param shaders the compiled SPIR-V the build wrote, by path.
         /// @param name what a capture calls the pipeline.
         /// @param specialization one word per specialization constant, as `ComputePipeline` takes
-        ///        them. Every stage is given the same words.
+        ///        them. Every stage is given the same words, and a closest-hit stage its own after
+        ///        them.
         TracePipeline(const Device& device, std::span<const VkDescriptorSetLayoutBinding> bindings,
             std::span<const VkDescriptorSetLayout> laterSets, const TraceShaders& shaders, std::string_view name,
             std::span<const std::uint32_t> specialization = {});

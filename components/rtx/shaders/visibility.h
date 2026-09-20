@@ -17,6 +17,7 @@
 // this header needs that `hosttypes.h` does not carry.
 #ifdef RTX_HOST
 
+#include <array>
 #include <cstddef>
 
 namespace Rtx::Shaders
@@ -34,8 +35,8 @@ namespace Rtx::Shaders
     /// rather than off the payload.
     const uint HIT_SHADER_COUNT = 3u;
 
-    /// What a hit record carries after its handle, which is everything a closest-hit shader is told
-    /// by the launch that invoked it.
+    /// What a hit record carries after its handle, which is everything a hit's stages are told by
+    /// the launch that invoked them.
     ///
     /// **Nothing crosses the payload inwards, and this is why.** A field the launch writes into the
     /// payload before `hitObjectExecuteShaderEXT` is not what the closest-hit shader reads once a
@@ -44,13 +45,53 @@ namespace Rtx::Shaders
     /// arrive right. No launch sorts unless `RenderProfile::mReorder` asks, and the record is what
     /// keeps that a choice: it is read by the shader the hit object names, through the index
     /// traversal computed, whatever stands between the trace and the execute.
+    ///
+    /// **Each closest-hit shader stands behind a block of `HIT_RECORDS_PER_SHADER` of these**: one
+    /// per eye the launch casts through, and within an eye's run one per layer of the peel. The
+    /// instance's offset names the block, `hitRecordOffset` the record in it, and `hitRecordTable`
+    /// is the one statement of what each holds.
     struct HitRecord
     {
         /// Which layer of the peel the shader is standing at, counting the eye's own hit as nought.
         /// `PEEL_LAYERS` is the one past the last pane the launch peels, and a surface found there is
         /// drawn as the solid it stands in for whatever its own opacity says.
         uint mLayer;
+
+        /// One where the ray was cast through `VisibilityConstants::mArms` and nought through
+        /// `mCamera`, which is what a stage reads its cone off: the arms' eye is wider than the
+        /// world's, and a hit on the arms resolved at the world eye's pixel read a level too fine.
+        uint mArms;
     };
+
+    /// How many eyes the launch casts through: the world's and the arms'.
+    const uint HIT_RECORD_EYES = 2u;
+
+    /// How many records each closest-hit shader stands behind, and so what an instance's offset
+    /// is its kind times: an eye's run of layers, per eye.
+    const uint HIT_RECORDS_PER_SHADER = HIT_RECORD_EYES * HIT_RECORD_LAYERS;
+
+    /// Which record of its kind's block a hit lands on, for a ray cast through the eye `arms` says
+    /// at `layer` of the peel: what the launch adds to the instance's own offset.
+    RTX_SHADER uint hitRecordOffset(uint arms, uint layer)
+    {
+        return arms * HIT_RECORD_LAYERS + layer;
+    }
+
+#ifdef RTX_HOST
+    /// The whole hit table, kind by kind: what `VisibilityPass` hands the pipeline and what a test
+    /// holds `hitRecordOffset` against.
+    inline std::array<HitRecord, HIT_SHADER_COUNT * HIT_RECORDS_PER_SHADER> hitRecordTable()
+    {
+        std::array<HitRecord, HIT_SHADER_COUNT * HIT_RECORDS_PER_SHADER> records{};
+        for (uint kind = 0; kind < HIT_SHADER_COUNT; ++kind)
+            for (uint arms = 0; arms < HIT_RECORD_EYES; ++arms)
+                for (uint layer = 0; layer < HIT_RECORD_LAYERS; ++layer)
+                    records[kind * HIT_RECORDS_PER_SHADER + hitRecordOffset(arms, layer)]
+                        = HitRecord{ .mLayer = layer, .mArms = arms };
+
+        return records;
+    }
+#endif
 
     /// The sky, which is the only miss record the trace has.
     const uint MISS_RECORD_SKY = 0u;
@@ -495,7 +536,7 @@ namespace Rtx::Shaders
     // Pinned for the reason `scene.h` gives: the side that writes these bytes and the side that
     // reads them are different compilers.
     static_assert(offsetof(VisibilityConstants, mTables) == 1160, "GpuTables must land eight-aligned and last");
-    static_assert(sizeof(VisibilityConstants) == 1304, "VisibilityConstants must be scalar-packed on every side");
+    static_assert(sizeof(VisibilityConstants) == 1312, "VisibilityConstants must be scalar-packed on every side");
 #endif
 
 #ifdef RTX_HOST

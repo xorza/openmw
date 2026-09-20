@@ -31,6 +31,7 @@
 // reaches the fog, and the fog reaches the traversal, and a dispatch that can trace answers
 // differently under another process's preemption. Nothing here traces.
 
+#include "camera.h"
 #include "scene.h"
 
 #include "lib/bindings.glsl"
@@ -77,7 +78,7 @@ void main()
     const float distance = imageLoad(depth, ivec2(traced)).y;
 
     const Cone cone = coneAt(camera);
-    const PuffLayer shape = spritesAlong(traced, cone, origin, direction, distance, false);
+    const PuffLayer shape = spritesAlong(traced, origin, direction, distance, cone, false);
 
     PuffLayer layer = shape;
     layer.mTransmittance = shape.mTransmittance * stood.y;

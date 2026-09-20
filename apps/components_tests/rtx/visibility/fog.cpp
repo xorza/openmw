@@ -1251,9 +1251,8 @@ namespace Rtx::Testing
                 Shaders::MoonDisc moon{};
                 osg::Vec3f towards(0.0f, 1.0f, 0.5f);
                 towards.normalize();
-                moon.mDirection = towards;
-                moon.mIrradiance = osg::Vec3f(0.0f, 0.0f, irradiance);
-                moon.mLimb = std::sin(moonAngularRadius(Moon::Masser));
+                moon.mSource
+                    = Shaders::moonSource(towards, osg::Vec3f(0.0f, 0.0f, irradiance), moonAngularRadius(Moon::Masser));
                 moon.mAlpha = 0.0f;
                 moon.mFace = Shaders::NO_TEXTURE;
                 camera.mMoons[0] = moon;

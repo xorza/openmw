@@ -49,8 +49,13 @@ namespace Rtx
             // Zero where the material has no texture to read a mask out of, so that the shader's
             // comparison agrees with `Material::isCutout`, which is what decided whether traversal
             // would ever make it.
+            // A material with no diffuse names the neutral slot, so the shader reads one path —
+            // `TEXTURE_NEUTRAL` — and ground that kept its stack says so with a bit, which is the
+            // one fact the sentinel was carrying.
+            const bool untextured = material.mDiffuse == sNoIndex;
+
             return Shaders::GpuMaterial{
-                .mDiffuse = material.mDiffuse,
+                .mDiffuse = untextured ? Shaders::TEXTURE_NEUTRAL : material.mDiffuse,
                 .mAlphaCutoff = material.isCutout() ? material.getAlphaCutoff() : 0.0f,
 
                 // One where the surface is all there, so traversal branches on a number rather than
@@ -66,6 +71,7 @@ namespace Rtx
                 .mEnvironmentColour = material.mEnvironmentColour,
                 .mDark = material.mDark,
                 .mFlags = (material.isMedium() ? Shaders::MATERIAL_MEDIUM : 0u)
+                    | (untextured && material.mLayers.mCount > 0 ? Shaders::MATERIAL_STACKED : 0u)
                     | vertexColourFlag(material.mVertexColour)
                     | (material.isAdditive() && material.mBlend == BlendKind::AddWhole ? Shaders::MATERIAL_ADD_WHOLE
                                                                                        : 0u)
@@ -80,7 +86,7 @@ namespace Rtx
         Shaders::GpuMaterial sentinelMaterial()
         {
             return Shaders::GpuMaterial{
-                .mDiffuse = Shaders::NO_TEXTURE,
+                .mDiffuse = Shaders::TEXTURE_NEUTRAL,
                 .mAlphaCutoff = 0.0f,
                 .mOpacity = 1.0f,
                 .mLayerOffset = 0,

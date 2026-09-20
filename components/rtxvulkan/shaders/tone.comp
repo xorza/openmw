@@ -18,6 +18,7 @@
 #include "camera.h"
 #include "colour.h"
 #include "gbuffer.h"
+#include "scene.h"
 #include "tone.h"
 
 #include "lib/bloom.glsl"

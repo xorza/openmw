@@ -25,6 +25,7 @@
 #include "random.glsl"
 #include "traversal.glsl"
 #include "underwater.glsl"
+#include "variants.glsl"
 
 /// The heading and speed each scale drifts on.
 ///
@@ -344,8 +345,8 @@ float sunInAir(float extinction, float visible)
 vec3 moonsInAir(float extinction, FogSources sources, float lunar)
 {
     if (!sources.mMoonlit)
-        return sources.mTerms.mMasser * exp(-fogBeamDepth(extinction, frame.mMoons[0].mDirection))
-            + sources.mTerms.mSecunda * exp(-fogBeamDepth(extinction, frame.mMoons[1].mDirection));
+        return sources.mTerms.mMasser * exp(-fogBeamDepth(extinction, frame.mMoons[0].mSource.mDirection))
+            + sources.mTerms.mSecunda * exp(-fogBeamDepth(extinction, frame.mMoons[1].mSource.mDirection));
 
     return sources.mDrawn * exp(-fogBeamDepth(extinction, sources.mDrawnSky.mDirection))
         * (lunar / sources.mChance);
@@ -566,25 +567,15 @@ float fogColumnOver(FogRay ray, float span)
 
     // The stretch spent above the base: the heights it runs between, and its own length. `enters`
     // is `from` or nought and never anything else, which is what `mEntering` was taken from.
-    float enters = 0.0;
-    float leaves = 0.0;
-    float above = 0.0;
-    if (from > 0.0 && to > 0.0)
-    {
-        enters = from;
-        leaves = to;
-        above = span;
-    }
-    else if (from > 0.0)
-    {
-        enters = from;
-        above = span * (from / (from - to));
-    }
-    else if (to > 0.0)
-    {
-        leaves = to;
-        above = span * (to / (to - from));
-    }
+    //
+    // **One expression for the four cases the two signs make, and each case is the bits its own
+    // branch gave.** Both ends above: `x / x` is one. One end above: `from - 0` is `from`, and
+    // `(-to) / (from - to)` is `to / (to - from)` because a negation is exact. Both below: nought.
+    // A level ray divides nought by nought and is the one select left. This runs once per sprite
+    // per ray, where the lanes of a warp stand on either side of the base.
+    const float enters = max(from, 0.0);
+    const float leaves = max(to, 0.0);
+    const float above = from == to ? (from > 0.0 ? span : 0.0) : span * ((enters - leaves) / (from - to));
 
     // **Both exponentials are taken before the division and neither can overflow**, because both
     // heights are above the base. Written the other way round — one `exp` times the mean falloff of

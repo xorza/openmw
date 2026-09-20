@@ -164,6 +164,34 @@ RTX_SHADER Ray rayAt(Camera camera, vec2 pixel)
     return ray;
 }
 
+/// Where a point lands on the image plane a basis spans, and how far ahead of the eye it stands.
+struct Screen
+{
+    /// Minus one to one across and down the plane, as `rayAt` reads its `uv` — before the divide by
+    /// `mAhead`, which the caller makes, because a point behind the eye has no place on the plane
+    /// and only the caller knows what it answers there.
+    vec2 mAt;
+
+    /// Along the forward, in world units. Not positive for a point on or behind the eye's plane.
+    float mAhead;
+};
+
+/// The inverse of the generation in `rayAt`, for one basis and one point `offset` from its eye.
+///
+/// **Over a basis and not a `Camera`**, so the previous frame's three vectors pass through it as
+/// this frame's do. The basis carries the image plane's half extents, so dividing by each vector's
+/// own square undoes the direction and the scale together; a plane `spread` times wider puts the
+/// same point that much nearer its middle. **The association is the reprojection's**, because a
+/// motion vector is what the answer is judged by: every caller lands on the same bits.
+RTX_SHADER Screen screenOf(vec3 forward, vec3 right, vec3 up, vec3 offset, vec2 spread)
+{
+    Screen screen;
+    screen.mAhead = dot(offset, forward);
+    screen.mAt = vec2(dot(offset, right) / dot(right, right) / spread.x, -dot(offset, up) / dot(up, up) / spread.y);
+
+    return screen;
+}
+
 /// How wide a pixel's cone is where the ray starts, and how much wider it gets per unit travelled.
 struct Cone
 {

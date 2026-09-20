@@ -353,6 +353,7 @@ namespace Rtx
             .mPoseBlocks = held.getAcceleration().getPoseBlocks(held.getSlot()),
             .mPreviousPoseBlocks = held.getAcceleration().getPreviousPoseBlocks(held.getSlot()),
             .mTextures = held.getTextures(),
+            .mTextureTexels = held.getTextureTexels(),
             .mWaves = &mWaves,
             .mRipples = &mRipples,
             .mFog = &mFog,

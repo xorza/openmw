@@ -60,6 +60,7 @@ namespace Rtx
                 && at(tables.mLights, Shaders::TABLE_ALIGN_ROWS) && at(tables.mLightList, Shaders::TABLE_ALIGN_ROWS)
                 && at(tables.mBlueNoise, Shaders::TABLE_ALIGN_ROWS) && at(tables.mSprites, Shaders::TABLE_ALIGN_ROWS)
                 && at(tables.mEmitters, Shaders::TABLE_ALIGN_ROWS)
+                && at(tables.mTextureTexels, Shaders::TABLE_ALIGN_ROWS)
                 && at(tables.mSpriteTileList, Shaders::TABLE_ALIGN_ROWS);
         }
 
@@ -85,15 +86,26 @@ namespace Rtx
             | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR | VK_SHADER_STAGE_MISS_BIT_KHR;
         constexpr auto sStorage = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 
-        /// What each hit record carries: for every closest-hit shader in turn, one record per layer
-        /// of the peel, which is how a shader is told which layer it stands at.
-        constexpr std::size_t sHitRecordCount = Shaders::HIT_SHADER_COUNT * Shaders::HIT_RECORD_LAYERS;
-        constexpr std::array<Shaders::HitRecord, sHitRecordCount> sHitRecords = [] {
-            std::array<Shaders::HitRecord, sHitRecordCount> records{};
-            for (std::size_t record = 0; record < records.size(); ++record)
-                records[record].mLayer = static_cast<std::uint32_t>(record % Shaders::HIT_RECORD_LAYERS);
-            return records;
-        }();
+        /// What each hit record carries: for every closest-hit shader in turn, an eye's run of
+        /// layers per eye, which is how a stage is told which eye cast the ray and which layer of
+        /// the peel it stands at. `hitRecordTable` is the one statement of it.
+        const auto sHitRecords = Shaders::hitRecordTable();
+
+        /// The one hit module under its three settings, in `MaterialKind` order, which is the
+        /// order traversal indexes them by: which albedo `resolve` may build, and whether the hit
+        /// is shaded as water. Constants five and six, after the frame's tuple.
+        constexpr std::array<std::uint32_t, 2> sSurfaceHit{ 0u, 0u };
+        constexpr std::array<std::uint32_t, 2> sTerrainHit{ 1u, 0u };
+        constexpr std::array<std::uint32_t, 2> sWaterHit{ 0u, 1u };
+
+        /// Whether a deck that is drawn names a sheet at both ends of its blend. The shader mixes
+        /// the two unconditionally — `CloudDeck::mBlend` — so a deck with a sheet and no sheet
+        /// ahead is a read of the bindless array at a slot nothing holds, which loses the device.
+        /// Debug-only, through the assert that calls it.
+        [[maybe_unused]] bool deckNamesBothSheets(const Shaders::CloudDeck& deck)
+        {
+            return deck.mTexture == Shaders::NO_TEXTURE || deck.mNext != Shaders::NO_TEXTURE;
+        }
 
         /// The structure, the hit counter, the frame itself, the sea and the fog's field, in the
         /// order the shader declares them. The tables a hit reads are in `GpuTables`; the channels
@@ -161,7 +173,7 @@ namespace Rtx
         // and a disc still on its way down lights nothing.
         bool moons = false;
         for (const Shaders::MoonDisc& moon : frame.mMoons)
-            moons = moons || moon.mAlpha > 0.0f || moon.mIrradiance != Shaders::vec3();
+            moons = moons || moon.mAlpha > 0.0f || moon.mSource.mIrradiance != Shaders::vec3();
 
         return VisibilityVariant{
             // Nought exactly where the sun is not up, and it fades to that across dusk rather than
@@ -217,9 +229,12 @@ namespace Rtx
         const std::filesystem::path raygen = shaders / "visibility.rgen.spv";
         const std::filesystem::path anyHit = shaders / "visibility.rahit.spv";
         const std::array<std::filesystem::path, Shaders::MISS_RECORD_COUNT> miss{ shaders / "visibility.rmiss.spv" };
-        // In `MaterialKind` order, which is the order traversal indexes them by.
-        const std::array<std::filesystem::path, Shaders::HIT_SHADER_COUNT> hit{ shaders / "visibilitysurface.rchit.spv",
-            shaders / "visibilityterrain.rchit.spv", shaders / "visibilitywater.rchit.spv" };
+        const std::filesystem::path hitModule = shaders / "visibilityhit.rchit.spv";
+        const std::array<HitShader, Shaders::HIT_SHADER_COUNT> hit{
+            HitShader{ .mModule = hitModule, .mSpecialization = sSurfaceHit },
+            HitShader{ .mModule = hitModule, .mSpecialization = sTerrainHit },
+            HitShader{ .mModule = hitModule, .mSpecialization = sWaterHit },
+        };
 
         // No tuple and no specialization, because it reads what the pass before it wrote and
         // has no opinion about the sky. Made here rather than among the table below so that the
@@ -286,7 +301,7 @@ namespace Rtx
                                 .mRaygen = raygen,
                                 .mMiss = miss,
                                 .mHit = hit,
-                                .mHitRecordsPerShader = Shaders::HIT_RECORD_LAYERS,
+                                .mHitRecordsPerShader = Shaders::HIT_RECORDS_PER_SHADER,
                                 .mHitRecordData = std::as_bytes(std::span(sHitRecords)),
                                 .mAnyHit = anyHit,
                             },
@@ -469,6 +484,7 @@ namespace Rtx
         described.mTables.mIndexBlocks = inputs.mIndexBlocks;
         described.mTables.mPoseBlocks = inputs.mPoseBlocks;
         described.mTables.mPreviousPoseBlocks = inputs.mPreviousPoseBlocks;
+        described.mTables.mTextureTexels = inputs.mTextureTexels;
 
         // The trace's own, shaded and binned for this camera ahead of it, or the list of nothing
         // for a camera that draws no sprites and binned none.
@@ -480,6 +496,7 @@ namespace Rtx
         // an address of nought or one off its claimed alignment is the same mistake one step later,
         // and the device says even less about it.
         assert(everyTableAddressed(described.mTables) && "a table addressed as nothing, or not as its block declares");
+        assert(deckNamesBothSheets(described.mClouds) && "a deck drawn from one sheet and no sheet ahead");
 
         writeConstants(commands, described);
     }

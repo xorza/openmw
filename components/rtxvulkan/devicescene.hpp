@@ -109,6 +109,7 @@ namespace Rtx
 
         /// The set the trace binds: the copy the last placement wrote, brought up to date by it.
         VkDescriptorSet getTextures() const { return mTextures.getSet(mSlot); }
+        VkDeviceAddress getTextureTexels() const { return mTextures.getTexelsAddress(mSlot); }
 
     private:
         /// Records the bake of every composite that arrived since the last, over `slot`'s copy of

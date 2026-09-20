@@ -9,6 +9,7 @@
 // for. So it takes the field it is asked about rather than reading the frame's, and it is the one
 // piece of the sky that is not `sky.glsl`'s.
 
+#include "look.h"
 #include "scene.h"
 #include "sky.h"
 

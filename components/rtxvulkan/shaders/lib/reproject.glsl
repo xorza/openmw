@@ -8,6 +8,8 @@
 // infinitely far, moves only when the eye turns. A puff has no answer here: none is in the
 // frame, so nothing in it moves with one.
 
+#include "camera.h"
+
 #include "bindings.glsl"
 #include "geometry.glsl"
 #include "records.glsl"
@@ -55,9 +57,9 @@ struct PreviousScreen
     bool mFound;
 };
 
-/// **The inverse of the generation in `rayAt`, and shared for the reason `rayAt` itself is.** A
-/// pixel reprojects the surface it found and the fog volume reprojects every froxel of its own grid;
-/// two derivations of one projection are two chances to disagree about where the previous frame was.
+/// **`screenOf` over the previous basis, and shared for the reason `rayAt` itself is.** A pixel
+/// reprojects the surface it found and the fog volume reprojects every froxel of its own grid; two
+/// derivations of one projection are two chances to disagree about where the previous frame was.
 ///
 /// **An offset from the eye and never a world position.** `mCameraMotion` is the step between two
 /// eyes, differenced on the host where a float still has digits to spare — where the two positions
@@ -71,17 +73,11 @@ PreviousScreen previousScreenThrough(vec3 was, vec2 spread)
     // first, a resize, a new scene, and any jump a motion vector could not describe. Behind the
     // previous eye there is no answer either, and the divide below would fold such a point back
     // into the frame as a plausible coordinate.
-    const float ahead = dot(was, frame.mPreviousForward);
-    if (!(dot(frame.mPreviousForward, frame.mPreviousForward) > 0.0) || !(ahead > 0.0))
+    const Screen screen = screenOf(frame.mPreviousForward, frame.mPreviousRight, frame.mPreviousUp, was, spread);
+    if (!(dot(frame.mPreviousForward, frame.mPreviousForward) > 0.0) || !(screen.mAhead > 0.0))
         return PreviousScreen(vec2(0.0), false);
 
-    // The basis carries the image plane's half extents, so dividing by each vector's own square
-    // undoes the direction and the scale together; a plane `spread` times wider puts the same
-    // point that much nearer its middle.
-    const float across = dot(was, frame.mPreviousRight) / dot(frame.mPreviousRight, frame.mPreviousRight) / spread.x;
-    const float down = -dot(was, frame.mPreviousUp) / dot(frame.mPreviousUp, frame.mPreviousUp) / spread.y;
-
-    const vec2 at = (vec2(across, down) / ahead) * 0.5 + 0.5;
+    const vec2 at = (screen.mAt / screen.mAhead) * 0.5 + 0.5;
 
     return PreviousScreen(clamp(at, vec2(-PREVIOUS_SCREEN_REACH), vec2(1.0 + PREVIOUS_SCREEN_REACH)), true);
 }
@@ -238,10 +234,9 @@ float clipDepth(vec3 direction, float along)
     if (frame.mCamera.mOrthographic != 0u)
         return clamp((z - frame.mNear) / (frame.mFar - frame.mNear), 0.0, 1.0);
 
-    if (!(z > frame.mNear))
-        return 0.0;
-
-    return frame.mFar / (frame.mFar - frame.mNear) * (1.0 - frame.mNear / z);
+    // A surface at or short of the near plane writes nought: `z` is held at the plane, where the
+    // expression is exactly nought, and the divide by nothing goes with it.
+    return frame.mFar / (frame.mFar - frame.mNear) * (1.0 - frame.mNear / max(z, frame.mNear));
 }
 
 #endif

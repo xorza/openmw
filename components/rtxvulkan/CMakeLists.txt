@@ -68,9 +68,7 @@ set(RTX_SHADERS
     shaders/visibility.rahit
     shaders/visibility.rgen
     shaders/visibility.rmiss
-    shaders/visibilitysurface.rchit
-    shaders/visibilityterrain.rchit
-    shaders/visibilitywater.rchit
+    shaders/visibilityhit.rchit
     shaders/wavecompose.comp
     shaders/waveform.comp
     shaders/waveline.comp
@@ -128,7 +126,7 @@ set(RTX_SHADER_LIB
     shaders/lib/froxel.glsl
     shaders/lib/geometry.glsl
     shaders/lib/ground.glsl
-    shaders/lib/hitstage.glsl
+    shaders/lib/hitrecord.glsl
     shaders/lib/lights.glsl
     shaders/lib/medium.glsl
     shaders/lib/payload.glsl
@@ -136,6 +134,7 @@ set(RTX_SHADER_LIB
     shaders/lib/random.glsl
     shaders/lib/records.glsl
     shaders/lib/reproject.glsl
+    shaders/lib/runs.glsl
     shaders/lib/sea.glsl
     shaders/lib/shading.glsl
     shaders/lib/sky.glsl

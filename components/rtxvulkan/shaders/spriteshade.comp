@@ -11,6 +11,7 @@
 #include "spriteshade.h"
 
 #include "lib/basis.glsl"
+#include "lib/spritelist.glsl"
 
 /// Cells along each side of the grid.
 ///
@@ -32,16 +33,6 @@ const float SPRITE_SHADE_LARGEST_IN_CELLS = 8.0;
 const uint SPRITE_SHADE_SUN = 0u;
 
 layout(local_size_x = SPRITE_SHADE_WORKGROUP) in;
-
-layout(buffer_reference, buffer_reference_align = TABLE_ALIGN_ROWS, scalar) buffer Sprites
-{
-    GpuSprite at[];
-};
-
-layout(buffer_reference, buffer_reference_align = TABLE_ALIGN_ROWS, scalar) readonly buffer Emitters
-{
-    GpuEmitter at[];
-};
 
 layout(buffer_reference, buffer_reference_align = TABLE_ALIGN_BLOCKS, scalar) buffer Order
 {
@@ -209,7 +200,7 @@ void main()
     if (emitter >= shade.mEmitterCount)
         return;
 
-    const GpuEmitter held = Emitters(shade.mEmitters).at[emitter];
+    const GpuEmitter held = EmitterTable(shade.mEmitters).at[emitter];
 
     // An emitter nothing shades keeps the nought its sprites were built with.
     if (!spriteShadeWants(held))
@@ -221,7 +212,7 @@ void main()
     const vec3 upward = cross(toward, across);
 
     const uint lane = gl_LocalInvocationID.x;
-    Sprites sprites = Sprites(shade.mSprites);
+    WrittenSprites sprites = WrittenSprites(shade.mSprites);
 
     // **The two lights of one emitter never write the same word**, which is what lets both run at
     // once: light `l`'s keys are the whole sprite table over again at `l * mCount`.

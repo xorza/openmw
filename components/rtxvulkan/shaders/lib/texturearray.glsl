@@ -13,7 +13,8 @@
 // worth having.
 #extension GL_EXT_nonuniform_qualifier : require
 
-/// Every texture the scene loaded, indexed by the slot a material, a layer or an emitter names.
+/// Every texture the scene loaded, indexed by the slot a material, a layer or an emitter names —
+/// and at `TEXTURE_NEUTRAL` the one texel a material with no diffuse names instead.
 ///
 /// **A slot is qualified where it indexes and never where it is passed.** Neighbouring lanes hit
 /// different materials over most of a frame, so the descriptor read has to be a waterfall — and what

@@ -17,6 +17,8 @@
 
 #ifdef RTX_HOST
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 
 #include <osg/Vec2f>
@@ -36,6 +38,13 @@ namespace Rtx::Shaders
     using uvec3 = osg::Vec3ui;
     using uint = std::uint32_t;
     using uint64 = std::uint64_t;
+
+    // **The builtins a shared scalar curve spells**, so that a curve a test has to call reads on
+    // this side as it does in the shader: GLSL's `clamp(x, lo, hi)`, `log2` and `exp2` are the
+    // standard library's under the same names and the same argument order.
+    using std::clamp;
+    using std::exp2;
+    using std::log2;
 }
 
 #else

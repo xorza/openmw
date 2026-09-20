@@ -329,13 +329,13 @@ namespace Rtx
             MoonPlacement secunda = placeMoon(Moon::Secunda, 90.0f, 50.0f, Sky::MoonPhase::Full, /*alpha=*/1.0f);
             const Shaders::MoonDisc plain = describeMoon(secunda);
             EXPECT_EQ(plain.mPaint, osg::Vec3f(1.0f, 1.0f, 1.0f));
-            EXPECT_EQ(plain.mIrradiance, secunda.mIrradiance);
+            EXPECT_EQ(plain.mSource.mIrradiance, secunda.mIrradiance);
 
             secunda.mPaint = osg::Vec3f(1.0f, 0.25f, 0.0f);
             const Shaders::MoonDisc painted = describeMoon(secunda);
             EXPECT_EQ(painted.mPaint, secunda.mPaint);
-            EXPECT_EQ(painted.mIrradiance, osg::componentMultiply(secunda.mIrradiance, secunda.mPaint));
-            EXPECT_EQ(painted.mIrradiance.z(), 0.0f) << "a moon painted with no blue lights with none";
+            EXPECT_EQ(painted.mSource.mIrradiance, osg::componentMultiply(secunda.mIrradiance, secunda.mPaint));
+            EXPECT_EQ(painted.mSource.mIrradiance.z(), 0.0f) << "a moon painted with no blue lights with none";
         }
 
         /// Placing a moon goes to the heap not at all, and answers the same either way.

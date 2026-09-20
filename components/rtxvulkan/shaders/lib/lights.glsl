@@ -10,25 +10,24 @@
 #include "colour.h"
 #include "look.h"
 #include "scene.h"
+#include "sky.h"
 #include "bindings.glsl"
-#include "variants.glsl"
 #include "random.glsl"
 #include "sky.glsl"
 #include "traversal.glsl"
+#include "variants.glsl"
 
 /// The `source`th light in the sky, read off the frame: `SKY_SOURCE_SUN`, then the two moons.
 ///
 /// **Read and not assembled.** The frame carries the sun as the record this returns, and a moon's
-/// disc carries the same three fields among its own — so nothing here derives a fact the frame
+/// disc carries the same record as `MoonDisc::mSource` — so nothing here derives a fact the frame
 /// already states. `SkySource` says what the three are one of.
 SkySource skySourceAt(uint source)
 {
     if (source == SKY_SOURCE_SUN)
         return frame.mSun;
 
-    const MoonDisc disc = frame.mMoons[source - SKY_SOURCE_MASSER];
-
-    return SkySource(disc.mDirection, disc.mIrradiance, disc.mLimb);
+    return frame.mMoons[source - SKY_SOURCE_MASSER].mSource;
 }
 
 /// What the world leaves of a light in the sky at a point, from none of it to all.
@@ -201,9 +200,6 @@ struct Lamp
     /// Unit, from the point toward the lamp. Zero where the lamp does not reach.
     vec3 mTowards;
 
-    /// The lamp's own intensity, carried so a caller needs nothing but this record.
-    vec3 mIntensity;
-
     /// What share of that intensity arrives here, or nothing where the lamp does not reach.
     float mReaching;
 
@@ -225,11 +221,11 @@ Lamp lampAt(GpuLight lamp, vec3 position)
     // a cell lists every lamp whose reach touches it, and at a point that is several lamps for each
     // one that reaches.
     if (squared >= lamp.mReach * lamp.mReach || squared <= 0.0)
-        return Lamp(vec3(0.0), lamp.mIntensity, 0.0, 0.0);
+        return Lamp(vec3(0.0), 0.0, 0.0);
 
     const float distance = sqrt(squared);
 
-    return Lamp(offset / distance, lamp.mIntensity, falloff(distance, lamp.mReach, lamp.mSourceRadius), distance);
+    return Lamp(offset / distance, falloff(distance, lamp.mReach, lamp.mSourceRadius), distance);
 }
 
 /// One lamp held out of all the ones that could reach a point, and what it stands for.
@@ -298,14 +294,14 @@ float litCosine(vec3 normal, vec3 side, vec3 towards, float transmission)
 ///
 /// **Named rather than kept in an array, because a computed index is a spill.** The three were held
 /// in two `float[SKY_SOURCES]` locals and read back at the one the draw picked, and that index is
-/// not one the compiler can fold: `visibilitysurface.rchit.spv` carried six `float[3]` variables in
-/// the function storage class, which is what a local array with a computed index becomes on this
-/// hardware. Three named values cost registers instead.
+/// not one the compiler can fold: the surface stage of `visibilityhit.rchit.spv` carried six
+/// `float[3]` variables in the function storage class, which is what a local array with a computed
+/// index becomes on this hardware. Three named values cost registers instead.
 ///
-/// **The spills are gone and the trace did not move.** `visibilitysurface.rchit.spv` held six of
-/// those arrays and holds none now, over three interleaved pairs that read the same to within the
-/// card's own drift. Kept because a spill is what the compiler cannot undo for the next reader who
-/// adds a fourth source.
+/// **The spills are gone and the trace did not move.** That stage held six of those arrays and
+/// holds none now, over three interleaved pairs that read the same to within the card's own drift.
+/// Kept because a spill is what the compiler cannot undo for the next reader who adds a fourth
+/// source.
 struct SkyChoice
 {
     SkySource mSky;
@@ -381,28 +377,32 @@ void weighLamps(
         const uint row = lightListAt(i);
         const GpuLight held = lightAt(row);
         const Lamp lamp = lampAt(held, from);
-        if (!(lamp.mReaching > 0.0))
-            continue;
 
         // **Inside a fill's ball the cosine to the centre is blended out**, by how deep the point
         // stands, because the ball glows on every side of it there. `Rtx::makeFill` says what a
         // fill is: the rest of its weight is a lamp's, and so is its ray, which the ball's own
         // clearance keeps out of the ball. A factor of nought for a lamp, and not a branch, which
         // leaves a lamp's arithmetic the arithmetic it was.
+        //
+        // **And no test on the reach or the cosine before the offer.** A lamp out of reach carries
+        // no direction and no share, so its weight below is nought, and `considerLamp` refuses a
+        // weight of nought; two branches inside a loop of up to `LAMPS_AT_A_POINT` saved one dot
+        // and one luminance apiece. The depth is selected and not divided for such a lamp, whose
+        // distance is nought over a source that may be a point.
         const float faced = sided ? litCosine(normal, side, lamp.mTowards, transmission) : 1.0;
-        const float depth = float(held.mFill) * clamp(1.0 - lamp.mDistance / held.mSourceRadius, 0.0, 1.0);
+        const float depth = lamp.mReaching > 0.0
+            ? float(held.mFill) * clamp(1.0 - lamp.mDistance / held.mSourceRadius, 0.0, 1.0)
+            : 0.0;
         const float cosine = mix(faced, 1.0, depth);
-        if (cosine <= 0.0)
-            continue;
 
-        considerLamp(kept, state, from, lamp.mIntensity * (cosine * lamp.mReaching * scale), row);
+        considerLamp(kept, state, from, held.mIntensity * (cosine * lamp.mReaching * scale), row);
     }
 }
 
 /// What the world leaves of the lamp a reservoir held, from none of it to all.
 ///
-/// **The one ray**, aimed somewhere on the lamp. Nothing is traced where every lamp was faced away
-/// from or out of reach, which is most of the frame.
+/// **The one ray**, aimed somewhere on the lamp. Asked only of a reservoir that holds one: both
+/// callers refuse an empty one before this, and most of the frame is empty.
 ///
 /// **It stops the clearance short of its own closest approach, and not of the centre.** Those are
 /// the same length only for the ray down the middle. Take the clearance off the distance to the
@@ -418,9 +418,6 @@ void weighLamps(
 /// lamp to the pixel.
 float lampVisible(Reservoir kept, vec2 draw)
 {
-    if (!(kept.mWeight > 0.0))
-        return 1.0;
-
     // Aimed from where the ray leaves and not from where the lamp was weighed, with no reach test:
     // a caller that moved its origin after weighing — the air does — still aims at the lamp it held.
     const GpuLight lamp = lightAt(kept.mLamp);

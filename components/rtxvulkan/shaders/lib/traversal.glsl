@@ -33,14 +33,15 @@ bool isTranslucent(GpuMaterial material)
     return material.mOpacity < 1.0;
 }
 
-/// Whether a material carries a mask a ray is tested against: a cutoff, a texture to read it off,
-/// and no translucency — a pane is there everywhere, thinly, and has no holes to find.
+/// Whether a material carries a mask a ray is tested against: a cutoff, and no translucency — a
+/// pane is there everywhere, thinly, and has no holes to find.
 ///
 /// The host's `Material::isCutout`, asked again here because the build marks an instance by it
-/// and the shader must agree about which candidates it meant.
+/// and the shader must agree about which candidates it meant. That rule refuses a cutoff with no
+/// diffuse, so the diffuse is not asked again here.
 bool hasMask(GpuMaterial material)
 {
-    return !isTranslucent(material) && material.mAlphaCutoff > 0.0 && material.mDiffuse != NO_TEXTURE;
+    return !isTranslucent(material) && material.mAlphaCutoff > 0.0;
 }
 
 /// Whether a material is a medium the ray goes through rather than a surface it can stop on.
@@ -81,25 +82,23 @@ bool isSeenThrough(float opacity)
 /// past and the eye asks what it covered, which are the same number seen from either side — and they
 /// stay the same number only while there is one place it is worked out.
 ///
-/// **Guarded against a material with no mask**, which `candidateStops` says more about: a surface is
-/// see-through on its alpha alone, and an untextured pane is all glass and no lead.
+/// An untextured pane is all glass and no lead: its diffuse is `TEXTURE_NEUTRAL`, whose one texel
+/// has an alpha of one, so nothing here asks whether there is a texture.
 ///
 /// @param opacity what `surfaceOpacity` gave for this hit, made once by the caller.
-/// @param painted the texture's own alpha where the ray met it, or one where there is no texture.
+/// @param painted the texture's own alpha where the ray met it.
 float sampledOpacity(float opacity, float painted)
 {
     return clamp(painted * opacity, 0.0, 1.0);
 }
 
 /// The same, for a caller that has not read the texture yet — which is every caller but the one
-/// that wants the colour beside the alpha. `mediumAlong` is that one.
+/// that wants the colour beside the alpha. `gatherAlong` is that one.
 ///
 /// @param point where the hit lands on the material's own texture, made once by the caller.
 float sampledOpacity(float opacity, GpuMaterial material, TexturePoint point)
 {
-    const float painted = material.mDiffuse == NO_TEXTURE ? 1.0 : sampleDiffuse(material.mDiffuse, point).a;
-
-    return sampledOpacity(opacity, painted);
+    return sampledOpacity(opacity, sampleDiffuse(material.mDiffuse, point).a);
 }
 
 /// One, in the units an order-free sum over candidates is taken in: twenty fractional bits.
@@ -204,7 +203,7 @@ bool candidateStops(uint instanceIndex, uint primitive, vec2 bary, vec3 crossed,
     // **Met and not tested where there is nothing to test.** A material with no mask arrives here
     // because forcing an instance non-opaque says nothing about its material: a pane of glass is
     // forced for its own alpha, and an actor is forced for the fade its placement carries. Neither
-    // promises a mask, and a texture nothing bound must not be read for one.
+    // promises a mask.
     //
     // **The material and not the placement.** An actor the game is fading keeps every hole in its
     // mask, because a fade is not a hole — what the fade does to what is left is measured elsewhere.
@@ -275,6 +274,10 @@ struct Hit
     /// not the structure's own.
     uint mInstance;
 
+    /// Which row of the mesh table the instance wears, read off the instance here for the corners
+    /// and carried out so `resolve` reads the mesh row once and not the instance's for it again.
+    uint mMesh;
+
     /// Where in the shared vertex buffers this triangle's three corners are, already global.
     ///
     /// **Resolved inside the query and carried out, rather than the primitive index.** The index
@@ -314,6 +317,7 @@ Hit noHit()
     Hit hit;
     hit.mHit = false;
     hit.mInstance = 0u;
+    hit.mMesh = 0u;
     hit.mCorner = uvec3(0u);
     hit.mBary = vec2(0.0);
     hit.mDistance = frame.mFar;
@@ -343,7 +347,8 @@ Hit committedHit(
     // a mesh with no normals stores zeros, and a scale that shrank a real normal past the threshold
     // would otherwise change which branch it took.
     const GpuInstance placement = instanceAt(instance);
-    hit.mCorner = triangleCorners(meshAt(placement.mMesh), primitive);
+    hit.mMesh = placement.mMesh;
+    hit.mCorner = triangleCorners(meshAt(hit.mMesh), primitive);
 
     const vec3 shading = triangleNormal(hit.mCorner, cornerWeights(bary));
     hit.mShading = dot(shading, shading) > 1e-8 ? mat3(toWorld) * shading : vec3(0.0);
@@ -400,7 +405,7 @@ Hit committedHit(
 ///
 /// **And handing it one loses.** JCGT 10(1) 2021 finds level zero slower than a cone level in every
 /// scene it tries, but the paper's finding is about the *fetch*, and this path's cost is the
-/// *level*: a width of nought is answered at once, so level zero here skips a texture-header read
+/// *level*: a width of nought is answered at once, so level zero here skips the texel count's load
 /// in `coneLod`, and a determinant and two logarithms in `coneBase`, at every candidate. What
 /// those early returns save is more than the cache gives back, on every place tried.
 ///
@@ -604,7 +609,7 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
     surface.mInstance = hit.mInstance;
 
     const GpuInstance instance = instanceAt(surface.mInstance);
-    const GpuMesh mesh = meshAt(instance.mMesh);
+    const GpuMesh mesh = meshAt(hit.mMesh);
     const uvec3 corner = hit.mCorner;
     const vec3 weight = cornerWeights(hit.mBary);
 
@@ -661,19 +666,19 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
     // emissive map all read at. A terrain layer has a transform of its own and makes its own.
     const TexturePoint point = texturePoint(uv, weight, material.mTextureTransform, cone, surface.mFootprint);
 
-    vec3 albedo = NO_TEXTURE_ALBEDO;
-
-    // **Ground that kept its stack**, which is every chunk near enough to be worth the sharpness.
-    // A chunk outside the active grid had the whole stack flattened into one texture in its own
-    // coordinates instead, by `groundcomposite.comp` over the same sum as this, and falls through
-    // to the single fetch below — which is what it now is. `CellPlacer::wantsFlattening` is where
-    // the two swap over.
-    if (layered && material.mLayerCount > 0u && material.mDiffuse == NO_TEXTURE)
+    // **Ground that kept its stack**, which is every chunk near enough to be worth the sharpness,
+    // and one fetch for everything else, an untextured surface included: its diffuse is
+    // `TEXTURE_NEUTRAL`, which reads as the grey it always read as. A chunk outside the active grid
+    // had the whole stack flattened into one texture in its own coordinates instead, by
+    // `groundcomposite.comp` over the same sum as this, and is that one fetch too.
+    // `CellPlacer::wantsFlattening` is where the two swap over, and `MATERIAL_STACKED` is what the
+    // row says about which it is.
+    vec3 albedo = vec3(0.0);
+    if (layered && (material.mFlags & MATERIAL_STACKED) != 0u)
     {
         // Each layer is a tiling texture masked by its own grid of weights, and the stack sums to
         // one where the masks were built to — the same sum the rasterizer reaches by drawing the
         // layers over each other with additive blending and one pass apiece.
-        albedo = vec3(0.0);
         const vec2 chunkUv = interpolate(uv, weight);
         for (uint i = 0u; i < material.mLayerCount; ++i)
         {
@@ -687,10 +692,9 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
                     texturePoint(uv, weight, layer.mDiffuseTransform, cone, surface.mFootprint));
         }
     }
-    else if (material.mDiffuse != NO_TEXTURE)
-    {
+    else
         albedo = sampleAlbedo(material.mDiffuse, point);
-    }
+
     // The vertex colour *replaces* the material's tint where the content asked for it, which is
     // what `glColorMaterial(GL_AMBIENT_AND_DIFFUSE)` does and what `getDiffuseColor` reads in the
     // game's own shader. Multiplying the two together would tint a surface twice.

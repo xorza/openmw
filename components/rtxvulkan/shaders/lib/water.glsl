@@ -4,20 +4,18 @@
 // Shading a water surface: Fresnel across a reflection and a refraction, and what the column
 // under it takes.
 
+#include "camera.h"
 #include "look.h"
 #include "scene.h"
 #include "bindings.glsl"
-#include "camera.h"
-#include "sea.glsl"
+#include "random.glsl"
 #include "records.glsl"
+#include "sea.glsl"
 #include "shading.glsl"
 #include "sky.glsl"
 #include "starfield.glsl"
 #include "traversal.glsl"
 #include "underwater.glsl"
-
-/// How far off the water a reflection or refraction starts. The same bias, for the same reason.
-const float WATER_BIAS = SHADOW_BIAS;
 
 /// How far a ray that found nothing at all is taken to have travelled.
 ///
@@ -77,15 +75,16 @@ struct WaterPath
 ///
 /// @param seed which draw sequence the lamp reservoir at the far end of this ray steps. The
 ///        reflection and the refraction take different ones, or both keep the same lamp.
+/// @param spread how fast the pixel's own cone opens, `Cone::mSpread`, which the lobe widens.
 /// @param lobe the rms angle those slopes deflect this ray by — a *radius*, which is why the cone
 ///        it traces is widened by twice it. Everything `spread` feeds is a width: `resolved` compares
 ///        it against a wavelength and `coneLod` against a texel area, and `mSpreadAngle` is the whole
 ///        angle a pixel covers rather than half of one. The sky's disc takes the same number
 ///        unhalved, because a disc is named by its radius.
-WaterPath waterRay(vec3 origin, vec3 direction, float footprint, float lobe, uint seed)
+WaterPath waterRay(vec3 origin, vec3 direction, float footprint, float spread, float lobe, uint seed)
 {
     const Surface hit
-        = trace(origin, direction, WATER_BIAS, footprint, coneAt(frame.mCamera).mSpread + 2.0 * lobe, solidMask(frame.mRayMask));
+        = trace(origin, direction, SHADOW_BIAS, footprint, spread + 2.0 * lobe, solidMask(frame.mRayMask));
 
     WaterPath path;
     path.mPosition = hit.mPosition;
@@ -117,11 +116,10 @@ WaterPath waterRay(vec3 origin, vec3 direction, float footprint, float lobe, uin
     // What a mirror shows is composited into a surface long before the display pass, so the field
     // goes in here — behind whatever the sky's own order left in front of it, which is what `shown`
     // says and is the same rule `tone.comp` draws by.
-    const float spread = pixelBlur(frame.mCamera) + lobe;
+    const float blur = pixelBlur(frame.mCamera) + lobe;
 
     float shown;
-    path.mRadiance
-        = skyRadiance(origin, direction, spread, shown) + starField(frame.mStars, direction, spread) * shown;
+    path.mRadiance = skyRadiance(origin, direction, blur, shown) + starField(frame.mStars, direction, blur) * shown;
 
     return path;
 }
@@ -154,7 +152,8 @@ struct WaterShading
 /// @param pixel which pixel this is, for the draw key the two reservoirs below each offset by their
 ///        own `SEED_LAMPS_` constant — what the water reflects and what is seen through it are two
 ///        surfaces shaded from one hit, and two reservoirs seeded alike keep one lamp.
-WaterShading shadeWater(Surface surface, vec3 incident, uvec2 pixel)
+/// @param cone the pixel's own cone, which the three rays cast from here open at.
+WaterShading shadeWater(Surface surface, vec3 incident, uvec2 pixel, Cone cone)
 {
     const uint key = pixelKey(pixel);
 
@@ -223,7 +222,7 @@ WaterShading shadeWater(Surface surface, vec3 incident, uvec2 pixel)
     // from above, the refraction dives in and the reflection leaves into air; from below, the
     // reflection stays under and the refraction is the sky through Snell's window, which has
     // travelled no water at all. Attenuating the wrong one turns that window green.
-    const vec3 leaving = surface.mPosition + plane * WATER_BIAS;
+    const vec3 leaving = surface.mPosition + plane * SHADOW_BIAS;
 
     // **How much water is under *this pixel*, which is the whole of what a shore is.** Straight
     // down rather than along anything, and worth a ray of its own: the two rays cast below both
@@ -241,11 +240,11 @@ WaterShading shadeWater(Surface surface, vec3 incident, uvec2 pixel)
     shaded.mShore = 1.0;
     if (!fromBelow)
         shaded.mShore = smoothstep(0.0, WATER_SHORE_FADE,
-            solidWithin(leaving, vec3(0.0, 0.0, -1.0), WATER_BIAS, WATER_SHORE_FADE, surface.mFootprint,
-                coneAt(frame.mCamera).mSpread));
+            solidWithin(
+                leaving, vec3(0.0, 0.0, -1.0), SHADOW_BIAS, WATER_SHORE_FADE, surface.mFootprint, cone.mSpread));
 
     const vec3 away = reflect(incident, normal);
-    const WaterPath bounced = waterRay(leaving, away, surface.mFootprint, lobe, key + SEED_LAMPS_MIRROR);
+    const WaterPath bounced = waterRay(leaving, away, surface.mFootprint, cone.mSpread, lobe, key + SEED_LAMPS_MIRROR);
     vec3 reflected = bounced.mRadiance;
     if (fromBelow)
         reflected = throughWater(reflected,
@@ -277,8 +276,8 @@ WaterShading shadeWater(Surface surface, vec3 incident, uvec2 pixel)
 
     // Refraction bends by a third of what reflection does, so what is seen *through* the surface is
     // blurred correspondingly less by the same lost slopes.
-    const WaterPath behind
-        = waterRay(leaving, through, surface.mFootprint, lobe * WATER_REFRACTION_BEND, key + SEED_LAMPS_THROUGH);
+    const WaterPath behind = waterRay(
+        leaving, through, surface.mFootprint, cone.mSpread, lobe * WATER_REFRACTION_BEND, key + SEED_LAMPS_THROUGH);
     const vec3 refracted = fromBelow
         ? behind.mRadiance
         : throughWater(behind.mRadiance,

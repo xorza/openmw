@@ -162,13 +162,13 @@ namespace Rtx
         const float mixed = blend > 0.0f ? (blend < 1.0f ? blend : 1.0f) : 0.0f;
 
         // The level the sheet is read against crosses with the sheet, and falls back the way it
-        // does. Where the weather ahead names no deck the shader samples the near sheet for both
-        // ends of the blend, so what it read is that sheet alone and so is the mean it is read
-        // against.
+        // does. Where the weather ahead names no deck the near sheet stands at both ends of the
+        // blend, on its own bearing, so what the shader reads is that sheet alone and so is the
+        // mean it is read against — and the shader mixes unconditionally, because this is where
+        // the fallback is made.
         const std::uint32_t ahead = textures.cloudsOf(next);
-        const auto crossing = [&](float from, float to) {
-            return ahead == Shaders::NO_TEXTURE ? from : from * (1.0f - mixed) + to * mixed;
-        };
+        const bool crosses = ahead != Shaders::NO_TEXTURE;
+        const auto crossing = [&](float from, float to) { return crosses ? from * (1.0f - mixed) + to * mixed : from; };
 
         const float mean = crossing(textures.meanOf(weather), textures.meanOf(next));
         const float cover = crossing(textures.coverOf(weather), textures.coverOf(next));
@@ -197,13 +197,13 @@ namespace Rtx
             // each of its two cloud meshes: the deck of an ashstorm runs the way the ash does. A
             // weather with nothing to drive leaves the direction due north, and this due north too.
             .mBearing = bearingOf(storm),
-            .mNextBearing = bearingOf(nextStorm),
+            .mNextBearing = bearingOf(crosses ? nextStorm : storm),
 
             .mCurvature = textures.mShell.mCurvature,
             .mRings = textures.mShell.mRings,
 
             .mTexture = slot,
-            .mNext = ahead,
+            .mNext = crosses ? ahead : slot,
         };
     }
 

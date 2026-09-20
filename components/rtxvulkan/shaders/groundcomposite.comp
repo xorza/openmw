@@ -22,6 +22,7 @@
 #include "ground.h"
 
 #include "lib/ground.glsl"
+#include "lib/pixels.glsl"
 
 layout(local_size_x = GROUND_COMPOSITE_WORKGROUP, local_size_y = GROUND_COMPOSITE_WORKGROUP) in;
 
@@ -37,7 +38,7 @@ layout(push_constant, scalar) uniform Push
 void main()
 {
     const uvec2 texel = gl_GlobalInvocationID.xy;
-    if (any(greaterThanEqual(texel, uvec2(GROUND_COMPOSITE_EXTENT))))
+    if (outsideOf(texel, uvec2(GROUND_COMPOSITE_EXTENT)))
         return;
 
     // The centre of this texel over the chunk, which is the composite's own coordinates: a

@@ -359,15 +359,12 @@ vec3 bounceEscape(vec3 position, vec3 towards, float weight)
 vec3 bounceLight(Surface surface, uvec2 pixel)
 {
     // A sheet bounces off either face, and `SEED_SHEET_SIDE` says why the side is not drawn from
-    // the pair the direction is.
+    // the pair the direction is. Drawn on every hit and not behind a test on the transmission: the
+    // sequence is its own, so a solid drawing from it moves no other, and `sampledFace` reads the
+    // draw only where there is a far side.
+    uint sideState = randomSeed(pixelKey(pixel) + SEED_SHEET_SIDE);
     float weight;
-    float side = 0.0;
-    if (surface.mTransmission > 0.0)
-    {
-        uint state = randomSeed(pixelKey(pixel) + SEED_SHEET_SIDE);
-        side = randomNext(state);
-    }
-    const float face = sampledFace(surface.mTransmission, side, weight);
+    const float face = sampledFace(surface.mTransmission, randomNext(sideState), weight);
 
     const vec3 towards = cosineDirection(surface.mNormal * face, unitPair(pixel, STREAM_BOUNCE));
 

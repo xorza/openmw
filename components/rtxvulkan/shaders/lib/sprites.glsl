@@ -11,6 +11,7 @@
 #include "fog.glsl"
 #include "frame.glsl"
 #include "underwater.glsl"
+#include "variants.glsl"
 
 /// What a puff's own shape and its own texture leave of each of the two terms `puffLight` reads.
 ///
@@ -119,32 +120,33 @@ vec3 puffLight(uvec2 pixel, vec3 direction, float seen, PuffShape wrapped)
 ///
 /// `SPRITE_ALPHA_LIMIT` says why an alpha of one is not taken at its word.
 ///
-/// **One whole crossing is answered without the power, and that is the common case.** A streak
-/// sprite sees its own quad edge on and sets `crossings` to exactly one, so every raindrop in a
-/// storm paid a logarithm and an exponential to reach the number it started with. The test is
-/// uniform across an emitter's run, which is the order `spritesAlong` walks in.
+/// **No test for a whole crossing here.** A ball's share of its own chord is one only up to
+/// rounding, so a test on it was a float equality a warp's balls took both ways; a streak sees
+/// its quad edge on and is whole by construction, and `paintedWhole` is what it takes, on a test
+/// that is the emitter's and so uniform across its run.
 float paintedOver(float painted, float crossings)
 {
-    const float held = min(painted, SPRITE_ALPHA_LIMIT);
-    if (crossings == 1.0)
-        return held;
-
-    return 1.0 - pow(1.0 - held, crossings);
+    return 1.0 - pow(1.0 - min(painted, SPRITE_ALPHA_LIMIT), crossings);
 }
 
 /// The same per channel, for a flame that absorbs as much as it emits in each of them.
 vec3 paintedOver(vec3 painted, float crossings)
 {
-    const vec3 held = min(painted, vec3(SPRITE_ALPHA_LIMIT));
-    if (crossings == 1.0)
-        return held;
+    return 1.0 - pow(1.0 - min(painted, vec3(SPRITE_ALPHA_LIMIT)), vec3(crossings));
+}
 
-    return 1.0 - pow(1.0 - held, vec3(crossings));
+/// What a painted alpha hides over exactly one crossing, which needs no power: the limit alone.
+float paintedWhole(float painted)
+{
+    return min(painted, SPRITE_ALPHA_LIMIT);
+}
+
+vec3 paintedWhole(vec3 painted)
+{
+    return min(painted, vec3(SPRITE_ALPHA_LIMIT));
 }
 
 /// How a ball is lit from `toward` against its mean, on the side of it the eye sees.
-///
-/// A zero `toward` — a lamp that is not there — is lit at the mean, because nothing is being asked.
 float ballWrap(vec3 normal, vec3 toward)
 {
     return 1.0 + SPRITE_WRAP * dot(normal, toward);
@@ -187,8 +189,7 @@ PuffShape ballPuff(vec3 normal, float thrownForward)
 /// plane are derived here, the way that class says: light from the front reaches the visible
 /// surface whole, and light from behind crosses the texel's own thickness, which is `back`.
 ///
-/// @param toward unit, from the sprite toward the light — or zero, for a light that is not there,
-///        which is lit in full because nothing is being asked.
+/// @param toward unit, from the sprite toward the light.
 /// @param planeAcross,planeUp the sprite's own `u` and `v` in the world, which for a disc are the
 ///        ray's own, square to it.
 /// @param facing where the eye is, unit, from the sprite.
@@ -199,9 +200,8 @@ float sixWayThrough(vec3 toward, vec3 planeAcross, vec3 planeUp, vec3 facing, ve
     const vec3 positive = max(along, vec3(0.0));
     const vec3 negative = max(-along, vec3(0.0));
 
+    // Never nought: `toward` is unit, so at least one of the six lies along it.
     const float weight = dot(positive + negative, vec3(1.0));
-    if (!(weight > 0.0))
-        return 1.0;
 
     return (positive.x * shade.x + negative.x * shade.y + positive.y * shade.z + negative.y * shade.w + positive.z
                + negative.z * back)
@@ -436,9 +436,27 @@ SpriteCrossing ballCrossing(
 ///        bounds test and a texel per sprite, where the light is three fetches and a band of forty
 ///        hashes per emitter; asked at three or four times the pixels, that difference is the
 ///        difference between a storm's frame and its own.
-PuffLayer spritesAlong(uvec2 pixel, Cone cone, vec3 origin, vec3 direction, float limit, bool lit)
+PuffLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit, Cone cone, bool lit)
 {
     PuffLayer layer = noPuffs();
+
+    // **The tiles are derived and not carried**, from the same function the bin uses, so the two
+    // cannot disagree about how many there are across.
+    const uint tile = spriteTileOf(pixel, frame.mCamera.mWidth);
+
+    // **Every sprite where the runs did not fit**, which is the list's own degenerate form and the
+    // march as it was before the tiles: `SPRITE_LIST_UNBINNED` says when a frame is handed it. The
+    // run is then every index in turn, so a slot names its sprite directly.
+    const bool unbinned = spriteTileListAt(0u) == SPRITE_LIST_UNBINNED;
+    uint slot = unbinned ? 0u : spriteTileListAt(spriteStartSlot(tile));
+    const uint last = unbinned ? spriteTileListAt(1u) : spriteTileListAt(spriteStartSlot(tile + 1u));
+
+    // **Before anything is worked out for the walk.** A frame with no sprite in it, and a tile
+    // with none, is most of the game, and what follows is a normalised cross, an exponential and
+    // a phase function that a walk of nothing has no use for. Uniform over a tile, so a warp
+    // leaves whole.
+    if (slot >= last)
+        return layer;
 
     vec3 covered = vec3(0.0);
     float coverage = 0.0;
@@ -464,17 +482,6 @@ PuffLayer spritesAlong(uvec2 pixel, Cone cone, vec3 origin, vec3 direction, floa
     // for a different distance, and what does not depend on the distance is an exponential.
     const FogRay air = fogRayFrom(origin, direction);
 
-    // **The tiles are derived and not carried**, from the same function the bin uses, so the two
-    // cannot disagree about how many there are across.
-    const uint tile = spriteTileOf(pixel, frame.mCamera.mWidth);
-
-    // **Every sprite where the runs did not fit**, which is the list's own degenerate form and the
-    // march as it was before the tiles: `SPRITE_LIST_UNBINNED` says when a frame is handed it. The
-    // run is then every index in turn, so a slot names its sprite directly.
-    const bool unbinned = spriteTileListAt(0u) == SPRITE_LIST_UNBINNED;
-    uint slot = unbinned ? 0u : spriteTileListAt(spriteStartSlot(tile));
-    const uint last = unbinned ? spriteTileListAt(1u) : spriteTileListAt(spriteStartSlot(tile + 1u));
-
     // **Per emitter and not per sprite, across a walk with no emitter loop.** The tile's sprites
     // are in ascending index, and a sprite's index is contiguous within its emitter, so an
     // emitter's sprites arrive consecutively and these are worked out once for each run.
@@ -486,13 +493,9 @@ PuffLayer spritesAlong(uvec2 pixel, Cone cone, vec3 origin, vec3 direction, floa
     float width = 0.0;
     vec2 texels = vec2(0.0);
 
-    // What one layer of this emitter's texture hides on average, read from its coarsest level.
-    //
-    // **Read at the first sprite that wants it rather than at the emitter**, because whether any
-    // does is a property of the sprite: `mSunLayers` counts what stands between *this* one and the
-    // sun, so an emitter's outermost sprites carry nothing and would pay two texture reads for an
-    // answer they never look at. Negative until read, which no alpha can be.
-    float layerMean = -1.0;
+    // What one layer of this emitter's texture hides on average, as the logarithm of what it lets
+    // through, read off its coarsest level once per run.
+    float layerThrough = 0.0;
 
     const vec3 toSun = frame.mSun.mDirection;
 
@@ -510,7 +513,6 @@ PuffLayer spritesAlong(uvec2 pixel, Cone cone, vec3 origin, vec3 direction, floa
         {
             held = sprite.mEmitter;
             emitter = emitterAt(held);
-            layerMean = -1.0;
 
             const vec3 toCentre = emitter.mCentre - origin;
             const float along = dot(toCentre, direction);
@@ -539,6 +541,18 @@ PuffLayer spritesAlong(uvec2 pixel, Cone cone, vec3 origin, vec3 direction, floa
                 // The texture's own extent, which every sprite of this emitter shares. Both axes,
                 // because a streak carries them at different densities — see the level below.
                 texels = vec2(textureSize(textures[nonuniformEXT(emitter.mTexture)], 0));
+
+                // **What one layer of this texture hides on average**, off its coarsest level, as
+                // the logarithm the two powers below share. Once per run and not behind a test at
+                // each sprite: an outermost sprite raises it to nought and gets one, exactly, and
+                // what the read costs is one fetch per run of an emitter nothing shades.
+                if (lit)
+                {
+                    const float coarsest = float(textureQueryLevels(textures[nonuniformEXT(emitter.mTexture)]) - 1);
+                    const float layerMean
+                        = textureLod(textures[nonuniformEXT(emitter.mTexture)], vec2(0.5), coarsest).a;
+                    layerThrough = log2(1.0 - min(layerMean, SPRITE_ALPHA_LIMIT));
+                }
             }
         }
 
@@ -580,8 +594,9 @@ PuffLayer spritesAlong(uvec2 pixel, Cone cone, vec3 origin, vec3 direction, floa
             continue;
 
         // What the eye's share of the chord hides, which is `paintedOver`'s own law: the whole of
-        // what was painted for a whole chord, and less for part of one.
-        const float alpha = paintedOver(painted, crossing.mFraction);
+        // what was painted for a whole chord, and less for part of one. A streak is whole by
+        // construction and takes no power, on a test that is the emitter's.
+        const float alpha = oriented ? paintedWhole(painted) : paintedOver(painted, crossing.mFraction);
         const vec3 colour = texel.rgb * sprite.mColour;
 
         if ((emitter.mFlags & EMITTER_ADDITIVE) != 0u)
@@ -606,7 +621,9 @@ PuffLayer spritesAlong(uvec2 pixel, Cone cone, vec3 origin, vec3 direction, floa
             // added, and what twenty add saturates at the white the original's framebuffer clamped
             // to, rather than at twenty times it. The chord cuts a flame at a log the way it cuts
             // smoke at a wall.
-            const vec3 glow = paintedOver(colour * painted, crossing.mFraction) * reaching;
+            const vec3 glow
+                = (oriented ? paintedWhole(colour * painted) : paintedOver(colour * painted, crossing.mFraction))
+                * reaching;
             addedThrough *= 1.0 - glow;
 
             continue;
@@ -660,24 +677,12 @@ PuffLayer spritesAlong(uvec2 pixel, Cone cone, vec3 origin, vec3 direction, floa
             }
 
             // **What the rest of its own emitter leaves of the light**, as the layers of sprites
-            // between this one and the sun and the sky — counted on the host by `Rtx::SpriteShade`
-            // — thinned here by what one layer of this texture hides on average, which is its
-            // coarsest level. The limit keeps an opaque texture from shutting the light outright.
-            if (sprite.mSunLayers > 0.0 || sprite.mSkyLayers > 0.0)
-            {
-                if (layerMean < 0.0)
-                {
-                    const float coarsest = float(textureQueryLevels(textures[nonuniformEXT(emitter.mTexture)]) - 1);
-                    layerMean = textureLod(textures[nonuniformEXT(emitter.mTexture)], vec2(0.5), coarsest).a;
-                }
-
-                // **One logarithm for the two powers.** `pow` is an `exp2` over a `log2` and both
-                // raise the same base, so taking the logarithm once leaves two exponentials.
-                const float layer = log2(1.0 - min(layerMean, SPRITE_ALPHA_LIMIT));
-
-                wrapped.mSunLit *= exp2(layer * sprite.mSunLayers);
-                wrapped.mAmbientLit *= exp2(layer * sprite.mSkyLayers);
-            }
+            // between this one and the sun and the sky — counted by `spriteshade.comp` — thinned
+            // here by what one layer of this texture hides on average. The limit keeps an opaque
+            // texture from shutting the light outright. No test on the counts: `exp2` of nought is
+            // one, and an outermost sprite is left exactly as it was.
+            wrapped.mSunLit *= exp2(layerThrough * sprite.mSunLayers);
+            wrapped.mAmbientLit *= exp2(layerThrough * sprite.mSkyLayers);
         }
 
         covered += colour * puffLight(pixel, direction, crossing.mSeen, wrapped) * (alpha * reaching);

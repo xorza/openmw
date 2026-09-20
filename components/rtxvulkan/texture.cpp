@@ -27,11 +27,6 @@ namespace Rtx
 {
     namespace
     {
-        /// How many textures a scene may hold. The descriptor array is sized once and bound for
-        /// the run; a cell of Morrowind reaches a couple of hundred, and a worldspace will not
-        /// reach this.
-        constexpr std::uint32_t sMaxTextures = 4096;
-
         /// The map beside a texture, left where the array's sampler expects it: cleared to the
         /// neutral factor, or made by the caller behind this. One level and no chain: the map is
         /// read at level nought whatever the cone, because it has no detail for a level to lose.
@@ -109,9 +104,9 @@ namespace Rtx
         /// identically defined. The maximum costs a few hundred kilobytes of pool, paid once.
         constexpr std::array<VkDescriptorSetLayoutBinding, 2> sBindings{
             VkDescriptorSetLayoutBinding{
-                sTextureBinding, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, sMaxTextures, sStages },
+                sTextureBinding, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, Shaders::TEXTURE_SLOTS, sStages },
             VkDescriptorSetLayoutBinding{
-                sShadingBinding, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, sMaxTextures, sStages },
+                sShadingBinding, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, Shaders::TEXTURE_SLOTS, sStages },
         };
     }
 
@@ -226,6 +221,22 @@ namespace Rtx
         mBytes = chainBytes(mImage) + sShadingBytes;
     }
 
+    Texture::Texture(const Device& device, Batch& batch, const std::string_view name, const osg::Vec4f& colour)
+    {
+        mImage = Image(device, 1, 1, VK_FORMAT_R32G32B32A32_SFLOAT,
+            VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, name, 1);
+
+        const std::array<float, 4> texel{ colour.x(), colour.y(), colour.z(), colour.w() };
+        std::array<VkBufferImageCopy, 1> regions{ VkBufferImageCopy{
+            .imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
+            .imageExtent = { 1, 1, 1 },
+        } };
+        uploadImage(batch, mImage, std::as_bytes(std::span<const float>(texel)), regions);
+
+        mShading = makeShadingMap(device, batch, name, true);
+        mBytes = sizeof(texel) + sShadingBytes;
+    }
+
     Texture::Texture(const Device& device, Batch& batch, std::string_view name)
     {
         // A chain to one texel, which the bake blits down from the level it writes; both transfer
@@ -279,11 +290,24 @@ namespace Rtx
         // set to the cell is what made a texture arriving mean a new set, a new pool and every
         // image uploaded again; four thousand descriptors is a few hundred kilobytes of pool and it
         // is paid once. `write` then only ever owes the slots that are new.
+        , mNeutral(device, batch, "neutral texel",
+              osg::Vec4f(
+                  Shaders::NO_TEXTURE_ALBEDO.x(), Shaders::NO_TEXTURE_ALBEDO.y(), Shaders::NO_TEXTURE_ALBEDO.z(), 1.0f))
         , mSets(device, sBindings, layout.get(), sFrameSlots, VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT_EXT)
     {
-        if (slots > sMaxTextures)
+        // The last slot is the neutral texel's and the scene may not reach it.
+        if (slots > Shaders::TEXTURE_NEUTRAL)
             throw Error("a scene with " + std::to_string(slots) + " textures is past the "
-                + std::to_string(sMaxTextures) + " this array holds");
+                + std::to_string(Shaders::TEXTURE_NEUTRAL) + " this array holds beside its neutral texel");
+
+        // The neutral texel's count, and nought for every slot nothing stands, which no material
+        // names. Owed to every copy and every set from the start, the way an arrival is: written by
+        // the `sync` before the first placement that binds them.
+        mTexels.open(device, sFrameSlots, VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, "texture texels");
+        mTexels.resize(Shaders::TEXTURE_SLOTS);
+        mTexels.write(Shaders::TEXTURE_NEUTRAL) = 1;
+        for (SlotSet& owed : mOwed.live())
+            owed.addMakingRoom(Shaders::TEXTURE_NEUTRAL);
 
         // Sized to the table before anything is written into it, so a description lands in the
         // slot it names whatever sits either side of it. Every entry starts holding no image and no
@@ -296,9 +320,9 @@ namespace Rtx
 
     void TextureArray::reserveSlot(std::uint32_t slot)
     {
-        if (slot >= sMaxTextures)
+        if (slot >= Shaders::TEXTURE_NEUTRAL)
             throw Error("a scene wanting texture slot " + std::to_string(slot) + " is past the "
-                + std::to_string(sMaxTextures) + " this array holds");
+                + std::to_string(Shaders::TEXTURE_NEUTRAL) + " this array holds beside its neutral texel");
 
         // Grown to reach it rather than one at a time: arrivals come in whatever order the scene's
         // free list handed the slots out, so the highest is not always the last.
@@ -354,6 +378,11 @@ namespace Rtx
                 Texture(mDevice, batch, mPasses, sampler, mTextures[texture.mBakedFrom], name));
         }
 
+        // How many texels the slot now holds, for `coneLod`, owed to every copy beside the
+        // descriptor owed to every set.
+        const Image& stood = mTextures[texture.mSlot].getImage();
+        mTexels.write(texture.mSlot) = stood.getWidth() * stood.getHeight();
+
         for (SlotSet& owed : mOwed.live())
             owed.addMakingRoom(texture.mSlot);
     }
@@ -368,10 +397,13 @@ namespace Rtx
     void TextureArray::finishReads(const FrameSlot slot) const
     {
         mBound.at(slot).waitIdle(mDevice, "a trace still sampling a texture set");
+        mTexels.finishReads(slot);
     }
 
     void TextureArray::sync(const FrameSlot slot)
     {
+        mTexels.sync(slot);
+
         SlotSet& owed = mOwed.at(slot);
         if (owed.empty())
             return;
@@ -391,8 +423,8 @@ namespace Rtx
         for (const Index at : slots)
         {
             // Owed and since dropped: the slot holds nothing, and a descriptor left naming what has
-            // gone is what `drop` says is legal.
-            const Texture& held = mTextures[at];
+            // gone is what `drop` says is legal. The neutral texel stands beside the array.
+            const Texture& held = at == Shaders::TEXTURE_NEUTRAL ? mNeutral : mTextures[at];
             if (held.isEmpty())
                 continue;
 

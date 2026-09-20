@@ -14,6 +14,7 @@ set(RTX_TEST_FILES
     rtx/colour.cpp
     rtx/compositequeue.cpp
     rtx/dispatch.cpp
+    rtx/exposure.cpp
     rtx/extractor/fixture.hpp
     rtx/extractor/lights.cpp
     rtx/extractor/materials.cpp
@@ -28,6 +29,7 @@ set(RTX_TEST_FILES
     rtx/frameworld.cpp
     rtx/graphlight.hpp
     rtx/groundreader.cpp
+    rtx/hitrecords.cpp
     rtx/instancerecord.cpp
     rtx/lightbuilder.cpp
     rtx/lightgrid.cpp

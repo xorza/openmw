@@ -51,33 +51,31 @@ namespace Rtx::Shaders
         float mBias;
     };
 
+    // The bin mapping, both ways, so that the pass that fills the histogram and the pass that
+    // reads its mean back cannot come to differ about where a bin stands. Bin nought is black and
+    // is not on the scale; the scale runs from one over `EXPOSURE_BINS - 2`. Inside the namespace,
+    // for the reason `causticGain` is: a curve two passes agree on is a curve a test has to call.
+
+    /// Which bin a luminance lands in.
+    RTX_SHADER uint luminanceBin(float luminance)
+    {
+        if (luminance < EXPOSURE_BLACK)
+            return 0u;
+
+        const float span = MAX_LOG_LUMINANCE - MIN_LOG_LUMINANCE;
+        const float normalised = (log2(luminance) - MIN_LOG_LUMINANCE) / span;
+        return uint(clamp(normalised, 0.0f, 1.0f) * float(EXPOSURE_BINS - 2u)) + 1u;
+    }
+
+    /// The luminance a bin stands for, for a bin that may be a mean and so not whole.
+    RTX_SHADER float binLuminance(float bin)
+    {
+        const float span = MAX_LOG_LUMINANCE - MIN_LOG_LUMINANCE;
+        return exp2((bin - 1.0f) / float(EXPOSURE_BINS - 2u) * span + MIN_LOG_LUMINANCE);
+    }
+
 #ifdef RTX_HOST
 }
-#endif
-
-// The bin mapping, both ways, so that the pass that fills the histogram and the pass that reads
-// its mean back cannot come to differ about where a bin stands. Bin nought is black and is not
-// on the scale; the scale runs from one over `EXPOSURE_BINS - 2`.
-#ifndef RTX_HOST
-
-/// Which bin a luminance lands in.
-uint luminanceBin(float luminance)
-{
-    if (luminance < EXPOSURE_BLACK)
-        return 0u;
-
-    const float span = MAX_LOG_LUMINANCE - MIN_LOG_LUMINANCE;
-    const float normalised = (log2(luminance) - MIN_LOG_LUMINANCE) / span;
-    return uint(clamp(normalised, 0.0, 1.0) * float(EXPOSURE_BINS - 2u)) + 1u;
-}
-
-/// The luminance a bin stands for, for a bin that may be a mean and so not whole.
-float binLuminance(float bin)
-{
-    const float span = MAX_LOG_LUMINANCE - MIN_LOG_LUMINANCE;
-    return exp2((bin - 1.0) / float(EXPOSURE_BINS - 2u) * span + MIN_LOG_LUMINANCE);
-}
-
 #endif
 
 #endif

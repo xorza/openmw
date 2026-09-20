@@ -24,6 +24,8 @@
 #include "colour.h"
 #include "mipchain.h"
 
+#include "lib/pixels.glsl"
+
 layout(local_size_x = MIP_CHAIN_WORKGROUP, local_size_y = MIP_CHAIN_WORKGROUP) in;
 
 /// The upload: the file's finest level, in its own format read as `UNORM`, so a fetch is the
@@ -46,10 +48,12 @@ layout(push_constant, scalar) uniform Push
 
 void main()
 {
-    const uint x = gl_GlobalInvocationID.x;
-    const uint y = gl_GlobalInvocationID.y;
-    if (x >= level.mWidth || y >= level.mHeight)
+    const uvec2 texel = gl_GlobalInvocationID.xy;
+    if (outsideOf(texel, uvec2(level.mWidth, level.mHeight)))
         return;
+
+    const uint x = texel.x;
+    const uint y = texel.y;
 
     if (level.mLevel == 0u)
     {

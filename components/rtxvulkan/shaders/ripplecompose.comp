@@ -20,7 +20,7 @@ layout(set = 0, binding = 2, WAVE_TILE_FORMAT) uniform writeonly image2D curvatu
 /// The height at `texel`, or nought past the field's edge, which is still water.
 float heightAt(ivec2 texel)
 {
-    if (any(lessThan(texel, ivec2(0))) || any(greaterThanEqual(texel, ivec2(RIPPLE_GRID))))
+    if (outsideOf(texel, uvec2(RIPPLE_GRID)))
         return 0.0;
 
     return imageLoad(field, texel).x;

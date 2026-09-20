@@ -97,7 +97,8 @@ namespace Rtx::Shaders
         vec2 mPerTile;
 
         /// How far from `mTexture` to `mNext`. A settled sky names the same texture twice at zero,
-        /// so the shader mixes unconditionally rather than testing for a transition.
+        /// and a weather with no sheet ahead names the near one twice on its own bearing, so the
+        /// shader mixes unconditionally rather than testing for a transition.
         float mBlend;
 
         /// The scroll along `v`, in texture widths. `Sky::SkyRoll` advances it.
@@ -226,30 +227,30 @@ namespace Rtx::Shaders
     /// finds the moon in it for nothing, and there is one place a moon's size lives.
     struct MoonDisc
     {
-        /// Unit vector toward the moon, and the two axes its face is painted along. The face turns
-        /// against the horizon as the moon crosses, which is what a tidally locked moon does and
-        /// what a billboard does not.
-        vec3 mDirection;
+        /// The moon as a light: unit toward it, what it delivers to a surface facing it, and the
+        /// sine of half the angle its disc subtends.
+        ///
+        /// **The record itself and not its three fields**, so `skySourceAt` and the fog read one
+        /// field where they assembled a source from three. The direction is the disc's too: the
+        /// face turns against the horizon as the moon crosses, which is what a tidally locked moon
+        /// does and what a billboard does not.
+        ///
+        /// **A light and the disc are two numbers here, not one.** `Shaders::MOON_ALBEDO` says why
+        /// the level a moon lights by cannot be read off the radiance it is drawn at. A zero
+        /// irradiance is a moon that lights nothing, and it is the one test worth making before a
+        /// shadow ray.
+        ///
+        /// The limb is the sine and not the angle, for the reason `SkyPatch::mLimb` gives.
+        /// Masser's angle is between five and a half degrees and nine and a half, on the two
+        /// `Moons_Masser_Size` the game ships — twenty to thirty-six times the sun either way.
+        SkySource mSource;
+
+        /// The two axes the face is painted along.
         vec3 mRight;
         vec3 mUp;
 
         /// What a fully lit face sends back, linear.
         vec3 mColour;
-
-        /// What the moon delivers to a surface facing it, linear.
-        ///
-        /// **A light and the disc are two numbers here, not one.** `Shaders::MOON_ALBEDO` says why
-        /// the level a moon lights by cannot be read off the radiance it is drawn at. Zero is a
-        /// moon that lights nothing, and it is the one test worth making before a shadow ray.
-        vec3 mIrradiance;
-
-        /// The sine of half the angle the disc subtends, which is how far off the centre line a
-        /// direction at the limb stands. Masser's angle is between five and a half degrees and nine
-        /// and a half, on the two `Moons_Masser_Size` the game ships — twenty to thirty-six times
-        /// the sun either way.
-        ///
-        /// **The sine and not the angle**, for the reason `SkyPatch::mLimb` gives.
-        float mLimb;
 
         /// How far round its cycle: zero is full and pi is new.
         ///
@@ -296,6 +297,16 @@ namespace Rtx::Shaders
 
     /// How many of them there are, in `SkySource` order after the sun: Masser, then Secunda.
     const uint MOON_COUNT = 2u;
+
+#ifdef RTX_HOST
+    /// A moon as the frame carries it, from the angle its disc subtends: the host's one spelling
+    /// of `MoonDisc::mSource`, beside `sunSource` for the sun, so a moon assembled by hand cannot
+    /// leave its limb at nought and cast a hard edge.
+    inline SkySource moonSource(const vec3& direction, const vec3& irradiance, float angularRadius)
+    {
+        return SkySource{ direction, irradiance, std::sin(angularRadius) };
+    }
+#endif
 
     // Pinned for the reason `scene.h` gives: the side that writes these bytes and the side that
     // reads them are different compilers.

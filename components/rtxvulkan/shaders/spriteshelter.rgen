@@ -25,19 +25,15 @@
 #include "scene.h"
 
 #include "lib/bindings.glsl"
+#include "lib/spritelist.glsl"
 #include "lib/traversal.glsl"
-
-layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_ROWS) buffer ShelteredSprites
-{
-    GpuSprite at[];
-};
 
 const vec3 UP = vec3(0.0, 0.0, 1.0);
 
 void main()
 {
     const uint index = gl_LaunchIDEXT.x;
-    ShelteredSprites sprites = ShelteredSprites(frame.mTables.mSprites);
+    WrittenSprites sprites = WrittenSprites(frame.mTables.mSprites);
     const GpuSprite sprite = sprites.at[index];
 
     if ((emitterAt(sprite.mEmitter).mFlags & EMITTER_FALLS) == 0u)

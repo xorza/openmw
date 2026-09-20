@@ -303,11 +303,13 @@ namespace Rtx
                 const MoonPlacement& placed = read.mMoons[moon];
                 const Rtx::Shaders::MoonDisc& disc = constants.mMoons[moon];
 
-                EXPECT_EQ(disc.mDirection, placed.mDirection) << "moon " << moon;
+                EXPECT_EQ(disc.mSource.mDirection, placed.mDirection) << "moon " << moon;
                 EXPECT_EQ(disc.mRight, placed.mRight) << "moon " << moon;
                 EXPECT_EQ(disc.mUp, placed.mUp) << "moon " << moon;
                 EXPECT_EQ(disc.mColour, placed.mColour) << "moon " << moon;
-                EXPECT_FLOAT_EQ(disc.mLimb, std::sin(placed.mAngularRadius)) << "moon " << moon;
+                EXPECT_FLOAT_EQ(disc.mSource.mLimb, std::sin(placed.mAngularRadius)) << "moon " << moon;
+                EXPECT_EQ(disc.mSource.mIrradiance, osg::componentMultiply(placed.mIrradiance, placed.mPaint))
+                    << "moon " << moon;
                 EXPECT_EQ(disc.mPhaseAngle, placed.mPhaseAngle) << "moon " << moon;
                 EXPECT_EQ(disc.mAlpha, placed.mAlpha) << "moon " << moon;
                 EXPECT_EQ(disc.mFace, static_cast<std::uint32_t>(placed.mFace)) << "moon " << moon;
@@ -317,7 +319,7 @@ namespace Rtx
             // through the loop by mistake would look like and what every field above would still
             // pass under.
             EXPECT_NE(constants.mMoons[0].mAlpha, constants.mMoons[1].mAlpha);
-            EXPECT_NE(constants.mMoons[0].mDirection, constants.mMoons[1].mDirection);
+            EXPECT_NE(constants.mMoons[0].mSource.mDirection, constants.mMoons[1].mSource.mDirection);
         }
 
         /// The glare fader's amount is `SunGlareCallback`'s own line: the strength, faded to nothing
@@ -448,7 +450,7 @@ namespace Rtx
             // kernel away on the pair, so leaving either would keep a room tracing shadow rays at a
             // body that is not over it.
             EXPECT_EQ(world.mMoons[0].mAlpha, 0.0f) << "no moon drawn in a room";
-            EXPECT_EQ(world.mMoons[0].mIrradiance, osg::Vec3f()) << "and none lighting one";
+            EXPECT_EQ(world.mMoons[0].mSource.mIrradiance, osg::Vec3f()) << "and none lighting one";
             EXPECT_EQ(world.mMoons[0].mFace, Rtx::Shaders::NO_TEXTURE) << "and no portrait to draw";
 
             EXPECT_EQ(world.mAmbientFromSky, 0.0f);
@@ -463,7 +465,7 @@ namespace Rtx
             Shaders::VisibilityConstants open{};
             describeWorld(room, drift, open);
             EXPECT_EQ(open.mMoons[0].mAlpha, 1.0f);
-            EXPECT_EQ(open.mMoons[0].mIrradiance, osg::Vec3f(0.05f, 0.05f, 0.06f));
+            EXPECT_EQ(open.mMoons[0].mSource.mIrradiance, osg::Vec3f(0.05f, 0.05f, 0.06f));
         }
 
         /// The bias is the light's, and this is the only thing between it and `FrameOptions`.

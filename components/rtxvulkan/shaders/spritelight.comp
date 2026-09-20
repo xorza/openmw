@@ -22,6 +22,8 @@
 
 #include "spritelight.h"
 
+#include "lib/pixels.glsl"
+
 layout(local_size_x = 16, local_size_y = 16) in;
 
 /// The sprite, every level, fetched by texel: the sampler is whichever the array binds.
@@ -48,10 +50,12 @@ float alphaAt(uint x, uint y)
 
 void main()
 {
-    const uint x = gl_GlobalInvocationID.x;
-    const uint y = gl_GlobalInvocationID.y;
-    if (x >= level.mWidth || y >= level.mHeight)
+    const uvec2 texel = gl_GlobalInvocationID.xy;
+    if (outsideOf(texel, uvec2(level.mWidth, level.mHeight)))
         return;
+
+    const uint x = texel.x;
+    const uint y = texel.y;
 
     float fromRight = 1.0;
     for (uint at = level.mWidth; at-- > x + 1u;)

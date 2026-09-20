@@ -109,12 +109,11 @@ namespace Rtx::Testing
             camera.mSun.mIrradiance = osg::Vec3f();
 
             Shaders::MoonDisc overhead{};
-            overhead.mDirection = osg::Vec3f(0.0f, 0.0f, 1.0f);
+            overhead.mSource = Shaders::moonSource(
+                osg::Vec3f(0.0f, 0.0f, 1.0f), osg::Vec3f(2.0f, 2.0f, 2.0f), moonAngularRadius(Moon::Masser));
             overhead.mRight = osg::Vec3f(1.0f, 0.0f, 0.0f);
             overhead.mUp = osg::Vec3f(0.0f, 1.0f, 0.0f);
             overhead.mColour = osg::Vec3f(1.0f, 1.0f, 1.0f);
-            overhead.mIrradiance = osg::Vec3f(2.0f, 2.0f, 2.0f);
-            overhead.mLimb = std::sin(moonAngularRadius(Moon::Masser));
             overhead.mAlpha = 1.0f;
             overhead.mFace = Shaders::NO_TEXTURE;
 
@@ -176,11 +175,10 @@ namespace Rtx::Testing
 
             const float root = std::sqrt(0.5f);
             Shaders::MoonDisc facing{};
-            facing.mDirection = osg::Vec3f(0.0f, root, root);
+            facing.mSource = Shaders::moonSource(osg::Vec3f(0.0f, root, root), osg::Vec3f(), 0.2f);
             facing.mRight = osg::Vec3f(1.0f, 0.0f, 0.0f);
             facing.mUp = osg::Vec3f(0.0f, -root, root);
             facing.mColour = osg::Vec3f(1.0f, 1.0f, 1.0f);
-            facing.mLimb = std::sin(0.2f);
             facing.mAlpha = 1.0f;
             facing.mThroughAir = osg::Vec3f(1.0f, 1.0f, 1.0f);
             facing.mPaint = osg::Vec3f(1.0f, 1.0f, 1.0f);
@@ -198,7 +196,7 @@ namespace Rtx::Testing
 
             // The sun put exactly behind it, which is what an eclipse is and what the moons used to
             // take their share of alone.
-            camera.mSun = Shaders::sunSource(facing.mDirection, osg::Vec3f(8.0f, 8.0f, 8.0f));
+            camera.mSun = Shaders::sunSource(facing.mSource.mDirection, osg::Vec3f(8.0f, 8.0f, 8.0f));
             camera.mSunDiscColour = osg::Vec3f(1.0f, 1.0f, 1.0f);
             EXPECT_NEAR(sky(centre), Shaders::MOON_RADIANCE, 0.01f) << "the sun came through the moon";
 
@@ -246,8 +244,10 @@ namespace Rtx::Testing
                 .mOpacity = 1.0f,
                 .mAltitude = 30000.0f,
                 .mPerTile = osg::Vec2f(0.001f, 0.001f),
+                // The one sheet at both ends, as the host names a settled sky: the shader mixes
+                // the two unconditionally.
                 .mTexture = 0u,
-                .mNext = Shaders::NO_TEXTURE,
+                .mNext = 0u,
             };
 
             const auto floorUnder = [&](float cover) {
@@ -312,7 +312,7 @@ namespace Rtx::Testing
                 .mPerTile = osg::Vec2f(0.01f, 0.01f),
                 .mRings = osg::Vec3f(100.0f, 200.0f, 300.0f),
                 .mTexture = 0u,
-                .mNext = Shaders::NO_TEXTURE,
+                .mNext = 0u,
             };
 
             const auto deck = [&](float mean) {
@@ -397,13 +397,12 @@ namespace Rtx::Testing
             // is that number. A disc of black, so what is measured is the covering and not the face.
             const float root = std::sqrt(0.5f);
             Shaders::MoonDisc covering{};
-            covering.mDirection = osg::Vec3f(0.0f, root, root);
+            covering.mSource = Shaders::moonSource(osg::Vec3f(0.0f, root, root), osg::Vec3f(), 1.2f);
             covering.mRight = osg::Vec3f(1.0f, 0.0f, 0.0f);
             covering.mUp = osg::Vec3f(0.0f, -root, root);
             covering.mColour = osg::Vec3f();
             covering.mThroughAir = osg::Vec3f(1.0f, 1.0f, 1.0f);
             covering.mPaint = osg::Vec3f(1.0f, 1.0f, 1.0f);
-            covering.mLimb = std::sin(1.2f);
             covering.mAlpha = 1.0f;
             covering.mFace = Shaders::NO_TEXTURE;
 

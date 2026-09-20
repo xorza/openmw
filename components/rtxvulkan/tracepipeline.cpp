@@ -3,6 +3,7 @@
 #include <cassert>
 #include <cstddef>
 #include <cstring>
+#include <deque>
 #include <optional>
 #include <vector>
 
@@ -37,12 +38,18 @@ namespace Rtx
 
         const Specialization constants(specialization);
 
+        // A closest-hit stage's own words after the pipeline's, one table a stage, kept until the
+        // pipeline is made because the info the stage names points into it. A deque, because
+        // `Specialization` points into itself and may not move.
+        std::deque<Specialization> hitConstants;
+
         std::vector<VkPipelineShaderStageCreateInfo> stages;
         std::vector<VkRayTracingShaderGroupCreateInfoKHR> groups;
         stages.reserve(compiled.capacity());
         groups.reserve(1 + shaders.mMiss.size() + hitRecords);
 
-        const auto addStage = [&](VkShaderStageFlagBits stage, const std::filesystem::path& module) {
+        const auto addStage = [&](VkShaderStageFlagBits stage, const std::filesystem::path& module,
+                                  const VkSpecializationInfo* specialized) {
             const auto at = static_cast<std::uint32_t>(stages.size());
             compiled.push_back(loadShaderModule(device, module));
             stages.push_back(VkPipelineShaderStageCreateInfo{
@@ -50,7 +57,7 @@ namespace Rtx
                 .stage = stage,
                 .module = compiled.back().get(),
                 .pName = "main",
-                .pSpecializationInfo = constants.getInfo(),
+                .pSpecializationInfo = specialized,
             });
 
             return at;
@@ -67,16 +74,21 @@ namespace Rtx
             });
         };
 
-        addGeneral(addStage(VK_SHADER_STAGE_RAYGEN_BIT_KHR, shaders.mRaygen));
+        addGeneral(addStage(VK_SHADER_STAGE_RAYGEN_BIT_KHR, shaders.mRaygen, constants.getInfo()));
         for (const std::filesystem::path& module : shaders.mMiss)
-            addGeneral(addStage(VK_SHADER_STAGE_MISS_BIT_KHR, module));
+            addGeneral(addStage(VK_SHADER_STAGE_MISS_BIT_KHR, module, constants.getInfo()));
 
-        const std::uint32_t anyHit
-            = anyHitWanted ? addStage(VK_SHADER_STAGE_ANY_HIT_BIT_KHR, shaders.mAnyHit) : VK_SHADER_UNUSED_KHR;
+        const std::uint32_t anyHit = anyHitWanted
+            ? addStage(VK_SHADER_STAGE_ANY_HIT_BIT_KHR, shaders.mAnyHit, constants.getInfo())
+            : VK_SHADER_UNUSED_KHR;
 
-        for (const std::filesystem::path& module : shaders.mHit)
+        for (const HitShader& hit : shaders.mHit)
         {
-            const std::uint32_t closestHit = addStage(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, module);
+            const VkSpecializationInfo* specialized = hit.mSpecialization.empty()
+                ? constants.getInfo()
+                : hitConstants.emplace_back(specialization, hit.mSpecialization).getInfo();
+
+            const std::uint32_t closestHit = addStage(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, hit.mModule, specialized);
             for (std::uint32_t record = 0; record < shaders.mHitRecordsPerShader; ++record)
                 groups.push_back(VkRayTracingShaderGroupCreateInfoKHR{
                     .sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR,

@@ -25,6 +25,13 @@ layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_ROWS) read
     GpuEmitter at[];
 };
 
+/// The same sprites, for the two passes that write them: the shelter zeroes a drop under a roof
+/// and the shade writes each sprite's layers.
+layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_ROWS) buffer WrittenSprites
+{
+    GpuSprite at[];
+};
+
 /// One packed rect per sprite, which `spriterects.comp` writes and `spriteruns.comp` reads.
 layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_BLOCKS) buffer SpriteRects
 {

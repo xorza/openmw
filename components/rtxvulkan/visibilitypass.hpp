@@ -75,6 +75,10 @@ namespace Rtx
         /// produced.
         VkDescriptorSet mTextures = VK_NULL_HANDLE;
 
+        /// Where the array's texel counts are, `GpuTables::mTextureTexels`: the array's own, taken
+        /// fresh with its set.
+        VkDeviceAddress mTextureTexels = 0;
+
         /// The sea, as the tiles it was synthesised into this frame. Not the scene's, because one
         /// sea runs under every cell and under the doll and the map beside them.
         const WavePass* mWaves = nullptr;

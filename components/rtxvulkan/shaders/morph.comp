@@ -8,25 +8,11 @@
 // offset at its weight, positions only — a morph moves no normal there and moves none here. Target
 // nought is the base and its weight is never read, which is how the drawable numbers them.
 
-#include "scene.h"
 #include "skinning.h"
 
+#include "lib/runs.glsl"
+
 layout(local_size_x = SKIN_WORKGROUP) in;
-
-layout(buffer_reference, buffer_reference_align = TABLE_ALIGN_ROWS, scalar) readonly buffer Vectors
-{
-    vec3 at[];
-};
-
-layout(buffer_reference, buffer_reference_align = TABLE_ALIGN_ROWS, scalar) writeonly buffer Written
-{
-    vec3 at[];
-};
-
-layout(buffer_reference, buffer_reference_align = TABLE_ALIGN_ROWS, scalar) readonly buffer Weights
-{
-    float at[];
-};
 
 layout(push_constant, scalar) uniform Push
 {
@@ -39,15 +25,15 @@ void main()
     if (vertex >= morph.mCount)
         return;
 
-    vec3 position = Vectors(morph.mBase).at[vertex];
+    vec3 position = Vec3Run(morph.mBase).at[vertex];
     for (uint target = 1u; target < morph.mTargets; ++target)
     {
-        const float weight = Weights(morph.mWeights).at[target];
+        const float weight = FloatRun(morph.mWeights).at[target];
         if (weight == 0.0)
             continue;
 
-        position += weight * Vectors(morph.mOffsets).at[target * morph.mCount + vertex];
+        position += weight * Vec3Run(morph.mOffsets).at[target * morph.mCount + vertex];
     }
 
-    Written(morph.mPositions).at[vertex] = position;
+    Vec3Written(morph.mPositions).at[vertex] = position;
 }

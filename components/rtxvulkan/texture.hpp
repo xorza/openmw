@@ -8,6 +8,7 @@
 #include <string_view>
 #include <vector>
 
+#include <osg/Vec4f>
 #include <vulkan/vulkan_core.h>
 
 #include <components/rtx/shaders/scene.h>
@@ -20,6 +21,7 @@
 #include "handles.hpp"
 #include "image.hpp"
 #include "readstamp.hpp"
+#include "slottable.hpp"
 
 namespace Rtx
 {
@@ -79,6 +81,10 @@ namespace Rtx
         /// square, display-encoded, with a chain to one texel and a `UNORM` view a dispatch stores
         /// through. Written by `TextureArray::bakeComposites`, in the placement after it arrives.
         Texture(const Device& device, Batch& batch, std::string_view name);
+
+        /// One texel of `colour`, whole floats so the value is the one named, under the neutral
+        /// map: what `TEXTURE_NEUTRAL` stands, once, when the array is made.
+        Texture(const Device& device, Batch& batch, std::string_view name, const osg::Vec4f& colour);
         Texture(Texture&&) noexcept = default;
         Texture& operator=(Texture&&) noexcept = default;
 
@@ -195,6 +201,10 @@ namespace Rtx
         /// scene's table against. Not how many textures there are: see `getHeld`.
         std::uint32_t getCount() const { return static_cast<std::uint32_t>(mTextures.size()); }
 
+        /// Where `slot`'s copy of the texel counts is — `GpuTables::mTextureTexels` — named for
+        /// the next submit, which `sync(slot)` brought up to date.
+        VkDeviceAddress getTexelsAddress(FrameSlot slot) const { return mTexels.addressFor(slot); }
+
         /// What the array actually stands. A slot the scene gave back holds nothing and costs
         /// nothing, and neither is counted here.
         TexturesHeld getHeld() const;
@@ -230,6 +240,19 @@ namespace Rtx
         /// One per `TextureWrap`, indexed by it: the sampler a slot is bound through is the one its
         /// file's wrap names, for the texture and for its shading map alike.
         std::array<Sampler, sTextureWrapCount> mSamplers;
+
+        /// The one texel every material with no diffuse names, at `TEXTURE_NEUTRAL` of every set:
+        /// beside the array rather than in it, so the array's length stays the scene's table's.
+        Texture mNeutral;
+
+        /// One word per slot of the array, `TEXTURE_SLOTS` long: how many texels the texture in
+        /// it holds, which `coneLod` reads where it asked the driver for a size.
+        ///
+        /// **A copy per frame in flight, owed and paid the way the descriptors are.** A slot the
+        /// sweep freed and an arrival took over is one the frame behind still reads through its
+        /// material table, so one buffer written as textures stood was a count rewritten under a
+        /// trace — a leaf's mask read at the wrong level, and a walk that did not repeat.
+        SlotTable<std::uint32_t> mTexels;
 
         /// One set per frame in flight, both bindings at the maximum the layout declares.
         DescriptorSets mSets;

@@ -20,6 +20,7 @@
 // channels.
 
 #include "camera.h"
+#include "glare.h"
 #include "scene.h"
 #include "visibility.h"
 
@@ -31,9 +32,11 @@
 #include "lib/random.glsl"
 #include "lib/reproject.glsl"
 #include "lib/shading.glsl"
+#include "lib/sky.glsl"
 #include "lib/sprites.glsl"
 #include "lib/traversal.glsl"
 #include "lib/underwater.glsl"
+#include "lib/variants.glsl"
 #include "lib/water.glsl"
 
 layout(location = RTX_PAYLOAD) rayPayloadEXT VisibilityPayload packed;
@@ -104,11 +107,12 @@ MediumAhead mediumAhead(uvec2 pixel, vec3 origin, vec3 direction, float air, flo
 ///
 /// @param object filled in with what the ray found, and left readable: the launch takes the ray,
 ///        the distance and the instance row back off it rather than carrying them.
-/// @param layer which layer of the peel this trace is for, counting the eye's own as nought. Added
-///        to the instance's shader-table offset, so the hit lands on the record that says so —
-///        `HitRecord` in `visibility.h` says why it travels that way and not in the payload.
-#define RTX_TRACE(object, from, tmin, along, mask, layer)                                                   \
-    hitObjectTraceRayEXT(object, sceneTop, gl_RayFlagsNoneEXT, (mask), (layer), 0u, MISS_RECORD_SKY, (from), \
+/// @param record which record of its kind's block the hit lands on — `hitRecordOffset` of the eye
+///        the ray is cast through and the layer of the peel it is for — added to the instance's
+///        shader-table offset. `HitRecord` in `visibility.h` says why the two travel that way and
+///        not in the payload.
+#define RTX_TRACE(object, from, tmin, along, mask, record)                                                  \
+    hitObjectTraceRayEXT(object, sceneTop, gl_RayFlagsNoneEXT, (mask), (record), 0u, MISS_RECORD_SKY, (from), \
         (tmin), (along), frame.mFar, RTX_TRAVERSAL_PAYLOAD);
 
 /// Runs the shader the hit object names, sorted first where the build asked.
@@ -128,15 +132,15 @@ MediumAhead mediumAhead(uvec2 pixel, vec3 origin, vec3 direction, float air, flo
         hitObjectExecuteShaderEXT(object, RTX_PAYLOAD);                                                     \
     }
 
-#define RTX_TRACE_AND_SHADE(object, from, tmin, along, mask, layer)                                         \
+#define RTX_TRACE_AND_SHADE(object, from, tmin, along, mask, record)                                        \
     {                                                                                                       \
-        RTX_TRACE(object, from, tmin, along, mask, layer)                                                   \
+        RTX_TRACE(object, from, tmin, along, mask, record)                                                  \
         RTX_SHADE(object)                                                                                   \
     }
 
 /// The low eight bits of the diffuse texture slot the hit's material names, as a coherence hint:
 /// two dependent loads the hit shader makes again, spent here so that a warp reads one sheet.
-/// Nought for a miss, which names no material.
+/// Nought for a miss, which names no material; every hit names one, the neutral slot included.
 uint textureHintOf(hitObjectEXT object)
 {
     if (!hitObjectIsHitEXT(object))
@@ -170,13 +174,15 @@ void main()
     if (frame.mArmsInFrame != 0u)
     {
         const Ray ray = rayAt(frame.mArms, vec2(pixel));
-        RTX_TRACE(found, frame.mOrigin + ray.mOffset, 0.0, ray.mDirection, frame.mRayMask & MASK_FIRST_PERSON, 0u)
+        RTX_TRACE(found, frame.mOrigin + ray.mOffset, 0.0, ray.mDirection, frame.mRayMask & MASK_FIRST_PERSON,
+            hitRecordOffset(1u, 0u))
         arms = hitObjectIsHitEXT(found);
     }
     if (!arms)
     {
         const Ray ray = rayAt(frame.mCamera, vec2(pixel));
-        RTX_TRACE(found, frame.mOrigin + ray.mOffset, 0.0, ray.mDirection, worldMask(frame.mRayMask), 0u)
+        RTX_TRACE(found, frame.mOrigin + ray.mOffset, 0.0, ray.mDirection, worldMask(frame.mRayMask),
+            hitRecordOffset(0u, 0u))
     }
     RTX_SHADE(found)
     Answer answer = unpackAnswer(packed);
@@ -254,8 +260,10 @@ void main()
         peeledScattered = ahead.mScattered;
 
         // The layer this trace is for, which on the last one the budget allows is the record that
-        // says whatever it finds is to be shaded as a solid.
-        RTX_TRACE_AND_SHADE(found, origin, distance + SHADOW_BIAS, direction, peelMask, layer + 1u)
+        // says whatever it finds is to be shaded as a solid — in the block of the eye the ray was
+        // cast through, because this is that ray carried on.
+        RTX_TRACE_AND_SHADE(found, origin, distance + SHADOW_BIAS, direction, peelMask,
+            hitRecordOffset(uint(arms), layer + 1u))
         answer = unpackAnswer(packed);
 
         origin = hitObjectGetWorldRayOriginEXT(found);
@@ -344,7 +352,7 @@ void main()
     // anything at all carries `MASK_MEDIUM`, so a cell with no cloud in it neither descends the
     // top level to find nothing nor merges a layer that holds nothing — and the merge is not
     // free: it divides a coverage back out, which moves a level on a view that holds no medium.
-    PuffLayer layer = spritesAlong(pixel, cone, origin, direction, distance, true);
+    PuffLayer layer = spritesAlong(pixel, origin, direction, distance, cone, true);
     float shellsThrough = 1.0;
 
     if (frame.mMediumInFrame != 0u)
@@ -363,9 +371,8 @@ void main()
     // against the world's depth and counts the pixels that survived; here every primary ray inside
     // the quad's disc counts itself, and again where nothing that writes depth stood in front of
     // the sky — the water writes none, and a pane peeled off the ray does. `glare.h` says whose
-    // disc this is and `tone.comp` reads the pair back. The chord and not the angle, as the sun's
-    // own disc is tested.
-    if (sunUp() && length(direction - frame.mSun.mDirection) < 2.0 * sin(0.5 * SUN_GLARE_QUERY_RADIUS))
+    // disc this is and `tone.comp` reads the pair back.
+    if (sunUp() && insideCap(direction, frame.mSun.mDirection, capChord(SUN_GLARE_QUERY_RADIUS)))
     {
         atomicAdd(sunGlare.mTotal, 1u);
         if (!(hit && !answer.mWater) && paneThrough >= 1.0)

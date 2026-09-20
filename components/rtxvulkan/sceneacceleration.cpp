@@ -357,10 +357,11 @@ namespace Rtx
             .mask = record.mMask,
 
             // The kind, so that traversal picks the shader and the trace never asks what it hit:
-            // one closest-hit shader stands behind `HIT_RECORD_LAYERS` records, kinds in the order
-            // `MaterialKind` names them, and the launch adds the layer it traces for.
+            // one closest-hit shader stands behind `HIT_RECORDS_PER_SHADER` records, kinds in the
+            // order `MaterialKind` names them, and the launch adds the eye and the layer it traces
+            // for — `hitRecordOffset`.
             .instanceShaderBindingTableRecordOffset
-            = static_cast<std::uint32_t>(record.mKind) * Shaders::HIT_RECORD_LAYERS,
+            = static_cast<std::uint32_t>(record.mKind) * Shaders::HIT_RECORDS_PER_SHADER,
             .flags = flags,
             .accelerationStructureReference = mBottomLevel.getAddress(record.mMesh),
         };

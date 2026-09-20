@@ -1,8 +1,8 @@
 #ifndef OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_BINDINGS_GLSL
 #define OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_BINDINGS_GLSL
 
-// Everything the trace is handed: six bindings, and every table the scene owns reached through an
-// address the frame block carries.
+// Everything the trace is handed: set nought's bindings, and every table the scene owns reached
+// through an address the frame block carries.
 //
 // **The frame's own block carries what is not a table, and where every table is.** The camera, the
 // sky, the sea's moments and where the lamps were binned ride there because a record that is one
@@ -277,6 +277,12 @@ layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_ROWS) read
     float at[];
 };
 
+/// How many texels each slot of the bindless array holds — `GpuTables::mTextureTexels`.
+layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_ROWS) readonly buffer TexelTable
+{
+    uint at[];
+};
+
 GpuMesh meshAt(uint index)
 {
     return MeshTable(frame.mTables.mMeshes).at[index];
@@ -315,6 +321,12 @@ uint lightListAt(uint slot)
 float blueNoiseAt(uint index)
 {
     return BlueNoiseTable(frame.mTables.mBlueNoise).at[index];
+}
+
+/// How many texels the texture in `slot` holds, which is what its mip level owes its own size.
+uint textureTexelsAt(uint slot)
+{
+    return TexelTable(frame.mTables.mTextureTexels).at[slot];
 }
 
 /// Every live particle in the scene, one emitter's run after another's.

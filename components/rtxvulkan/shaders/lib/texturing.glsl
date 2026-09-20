@@ -9,6 +9,7 @@
 
 #include "scene.h"
 #include "bindings.glsl"
+#include "ground.glsl"
 
 /// What the hit's own triangle contributes to a mip level, before any texture is named.
 ///
@@ -44,7 +45,7 @@ SurfaceCone surfaceConeAt(vec3 crossed, vec3 direction)
 /// A base at or below which every texture reads its finest level, whatever its own resolution adds.
 ///
 /// **Both a sentinel and a threshold, and nothing has to know which a given point is.** A ray with
-/// no cone is given this so that `coneLod` reads no texture header for it, and a base that reaches
+/// no cone is given this so that `coneLod` loads no texel count for it, and a base that reaches
 /// it honestly would clamp to the finest level anyway — the largest `0.5 * log2(w * h)` a
 /// `maxImageDimension2D` of 16384 allows is 14.
 const float TEXTURE_FINEST_BASE = -64.0;
@@ -106,16 +107,20 @@ TexturePoint texturePoint(vec2 uv[3], vec3 weight, vec4 transform, SurfaceCone c
 /// in the texture's own resolution and one term in nothing else. A compute shader has no
 /// derivatives, so this is the only thing standing between every fetch and level zero.
 ///
+/// **The texture's own term is a load and not a header read.** `textureSize` asked the driver
+/// for the slot's extent on every sample; the texel count is one word per slot for the life of the
+/// slot, and the array's owner writes it beside the descriptor — `GpuTables::mTextureTexels`. The
+/// logarithm stays here, over the same integer, so no level moves.
+///
 /// **The early answer is a read and not an arithmetic saving.** `lightThrough` says why a shadow
-/// ray takes level zero, and what it saves is the texture header this reads.
+/// ray takes level zero, and what it saves is the load this makes; on a shadow ray the width is a
+/// literal nought and the test folds.
 float coneLod(uint slot, TexturePoint point)
 {
     if (point.mBase <= TEXTURE_FINEST_BASE)
         return 0.0;
 
-    const vec2 size = vec2(textureSize(textures[nonuniformEXT(slot)], 0));
-
-    return point.mBase + 0.5 * log2(size.x * size.y);
+    return point.mBase + 0.5 * log2(float(textureTexelsAt(slot)));
 }
 
 /// The diffuse texel a hit landed on, read at the level its cone can resolve.
