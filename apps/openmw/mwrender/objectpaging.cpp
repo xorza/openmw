@@ -57,7 +57,8 @@ namespace MWRender
 
     namespace
     {
-        bool typeFilter(Terrain::RefKinds kinds, int type, bool far)
+        // The paging's own kinds unless a caller names others: what a chunk stands, and never a light
+        bool typeFilter(int type, bool far, Terrain::RefKinds kinds = Terrain::RefKinds::Paged)
         {
             if (type == ESM::REC_LIGH)
                 return Terrain::holds(kinds, Terrain::RefKinds::Lit);
@@ -507,8 +508,8 @@ namespace MWRender
             };
         }
 
-        std::map<ESM::RefNum, PagedCellRef> collectESM3References(
-            float size, const osg::Vec2i& startCell, const MWWorld::ESMStore& store, Terrain::RefKinds kinds)
+        std::map<ESM::RefNum, PagedCellRef> collectESM3References(float size, const osg::Vec2i& startCell,
+            const MWWorld::ESMStore& store, Terrain::RefKinds kinds = Terrain::RefKinds::Paged)
         {
             std::map<ESM::RefNum, PagedCellRef> refs;
             ESM::ReadersCache readers;
@@ -541,7 +542,7 @@ namespace MWRender
                                     continue;
 
                                 int type = store.findStatic(ref.mRefID);
-                                if (!typeFilter(kinds, type, size >= 2))
+                                if (!typeFilter(type, size >= 2, kinds))
                                     continue;
                                 if (deleted)
                                 {
@@ -566,7 +567,7 @@ namespace MWRender
                             continue;
                         }
                         int type = store.findStatic(ref.mRefID);
-                        if (!typeFilter(kinds, type, size >= 2))
+                        if (!typeFilter(type, size >= 2, kinds))
                             continue;
                         refs.insert_or_assign(ref.mRefNum, makePagedCellRef(ref));
                     }
@@ -575,8 +576,8 @@ namespace MWRender
             return refs;
         }
 
-        std::map<ESM::RefNum, PagedCellRef> collectESM4References(
-            float size, const osg::Vec2i& startCell, ESM::RefId worldspace, Terrain::RefKinds kinds)
+        std::map<ESM::RefNum, PagedCellRef> collectESM4References(float size, const osg::Vec2i& startCell,
+            ESM::RefId worldspace, Terrain::RefKinds kinds = Terrain::RefKinds::Paged)
         {
             std::map<ESM::RefNum, PagedCellRef> refs;
             const auto& store = MWBase::Environment::get().getWorld()->getStore();
@@ -593,7 +594,7 @@ namespace MWRender
                         if (ref4->mFlags & ESM4::Rec_Disabled)
                             continue;
                         int type = store.findStatic(ref4->mBaseObj);
-                        if (!typeFilter(kinds, type, size >= 2))
+                        if (!typeFilter(type, size >= 2, kinds))
                             continue;
                         if (!ref4->mEsp.parent.isZeroOrUnset())
                         {
@@ -627,11 +628,11 @@ namespace MWRender
 
         if (mWorldspace == ESM::Cell::sDefaultWorldspaceId)
         {
-            refs = collectESM3References(size, startCell, store, Terrain::RefKinds::Paged);
+            refs = collectESM3References(size, startCell, store);
         }
         else
         {
-            refs = collectESM4References(size, startCell, mWorldspace, Terrain::RefKinds::Paged);
+            refs = collectESM4References(size, startCell, mWorldspace);
         }
 
         if (activeGrid && !refs.empty())
@@ -993,7 +994,7 @@ namespace MWRender
     bool ObjectPaging::enableObject(
         int type, ESM::RefNum refnum, const osg::Vec3f& pos, const osg::Vec2i& cell, bool enabled)
     {
-        if (!typeFilter(Terrain::RefKinds::Paged, type, false))
+        if (!typeFilter(type, false))
             return false;
 
         {
@@ -1017,7 +1018,7 @@ namespace MWRender
 
     bool ObjectPaging::blacklistObject(int type, ESM::RefNum refnum, const osg::Vec3f& pos, const osg::Vec2i& cell)
     {
-        if (!typeFilter(Terrain::RefKinds::Paged, type, false))
+        if (!typeFilter(type, false))
             return false;
 
         {

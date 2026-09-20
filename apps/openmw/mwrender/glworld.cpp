@@ -27,6 +27,10 @@
 #include <components/stereo/stereomanager.hpp>
 #include <components/terrain/world.hpp>
 
+#include "../mwbase/environment.hpp"
+#include "../mwbase/windowmanager.hpp"
+#include "../mwgui/postprocessorhud.hpp"
+
 #include "postprocessor.hpp"
 #include "precipitation.hpp"
 #include "precipitationocclusion.hpp"
@@ -545,7 +549,11 @@ namespace MWRender
                 if (Settings::postProcessing().mEnabled)
                     mPostProcessor->enable();
                 else
+                {
                     mPostProcessor->disable();
+                    if (auto* hud = MWBase::Environment::get().getWindowManager()->getPostProcessorHud())
+                        hud->setVisible(false);
+                }
             }
             else if (it->first == "Water")
             {

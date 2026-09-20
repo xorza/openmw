@@ -1032,14 +1032,6 @@ namespace MWRender
                 if (MWMechanics::getPlayer().isInCell())
                     configureAmbient(*MWMechanics::getPlayer().getCell()->getCell());
             }
-            else if (it->first == "Post Processing" && it->second == "enabled")
-            {
-                if (!Settings::postProcessing().mEnabled)
-                {
-                    if (auto* hud = MWBase::Environment::get().getWindowManager()->getPostProcessorHud())
-                        hud->setVisible(false);
-                }
-            }
         }
 
         mRenderer.processChangedSettings(changed);
