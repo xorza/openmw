@@ -17,6 +17,8 @@ set(RTXBENCH_FILES
     benchrun.hpp
     benchspec.cpp
     benchspec.hpp
+    cardwatch.cpp
+    cardwatch.hpp
     codesettle.cpp
     codesettle.hpp
     framehashes.cpp
@@ -25,6 +27,8 @@ set(RTXBENCH_FILES
     frametimes.hpp
     gpuclock.cpp
     gpuclock.hpp
+    nvml.cpp
+    nvml.hpp
     runrecord.cpp
     runrecord.hpp
     scenedigest.cpp

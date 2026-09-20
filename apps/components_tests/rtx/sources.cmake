@@ -67,6 +67,7 @@ set(RTX_TEST_FILES
     rtxbench/benchrecord.cpp
     rtxbench/benchrun.cpp
     rtxbench/benchspec.cpp
+    rtxbench/cardwatch.cpp
     rtxbench/codesettle.cpp
     rtxbench/framehashes.cpp
     rtxbench/frametimes.cpp

@@ -16,8 +16,8 @@ namespace Rtx
 {
     namespace
     {
-        /// Null where nothing answered, so a record taken on a machine with no `nvidia-smi` says it
-        /// carries no clock rather than claiming one of zero.
+        /// Null where nothing answered, so a record taken on a machine with no driver library says
+        /// it carries no clock rather than claiming one of zero.
         std::string asJson(const GpuClock& clock)
         {
             if (!clock.mRead)
@@ -27,6 +27,24 @@ namespace Rtx
                 R"({{"lowestMhz": {}, "highestMhz": {}, "memoryMhz": {}, "temperatureC": {}, "throttle": "{}"}})",
                 clock.mLowestMhz, clock.mHighestMhz, clock.mMemoryMhz, clock.mTemperatureC,
                 describeThrottle(clock.mThrottleMask));
+        }
+
+        /// Null where nothing looked, for the same reason; and in the record at all because a
+        /// record is what a run on another commit is read against, and a run another process
+        /// drew through is not the same run.
+        std::string asJson(const CardShare& card)
+        {
+            if (!card.mViewed)
+                return "null";
+
+            std::string holders = "[";
+            for (std::size_t at = 0; at < card.mHolders.size(); ++at)
+                holders += std::format(R"({}{{"name": "{}", "samples": {}}})", at == 0 ? "" : ", ",
+                    card.mHolders[at].mName, card.mHolders[at].mSamples);
+            holders += ']';
+
+            return std::format(R"({{"seconds": {:.2f}, "samples": {}, "others": {}, "holders": {}}})", card.mSeconds,
+                card.mSamples, card.mOthers, holders);
         }
 
         /// Everything a scene came to, so the record can compare what a change cost in memory as
@@ -62,9 +80,15 @@ namespace Rtx
         /// brought, and the three largest spends in it — enough to say whose the frame was.
         std::string describeWorst(const WorstFrame& frame)
         {
-            // Every spend but the frame's own, which is their sum.
+            // The stretches that sum to the frame, and not the frame itself nor a share of one
+            // of them: `Timing` says `Wait` is most of `Finish` and `Upload` most of `Place`, so
+            // a share beside its whole is one stretch printed twice.
+            constexpr std::array<Timing, 6> sNotStretches{ Timing::Frame, Timing::Wait, Timing::Fold, Timing::Bake,
+                Timing::Textures, Timing::Upload };
             std::array<Timing, sTimingCount> spends = sTimings.values();
-            const auto end = std::remove(spends.begin(), spends.end(), Timing::Frame);
+            const auto end = std::remove_if(spends.begin(), spends.end(), [&](const Timing timing) {
+                return std::find(sNotStretches.begin(), sNotStretches.end(), timing) != sNotStretches.end();
+            });
             constexpr std::size_t shown = 3;
             std::partial_sort(spends.begin(), spends.begin() + shown, end,
                 [&](const Timing a, const Timing b) { return frame.mSpend.at(a) > frame.mSpend.at(b); });
@@ -200,6 +224,10 @@ namespace Rtx
         out += describeZones(place.mGpu);
         out += describeClock(place.mClock);
 
+        // Under the clock, because it is the other premise every figure above rests on: a place
+        // another process drew through is the desktop's reading and not the renderer's.
+        out += "  " + describeCard(place.mCard) + '\n';
+
         // Only where the run watched: a window somebody is looking at watches nothing.
         if (place.mThreads.mViewed)
             out += "  " + describeThreads(place.mThreads) + '\n';
@@ -293,7 +321,8 @@ namespace Rtx
                 file << std::format(
                     R"({}"{}": {})", zone == 0 ? "" : ", ", place.mGpu[zone].mName, asJson(place.mGpu[zone]));
 
-            file << "}, \"clock\": " << asJson(place.mClock) << "}" << (at + 1 < places.size() ? "," : "") << '\n';
+            file << "}, \"clock\": " << asJson(place.mClock) << ", \"card\": " << asJson(place.mCard) << "}"
+                 << (at + 1 < places.size() ? "," : "") << '\n';
         }
 
         file << "  ]\n}\n";

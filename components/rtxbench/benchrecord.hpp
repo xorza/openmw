@@ -16,6 +16,7 @@
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/upscale.hpp>
 
+#include "cardwatch.hpp"
 #include "frametimes.hpp"
 #include "gpuclock.hpp"
 #include "threadwatch.hpp"
@@ -157,6 +158,11 @@ namespace Rtx
         /// What the card was clocked at as this place ended. Every GPU figure above is at that
         /// clock, and two runs taken at different ones are not an A/B.
         GpuClock mClock;
+
+        /// Who held the card through the place's measured frames. A place another process drew
+        /// through carries that process's frames in every row above, and this is the line that
+        /// says so.
+        CardShare mCard;
 
         /// The busiest of the process's other threads across the place's frames, warm-up
         /// included: what says the driver's second compile of the launches (`CodeSettle`) did not

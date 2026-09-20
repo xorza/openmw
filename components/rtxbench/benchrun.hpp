@@ -198,6 +198,10 @@ namespace Rtx
         /// Where the last measured frame is written as a PNG, or empty for none.
         std::filesystem::path mCapture;
 
+        /// Where every measured frame's figures are written, a frame a line, or empty for none:
+        /// `Rtx::writeFrameTimes` says what for.
+        std::filesystem::path mFrameTimes;
+
         /// Whether the scene the renderer was handed is reported: what it holds, what it could not
         /// place, and one number for the whole of it.
         bool mDigest = false;

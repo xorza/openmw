@@ -80,8 +80,8 @@ namespace Rtx
     /// What one measured frame spent on the host, by phase — an array over `Timing`, because that
     /// is what `FrameSamples` holds and what it becomes, and a signature of six doubles in a row is
     /// six chances to hand them over in the wrong order. In the core rather than the bench,
-    /// because `SceneUploader` writes `Bake`, `Textures` and `Upload`. `Timing::Frame` and
-    /// `Timing::Wait` reach `FrameSamples` by their own routes and are left at nought here.
+    /// because `SceneUploader` writes `Bake`, `Textures` and `Upload`. `Timing::Frame` reaches
+    /// `FrameSamples` by a route of its own and is left at nought here.
     struct FrameSpend
     {
         std::array<double, sTimingCount> mMs{};

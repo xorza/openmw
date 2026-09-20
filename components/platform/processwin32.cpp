@@ -1,7 +1,6 @@
 #include "process.hpp"
 
-#include <array>
-#include <cstdio>
+#include <cstdint>
 #include <cstdlib>
 #include <optional>
 #include <string>
@@ -62,20 +61,8 @@ namespace Platform::Process
         return static_cast<int>(status);
     }
 
-    void readCommandOutput(const char* command, std::string& into)
+    std::uint32_t currentId()
     {
-        into.clear();
-
-        // `cmd` spells the null device `nul`, and would make a file of `/dev/null`.
-        const std::string line = std::string(command) + " 2>nul";
-        std::FILE* pipe = _popen(line.c_str(), "r");
-        if (pipe == nullptr)
-            return;
-
-        std::array<char, 256> buffer{};
-        while (std::fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) != nullptr)
-            into += buffer.data();
-
-        _pclose(pipe);
+        return static_cast<std::uint32_t>(GetCurrentProcessId());
     }
 }

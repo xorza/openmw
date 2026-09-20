@@ -61,6 +61,11 @@ backend ever arrives.
   and `--pictures=<dir>`.
 - Measure on a hot card, back to back, never with a sleep between runs. Take a throwaway
   warm-up leg first. No frame times until the renderer draws everything the game has.
+- Measure on a quiet desktop. A bench started from this session's foreground runs under Claude
+  Code's spinner, which Zed redraws and KWin composites nine times a second, and every figure
+  moves with it — the host rows by half, the zone shares by a tenth, the tail by 4 ms. Start the
+  run in the background and end the turn; the report's `card` lines say whether that held, and
+  `--frame-times=<dir>` writes the series behind a tail.
 - Profiling: `apps/rtxtool/profile.sh` for the CPU, `nsys profile ./openmw-rtxtool bench ...`
   for the GPU. `ncu` is not installed.
 

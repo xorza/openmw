@@ -527,16 +527,16 @@ endif()
 # do that the systems spell differently. Two systems, because those are the two it runs on.
 if (OPENMW_RTX)
     add_component_dir(platform
-        process memory fifo
+        process memory fifo library
         )
 
     if (WIN32)
         add_component_dir(platform
-            processwin32 memorywin32 fifowin32
+            processwin32 memorywin32 fifowin32 librarywin32
             )
     elseif (UNIX)
         add_component_dir(platform
-            processposix memoryposix fifoposix
+            processposix memoryposix fifoposix libraryposix
             )
     else ()
         message(FATAL_ERROR "The ray tracer has no platform layer for ${CMAKE_SYSTEM_NAME}")
@@ -616,6 +616,10 @@ add_library(components STATIC ${COMPONENT_FILES})
 # in this tree links this library.
 if (OPENMW_RTX)
     target_compile_definitions(components PUBLIC OPENMW_RTX)
+
+    # What `platform/libraryposix.cpp` opens a shared library with, on the C libraries that keep
+    # it out of libc. Empty where libc has it.
+    target_link_libraries(components ${CMAKE_DL_LIBS})
 endif()
 
 if (ANDROID)

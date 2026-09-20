@@ -1,6 +1,4 @@
-#include <chrono>
 #include <string>
-#include <thread>
 
 #include <gtest/gtest.h>
 
@@ -45,7 +43,7 @@ namespace Rtx
         /// The line a report carries, and the silence where there is nothing to carry.
         TEST(RtxGpuClockTest, aClockNothingAnsweredForPrintsNothing)
         {
-            // A machine with no `nvidia-smi` reports no clock rather than one of zero megahertz,
+            // A machine with no driver library reports no clock rather than one of zero megahertz,
             // which would read as a measurement rather than as an absence.
             EXPECT_EQ(describeClock(GpuClock{}), "");
 
@@ -107,70 +105,6 @@ namespace Rtx
             still.add(GpuClock::reading(2325, 9001, 44, 0));
             EXPECT_EQ(describeClock(still),
                 "  clock 2325 MHz core over 2 readings, 9001 MHz memory, 44 °C — nothing holding it back\n");
-        }
-
-        /// What the tool says on this machine, where it is installed at all.
-        ///
-        /// **A skip and not a failure where nothing answers**: the harness runs on machines without
-        /// an NVIDIA driver, and a clock is instrumentation rather than a renderer.
-        TEST(RtxGpuClockTest, theCardAnswersWithAClockItCouldBeRunningAt)
-        {
-            const GpuClock clock = readGpuClock();
-            if (!clock.mRead)
-                GTEST_SKIP() << "nothing answered for a GPU clock on this machine";
-
-            // A graphics clock and a memory clock a card of the last decade could hold, which is
-            // what says the fields were read in the order they were asked for rather than shuffled.
-            EXPECT_GT(clock.mLowestMhz, 100u);
-            EXPECT_LT(clock.mLowestMhz, 10000u);
-            EXPECT_EQ(clock.mLowestMhz, clock.mHighestMhz) << "one reading is not a range";
-            EXPECT_GT(clock.mMemoryMhz, 100u);
-            EXPECT_GT(clock.mTemperatureC, 0u);
-            EXPECT_LT(clock.mTemperatureC, 120u);
-
-            EXPECT_FALSE(describeClock(clock).empty());
-        }
-
-        /// A watch samples across the frames it is open for, and a second `start` does not disturb
-        /// one already running.
-        ///
-        /// **The reading count is the whole claim.** What the row said before this existed was two
-        /// samples printed as a range, and a reader could not tell that from a card watched
-        /// throughout — so what a watch has to prove is that it took more than two.
-        TEST(RtxGpuClockTest, aWatchSamplesAcrossThePlaceAndASecondStartLeavesItAlone)
-        {
-            if (!readGpuClock().mRead)
-                GTEST_SKIP() << "nothing answered for a GPU clock on this machine";
-
-            ClockWatch watch;
-            watch.start();
-
-            // **Waited for and not slept out.** What the claim needs is one turn of the watch's own
-            // loop, and every reading forks a process — so how long that takes is the machine's to
-            // say, and a sleep is either longer than this box needed or shorter than a busy one
-            // takes. Two from the loop, and `stop` below adds the third that carries the count past
-            // the two ends.
-            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
-            while (watch.getReadings() < 2 && std::chrono::steady_clock::now() < deadline)
-                std::this_thread::sleep_for(std::chrono::milliseconds(5));
-
-            ASSERT_GE(watch.getReadings(), 2u) << "the watch's loop never came round";
-
-            // **A second start is nothing at all, forgetting included.** One of these is held across
-            // the places of a suite, so a start that cleared a run in progress would throw away
-            // every reading that run had taken.
-            watch.start();
-
-            const GpuClock place = watch.stop();
-            EXPECT_TRUE(place.mRead);
-            EXPECT_GT(place.mReadings, 2u) << "a watch that answered with no more than its two ends";
-            EXPECT_GE(place.getMeanMhz(), place.mLowestMhz);
-            EXPECT_LE(place.getMeanMhz(), place.mHighestMhz);
-
-            // And it starts again from nothing, rather than carrying the place before it.
-            watch.start();
-            const GpuClock next = watch.stop();
-            EXPECT_LT(next.mReadings, place.mReadings) << "the second place carried the first's readings";
         }
     }
 }

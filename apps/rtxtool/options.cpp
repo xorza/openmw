@@ -298,6 +298,11 @@ namespace RtxTool
             "also write the run to this file as one record, for comparing against the "
             "same run on another commit");
 
+        option(Verbs::Bench, "frame-times", bpo::value<std::string>()->default_value(""),
+            "also write every measured frame's figures, a frame a line and a row of the report a "
+            "column, to <dir>/<place>.txt: the series the report summarises, for whether a tail "
+            "is one mode or two and how far apart the frames that make it are");
+
         option(Verbs::Bench, "perf-control", bpo::value<std::string>()->default_value(""),
             "turn a `perf record --delay=-1 --control=fifo:<path>` on around each "
             "place's measured frames, so the profile holds those frames and not the cell being "

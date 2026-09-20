@@ -30,7 +30,11 @@ namespace Rtx
         {
             Arrivals arrivals;
             FrameSpend spend;
-            spend.at(Timing::Upload) = 2.0;
+            spend.at(Timing::Place) = 2.0;
+            spend.at(Timing::Upload) = 1.9;
+            spend.at(Timing::Finish) = 1.5;
+            spend.at(Timing::Wait) = 1.4;
+            spend.at(Timing::Walk) = 0.5;
 
             arrivals.add(5.0, 0, spend);
             arrivals.add(9.0, 12, spend);
@@ -57,7 +61,10 @@ namespace Rtx
             place.mArrivals = arrivals;
             const std::string described = describePlace(place);
             EXPECT_NE(described.find("2 frames extended the scene with 15 meshes"), std::string::npos) << described;
-            EXPECT_NE(described.find("9.0 ms (12 meshes: upload 2.0"), std::string::npos) << described;
+            // The three largest stretches, and never a share beside its whole: `upload` is most of
+            // `place` and `wait` most of `finish`, so `walk` is the third.
+            EXPECT_NE(described.find("9.0 ms (12 meshes: place 2.0 finish 1.5 walk 0.5)"), std::string::npos)
+                << described;
         }
 
         /// A route flown short says so beside its crossings, and one that arrived says nothing.

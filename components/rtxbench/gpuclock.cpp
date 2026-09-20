@@ -2,37 +2,14 @@
 
 #include <algorithm>
 #include <array>
-#include <charconv>
-#include <chrono>
+#include <cstdint>
 #include <format>
 #include <string>
 #include <string_view>
-#include <system_error>
 #include <utility>
-#include <vector>
-
-#include <components/platform/process.hpp>
-
-#include "benchspec.hpp"
 
 namespace Rtx
 {
-    namespace
-    {
-        /// `text` as a number in `base`, or nothing where it is not one — which is what `[N/A]` is,
-        /// and what a laptop's card answers for a field its driver does not expose.
-        template <class T>
-        bool readNumber(std::string_view text, int base, T& into)
-        {
-            if (text.starts_with("0x") || text.starts_with("0X"))
-                text.remove_prefix(2);
-
-            const char* end = text.data() + text.size();
-            const std::from_chars_result read = std::from_chars(text.data(), end, into, base);
-            return read.ec == std::errc{} && read.ptr == end;
-        }
-    }
-
     std::string describeThrottle(std::uint64_t mask)
     {
         // NVML's `nvmlClocksEventReason*` bits, in its own order. Idle is among them because a
@@ -112,80 +89,6 @@ namespace Rtx
             .mThrottleMask = throttle,
             .mRead = true,
         };
-    }
-
-    ClockWatch::~ClockWatch() = default;
-
-    void ClockWatch::start()
-    {
-        // **Four a second.** Every reading forks this process, and a harness with a world loaded is
-        // a large one to fork, so the rate is what the spawn cost was measured under rather than
-        // what the card can be asked for.
-        constexpr std::chrono::milliseconds sPeriod{ 250 };
-
-        // **Only where this call is what started it.** One of these is held across the places of a
-        // suite, so a watch that kept what it saw would hand the second place the first place's
-        // clock — and one that cleared a run already in progress would throw away the readings that
-        // run had taken.
-        //
-        // The reading is taken outside the lock: a spawn takes tens of milliseconds, and holding it
-        // for that would make `stop` wait out a reading it is about to add its own to.
-        if (!mWorker.repeat(sPeriod, [this] {
-                const GpuClock now = readGpuClock();
-                mMonitor.under([&] { mSeen.add(now); });
-            }))
-            return;
-
-        mMonitor.under([&] { mSeen = GpuClock{}; });
-    }
-
-    std::uint32_t ClockWatch::getReadings()
-    {
-        return mMonitor.under([this] { return mSeen.mReadings; });
-    }
-
-    GpuClock ClockWatch::stop()
-    {
-        // **One more before the join**, so the last frames are covered by a reading taken after
-        // them rather than before, and a place short enough that the loop never came round still
-        // answers with two.
-        const GpuClock last = readGpuClock();
-
-        mWorker.stop();
-
-        return mMonitor.under([&] {
-            mSeen.add(last);
-            return mSeen;
-        });
-    }
-
-    GpuClock readGpuClock()
-    {
-        // Empty where it could not be run: a machine without the tool, or with a driver that
-        // refuses the query, is a machine this reports no clock for.
-        std::string answer;
-        Platform::Process::readCommandOutput(
-            "nvidia-smi --query-gpu=clocks.gr,clocks.mem,temperature.gpu,"
-            "clocks_event_reasons.active --format=csv,noheader,nounits",
-            answer);
-
-        // **The list splitter the view file and `--views` are read by**, over the one line of csv
-        // this asked for. It drops an empty entry, which a positional read would normally mind: here
-        // a dropped column takes the count under four and the whole reading is refused, so a field
-        // the driver could not fill can never be read as the field beside it.
-        const std::vector<std::string> fields = splitNames(std::string_view(answer).substr(0, answer.find('\n')));
-        if (fields.size() < 4)
-            return GpuClock{};
-
-        std::uint32_t core = 0;
-        std::uint32_t memory = 0;
-        std::uint32_t temperature = 0;
-        std::uint64_t throttle = 0;
-        if (!readNumber(fields[0], 10, core) || !readNumber(fields[1], 10, memory)
-            || !readNumber(fields[2], 10, temperature) || !readNumber(fields[3], 16, throttle))
-            return GpuClock{};
-
-        return GpuClock::reading(core, memory, temperature, throttle);
     }
 
     std::string describeClock(const GpuClock& clock)

@@ -671,11 +671,17 @@ namespace RtxTool
             const bool hashing = !variables["hashes"].as<std::string>().empty()
                 || !variables["against"].as<std::string>().empty() || !variables["pictures"].as<std::string>().empty();
 
+            const std::filesystem::path frameTimes = variables["frame-times"].as<std::string>();
+            if (!frameTimes.empty())
+                std::filesystem::create_directories(frameTimes);
+
             for (Rtx::Stop& stop : stops)
             {
                 stop.mSchedule.mSpec = spec;
                 stop.mSky.mTurnThrough = turn;
                 stop.mActions.mHash = hashing;
+                if (!frameTimes.empty())
+                    stop.mActions.mFrameTimes = frameTimes / (stop.mName + ".txt");
             }
 
             Rtx::SessionRequest request

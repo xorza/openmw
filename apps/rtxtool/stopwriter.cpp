@@ -89,6 +89,9 @@ namespace RtxTool
         if (!actions.mCapture.empty())
             writeCapture(into, actions.mCapture);
 
+        if (!actions.mFrameTimes.empty())
+            writeFrameTimes(into, actions.mFrameTimes, facts.mSamples);
+
         if (actions.mDigest)
             reportScene(into);
 
@@ -124,6 +127,21 @@ namespace RtxTool
                 into.mRecord.note(std::format(", traced at {}x{}", extents.mRenderWidth, extents.mRenderHeight));
 
             into.mRecord.note("\n");
+        }
+        catch (const std::exception& failed)
+        {
+            into.mRecord.note(std::format("could not write {}: {}\n", Files::pathToUnicodeString(file), failed.what()));
+            into.mRecord.fail();
+        }
+    }
+
+    void StopWriter::writeFrameTimes(
+        const Writing& into, const std::filesystem::path& file, const Rtx::FrameSamples& samples)
+    {
+        try
+        {
+            Rtx::writeFrameTimes(file, samples);
+            into.mRecord.note(std::format("wrote {} frames to {}\n", samples.size(), Files::pathToUnicodeString(file)));
         }
         catch (const std::exception& failed)
         {

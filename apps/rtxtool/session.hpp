@@ -15,6 +15,7 @@
 #include <components/rtx/renderer.hpp>
 #include <components/rtxbench/benchrecord.hpp>
 #include <components/rtxbench/benchrun.hpp>
+#include <components/rtxbench/cardwatch.hpp>
 #include <components/rtxbench/codesettle.hpp>
 #include <components/rtxbench/frametimes.hpp>
 #include <components/rtxbench/gpuclock.hpp>
@@ -162,6 +163,11 @@ namespace RtxTool
             double mHitPercent = 0.0;
             double mWallMs = 0.0;
 
+            /// The renderer's work of the frame behind, and the meshes it brought, waiting for the
+            /// frame that closes the span they are in: `Session::frame` says which that is.
+            Rtx::FrameSpend mPendingSpend;
+            std::uint32_t mPendingArrived = 0;
+
             /// Where the eye stood when the stop began, which a route flies from.
             osg::Vec3f mFrom;
             osg::Vec3f mFromLook;
@@ -191,6 +197,7 @@ namespace RtxTool
             Rtx::Overlap mOverlap;
             Rtx::HoldTimes mHold;
             Rtx::GpuClock mClock;
+            Rtx::CardShare mCard;
 
             /// Puts the route where it starts. One call, because two callers set the three and either
             /// could leave `mFlown` wherever the last stop's route ended.
@@ -208,6 +215,8 @@ namespace RtxTool
                 mFirstMeasured = 0;
                 mHitPercent = 0.0;
                 mWallMs = 0.0;
+                mPendingSpend = Rtx::FrameSpend{};
+                mPendingArrived = 0;
                 mCell = nullptr;
                 mArrived = false;
                 mTurnedTo = 0;
@@ -220,6 +229,7 @@ namespace RtxTool
                 mOverlap = Rtx::Overlap{};
                 mHold = Rtx::HoldTimes{};
                 mClock = Rtx::GpuClock{};
+                mCard = Rtx::CardShare{};
             }
         };
 
@@ -251,9 +261,10 @@ namespace RtxTool
         /// perf's control fifo, held for the whole run so every stop brackets its own frames.
         Rtx::PerfControl mProfiling;
 
-        /// The card, watched across each stop's measured frames. Held rather than made per stop,
-        /// because what it owns is a thread.
-        Rtx::ClockWatch mClockWatch;
+        /// The card, watched from the session's start: its clock across each stop's measured
+        /// frames, and who held it through every window of the run. Held rather than made per
+        /// stop, because what it owns is a thread.
+        Rtx::CardWatch mCardWatch;
 
         StopWriter mWriter;
 

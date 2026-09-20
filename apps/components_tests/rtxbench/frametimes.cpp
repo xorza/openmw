@@ -1,12 +1,17 @@
 #include <algorithm>
 #include <cstddef>
+#include <exception>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <span>
+#include <string>
 #include <system_error>
 #include <vector>
 
 #include <gtest/gtest.h>
 
+#include <components/rtx/framespend.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtxbench/frametimes.hpp>
 #include <components/testing/util.hpp>
@@ -88,6 +93,51 @@ namespace Rtx
 
     namespace
     {
+        /// The rows are read across each other a frame at a time, and the series is written the
+        /// same way: one line a frame, every row a column, the wait among them.
+        TEST(RtxFrameSamplesTest, everyRowIsOneSampleLongerAFrameAndTheSeriesIsWrittenAcross)
+        {
+            FrameSamples samples;
+            EXPECT_TRUE(samples.empty());
+
+            // Two frames. The first waited 4.5 ms of its 10; the second, with nothing in flight
+            // to wait for, waited nought.
+            FrameSpend first;
+            first.at(Timing::Wait) = 4.5;
+            first.at(Timing::Finish) = 4.75;
+            first.at(Timing::Trace) = 1.25;
+            samples.add(10.0, first);
+
+            FrameSpend second;
+            second.at(Timing::Trace) = 1.5;
+            samples.add(8.0, second);
+
+            EXPECT_EQ(samples.size(), 2u);
+            for (const Timing timing : sTimings.values())
+                EXPECT_EQ(samples.at(timing).size(), 2u) << sTimings.name(timing) << " is out of step";
+            EXPECT_DOUBLE_EQ(samples.at(Timing::Wait)[0], 4.5);
+            EXPECT_DOUBLE_EQ(samples.at(Timing::Wait)[1], 0.0);
+            EXPECT_DOUBLE_EQ(samples.at(Timing::Frame)[1], 8.0);
+
+            const std::filesystem::path file = TestingOpenMW::outputFilePath("frame-times.txt");
+            writeFrameTimes(file, samples);
+
+            std::ifstream written(file);
+            std::string text((std::istreambuf_iterator<char>(written)), std::istreambuf_iterator<char>());
+            EXPECT_EQ(text,
+                "frame finish wait walk fold place bake textures upload trace views present update\n"
+                "10.000 4.750 4.500 0.000 0.000 0.000 0.000 0.000 0.000 1.250 0.000 0.000 0.000\n"
+                "8.000 0.000 0.000 0.000 0.000 0.000 0.000 0.000 0.000 1.500 0.000 0.000 0.000\n");
+
+            // A directory nobody made is named rather than written past.
+            EXPECT_THROW(writeFrameTimes(TestingOpenMW::outputFilePath("no-such-dir") / "frame-times.txt", samples),
+                std::exception);
+
+            samples.clear();
+            EXPECT_TRUE(samples.empty());
+            EXPECT_TRUE(samples.at(Timing::Wait).empty());
+        }
+
         /// The six figures a run is quoted by, against hand-computed values.
         ///
         /// **Nearest rank, so every figure is a frame that happened.** The qth percentile is the

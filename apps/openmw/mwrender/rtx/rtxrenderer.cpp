@@ -839,9 +839,15 @@ namespace MWRender
         // **Timed as well as waited for**, because the wait is not the whole of it: the ring then
         // reads the device's counters and its timestamps and destroys what that frame was the last
         // to read, and none of that is in the figure the device reports.
+        //
+        // **The wait is this frame's, whichever frame it waited for.** The result it comes with
+        // describes the frame behind, and a run counts that one under the number it answers for;
+        // the standing still happened here, so its row is this frame's, and nought where nothing
+        // was in flight to wait for.
         const std::chrono::steady_clock::time_point finishing = std::chrono::steady_clock::now();
         report.mResult = mRenderer->collectFrame();
         report.mSpend.at(Rtx::Timing::Finish) = Rtx::since(finishing, std::chrono::steady_clock::now());
+        report.mSpend.at(Rtx::Timing::Wait) = report.mResult.has_value() ? report.mResult->mWaitMs : 0.0;
     }
 
     void RtxRenderer::handOver(const SceneFrame& frame, FrameReport& report)

@@ -1,8 +1,7 @@
 #include "process.hpp"
 
-#include <array>
 #include <cerrno>
-#include <cstdio>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <optional>
@@ -42,19 +41,8 @@ namespace Platform::Process
         return std::nullopt;
     }
 
-    void readCommandOutput(const char* command, std::string& into)
+    std::uint32_t currentId()
     {
-        into.clear();
-
-        const std::string line = std::string(command) + " 2>/dev/null";
-        std::FILE* pipe = popen(line.c_str(), "r");
-        if (pipe == nullptr)
-            return;
-
-        std::array<char, 256> buffer{};
-        while (std::fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) != nullptr)
-            into += buffer.data();
-
-        pclose(pipe);
+        return static_cast<std::uint32_t>(getpid());
     }
 }

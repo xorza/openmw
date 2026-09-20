@@ -134,24 +134,27 @@ namespace Rtx
 
         /// What one measured frame cost, and the shares of it this fork itself owns.
         ///
-        /// **A loop over the rows and not a line per figure.** `Timing::Frame` is the caller's and
-        /// `Timing::Wait` arrives on its own schedule, so those two are the only ones named here.
+        /// **A loop over the rows and not a line per figure.** `Timing::Frame` is the caller's, so
+        /// it is the only one named here, and every row is one sample longer for it: the rows are
+        /// read across each other, a frame at a time.
         void add(double frameMs, const FrameSpend& spend)
         {
             for (const Timing timing : sTimings.values())
-                if (timing != Timing::Frame && timing != Timing::Wait)
+                if (timing != Timing::Frame)
                     at(timing).push_back(spend.at(timing));
 
             at(Timing::Frame).push_back(frameMs);
         }
 
-        /// What the device reported for the frame behind, which arrives on its own schedule and on
-        /// the first frames of a run does not arrive at all.
-        void addWait(double waitMs) { at(Timing::Wait).push_back(waitMs); }
-
         bool empty() const { return at(Timing::Frame).empty(); }
         std::uint32_t size() const { return static_cast<std::uint32_t>(at(Timing::Frame).size()); }
     };
+
+    /// Writes `samples` to `path` as text, a frame a line and a row a column, headed by the rows'
+    /// names in `sTimings`' order: the series the report summarises, for a question the summary
+    /// cannot answer — whether a tail is one mode or two, and how far apart the frames that make
+    /// it are. Throws where the file cannot be written.
+    void writeFrameTimes(const std::filesystem::path& path, const FrameSamples& samples);
 
     /// Sorts `times` and summarises it. At least one time, which every caller has by construction.
     ///

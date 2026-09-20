@@ -9,6 +9,7 @@
 #include <apps/openmw/mwrender/rtx/framereport.hpp>
 #include <components/rtxbench/benchrecord.hpp>
 #include <components/rtxbench/benchrun.hpp>
+#include <components/rtxbench/frametimes.hpp>
 #include <components/rtxbench/threadwatch.hpp>
 
 namespace osg
@@ -36,6 +37,9 @@ namespace RtxTool
     /// Borrowed and valid for one stop.
     struct StopFacts
     {
+        /// Every measured frame's figures, which only the frame series reads.
+        const Rtx::FrameSamples& mSamples;
+
         /// What the stop's route came to, which only `CrossingsAppend` reads.
         const Rtx::Crossings& mCrossings;
 
@@ -74,7 +78,8 @@ namespace RtxTool
         /// **The last measured frame, and never a later one.** Every figure the stop reports
         /// describes those frames, so a picture taken after them is a picture of a different run.
         ///
-        /// @param facts what the stop asked for and came to, which only a check reads.
+        /// @param facts what the stop asked for and came to, which only a check or the frame
+        /// series reads.
         void write(const MWRender::FrameContext& context, const MWRender::FrameReport& report,
             const Rtx::Actions& actions, const StopFacts& facts, Rtx::RunRecord& record);
 
@@ -94,6 +99,9 @@ namespace RtxTool
 
         /// The last measured frame, as a PNG.
         void writeCapture(const Writing& into, const std::filesystem::path& file);
+
+        /// Every measured frame's figures, a frame a line.
+        void writeFrameTimes(const Writing& into, const std::filesystem::path& file, const Rtx::FrameSamples& samples);
 
         /// What the renderer was handed, as `scene` reports it.
         void reportScene(const Writing& into);

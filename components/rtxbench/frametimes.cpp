@@ -4,11 +4,17 @@
 #include <cassert>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
+#include <filesystem>
 #include <format>
+#include <fstream>
 #include <numeric>
+#include <stdexcept>
+#include <string>
 #include <string_view>
 #include <utility>
 
+#include <components/files/conversion.hpp>
 #include <components/platform/fifo.hpp>
 
 namespace Rtx
@@ -94,6 +100,24 @@ namespace Rtx
     double FrameTimes::getLowRate() const
     {
         return mP99 > 0.0 ? 1000.0 / mP99 : 0.0;
+    }
+
+    void writeFrameTimes(const std::filesystem::path& path, const FrameSamples& samples)
+    {
+        std::ofstream file(path);
+        if (!file)
+            throw std::runtime_error("could not open " + Files::pathToUnicodeString(path));
+
+        for (const Timing timing : sTimings.values())
+            file << (indexOf(timing) == 0 ? "" : " ") << sTimings.name(timing);
+        file << '\n';
+
+        for (std::uint32_t frame = 0; frame < samples.size(); ++frame)
+        {
+            for (const Timing timing : sTimings.values())
+                file << (indexOf(timing) == 0 ? "" : " ") << std::format("{:.3f}", samples.at(timing)[frame]);
+            file << '\n';
+        }
     }
 
     FrameTimes summarise(std::vector<double>& times)

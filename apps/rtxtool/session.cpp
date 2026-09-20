@@ -124,6 +124,11 @@ namespace RtxTool
 
         if (mRequest.mStops.empty())
             mDone = true;
+
+        // **From here and not from the first frame**, because the window before the first stop
+        // is the load, at the card's idle clock, where a desktop that is drawing shows plainest;
+        // `Rtx::CardWatch` says why.
+        mCardWatch.watch();
     }
 
     std::unique_ptr<MWRender::Renderer> Session::createRenderer(const MWRender::RendererSpec& spec)
@@ -699,8 +704,15 @@ namespace RtxTool
             // **Sampled through the measured frames and not at their ends.** Two readings bound
             // nothing: the ends of a place agree to within a couple of per cent while the card
             // moves a fifth of its clock between them, and a leg that lost its clock then reads
-            // like a leg that lost its speed. `Rtx::ClockWatch` says what the sampling costs.
-            mClockWatch.start();
+            // like a leg that lost its speed.
+            //
+            // **What the window before answered is said once, ahead of the first place.** A
+            // desktop that was drawing while the run loaded was caught in nearly every sample,
+            // and every place's own line then reads against it.
+            const Rtx::CardShare before = mCardWatch.start();
+            if (mRecord.empty() && before.mViewed)
+                mRecord.note(std::format("before the first stop, {}\n", Rtx::describeCard(before)));
+
             mProfiling.enable();
 
             // The backend's number of the first measured frame: what says of a result that comes
@@ -720,11 +732,25 @@ namespace RtxTool
         if (report.mResult.has_value())
             answered(*report.mResult, renderer.getExtents());
 
+        // **This frame's wall time closes the span the frame before it worked in.**
+        // `FrameReport::mFrameMs` runs from the last frame's opening to this one's, so what it
+        // holds is the game's update this frame arrived through and the renderer's work of the
+        // frame before — the finish, the walk, the placement and the trace that ran after that
+        // frame opened. Those are the rows kept beside it, and the meshes that work brought, so a
+        // row's figures are the figures of the span it is read against and a worst frame's shares
+        // are its own. What this frame does is kept for the frame after to close, and the last
+        // measured frame's work is closed by nothing: it ran after the last span ended.
+        Rtx::FrameSpend closed = mProgress.mPendingSpend;
+        closed.at(Rtx::Timing::Update) = report.mSpend.at(Rtx::Timing::Update);
+        const std::uint32_t closedArrived = mProgress.mPendingArrived;
+        mProgress.mPendingSpend = report.mSpend;
+        mProgress.mPendingArrived = report.mArrivedMeshes;
+
         if (mProgress.mSeen <= warmup)
             return;
 
-        mProgress.mSamples.add(frameMs, report.mSpend);
-        mProgress.mArrivals.add(frameMs, report.mArrivedMeshes, report.mSpend);
+        mProgress.mSamples.add(frameMs, closed);
+        mProgress.mArrivals.add(frameMs, closedArrived, closed);
         mProgress.mWallMs += frameMs;
 
         // **Counted here and not where the route moved**, because a crossing is a dropped frame and
@@ -762,7 +788,6 @@ namespace RtxTool
             || finished.mFrame < mProgress.mFirstMeasured)
             return;
 
-        mProgress.mSamples.addWait(finished.mWaitMs);
         mProgress.mOverlap.add(finished.mInFlight);
         mProgress.mGpu.add(finished.mGpu.spans());
 
@@ -800,9 +825,9 @@ namespace RtxTool
 
         mProfiling.disable();
 
-        // After the frames and not before them, so the last spawn it costs is outside the run it
-        // describes.
-        mProgress.mClock = mClockWatch.stop();
+        const Rtx::CardReading card = mCardWatch.stop();
+        mProgress.mClock = card.mClock;
+        mProgress.mCard = card.mShare;
         const Rtx::ThreadShare threads
             = mRequest.mSetup.mStep.has_value() ? mThreadWatch.stop().summarise() : Rtx::ThreadShare{};
 
@@ -845,6 +870,7 @@ namespace RtxTool
 
         mWriter.write(context, report, stop.mActions,
             StopFacts{
+                .mSamples = mProgress.mSamples,
                 .mCrossings = mProgress.mCrossings,
                 .mStand = stop.mStand,
                 .mOverlap = mProgress.mOverlap,
@@ -866,6 +892,7 @@ namespace RtxTool
         for (std::size_t at = 0; at < Rtx::sTimingCount; ++at)
             place.mRows[at] = Rtx::summarise(mProgress.mSamples.mRows[at]);
         place.mClock = mProgress.mClock;
+        place.mCard = mProgress.mCard;
         place.mThreads = threads;
         place.mHitPercent = mProgress.mHitPercent;
         place.mCrossings = mProgress.mCrossings;

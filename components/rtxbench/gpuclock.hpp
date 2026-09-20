@@ -3,15 +3,12 @@
 #include <cstdint>
 #include <string>
 
-#include <components/rtx/monitor.hpp>
-#include <components/rtx/worker.hpp>
-
 namespace Rtx
 {
     /// The card's clock over a place's frames. A frame time without its clock is not a number to
     /// compare: under load this card is held near 1.8 GHz against 2.3 GHz cool, and the same build
     /// measures several per cent apart from one run to the next. A range and not a reading, because
-    /// a card moves while a place is measured, and `ClockWatch` samples through the frames because
+    /// a card moves while a place is measured, and `CardWatch` samples through the frames because
     /// two ends cannot say what the clock did between them.
     struct GpuClock
     {
@@ -32,8 +29,8 @@ namespace Rtx
         /// Why the card was not running faster, as NVML's own bits, or-ed over every reading.
         std::uint64_t mThrottleMask = 0;
 
-        /// False where nothing answered — no `nvidia-smi`, another vendor's device — so such a run
-        /// reports no clock rather than a made-up one.
+        /// False where nothing answered — no driver library to ask, another vendor's device — so
+        /// such a run reports no clock rather than a made-up one.
         bool mRead = false;
 
         /// Takes `other` in: the clock spans both, and the reasons are what either saw. A reading
@@ -47,41 +44,6 @@ namespace Rtx
 
         /// The mean core clock, or nought where nothing answered.
         std::uint32_t getMeanMhz() const { return mReadings > 0 ? static_cast<std::uint32_t>(mSumMhz / mReadings) : 0; }
-    };
-
-    /// Asks the device what it is doing now, as one reading. A process spawn, so never on a frame
-    /// path: `ClockWatch` asks it repeatedly on a thread of its own.
-    GpuClock readGpuClock();
-
-    /// The clock through a place's frames rather than at their ends, on a thread of its own because
-    /// the reading forks this process. Four a second keeps the spawn cost inside the run-to-run
-    /// spread. One of these outlives a place, so `start` is what forgets the last one's readings.
-    class ClockWatch
-    {
-    public:
-        ClockWatch() = default;
-        ~ClockWatch();
-
-        /// Forgets what the last place saw and starts sampling, taking one reading straight away so
-        /// a place that ends at once still answers. Nothing where one is already running.
-        void start();
-
-        /// Stops sampling and answers everything it saw, this call's own last reading included.
-        GpuClock stop();
-
-        /// How many readings the run now open has taken: the number a caller waits on rather than
-        /// a sleep chosen for the slowest box this might run on.
-        std::uint32_t getReadings();
-
-    private:
-        /// The lock over `mSeen`, and nothing else: a sampler hands nothing over until stopped.
-        Monitor mMonitor;
-
-        /// What every reading so far came to, under the lock.
-        GpuClock mSeen;
-
-        /// Last, for the reason `Worker` gives.
-        Worker mWorker;
     };
 
     /// The clock as one line of the report, or empty where nothing answered.
