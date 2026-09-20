@@ -35,8 +35,8 @@
 
 #include <components/translation/translation.hpp>
 
+#include <components/myguiplatform/guirendermanager.hpp>
 #include <components/myguiplatform/myguiplatform.hpp>
-#include <components/myguiplatform/myguirendermanager.hpp>
 #include <components/myguiplatform/scalinglayer.hpp>
 
 #include <components/vfs/manager.hpp>
