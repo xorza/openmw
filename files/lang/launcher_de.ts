@@ -184,11 +184,11 @@
     </message>
     <message>
         <source>Replaces the OpenGL renderer with the experimental Vulkan ray tracing renderer. Needs an NVIDIA GPU with hardware ray tracing (Turing or later).</source>
-        <translation type="unfinished"></translation>
+        <translation>Ersetzt den OpenGL-Renderer durch den experimentellen Vulkan-Raytracing-Renderer. Benötigt eine NVIDIA-GPU mit Hardware-Raytracing (Turing oder neuer).</translation>
     </message>
     <message>
         <source>Experimental Ray Tracing</source>
-        <translation type="unfinished"></translation>
+        <translation>Experimentelles Raytracing</translation>
     </message>
     <message>
         <source>DLSS Ray Reconstruction</source>
@@ -207,14 +207,6 @@
         <translation>DLAA</translation>
     </message>
     <message>
-        <source>How hard DLSS Ray Reconstruction works. It denoises and antialiases the traced frame, and every mode but the last also traces fewer pixels than it shows.</source>
-        <translation type="vanished">Wie stark DLSS Ray Reconstruction arbeitet. Es entrauscht und glättet das getracte Bild, und alle Modi außer dem letzten tracen zudem weniger Pixel, als sie anzeigen.</translation>
-    </message>
-    <message>
-        <source>Off</source>
-        <translation type="vanished">Aus</translation>
-    </message>
-    <message>
         <source>Performance</source>
         <translation>Leistung</translation>
     </message>
@@ -225,10 +217,6 @@
     <message>
         <source>Quality</source>
         <translation>Qualität</translation>
-    </message>
-    <message>
-        <source>Antialiasing only</source>
-        <translation type="vanished">Nur Kantenglättung</translation>
     </message>
     <message>
         <source>Ray Tracing Distant Land</source>
@@ -475,7 +463,7 @@ to default Morrowind fonts. Check this box if you still prefer original fonts ov
     </message>
     <message>
         <source>This build was made without the ray tracing renderer.</source>
-        <translation type="unfinished"></translation>
+        <translation>Diese Version wurde ohne den Raytracing-Renderer kompiliert.</translation>
     </message>
     <message>
         <source>Error receiving resolutions</source>
@@ -796,7 +784,7 @@ Logs and settings changed through the launcher and in-game will be saved here.</
     </message>
     <message>
         <source>Off</source>
-        <translation type="unfinished">Aus</translation>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;How many threads will be spawned to compute physics update in the background. A value of 0 means that the update will be performed in the main thread.&lt;/p&gt;&lt;p&gt;A value greater than 1 requires the Bullet library be compiled with multithreading support.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
@@ -1093,7 +1081,7 @@ Logs and settings changed through the launcher and in-game will be saved here.</
     </message>
     <message>
         <source> cells</source>
-        <translation type="unfinished"> Zellen</translation>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Shadows</source>

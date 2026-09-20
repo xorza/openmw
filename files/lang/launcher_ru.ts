@@ -252,7 +252,7 @@
     </message>
     <message>
         <source>Replaces the OpenGL renderer with the experimental Vulkan ray tracing renderer. Needs an NVIDIA GPU with hardware ray tracing (Turing or later).</source>
-        <translation>Заменяет рендерер OpenGL экспериментальным рендерером Vulkan с трассировкой лучей. Требуется видеокарта NVIDIA поколения Ada.</translation>
+        <translation>Заменяет рендерер OpenGL экспериментальным рендерером Vulkan с трассировкой лучей. Требуется видеокарта NVIDIA с аппаратной трассировкой лучей (Turing или новее).</translation>
     </message>
     <message>
         <source>Experimental Ray Tracing</source>
@@ -275,14 +275,6 @@
         <translation>DLAA</translation>
     </message>
     <message>
-        <source>How hard DLSS Ray Reconstruction works. It denoises and antialiases the traced frame, and every mode but the last also traces fewer pixels than it shows.</source>
-        <translation type="vanished">Насколько интенсивно работает DLSS Ray Reconstruction. Он убирает шум и сглаживает трассированный кадр, а все режимы кроме последнего ещё и трассируют меньше пикселей, чем показывают.</translation>
-    </message>
-    <message>
-        <source>Off</source>
-        <translation type="vanished">Отключено</translation>
-    </message>
-    <message>
         <source>Performance</source>
         <translation>Производительность</translation>
     </message>
@@ -293,10 +285,6 @@
     <message>
         <source>Quality</source>
         <translation>Качество</translation>
-    </message>
-    <message>
-        <source>Antialiasing only</source>
-        <translation type="vanished">Только сглаживание</translation>
     </message>
     <message>
         <source>Ray Tracing Distant Land</source>
@@ -477,7 +465,7 @@ to default Morrowind fonts. Check this box if you still prefer original fonts ov
     </message>
     <message>
         <source>This build was made without the ray tracing renderer.</source>
-        <translation>В этой сборке нет рендерера с трассировкой лучей.</translation>
+        <translation>Эта сборка собрана без рендерера с трассировкой лучей.</translation>
     </message>
     <message>
         <source>Error receiving resolutions</source>

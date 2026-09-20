@@ -184,7 +184,7 @@
     </message>
     <message>
         <source>Replaces the OpenGL renderer with the experimental Vulkan ray tracing renderer. Needs an NVIDIA GPU with hardware ray tracing (Turing or later).</source>
-        <translation>Remplace le moteur de rendu OpenGL par le moteur de rendu Vulkan expérimental avec ray tracing. Nécessite un GPU NVIDIA de classe Ada.</translation>
+        <translation>Remplace le moteur de rendu OpenGL par le moteur de rendu Vulkan expérimental avec ray tracing. Nécessite un GPU NVIDIA avec ray tracing matériel (Turing ou plus récent).</translation>
     </message>
     <message>
         <source>Experimental Ray Tracing</source>
@@ -207,14 +207,6 @@
         <translation>DLAA</translation>
     </message>
     <message>
-        <source>How hard DLSS Ray Reconstruction works. It denoises and antialiases the traced frame, and every mode but the last also traces fewer pixels than it shows.</source>
-        <translation type="vanished">À quel point DLSS Ray Reconstruction travaille. Il débruite et anticrénèle l&apos;image tracée, et tous les modes sauf le dernier tracent aussi moins de pixels qu&apos;ils n&apos;en affichent.</translation>
-    </message>
-    <message>
-        <source>Off</source>
-        <translation type="vanished">Inactif</translation>
-    </message>
-    <message>
         <source>Performance</source>
         <translation>Performance</translation>
     </message>
@@ -225,10 +217,6 @@
     <message>
         <source>Quality</source>
         <translation>Qualité</translation>
-    </message>
-    <message>
-        <source>Antialiasing only</source>
-        <translation type="vanished">Anticrénelage uniquement</translation>
     </message>
     <message>
         <source>Ray Tracing Distant Land</source>

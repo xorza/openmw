@@ -252,11 +252,11 @@
     </message>
     <message>
         <source>Replaces the OpenGL renderer with the experimental Vulkan ray tracing renderer. Needs an NVIDIA GPU with hardware ray tracing (Turing or later).</source>
-        <translation>Zastępuje renderer OpenGL eksperymentalnym rendererem Vulkan ze śledzeniem promieni. Wymaga karty graficznej NVIDIA klasy Ada.</translation>
+        <translation>Zastępuje renderer OpenGL eksperymentalnym rendererem Vulkan ze śledzeniem promieni. Wymaga karty graficznej NVIDIA ze sprzętowym śledzeniem promieni (Turing lub nowszej).</translation>
     </message>
     <message>
         <source>Experimental Ray Tracing</source>
-        <translation>Eksperymentalny ray tracing</translation>
+        <translation>Eksperymentalne śledzenie promieni</translation>
     </message>
     <message>
         <source>DLSS Ray Reconstruction</source>
@@ -275,14 +275,6 @@
         <translation>DLAA</translation>
     </message>
     <message>
-        <source>How hard DLSS Ray Reconstruction works. It denoises and antialiases the traced frame, and every mode but the last also traces fewer pixels than it shows.</source>
-        <translation type="vanished">Jak mocno pracuje DLSS Ray Reconstruction. Odszumia i wygładza śledzoną klatkę, a każdy tryb poza ostatnim śledzi też mniej pikseli, niż wyświetla.</translation>
-    </message>
-    <message>
-        <source>Off</source>
-        <translation type="vanished">Wyłączone</translation>
-    </message>
-    <message>
         <source>Performance</source>
         <translation>Wydajność</translation>
     </message>
@@ -293,10 +285,6 @@
     <message>
         <source>Quality</source>
         <translation>Jakość</translation>
-    </message>
-    <message>
-        <source>Antialiasing only</source>
-        <translation type="vanished">Tylko antyaliasing</translation>
     </message>
     <message>
         <source>Ray Tracing Distant Land</source>
@@ -479,7 +467,7 @@ do domyślnych czcionek Morrowind. Zaznacz to pole, jeśli nadal wolisz oryginal
     </message>
     <message>
         <source>This build was made without the ray tracing renderer.</source>
-        <translation>Ta wersja została skompilowana bez renderera ze śledzeniem promieni.</translation>
+        <translation>Ta wersja została zbudowana bez renderera ze śledzeniem promieni.</translation>
     </message>
     <message>
         <source>Error receiving resolutions</source>

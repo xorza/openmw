@@ -184,7 +184,7 @@
     </message>
     <message>
         <source>Replaces the OpenGL renderer with the experimental Vulkan ray tracing renderer. Needs an NVIDIA GPU with hardware ray tracing (Turing or later).</source>
-        <translation>Ersätter OpenGL-renderaren med den experimentella Vulkan-renderaren med strålspårning. Kräver ett NVIDIA-grafikkort av Ada-klass.</translation>
+        <translation>Ersätter OpenGL-renderaren med den experimentella Vulkan-renderaren med strålspårning. Kräver ett NVIDIA-grafikkort med strålspårning i hårdvara (Turing eller senare).</translation>
     </message>
     <message>
         <source>Experimental Ray Tracing</source>
@@ -207,14 +207,6 @@
         <translation>DLAA</translation>
     </message>
     <message>
-        <source>How hard DLSS Ray Reconstruction works. It denoises and antialiases the traced frame, and every mode but the last also traces fewer pixels than it shows.</source>
-        <translation type="vanished">Hur hårt DLSS Ray Reconstruction arbetar. Det brusreducerar och kantutjämnar den strålspårade bilden, och alla lägen utom det sista spårar dessutom färre pixlar än de visar.</translation>
-    </message>
-    <message>
-        <source>Off</source>
-        <translation type="vanished">Av</translation>
-    </message>
-    <message>
         <source>Performance</source>
         <translation>Prestanda</translation>
     </message>
@@ -227,12 +219,8 @@
         <translation>Kvalitet</translation>
     </message>
     <message>
-        <source>Antialiasing only</source>
-        <translation type="vanished">Endast kantutjämning</translation>
-    </message>
-    <message>
         <source>Ray Tracing Distant Land</source>
-        <translation>Fjärran landskap vid strålspårning</translation>
+        <translation>Avlägsen terräng vid strålspårning</translation>
     </message>
     <message>
         <source>How far out from the eye the world is built, in cells. The ray tracing renderer builds what rays can reach, which is a different question from how far the rasterizer can see.</source>
@@ -478,7 +466,7 @@ de ordinarie fonterna i Morrowind. Bocka denna ruta om du ändå föredrar ordin
     </message>
     <message>
         <source>This build was made without the ray tracing renderer.</source>
-        <translation>Denna version kompilerades utan strålspårningsrenderaren.</translation>
+        <translation>Det här bygget skapades utan strålspårningsrenderaren.</translation>
     </message>
     <message>
         <source>Error receiving resolutions</source>

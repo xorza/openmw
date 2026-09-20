@@ -252,7 +252,7 @@
     </message>
     <message>
         <source>Replaces the OpenGL renderer with the experimental Vulkan ray tracing renderer. Needs an NVIDIA GPU with hardware ray tracing (Turing or later).</source>
-        <translation>Заменя визуализатора OpenGL с експерименталния визуализатор Vulkan с трасиране на лъчи. Изисква видеокарта NVIDIA от клас Ada.</translation>
+        <translation>Заменя визуализатора OpenGL с експерименталния визуализатор Vulkan с трасиране на лъчи. Изисква видеокарта NVIDIA с хардуерно трасиране на лъчи (Turing или по-нова).</translation>
     </message>
     <message>
         <source>Experimental Ray Tracing</source>
@@ -275,14 +275,6 @@
         <translation>DLAA</translation>
     </message>
     <message>
-        <source>How hard DLSS Ray Reconstruction works. It denoises and antialiases the traced frame, and every mode but the last also traces fewer pixels than it shows.</source>
-        <translation type="vanished">Колко усилено работи DLSS Ray Reconstruction. То премахва шума и заглажда трасирания кадър, а всички режими освен последния трасират и по-малко пиксели, отколкото показват.</translation>
-    </message>
-    <message>
-        <source>Off</source>
-        <translation type="vanished">Изключено</translation>
-    </message>
-    <message>
         <source>Performance</source>
         <translation>Производителност</translation>
     </message>
@@ -295,16 +287,12 @@
         <translation>Качество</translation>
     </message>
     <message>
-        <source>Antialiasing only</source>
-        <translation type="vanished">Само заглаждане</translation>
-    </message>
-    <message>
         <source>Ray Tracing Distant Land</source>
         <translation>Далечна земя при трасиране на лъчи</translation>
     </message>
     <message>
         <source>How far out from the eye the world is built, in cells. The ray tracing renderer builds what rays can reach, which is a different question from how far the rasterizer can see.</source>
-        <translation>Докъде от окото се изгражда светът, в клетки. Рендерът с трасиране на лъчи изгражда това, до което лъчите достигат, което е различен въпрос от това докъде вижда растеризаторът.</translation>
+        <translation>Докъде от окото се изгражда светът, в клетки. Визуализаторът с трасиране на лъчи изгражда това, до което лъчите достигат, което е различен въпрос от това докъде вижда растеризаторът.</translation>
     </message>
     <message>
         <source> cells</source>

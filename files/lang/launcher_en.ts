@@ -260,55 +260,43 @@
     </message>
     <message>
         <source>DLSS Ray Reconstruction</source>
-        <translation>DLSS Ray Reconstruction</translation>
+        <translation></translation>
     </message>
     <message>
         <source>How hard DLSS Ray Reconstruction works. It denoises and antialiases the traced frame whichever mode is chosen, and every mode but DLAA also traces fewer pixels than it shows.</source>
-        <translation>How hard DLSS Ray Reconstruction works. It denoises and antialiases the traced frame whichever mode is chosen, and every mode but DLAA also traces fewer pixels than it shows.</translation>
+        <translation></translation>
     </message>
     <message>
         <source>Ultra Performance</source>
-        <translation>Ultra Performance</translation>
+        <translation></translation>
     </message>
     <message>
         <source>DLAA</source>
-        <translation>DLAA</translation>
-    </message>
-    <message>
-        <source>How hard DLSS Ray Reconstruction works. It denoises and antialiases the traced frame, and every mode but the last also traces fewer pixels than it shows.</source>
-        <translation type="vanished">How hard DLSS Ray Reconstruction works. It denoises and antialiases the traced frame, and every mode but the last also traces fewer pixels than it shows.</translation>
-    </message>
-    <message>
-        <source>Off</source>
-        <translation type="vanished">Off</translation>
+        <translation></translation>
     </message>
     <message>
         <source>Performance</source>
-        <translation>Performance</translation>
+        <translation></translation>
     </message>
     <message>
         <source>Balanced</source>
-        <translation>Balanced</translation>
+        <translation></translation>
     </message>
     <message>
         <source>Quality</source>
-        <translation>Quality</translation>
-    </message>
-    <message>
-        <source>Antialiasing only</source>
-        <translation type="vanished">Antialiasing only</translation>
+        <translation></translation>
     </message>
     <message>
         <source>Ray Tracing Distant Land</source>
-        <translation>Ray Tracing Distant Land</translation>
+        <translation></translation>
     </message>
     <message>
         <source>How far out from the eye the world is built, in cells. The ray tracing renderer builds what rays can reach, which is a different question from how far the rasterizer can see.</source>
-        <translation>How far out from the eye the world is built, in cells. The ray tracing renderer builds what rays can reach, which is a different question from how far the rasterizer can see.</translation>
+        <translation></translation>
     </message>
     <message>
         <source> cells</source>
-        <translation> cells</translation>
+        <translation></translation>
     </message>
 </context>
 <context>
