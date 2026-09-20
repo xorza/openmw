@@ -93,10 +93,11 @@ void main()
     // Nearest and one tap, so a star within a traced pixel of a silhouette can land on the wrong
     // side of it — which against a sheet that is 99% transparent is a star at the edge of a rock
     // once in a while, and the four taps that would rule it out are four times the traffic for it.
+    // The traced pixel under this one's centre, which is the one the puffs' composite read too.
     if (frame.mStars.mTexture != NO_TEXTURE)
     {
-        const vec2 across = vec2(frame.mTracedWidth, frame.mTracedHeight) / vec2(extent);
-        const vec3 shown = imageLoad(starsShown, ivec2(vec2(pixel) * across)).rgb;
+        const uvec2 traced = tracedPixelUnder(pixel, extent, uvec2(frame.mTracedWidth, frame.mTracedHeight));
+        const vec3 shown = imageLoad(starsShown, ivec2(traced)).rgb;
 
         // And through the puffs, whose transmittance the composite left in the frame's alpha at
         // this pass's own resolution — `ToneConstants::mCoverAlpha` — wherever it drew one; where
@@ -104,7 +105,6 @@ void main()
         float puffs = 1.0;
         if (frame.mCoverAlpha != 0u)
         {
-            const uvec2 traced = tracedPixelUnder(pixel, extent, uvec2(frame.mTracedWidth, frame.mTracedHeight));
             const float shellsThrough = imageLoad(puffsDepth, ivec2(traced)).y;
             puffs = puffsCoverNothing(SpriteTileList(frame.mSpriteTileList), frame.mTracedWidth, traced,
                         shellsThrough, frame.mAdditiveInFrame)
