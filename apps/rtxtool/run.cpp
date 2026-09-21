@@ -1,9 +1,11 @@
 #include "run.hpp"
 
 #include <algorithm>
+#include <cassert>
 #include <cctype>
 #include <cstddef>
 #include <format>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -133,6 +135,23 @@ namespace RtxTool
     std::string describeStanding(const Rtx::Stop& stop)
     {
         return describeSpot(stop) + describeBlock(stop) + describeCommand(stop);
+    }
+
+    std::string_view writeSkyNote(const std::span<char> room, const SkyNote& note)
+    {
+        // `Rtx::describeHour`'s minute, so the title and the block a window prints agree on it.
+        const int minutes = Rtx::minuteOfDay(note.mHour);
+
+        // Cut down and never rounded up: a hundred means arrived.
+        const int percent = static_cast<int>(note.mCrossed * 100.0f);
+
+        const auto [end, length] = note.mArriving.empty()
+            ? std::format_to_n(room.data(), room.size(), "{}, {:02}:{:02}", note.mWeather, minutes / 60, minutes % 60)
+            : std::format_to_n(room.data(), room.size(), "{} → {} {}%, {:02}:{:02}", note.mWeather, note.mArriving,
+                percent, minutes / 60, minutes % 60);
+
+        assert(static_cast<std::size_t>(length) <= room.size() && "the sky note outgrew its room");
+        return std::string_view(room.data(), std::min(static_cast<std::size_t>(length), room.size()));
     }
 
     std::vector<BenchSuite> loadSuites(const std::filesystem::path& path)

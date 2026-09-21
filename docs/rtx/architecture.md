@@ -40,7 +40,7 @@ queries, position fetch and shader invocation reorder. DLSS Ray Reconstruction i
 denoiser and upscaler. Vanilla content is read as it is. The textures are pre-lit, so the
 renderer estimates the painted light and divides it out.
 
-The renderer is chosen by `[RTX] enabled` and exists only in a build with `-DOPENMW_RTX=ON`.
+The renderer is chosen by `[RTX] enabled`. A build with `-DOPENMW_RTX=OFF` leaves it out.
 The player-facing settings are in
 [`docs/source/reference/modding/settings/rtx.rst`](../source/reference/modding/settings/rtx.rst).
 
@@ -84,7 +84,7 @@ arrives as an `osg::Node` graph, and the core reads one.
 
 | option            | default | meaning                                                          |
 |-------------------|---------|------------------------------------------------------------------|
-| `OPENMW_RTX`      | OFF     | build the renderer, its libraries, its tests and the harness      |
+| `OPENMW_RTX`      | ON      | build the renderer, its libraries, its tests and the harness      |
 | `OPENMW_RTX_DLSS` | ON      | link NGX for DLSS Ray Reconstruction; needs `NGX_ROOT`, version exact |
 
 `OPENMW_RTX` includes `components/rtx/build.cmake`, which sets the fork's compile flags
@@ -216,7 +216,7 @@ session installs none, and `RtxRenderer` makes a `PlayedRun` whose every answer 
 one. `RtxRun` answers per frame: which sample to take, how many frames are summed, whether to
 walk twice, whether to keep the picture, and it receives every `FrameReport`; once a second it
 says what the window's title carries after the rate, which the harness answers with the
-weather and the hour and a played session with nothing.
+weather, the one crossing in while one is, and the hour, and a played session with nothing.
 `profileFromSettings` and `knobsFromSettings` in `rtxrenderer.cpp` are the only places the
 settings registry is read for the renderer. The core reads no settings.
 

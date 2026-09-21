@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -57,6 +58,28 @@ namespace RtxTool
     /// Where a window stands, whole: the line for a person, the block for the view file and the
     /// command for the next run. What a window prints on the key and again where it was left.
     std::string describeStanding(const Rtx::Stop& stop);
+
+    /// What the sky is doing, as a window's title says it after the rate: the weather and the
+    /// clock, and while one weather crosses into another, which one and how far.
+    struct SkyNote
+    {
+        std::string_view mWeather;
+
+        /// The weather crossing in, or empty while none is. A crossing takes the weather's own
+        /// `Transition_Delta` — a minute for most — and the title is where a window shows it,
+        /// because the HUD a script's message lands on is off unless `--hud` asked for it.
+        std::string_view mArriving;
+
+        /// How far the crossing has come, nought to one.
+        float mCrossed = 0.0f;
+
+        float mHour = 0.0f;
+    };
+
+    /// `Thunderstorm, 14:32`, or `Clear → Overcast 37%, 14:32` while a crossing runs, written into
+    /// `room` and never allocated: a title is written on the frame path. `room` holds the longest
+    /// note, `Thunderstorm → Blizzard 100%, 23:59` at thirty-seven bytes, which is asserted.
+    std::string_view writeSkyNote(std::span<char> room, const SkyNote& note);
 
     /// What a frame is upscaled by when nobody names a mode. The one knob whose default is the
     /// harness's own and not `settings-default.cfg`'s: the file says `quality`, and a build with

@@ -147,9 +147,14 @@ namespace Rtx
         mWorstCount = std::min(mWorstCount + 1, sKept);
     }
 
+    int minuteOfDay(const float hour)
+    {
+        return static_cast<int>(std::lround(hour * 60.0f)) % (24 * 60);
+    }
+
     std::string describeHour(const float hour)
     {
-        const int minutes = static_cast<int>(std::lround(hour * 60.0f)) % (24 * 60);
+        const int minutes = minuteOfDay(hour);
         return std::format("{:02}:{:02}", minutes / 60, minutes % 60);
     }
 

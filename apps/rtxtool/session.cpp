@@ -171,6 +171,11 @@ namespace RtxTool
         if (!stood.mSky.mWeather.has_value())
             stood.mSky.mWeather.emplace();
         *stood.mSky.mWeather = Rtx::weatherName(static_cast<std::uint32_t>(world.getCurrentWeatherScriptId()));
+
+        // The factor the weather system counts down from one, so what is noted counts up.
+        const int arriving = world.getNextWeatherScriptId();
+        mArriving = arriving < 0 ? std::string_view() : Rtx::weatherName(static_cast<std::uint32_t>(arriving));
+        mCrossed = 1.0f - world.getWeatherTransition();
     }
 
     std::string_view Session::describeTitle()
@@ -182,13 +187,11 @@ namespace RtxTool
         if (!mStood.has_value() || !mStood->mSky.mHour.has_value())
             return {};
 
-        // The hour as a clock reads it, so a title and the sky script's own answer agree.
-        const float hour = *mStood->mSky.mHour;
-        const int whole = static_cast<int>(hour);
-        const int minutes = static_cast<int>((hour - static_cast<float>(whole)) * 60.0f);
-        const auto written = std::format_to_n(mTitleNote.data(), mTitleNote.size(), "{}, {:02}:{:02}",
-            std::string_view(mStood->mSky.mWeather.value()), whole, minutes);
-        return std::string_view(mTitleNote.data(), static_cast<std::size_t>(written.out - mTitleNote.data()));
+        return writeSkyNote(mTitleNote,
+            SkyNote{ .mWeather = mStood->mSky.mWeather.value(),
+                .mArriving = mArriving,
+                .mCrossed = mCrossed,
+                .mHour = *mStood->mSky.mHour });
     }
 
     void Session::abandon(const std::string_view why)

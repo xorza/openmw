@@ -233,10 +233,14 @@ namespace Rtx
 
     /// An hour of Morrowind's day as a person reads it, on a twenty-four hour clock.
     ///
-    /// **One spelling, because three places print one.** A bench row, a view listing and the block
-    /// a window prints all name the hour a frame stood at, and a row that spelled it differently
-    /// would be a row nobody could search for.
+    /// **One spelling, because four places print one.** A bench row, a view listing, the block a
+    /// window prints and its title all name the hour a frame stood at, and a row that spelled it
+    /// differently would be a row nobody could search for.
     std::string describeHour(float hour);
+
+    /// The minute of the day `hour` is nearest to, in `[0, 1440)`: the one `describeHour` spells,
+    /// for the title, which writes it without a string.
+    int minuteOfDay(float hour);
 
     /// One place as the report prints it: what it stood in, what it was built out of, the four
     /// distributions, the device's own account, the clock and the frame rate.

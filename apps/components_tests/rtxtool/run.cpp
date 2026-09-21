@@ -1,3 +1,4 @@
+#include <array>
 #include <cstddef>
 #include <filesystem>
 #include <fstream>
@@ -12,6 +13,7 @@
 #include <osg/Vec3f>
 
 #include <apps/rtxtool/run.hpp>
+#include <components/rtxbench/benchrecord.hpp>
 #include <components/rtxbench/benchrun.hpp>
 #include <components/testing/util.hpp>
 
@@ -176,6 +178,32 @@ namespace RtxTool
             EXPECT_EQ(read.front().mName, "balmora-guild-of-mages");
             EXPECT_EQ(read.front().mNote, "");
             EXPECT_EQ(read.front().mStand.mCell, spot.mStand.mCell);
+        }
+
+        /// The title's note: the weather and the clock, and the weather crossing in while one is,
+        /// so a key that asked for a change is answered in the second and not a minute later.
+        TEST(RtxViewpointTest, theTitleNoteSaysWhatIsCrossingIn)
+        {
+            std::array<char, 48> room{};
+
+            // 14.75 is exact in a float: three quarters past two.
+            EXPECT_EQ(writeSkyNote(room, { .mWeather = "Thunderstorm", .mHour = 14.75f }), "Thunderstorm, 14:45");
+
+            // Cut down rather than rounded, so a hundred means arrived: 0.375 is 37.
+            EXPECT_EQ(writeSkyNote(
+                          room, { .mWeather = "Clear", .mArriving = "Overcast", .mCrossed = 0.375f, .mHour = 14.75f }),
+                "Clear \u2192 Overcast 37%, 14:45");
+
+            // The same minute the block spells: 17.2499 is a hair before quarter past, which the
+            // block rounds to 17:15 and a clock cut down would have read as 17:14.
+            EXPECT_EQ(writeSkyNote(room, { .mWeather = "Ashstorm", .mHour = 17.2499f }), "Ashstorm, 17:15");
+            EXPECT_EQ(Rtx::describeHour(17.2499f), "17:15");
+
+            // The longest note there is fits the room a session keeps, with room to spare.
+            const std::string_view longest = writeSkyNote(
+                room, { .mWeather = "Thunderstorm", .mArriving = "Blizzard", .mCrossed = 1.0f, .mHour = 23.99f });
+            EXPECT_EQ(longest, "Thunderstorm \u2192 Blizzard 100%, 23:59");
+            EXPECT_EQ(longest.size(), 37u);
         }
     }
 

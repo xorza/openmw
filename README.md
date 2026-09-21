@@ -1,112 +1,61 @@
-OpenMW
-======
+OpenMW RTX
+==========
 
-OpenMW is an open-source open-world RPG game engine that supports playing Morrowind by Bethesda Softworks. You need to own the game for OpenMW to play Morrowind.
+A fork of [OpenMW](https://openmw.org) that makes Morrowind work your GPU hard again:
+ray-traced lighting, path-traced indirect light and DLSS upscaling.
 
-OpenMW also comes with OpenMW-CS, a replacement for Bethesda's Construction Set.
+This tree is OpenMW 0.52 plus one renderer. Everything about the engine itself — what it is,
+how to install it, how to build it, the data path, the command line — is in the
+[upstream README](https://gitlab.com/OpenMW/openmw/-/blob/master/README.md). This file covers
+only what the fork adds.
 
-* Version: 0.52.0
-* License: GPLv3 (see [LICENSE](https://gitlab.com/OpenMW/openmw/-/raw/master/LICENSE) for more information)
-* Website: https://www.openmw.org
-* IRC: #openmw on irc.libera.chat
-* Discord: https://discord.gg/bWuqq2e
+Screenshots
+-----------
 
+<!-- screenshots -->
 
-Font Licenses:
-* DejaVuLGCSansMono.ttf: custom (see [files/data/fonts/DejaVuFontLicense.txt](https://gitlab.com/OpenMW/openmw/-/raw/master/files/data/fonts/DejaVuFontLicense.txt) for more information)
-* DemonicLetters.ttf: SIL Open Font License (see [files/data/fonts/DemonicLettersFontLicense.txt](https://gitlab.com/OpenMW/openmw/-/raw/master/files/data/fonts/DemonicLettersFontLicense.txt) for more information)
-* MysticCards.ttf: SIL Open Font License (see [files/data/fonts/MysticCardsFontLicense.txt](https://gitlab.com/OpenMW/openmw/-/raw/master/files/data/fonts/MysticCardsFontLicense.txt) for more information)
+Demo video
+----------
 
-Current Status
---------------
+<!-- demo video -->
 
-The main quests in Morrowind, Tribunal and Bloodmoon are all completable. Some issues with side quests are to be expected (but rare). Check the [bug tracker](https://gitlab.com/OpenMW/openmw/-/issues/?milestone_title=openmw-1.0) for a list of issues we need to resolve before the "1.0" release. Even before the "1.0" release, however, OpenMW boasts some new [features](https://wiki.openmw.org/index.php?title=Features), such as improved graphics and user interfaces.
+What the fork is
+----------------
 
-Pre-existing modifications created for the original Morrowind engine can be hit-and-miss. The OpenMW script compiler performs more thorough error-checking than Morrowind does, meaning that a mod created for Morrowind may not necessarily run in OpenMW. Some mods also rely on quirky behaviour or engine bugs in order to work. We are considering such compatibility issues on a case-by-case basis - in some cases adding a workaround to OpenMW may be feasible, in other cases fixing the mod will be the only option. If you know of any mods that work or don't work, feel free to add them to the [Mod status](https://wiki.openmw.org/index.php?title=Mod_status) wiki page.
+Upstream OpenMW stays the host engine: cells, references, physics, scripts, animation, weather
+and the GUI. It no longer owns the picture. A second renderer stands beside the OpenGL rasterizer
+and replaces the whole image: primary visibility, shadows, direct and indirect light, sky, water
+and fog are ray traced on the GPU. The rasterizer is not modified. One binary ships both
+renderers, and the one not chosen never starts.
 
-Getting Started
----------------
+Vanilla content is read as it is. Morrowind's textures are pre-lit, so the renderer estimates
+the painted light and divides it out to recover materials the new light transport can use.
 
-* [Official forums](https://forum.openmw.org/)
-* [Installation instructions](https://openmw.readthedocs.io/en/latest/manuals/installation/index.html)
-* [Build from source](https://wiki.openmw.org/index.php?title=Development_Environment_Setup)
-* [Testing the game](https://wiki.openmw.org/index.php?title=Testing)
-* [How to contribute](https://wiki.openmw.org/index.php?title=Contribution_Wanted)
-* [Report a bug](https://gitlab.com/OpenMW/openmw/issues) - read the [guidelines](https://wiki.openmw.org/index.php?title=Bug_Reporting_Guidelines) before submitting your first bug!
-* [Known issues](https://gitlab.com/OpenMW/openmw/issues?label_name%5B%5D=Bug)
+Goal
+----
 
-The data path
--------------
+A 2002 game made to look astonishing on current hardware. Vanilla content, new light transport.
 
-The data path tells OpenMW where to find your Morrowind files. If you run the launcher, OpenMW should be able to pick up the location of these files on its own, if both Morrowind and OpenMW are installed properly (installing Morrowind under WINE is considered a proper install).
+Requirements
+------------
 
-Command line options
+* NVIDIA RTX, Turing (RTX 20 series) or later
+* Vulkan 1.4 with ray tracing pipelines, ray queries, position fetch and shader invocation
+  reorder. A device missing any of them refuses to start rather than falling back.
+* DLSS Ray Reconstruction as the denoiser and upscaler (NGX, on by default at build time)
+
+Building and running
 --------------------
 
-    Syntax: openmw <options>
-    Allowed options:
-      --config arg                          additional config directories
-      --replace arg                         settings where the values from the
-                                            current source should replace those
-                                            from lower-priority sources instead of
-                                            being appended
-      --user-data arg                       set user data directory (used for
-                                            saves, screenshots, etc)
-      --resources arg (=resources)          set resources directory
-      --help                                print help message
-      --version                             print version information and quit
-      --data arg (=data)                    set data directories (later directories
-                                            have higher priority)
-      --data-local arg                      set local data directory (highest
-                                            priority)
-      --fallback-archive arg (=fallback-archive)
-                                            set fallback BSA archives (later
-                                            archives have higher priority)
-      --start arg                           set initial cell
-      --content arg                         content file(s): esm/esp, or
-                                            omwgame/omwaddon/omwscripts
-      --groundcover arg                     groundcover content file(s): esm/esp,
-                                            or omwgame/omwaddon
-      --no-sound [=arg(=1)] (=0)            disable all sounds
-      --script-all [=arg(=1)] (=0)          compile all scripts (excluding dialogue
-                                            scripts) at startup
-      --script-all-dialogue [=arg(=1)] (=0) compile all dialogue scripts at startup
-      --script-console [=arg(=1)] (=0)      enable console-only script
-                                            functionality
-      --script-run arg                      select a file containing a list of
-                                            console commands that is executed on
-                                            startup
-      --script-warn [=arg(=1)] (=1)         handling of warnings when compiling
-                                            scripts
-                                            0 - ignore warnings
-                                            1 - show warnings but consider script as
-                                            correctly compiled anyway
-                                            2 - treat warnings as errors
-      --load-savegame arg                   load a save game file on game startup
-                                            (specify an absolute filename or a
-                                            filename relative to the current
-                                            working directory)
-      --skip-menu [=arg(=1)] (=0)           skip main menu on game startup
-      --new-game [=arg(=1)] (=0)            run new game sequence (ignored if
-                                            skip-menu=0)
-      --encoding arg (=win1252)             Character encoding used in OpenMW game
-                                            messages:
+The renderer is built by default. `-DOPENMW_RTX=OFF` leaves it out. `OPENMW_RTX_DLSS` (default
+`ON`) links NGX and needs `NGX_ROOT`. Turn the renderer on with `[RTX] enabled = true` in
+`settings.cfg`.
 
-                                            win1250 - Central and Eastern European
-                                            such as Polish, Czech, Slovak,
-                                            Hungarian, Slovene, Bosnian, Croatian,
-                                            Serbian (Latin script), Romanian and
-                                            Albanian languages
+* [Architecture](docs/rtx/architecture.md) — the seam, the layers, who owns whom, the order a
+  frame is computed in
+* [Settings](docs/source/reference/modding/settings/rtx.rst) — every `[RTX]` setting
 
-                                            win1251 - Cyrillic alphabet such as
-                                            Russian, Bulgarian, Serbian Cyrillic
-                                            and other languages
+License
+-------
 
-                                            win1252 - Western European (Latin)
-                                            alphabet, used by default
-      --fallback arg                        fallback values
-      --no-grab [=arg(=1)] (=0)             Don't grab mouse cursor
-      --export-fonts [=arg(=1)] (=0)        Export Morrowind .fnt fonts to PNG
-                                            image and XML file in current directory
-      --activate-dist arg (=-1)             activation distance override
-      --random-seed arg (=<impl defined>)   seed value for random number generator
+GPLv3, as upstream. See [LICENSE](LICENSE).

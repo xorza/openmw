@@ -74,8 +74,9 @@ namespace RtxTool
         /// Reports the frame, and asks the game to quit once the last stop is done.
         void frame(const MWRender::FrameContext& context, const MWRender::FrameReport& report) override;
 
-        /// The weather and the hour the run stands under, `Thunderstorm, 14:32`, off the note the
-        /// last frame took; empty until a stop has begun and been noted.
+        /// The weather and the hour the run stands under, `Thunderstorm, 14:32`, and which weather
+        /// is crossing in where one is, `Clear → Overcast 37%, 14:32` — off the note the last frame
+        /// took; empty until a stop has begun and been noted.
         std::string_view describeTitle() override;
 
         /// What the run came to: the places, the report, the verdict and where the eye was left.
@@ -262,10 +263,17 @@ namespace RtxTool
         /// the string already has.
         std::optional<Rtx::Stop> mStood;
 
+        /// What was crossing into that weather on the same frame, and how far. Beside the note and
+        /// not in it, because a stop names the weather it stands under, and what is arriving is
+        /// the title's alone. Empty while nothing is.
+        std::string_view mArriving;
+        float mCrossed = 0.0f;
+
         /// Whether Home was down on the last frame, so a press prints once.
         bool mPrintKeyHeld = false;
 
-        /// What `describeTitle` is written into, once a second and never allocated.
+        /// What `describeTitle` is written into, once a second and never allocated: room for the
+        /// longest note `writeSkyNote` names.
         std::array<char, 48> mTitleNote{};
 
         /// What the run has come to so far: the places, the report and the verdict. Its own type,

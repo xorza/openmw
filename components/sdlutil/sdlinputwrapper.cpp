@@ -1,5 +1,7 @@
 #include "sdlinputwrapper.hpp"
 
+#include <ios>
+
 #include <components/debug/debuglog.hpp>
 #include <components/settings/values.hpp>
 
@@ -230,7 +232,9 @@ namespace SDLUtil
                     break;
 
                 default:
-                    Log(Debug::Info) << "Unhandled SDL event of type 0x" << std::hex << evt.type;
+                    // `Log` writes to `std::cout`, whose base every later line keeps: the game's
+                    // counts came out in hex after the first controller was remapped.
+                    Log(Debug::Info) << "Unhandled SDL event of type 0x" << std::hex << evt.type << std::dec;
                     break;
             }
         }

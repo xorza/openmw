@@ -56,9 +56,11 @@ local function turnWeather(player, steps)
     local chosen = allowed[index]
     asked = chosen.weather.recordId
 
-    -- A change is a transition of 1 / Transition_Delta seconds of the sky's clock — a minute for
-    -- most, half that for a storm, and a faster clock speeds it — and a press during one queues
-    -- behind the weather arriving.
+    -- A change is a transition, as the console's `changeweather` is: 1 / Transition_Delta seconds
+    -- of the simulation's clock, which the game clock's speed does not touch — a minute for most,
+    -- half that for a storm — and a press during one queues behind the weather arriving. The
+    -- message below lands on the HUD, which a window has only under `--hud`; the window's title
+    -- says which weather is crossing in and how far, whatever the HUD does.
     local arriving = core.weather.getNext(cell)
     local how = 'arriving'
     if arriving and arriving.recordId ~= chosen.weather.recordId then
@@ -122,9 +124,10 @@ local function speedClock(player, steps)
     say(player, string.format('clock ×%g', 2 ^ exponent))
 end
 
+-- The nearest minute, as `Rtx::describeHour` spells it, so this and the window's title agree.
 local function describeHour(hour)
-    local whole = math.floor(hour)
-    return string.format('%02d:%02d', whole, math.floor((hour - whole) * 60))
+    local minutes = math.floor(hour * 60 + 0.5) % (24 * 60)
+    return string.format('%02d:%02d', math.floor(minutes / 60), minutes % 60)
 end
 
 -- Written as the hour rather than advanced, so the day and the moons stay where they are. Past

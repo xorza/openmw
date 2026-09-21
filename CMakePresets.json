@@ -20,7 +20,6 @@
                 "GCC and MSVC alike, and the compile database is what an editor reads."
             ],
             "cacheVariables": {
-                "OPENMW_RTX": "ON",
                 "CMAKE_C_COMPILER_LAUNCHER": "ccache",
                 "CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
                 "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
