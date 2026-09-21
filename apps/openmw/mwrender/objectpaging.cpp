@@ -40,6 +40,7 @@
 #include <components/sceneutil/positionattitudetransform.hpp>
 #include <components/sceneutil/riggeometry.hpp>
 #include <components/sceneutil/riggeometryosgaextension.hpp>
+#include <components/sceneutil/templateref.hpp>
 #include <components/sceneutil/util.hpp>
 #include <components/settings/values.hpp>
 #include <components/vfs/manager.hpp>
@@ -469,7 +470,7 @@ namespace MWRender
     }
 
     ObjectPaging::ObjectPaging(Resource::SceneManager* sceneManager, ESM::RefId worldspace)
-        : GenericResourceManager<ChunkId>(nullptr, Settings::cells().mCacheExpiryDelay)
+        : Resource::NodeResourceManager<ChunkId>(nullptr, Settings::cells().mCacheExpiryDelay)
         , Terrain::QuadTreeWorld::ChunkManager(worldspace)
         , mSceneManager(sceneManager)
         , mActiveGrid(Settings::terrain().mObjectPagingActiveGrid)
@@ -787,7 +788,7 @@ namespace MWRender
             = osg::Vec3f(center.x(), center.y(), 0) * static_cast<float>(getCellSize(mWorldspace));
         osg::ref_ptr<osg::Group> group = new osg::Group;
         osg::ref_ptr<osg::Group> mergeGroup = new osg::Group;
-        osg::ref_ptr<Resource::TemplateMultiRef> templateRefs = new Resource::TemplateMultiRef;
+        std::vector<osg::ref_ptr<const osg::Node>> templateRefs;
         osgUtil::StateToCompile stateToCompile(0, nullptr);
         CopyOp copyop(activeGrid, copyMask);
         for (const auto& pair : nodes)
@@ -845,7 +846,7 @@ namespace MWRender
                 // DO NOT COPY AND PASTE THIS CODE. Cloning osg::Geometry without also cloning its contained Arrays is
                 // generally unsafe. In this specific case the operation is safe under the following two assumptions:
                 // - When Arrays are removed or replaced in the cloned geometry, the original Arrays in their place must
-                // outlive the cloned geometry regardless. (ensured by TemplateMultiRef)
+                // outlive the cloned geometry regardless. (ensured by the templateRefs vector below)
                 // - Arrays that we add or replace in the cloned geometry must be explicitely forbidden from reusing
                 // BufferObjects of the original geometry. (ensured by needvbo() in optimizer.cpp)
                 copyop.setCopyFlags(merge ? osg::CopyOp::DEEP_COPY_NODES | osg::CopyOp::DEEP_COPY_DRAWABLES
@@ -876,7 +877,7 @@ namespace MWRender
             {
                 // add a ref to the original template to help verify the safety of shallow cloning operations
                 // in addition, we hint to the cache that it's still being used and should be kept in cache
-                templateRefs->addRef(cnode);
+                templateRefs.emplace_back(cnode);
 
                 if (pair.second.mNeedCompile)
                 {
@@ -938,7 +939,8 @@ namespace MWRender
             udc->addUserObject(refnumSet);
             group->addCullCallback(new SceneUtil::LightListCallback);
         }
-        udc->addUserObject(templateRefs);
+        for (const auto& ref : templateRefs)
+            SceneUtil::addTemplateRef(*group, ref.get());
 
         return group;
     }

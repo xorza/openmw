@@ -13,6 +13,7 @@
 #include <components/misc/pathhelpers.hpp>
 
 #include <components/sceneutil/osgacontroller.hpp>
+#include <components/sceneutil/templateref.hpp>
 #include <components/vfs/pathutil.hpp>
 
 #include <components/resource/scenemanager.hpp>
@@ -40,7 +41,7 @@ namespace Resource
         // Create an instance based on template and store template reference inside so the template will not be removed
         // from cache
         osg::ref_ptr<SceneUtil::AnimBlendRules> blendRules(new AnimBlendRules(*tmpl, osg::CopyOp::SHALLOW_COPY));
-        blendRules->getOrCreateUserDataContainer()->addUserObject(new Resource::TemplateRef(tmpl));
+        SceneUtil::addTemplateRef(*blendRules, tmpl.get());
 
         if (!overridePath.value().empty())
         {
@@ -49,7 +50,7 @@ namespace Resource
             {
                 blendRules->addOverrideRules(*blendRuleOverrides);
             }
-            blendRules->getOrCreateUserDataContainer()->addUserObject(new Resource::TemplateRef(blendRuleOverrides));
+            SceneUtil::addTemplateRef(*blendRules, blendRuleOverrides.get());
         }
 
         return blendRules;
@@ -57,11 +58,8 @@ namespace Resource
 
     osg::ref_ptr<const AnimBlendRules> AnimBlendRulesManager::loadRules(VFS::Path::NormalizedView path)
     {
-        std::optional<osg::ref_ptr<osg::Object>> obj = mCache->getRefFromObjectCacheOrNone(path);
-        if (obj.has_value())
-        {
-            return osg::ref_ptr<AnimBlendRules>(static_cast<AnimBlendRules*>(obj->get()));
-        }
+        if (std::optional<osg::ref_ptr<const AnimBlendRules>> cached = mCache->getRefFromObjectCacheOrNone(path))
+            return *cached;
 
         osg::ref_ptr<AnimBlendRules> blendRules = AnimBlendRules::fromFile(mVFS, path);
         mCache->addEntryToObjectCache(path.value(), blendRules);

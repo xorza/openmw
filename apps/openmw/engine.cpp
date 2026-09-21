@@ -591,6 +591,7 @@ void OMW::Engine::prepareEngine()
             asyncListener.update();
         dataLoading.get();
     }
+    mSoundManager->warmStoreSounds();
     listener->loadingOff();
 
     mWorld->init(mMaxRecastLogLevel, *mRenderer, std::move(rootNode), mWorkQueue.get(), *mUnrefQueue);
