@@ -73,13 +73,12 @@ namespace RtxTool
         /// that ran long. A run that waited this out says so and does not start again.
         constexpr double sPrimeCapSeconds = 45.0;
 
-        /// How often a run that turns its sky asks for the next weather, in frames of world.
-        ///
-        /// **How long the crossing itself takes is the weather's own `Transition_Delta`**, which
-        /// `MWWorld::WeatherManager` runs and this does not touch. What is stated here is only the
-        /// cadence of the asking, off the frame index rather than the clock, so the same frame
-        /// stands under the same sky on every machine.
-        constexpr float sTurnFrames = 4.0f * Rtx::sStepRate;
+        /// How often a run that turns its sky asks for the next weather, in frames of world: off
+        /// the frame index rather than the clock, so the same frame stands under the same sky on
+        /// every machine. The crossing itself takes the same `sTurnSeconds`, which `setTurnCrossings`
+        /// gave the world's `Transition_Delta` before there was a world; `MWWorld::WeatherManager`
+        /// runs it and this does not touch it.
+        constexpr float sTurnFrames = sTurnSeconds * Rtx::sStepRate;
 
         /// How far ahead the `look` a run reports points.
         ///

@@ -158,6 +158,10 @@ namespace SDLUtil
                     if (mConListener)
                         mConListener->controllerRemoved(evt.cdevice);
                     break;
+                case SDL_CONTROLLERDEVICEREMAPPED:
+                    // SDL keeps an open controller on its newest mapping itself, and every event
+                    // after this one already carries it.
+                    break;
                 case SDL_CONTROLLERBUTTONDOWN:
                     if (mConListener)
                         mConListener->buttonPressed(1, evt.cbutton);

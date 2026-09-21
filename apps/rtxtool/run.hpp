@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <map>
 #include <optional>
 #include <span>
 #include <string>
@@ -59,6 +60,21 @@ namespace RtxTool
     /// command for the next run. What a window prints on the key and again where it was left.
     std::string describeStanding(const Rtx::Stop& stop);
 
+    /// How long a sky asked to turn takes to cross into each weather, in seconds of world, which is
+    /// also how often the next is asked for.
+    ///
+    /// **One number, so every ask is a crossing and every crossing swaps.** The game runs one
+    /// transition and keeps one asked behind it, so asking faster than it crosses only rewrites the
+    /// one behind; and at a weather's own `Transition_Delta` — a minute for most — the precipitation
+    /// swap halfway, which is what a turn exists for, lands past the twenty seconds a place runs.
+    inline constexpr float sTurnSeconds = 4.0f;
+
+    /// The fallback values that make every weather in `turnThrough` cross in `sTurnSeconds`:
+    /// `Weather_<name>_Transition_Delta` set to its reciprocal, written over `fallback` before the
+    /// `Fallback::Map` the world reads is made from it. A name that is none of the ten is left to
+    /// the session, which says so; a run that turns nothing changes nothing.
+    void setTurnCrossings(std::span<const std::string> turnThrough, std::map<std::string, std::string>& fallback);
+
     /// What the sky is doing, as a window's title says it after the rate: the weather and the
     /// clock, and while one weather crosses into another, which one and how far.
     struct SkyNote
@@ -66,8 +82,9 @@ namespace RtxTool
         std::string_view mWeather;
 
         /// The weather crossing in, or empty while none is. A crossing takes the weather's own
-        /// `Transition_Delta` — a minute for most — and the title is where a window shows it,
-        /// because the HUD a script's message lands on is off unless `--hud` asked for it.
+        /// `Transition_Delta` — a minute for most, or `sTurnSeconds` under a turn — and the title
+        /// is where a window shows it, because the HUD a script's message lands on is off unless
+        /// `--hud` asked for it.
         std::string_view mArriving;
 
         /// How far the crossing has come, nought to one.

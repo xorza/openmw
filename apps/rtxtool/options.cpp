@@ -221,10 +221,10 @@ namespace RtxTool
 
         option(Verbs::Bench, "turn-weather", bpo::value<std::string>()->default_value(""),
             "turn the sky through these weathers while each place runs, comma "
-            "separated and round again — --turn-weather=Rain,Foggy. The next is asked for every "
-            "four seconds of world; a transition takes the weather's own Transition_Delta, a minute "
-            "for most, as a window's weather keys do, and the precipitation of the one arriving "
-            "replaces the one leaving halfway through. **A run under it is not a "
+            "separated and round again — --turn-weather=Rain,Foggy. Each crossing takes four "
+            "seconds of world in place of the weather's own Transition_Delta, a minute for most, "
+            "and the next is asked for as one lands, so the precipitation of the one arriving "
+            "replaces the one leaving halfway through every crossing. **A run under it is not a "
             "benchmark**: no two places stand under the same sky. It is here because a weather "
             "turning frees a whole emitter's meshes and textures on an ordinary frame, which is "
             "the one thing the game does constantly that no other path in this tool could do");

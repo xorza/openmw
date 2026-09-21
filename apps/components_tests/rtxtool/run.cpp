@@ -2,6 +2,7 @@
 #include <cstddef>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -204,6 +205,34 @@ namespace RtxTool
                 room, { .mWeather = "Thunderstorm", .mArriving = "Blizzard", .mCrossed = 1.0f, .mHour = 23.99f });
             EXPECT_EQ(longest, "Thunderstorm \u2192 Blizzard 100%, 23:59");
             EXPECT_EQ(longest.size(), 37u);
+        }
+
+        TEST(RtxTurnWeatherTest, aTurnCrossesInItsOwnSecondsAndTouchesNothingElse)
+        {
+            std::map<std::string, std::string> fallback{
+                { "Weather_Rain_Transition_Delta", ".015" },
+                { "Weather_Clear_Transition_Delta", ".015" },
+                { "Weather_Rain_Rain_Diameter", "600" },
+            };
+            const std::vector<std::string> turn{ "Rain", "Foggy", "Drizzle" };
+            setTurnCrossings(turn, fallback);
+
+            // The delta is what a factor loses a second, from one to nought: 1 / 4 s is 0.25, and
+            // four seconds of it is exactly the one the factor started at.
+            EXPECT_EQ(fallback.at("Weather_Rain_Transition_Delta"), "0.25");
+            EXPECT_EQ(fallback.at("Weather_Foggy_Transition_Delta"), "0.25");
+            EXPECT_EQ(std::stof(fallback.at("Weather_Foggy_Transition_Delta")) * sTurnSeconds, 1.0f);
+
+            // A weather not turned keeps the game's own minute, another key of a turned weather is
+            // not a crossing, and a name that is none of the ten writes nothing.
+            EXPECT_EQ(fallback.at("Weather_Clear_Transition_Delta"), ".015");
+            EXPECT_EQ(fallback.at("Weather_Rain_Rain_Diameter"), "600");
+            EXPECT_EQ(fallback.count("Weather_Drizzle_Transition_Delta"), 0u);
+            EXPECT_EQ(fallback.size(), 4u);
+
+            std::map<std::string, std::string> untouched{ { "Weather_Rain_Transition_Delta", ".015" } };
+            setTurnCrossings(std::vector<std::string>{}, untouched);
+            EXPECT_EQ(untouched, (std::map<std::string, std::string>{ { "Weather_Rain_Transition_Delta", ".015" } }));
         }
     }
 

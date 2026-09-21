@@ -5,6 +5,7 @@
 #include <cctype>
 #include <cstddef>
 #include <format>
+#include <map>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -135,6 +136,18 @@ namespace RtxTool
     std::string describeStanding(const Rtx::Stop& stop)
     {
         return describeSpot(stop) + describeBlock(stop) + describeCommand(stop);
+    }
+
+    void setTurnCrossings(const std::span<const std::string> turnThrough, std::map<std::string, std::string>& fallback)
+    {
+        const std::string delta = std::format("{}", 1.0f / sTurnSeconds);
+        for (const std::string& weather : turnThrough)
+        {
+            if (!Rtx::weatherIndex(weather).has_value())
+                continue;
+
+            fallback.insert_or_assign(std::format("Weather_{}_Transition_Delta", weather), delta);
+        }
     }
 
     std::string_view writeSkyNote(const std::span<char> room, const SkyNote& note)

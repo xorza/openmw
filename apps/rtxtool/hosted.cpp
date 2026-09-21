@@ -56,6 +56,13 @@ namespace RtxTool
 
         const unsigned int seed = request.mRandomSeed;
 
+        // **The crossings a turn makes are the world's to run, off the fallback map it is made
+        // from** — so the map is written here, before the request is given up and before there is
+        // an engine to read it.
+        Fallback::FallbackMap fallback = variables["fallback"].as<Fallback::FallbackMap>();
+        for (const Rtx::Stop& stop : request.mStops)
+            setTurnCrossings(stop.mSky.mTurnThrough, fallback.mMap);
+
         // **Built before the engine and read after it.** A run that ends its last stop and a window
         // somebody closes both have to be reported, and only the first ever reaches `finish` — so
         // what the run came to is asked for once the engine has gone, off what the run noted on
@@ -110,7 +117,7 @@ namespace RtxTool
                 engine.addContentFile(file);
             }
 
-            Fallback::Map::init(variables["fallback"].as<Fallback::FallbackMap>().mMap);
+            Fallback::Map::init(fallback.mMap);
 
             // **Straight into the world, with no character generation.** `setSkipMenu(true, false)`
             // reaches `StateManager::newGame(true)`, which is the bypass a session wants: a stop says
