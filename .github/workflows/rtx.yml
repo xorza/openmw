@@ -242,69 +242,14 @@ jobs:
 
       - name: Package
         if: env.PACKAGE == 'true'
-        # The portable layout, installed whole, then wrapped the way each system takes it.
-        #
-        # **The AppImage, the way the format's own guide says to make one.** The layout goes under
-        # `usr/bin`, since the binaries find their openmw.cfg beside themselves and the launcher
-        # starts the game from its own directory; the desktop file, the icon and the metainfo move
-        # up to `usr/share`, where the tools and a desktop integrator look for them. The runtime
-        # at the front of the file is the static one, pinned here by release and checksum: it runs
-        # on FUSE 2, FUSE 3 or none, where the old runtime dies on every distribution that has
-        # dropped libfuse2, and without it appimagetool fetches whatever the runtime's continuous
-        # release holds that day. The Qt plugin bundles the Wayland platform beside X11, and with
-        # it, through its `waylandcompositor` module, the shell, buffer and decoration plugin sets
-        # a Wayland window needs — without the shell one it never maps, and the launcher sits there
-        # — so the launcher opens on a session with no XWayland. The Vulkan loader stays out, because the
-        # one on a player's machine is the one that matches their driver. The update information
-        # points AppImageUpdate at this repository's releases and writes the `.zsync` beside the
-        # file. AppStream validation is off: upstream's metainfo carries warnings appstreamcli
-        # refuses, and its identity, the launcher's desktop id, is right. The tools are AppImages
-        # themselves and a runner has no FUSE, so they extract and run. It is built on 24.04, so it
-        # runs on distributions with glibc 2.39 or later, which is 2024's.
-        #
-        # The zip is cpack's, off the same install rules upstream's installer is made of. Both are
-        # named after the ref, so a tag names its archives and a run by hand names the branch.
-        env:
-          LINUXDEPLOY_SHA256: c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d
-          LINUXDEPLOY_QT_SHA256: 15106be885c1c48a021198e7e1e9a48ce9d02a86dd0a1848f00bdbf3c1c92724
-          RUNTIME_SHA256: 2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d
+        # The portable layout, wrapped the way each system takes it: `rtx` says how, and what the
+        # AppImage needs from the runner is Qt's Wayland platform and zsync. Named after the ref,
+        # so a tag names its archives and a run by hand names the branch.
         run: |
-          apps/rtxtool/rtx package build
-          mkdir -p dist
           if [ "$RUNNER_OS" = Linux ]; then
             sudo apt-get install -y qt6-wayland zsync
-            cmake --install build-package --prefix "$PWD/AppDir/usr/bin"
-            mv AppDir/usr/bin/share AppDir/usr/share
-            curl --fail --retry 3 -L -o linuxdeploy \
-              https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20251107-1/linuxdeploy-x86_64.AppImage
-            curl --fail --retry 3 -L -o linuxdeploy-plugin-qt \
-              https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/1-alpha-20250213-1/linuxdeploy-plugin-qt-x86_64.AppImage
-            curl --fail --retry 3 -L -o runtime-x86_64 \
-              https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64
-            echo "$LINUXDEPLOY_SHA256  linuxdeploy" | sha256sum -c -
-            echo "$LINUXDEPLOY_QT_SHA256  linuxdeploy-plugin-qt" | sha256sum -c -
-            echo "$RUNTIME_SHA256  runtime-x86_64" | sha256sum -c -
-            chmod +x linuxdeploy linuxdeploy-plugin-qt
-            executables=()
-            for file in AppDir/usr/bin/*; do
-              [ -f "$file" ] && [ -x "$file" ] && executables+=(--executable "$file")
-            done
-            APPIMAGE_EXTRACT_AND_RUN=1 QMAKE=/usr/bin/qmake6 PATH="$PWD:$PATH" \
-              EXTRA_PLATFORM_PLUGINS='libqwayland-generic.so;libqwayland-egl.so' EXTRA_QT_MODULES=waylandcompositor \
-              LDAI_RUNTIME_FILE="$PWD/runtime-x86_64" LDAI_NO_APPSTREAM=1 \
-              LDAI_UPDATE_INFORMATION='gh-releases-zsync|xorza|openmw-rtx|latest|openmw-rtx-v*-linux-x86_64.AppImage.zsync' \
-              LDAI_OUTPUT="dist/openmw-${GITHUB_REF_NAME}-linux-x86_64.AppImage" \
-              ./linuxdeploy --appdir AppDir "${executables[@]}" \
-                --desktop-file AppDir/usr/share/applications/org.openmw.launcher.desktop \
-                --icon-file AppDir/usr/share/pixmaps/openmw.png \
-                --exclude-library 'libvulkan.so*' --plugin qt --output appimage
-            mv ./*.zsync dist/ 2>/dev/null || true
-          else
-            cpack -G ZIP --config build-package/CPackConfig.cmake -B dist
-            rm -rf dist/_CPack_Packages
-            mv dist/*.zip "dist/openmw-${GITHUB_REF_NAME}-windows-x64.zip"
           fi
-          ls -l dist
+          apps/rtxtool/rtx package archive "$GITHUB_REF_NAME"
 
       - name: Archive
         if: env.PACKAGE == 'true'

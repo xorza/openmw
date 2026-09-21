@@ -10,6 +10,9 @@
 #   rtx <flavour> setup <morrowind dir>  write the openmw.cfg a fresh box has none of
 #   rtx <flavour> repeat [--pairs=N] [bench args]
 #                                        two runs of one binary walk one place and must agree
+#   rtx package archive [name]           the release archive out of the package build, into dist/:
+#                                        an AppImage on Linux, a zip on Windows, named after the
+#                                        ref or the name given
 #   rtx <flavour> gate                   clang-format 14, build, the release and no-DLSS compiles, test,
 #                                        check, repeat — stops at the first failure
 #   rtx <flavour> <verb> [args]          openmw-rtxtool <verb>, under the flavour's validation
@@ -638,6 +641,123 @@ runRepeat() {
     return "$status"
 }
 
+# **The AppImage, the way the format's own guide says to make one.** The portable layout goes
+# under `usr/bin`, since the binaries find their openmw.cfg beside themselves and the launcher
+# starts the game from its own directory; the desktop file, the icon and the metainfo move up to
+# `usr/share`, where the tools and a desktop integrator look for them.
+#
+# **OSG's plugins are the one thing no linker names.** The engine loads the nine `USED_OSG_PLUGINS`
+# of the top-level CMakeLists by name at start and refuses to run without them, through OSG's own
+# search: `osgPlugins-<version>/osgdb_<name>.so` under each entry of `OSG_LIBRARY_PATH`. Left to
+# the host, a bundled OSG found Arch's copies and pulled Arch's `libosgSim` into a process running
+# Ubuntu's `libosgUtil`. So the nine are copied under `usr/lib`, `--deploy-deps-only` brings what
+# they link and sets their rpath, and an AppRun hook points OSG at them — the tool's AppRun sources
+# every script under `apprun-hooks/` with `this_dir` set to the mounted image.
+#
+# The runtime at the front of the file is the static one, pinned by release and checksum: it runs
+# on FUSE 2, FUSE 3 or none, where the old runtime dies on every distribution that dropped
+# libfuse2, and without it appimagetool fetches whatever the runtime's continuous release holds
+# that day. The Qt plugin bundles the Wayland platform beside X11 and, through its
+# `waylandcompositor` module, the shell, buffer and decoration plugin sets a Wayland window needs —
+# without the shell one it never maps — so the launcher opens on a session with no XWayland. The
+# Vulkan loader stays out, because the one on a player's machine is the one that matches their
+# driver. The update information points AppImageUpdate at this repository's releases and writes
+# the `.zsync` beside the file. AppStream validation is off: upstream's metainfo carries warnings
+# appstreamcli refuses, and its identity, the launcher's desktop id, is right. The tools are
+# AppImages themselves and a runner has no FUSE, so they extract and run. Built on Ubuntu 24.04,
+# it runs on distributions with glibc 2.39 or later, which is 2024's.
+fetchAppImageTools() {
+    local tools="$root/deps/appimage"
+    mkdir -p "$tools"
+    local file url sum
+    while read -r file url sum; do
+        if [ -f "$tools/$file" ]; then
+            continue
+        fi
+        echo "fetching $file" >&2
+        fetch --output "$tools/$file.partial" "$url"
+        echo "$sum  $tools/$file.partial" | sha256sum --check --quiet --strict -
+        mv "$tools/$file.partial" "$tools/$file"
+        chmod +x "$tools/$file"
+    done <<'EOT'
+linuxdeploy https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20251107-1/linuxdeploy-x86_64.AppImage c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d
+linuxdeploy-plugin-qt https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/1-alpha-20250213-1/linuxdeploy-plugin-qt-x86_64.AppImage 15106be885c1c48a021198e7e1e9a48ce9d02a86dd0a1848f00bdbf3c1c92724
+runtime-x86_64 https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64 2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d
+EOT
+}
+
+# The names between `set(USED_OSG_PLUGINS` and its `)`, `osgdb_` and all, read off the one place
+# that declares them so this list cannot drift from the engine's own check.
+usedOsgPlugins() {
+    awk '/^set\(USED_OSG_PLUGINS/{on=1; next} on{last=/\)/; sub(/\).*/, ""); if ($1 != "") print $1; if (last) exit}' \
+        "$root/CMakeLists.txt"
+}
+
+archiveLinux() {
+    local name="$1" dist="$root/dist" appdir="$root/AppDir" tools="$root/deps/appimage"
+    fetchAppImageTools
+
+    rm -rf "$appdir"
+    cmake --install "$build" --prefix "$appdir/usr/bin" > /dev/null
+    mv "$appdir/usr/bin/share" "$appdir/usr/share"
+
+    local osgVersion plugins plugin
+    osgVersion="$(pkg-config --modversion openscenegraph-osg)"
+    plugins="$(pkg-config --variable=libdir openscenegraph-osg)/osgPlugins-$osgVersion"
+    mkdir -p "$appdir/usr/lib/osgPlugins-$osgVersion" "$appdir/apprun-hooks"
+    for plugin in $(usedOsgPlugins); do
+        cp "$plugins/$plugin.so" "$appdir/usr/lib/osgPlugins-$osgVersion/"
+    done
+    printf 'export OSG_LIBRARY_PATH="$this_dir/usr/lib"\n' > "$appdir/apprun-hooks/osg-plugins.sh"
+
+    local executables=() file
+    for file in "$appdir"/usr/bin/*; do
+        if [ -f "$file" ] && [ -x "$file" ]; then
+            executables+=(--executable "$file")
+        fi
+    done
+
+    mkdir -p "$dist"
+    APPIMAGE_EXTRACT_AND_RUN=1 QMAKE="$(command -v qmake6)" PATH="$tools:$PATH" \
+        EXTRA_PLATFORM_PLUGINS='libqwayland-generic.so;libqwayland-egl.so' EXTRA_QT_MODULES=waylandcompositor \
+        LDAI_RUNTIME_FILE="$tools/runtime-x86_64" LDAI_NO_APPSTREAM=1 \
+        LDAI_UPDATE_INFORMATION='gh-releases-zsync|xorza|openmw-rtx|latest|openmw-rtx-v*-linux-x86_64.AppImage.zsync' \
+        LDAI_OUTPUT="$dist/openmw-$name-linux-x86_64.AppImage" \
+        "$tools/linuxdeploy" --appdir "$appdir" "${executables[@]}" \
+            --deploy-deps-only "$appdir/usr/lib/osgPlugins-$osgVersion" \
+            --desktop-file "$appdir/usr/share/applications/org.openmw.launcher.desktop" \
+            --icon-file "$appdir/usr/share/pixmaps/openmw.png" \
+            --exclude-library 'libvulkan.so*' --plugin qt --output appimage
+    mv "$root"/*.zsync "$dist/" 2> /dev/null || true
+}
+
+# **The zip is cpack's, off the same install rules upstream's installer is made of** — and a zip
+# rather than that installer, because a fork under a renderer nobody has installed before should
+# unpack beside a stock OpenMW, not register itself where one would.
+archiveWindows() {
+    local name="$1" dist="$root/dist"
+    mkdir -p "$dist"
+    cpack -G ZIP --config "$build/CPackConfig.cmake" -B "$dist"
+    rm -rf "$dist/_CPack_Packages"
+    mv "$dist"/*.zip "$dist/openmw-$name-windows-x64.zip"
+}
+
+# The archive out of the package build, named after the argument or the ref: a tag names its
+# archives and a branch names its own.
+archive() {
+    if [ "$flavour" != package ]; then
+        echo "rtx: an archive is made of the package flavour — \`rtx package archive\`" >&2
+        exit 2
+    fi
+    local name="${1:-$(git -C "$root" describe --tags --always)}"
+    if onWindows; then
+        archiveWindows "$name"
+    else
+        archiveLinux "$name"
+    fi
+    ls -l "$root/dist"
+}
+
 case "$what" in
     build)
         # The flavour's own targets, or the ones the line names: CI compiles the backend alone in
@@ -659,6 +779,10 @@ case "$what" in
     repeat)
         buildTargets openmw-rtxtool
         runRepeat "$@"
+        ;;
+    archive)
+        buildTargets "${targets[@]}"
+        archive "$@"
         ;;
     gate)
         # **Never a gate beside a build, or beside another gate**: the reading is then about the
