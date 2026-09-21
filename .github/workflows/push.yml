@@ -30,6 +30,7 @@ jobs:
       run: >
         cmake .
         -D CMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
+        -D OPENMW_RTX=OFF
         -D OPENMW_USE_SYSTEM_RECASTNAVIGATION=ON
         -D USE_SYSTEM_TINYXML=ON
         -D BUILD_COMPONENTS_TESTS=ON

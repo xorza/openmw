@@ -290,7 +290,10 @@ namespace Rtx
         // Read by the tests and by nothing else.
         /// Whether the driver offers `VK_EXT_device_fault` with its feature, and so whether
         /// `describeFault` has anything to ask.
-        bool canDescribeFault() const { return mGetDeviceFaultInfo != nullptr; }
+        bool canDescribeFault() const
+        {
+            return mGetDeviceFaultInfo != nullptr;
+        }
 
         /// What the device says about why it was lost, as lines for the message that reports it.
         /// Nothing where the driver offers no `VK_EXT_device_fault`. After a loss and never before,

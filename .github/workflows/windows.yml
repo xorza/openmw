@@ -99,6 +99,7 @@ jobs:
         -B ${{ github.workspace }}/build
         -G Ninja
         -D CMAKE_BUILD_TYPE=${{ inputs.build-type }}
+        -D OPENMW_RTX=OFF
         -D CMAKE_TOOLCHAIN_FILE='${{ github.workspace }}/deps/vcpkg-x64-windows-${{ inputs.msvc }}-${{ env.VCPKG_TAG }}/scripts/buildsystems/vcpkg.cmake'
         -D CMAKE_PREFIX_PATH='${{ github.workspace }}/deps/Qt/${{ env.QT_VER }}/msvc2019_64'
         ${{ inputs.package && '-D CMAKE_CXX_FLAGS_RELEASE="/O2 /Ob2 /DNDEBUG /Zi"' || '' }}

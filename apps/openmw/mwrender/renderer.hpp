@@ -345,7 +345,8 @@ namespace MWRender
         /// menu, before there is a world, off the resource system `prepareResources` kept. Where
         /// the interface goes in the graph, if it goes anywhere, is the renderer's to decide.
         virtual std::unique_ptr<MyGUIPlatform::Platform> createGuiPlatform(
-            float scalingFactor, VFS::Path::NormalizedView resourcePath, const std::filesystem::path& logPath) = 0;
+            float scalingFactor, VFS::Path::NormalizedView resourcePath, const std::filesystem::path& logPath)
+            = 0;
 
     protected:
         /// Out of line with the destructor, so a subclass needs none of what the handles point at.

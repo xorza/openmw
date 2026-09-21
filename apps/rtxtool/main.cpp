@@ -210,10 +210,10 @@ namespace RtxTool
             // **The two knobs the settings define, and the harness restates nowhere.** Given on the
             // line, the line's; a window's, the player's; a measured run's, the file's default.
             const float distantCells = given("distant-cells") ? variables["distant-cells"].as<float>()
-                : watched ? Settings::rtx().mDistantLandCells.get()
+                : watched                                     ? Settings::rtx().mDistantLandCells.get()
                           : std::stof(shippedDefault(command.mConfig, "RTX", "distant land cells"));
             const bool distantStatics = given("distant-statics") ? variables["distant-statics"].as<bool>()
-                : watched ? Settings::terrain().mObjectPaging.get()
+                : watched                                        ? Settings::terrain().mObjectPaging.get()
                           : shippedDefault(command.mConfig, "Terrain", "object paging") == "true";
 
             // The size rule's constant is the player's own, since no option names it, and the

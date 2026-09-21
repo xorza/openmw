@@ -1,7 +1,12 @@
 # The fork's own CI: the ray-tracing build on Ubuntu and on Windows, through the same script the
-# desk uses. Upstream's push.yml and release.yml stay as they are and are switched off in the
-# repository's settings (AGENTS.md says how); windows.yml and macos.yml have no trigger of their
-# own.
+# desk uses.
+#
+# **Upstream's workflows run beside this one, as the host engine's check.** They have no Vulkan
+# SDK and no NGX, and macOS can have neither, so each of their three configures carries the one
+# line the fork adds to them, `-D OPENMW_RTX=OFF`: push.yml for Ubuntu, windows.yml, and
+# CI/before_script.macos.sh. What they prove is what this workflow cannot: that the tree still
+# builds without the ray tracer, and upstream's own suites on three systems. Nothing here is
+# switched off in the repository's settings, because a fresh fork does not carry a setting.
 #
 # **One job, two legs.** Everything after the dependencies is the same three lines on both
 # systems, because `apps/rtxtool/rtx` is where the systems differ — so the workflow states the
