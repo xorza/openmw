@@ -78,11 +78,11 @@ namespace RtxTool
 
             config.filterOutNonExistingPaths(dataDirs);
 
-            // **The keys exist where there is a window.** A watched run answers F6 to F8 and the
-            // page keys with the weather and the clock, through the Lua scripts under the
-            // harness's own data directory, and Home with where it stands, through the session;
-            // a headless run has nobody to press them, and the played game names neither the
-            // directory nor the file.
+            // **The keys exist where there is a window.** A watched run answers the brackets, the
+            // comma, the full stop, the slash and the page keys with the weather and the clock,
+            // through the Lua scripts under the harness's own data directory, and Home with where
+            // it stands, through the session; a headless run has nobody to press them, and the
+            // played game names neither the directory nor the file.
             if (!setup.mHeadless)
                 dataDirs.push_back(resources / "rtx" / "vfs");
 

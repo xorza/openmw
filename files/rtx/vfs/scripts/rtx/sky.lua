@@ -26,7 +26,8 @@ end
 -- stalled on the second weather for as long as the first took to arrive.
 local asked = nil
 
-local function nextWeather(player)
+-- `steps` weathers on from the one asked for, or back where negative.
+local function turnWeather(player, steps)
     local cell = player.cell
     local regionId = cell.region
     if not regionId then
@@ -40,22 +41,24 @@ local function nextWeather(player)
         return
     end
 
-    -- The one after the last asked, or after the current where none was — the first where
-    -- neither is one the region rolls, which a save or the console can leave it as.
+    -- Stepped from the last asked, or from the current where none was — and where neither is one
+    -- the region rolls, which a save or the console can leave it as, from before the first going
+    -- on and from after the last going back, so the first press lands on an end of the list.
     local current = core.weather.getCurrent(cell)
     local from = asked or (current and current.recordId)
-    local at = 0
+    local at = steps > 0 and 0 or #allowed + 1
     for index, entry in ipairs(allowed) do
         if entry.weather.recordId == from then
             at = index
         end
     end
-    local chosen = allowed[at % #allowed + 1]
+    local index = (at - 1 + steps) % #allowed + 1
+    local chosen = allowed[index]
     asked = chosen.weather.recordId
 
     -- A change is a transition of 1 / Transition_Delta seconds of the sky's clock — a minute for
-    -- most, half that for a storm, and F8 speeds it — and a press during one queues behind the
-    -- weather arriving.
+    -- most, half that for a storm, and a faster clock speeds it — and a press during one queues
+    -- behind the weather arriving.
     local arriving = core.weather.getNext(cell)
     local how = 'arriving'
     if arriving and arriving.recordId ~= chosen.weather.recordId then
@@ -63,11 +66,14 @@ local function nextWeather(player)
     end
 
     core.weather.changeWeather(regionId, chosen.weather)
-    say(player, string.format('%s %s, %d of %d, %d%%', chosen.weather.name, how, at % #allowed + 1, #allowed, chosen.chance))
+    say(player, string.format('%s %s, %d of %d, %d%%', chosen.weather.name, how, index, #allowed, chosen.chance))
 end
 
--- The game's default `timescale`, and ten and a hundred times it.
-local speeds = { 30, 300, 3000 }
+-- The game's default `timescale`, which the clock keys halve and double: ×1 is the game's own
+-- day. Bounded at ×1/8, below which the sky stands still to the eye, and ×1024, at which a day
+-- passes in under three seconds and the sun is a streak.
+local baseScale = 30
+local slowest, fastest = -3, 10
 
 -- What the clock ran at before it was paused, so a second press puts it back.
 local heldScale = nil
@@ -75,39 +81,45 @@ local heldScale = nil
 local function pauseClock(player)
     if heldScale then
         world.setGameTimeScale(heldScale)
-        say(player, string.format('clock running, ×%g', heldScale / speeds[1]))
+        say(player, string.format('clock running, ×%g', heldScale / baseScale))
         heldScale = nil
         return
     end
 
     heldScale = core.getGameTimeScale()
     if heldScale == 0 then
-        heldScale = speeds[1]
+        heldScale = baseScale
     end
     world.setGameTimeScale(0)
     say(player, 'clock paused')
 end
 
-local function speedClock(player)
-    -- A paused clock is started at the first speed; a running one moves to the speed after the
-    -- one it is nearest to, and past the last back to the first.
+-- `steps` powers of two faster, or slower where negative. A paused clock runs again, stepped from
+-- where it was held; one the console set between two powers steps to the power on the side
+-- pressed, so ×1.5 goes to ×2 and comes down to ×1.
+local function speedClock(player, steps)
     local scale = heldScale or core.getGameTimeScale()
     heldScale = nil
-
-    local at = #speeds
-    for index, speed in ipairs(speeds) do
-        if scale <= speed then
-            at = index
-            break
-        end
-    end
-    local chosen = speeds[at % #speeds + 1]
-    if scale == 0 then
-        chosen = speeds[1]
+    if scale <= 0 then
+        scale = baseScale
     end
 
-    world.setGameTimeScale(chosen)
-    say(player, string.format('clock ×%g', chosen / speeds[1]))
+    -- The power at or below the scale, then the one at or above it, the same where the scale is
+    -- a power. The products are exact, so a scale these keys set is found and not approximated.
+    local below = slowest
+    while below < fastest and baseScale * 2 ^ (below + 1) <= scale do
+        below = below + 1
+    end
+    local above = below
+    if baseScale * 2 ^ below < scale then
+        above = below + 1
+    end
+
+    local exponent = (steps > 0 and below or above) + steps
+    exponent = math.max(slowest, math.min(fastest, exponent))
+
+    world.setGameTimeScale(baseScale * 2 ^ exponent)
+    say(player, string.format('clock ×%g', 2 ^ exponent))
 end
 
 local function describeHour(hour)
@@ -137,14 +149,14 @@ end
 
 return {
     eventHandlers = {
-        RtxNextWeather = function(data)
-            nextWeather(data.player)
+        RtxTurnWeather = function(data)
+            turnWeather(data.player, data.steps)
         end,
         RtxPauseClock = function(data)
             pauseClock(data.player)
         end,
         RtxSpeedClock = function(data)
-            speedClock(data.player)
+            speedClock(data.player, data.steps)
         end,
         RtxAddHours = function(data)
             addHours(data.player, data.hours)
