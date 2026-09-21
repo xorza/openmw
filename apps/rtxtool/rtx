@@ -22,6 +22,8 @@
 #   asan      build-asan         debug under AddressSanitizer; `LSAN=1` turns the leak check back on
 #   nodlss    build-nodlss       debug with -DOPENMW_RTX_DLSS=OFF: the other binary, whose upscaler
 #                                refuses every mode by name and whose DLSS test skips
+#   package   build-package      release with the launcher, the wizard and the importers, in the
+#                                portable layout a release archive holds; `build` builds it all
 #
 # **One grammar for four builds**, because three scripts carried three: one had verbs only, one
 # had tests by default and `tool` in front of a verb, and none built the game. What differed
@@ -117,8 +119,12 @@ describeFlavour() {
             validation=sync
             targets=(openmw-rtxtool openmw components-tests rtx-gpu-tests openmw-tests)
             ;;
+        package)
+            validation=off
+            targets=(all)
+            ;;
         *)
-            echo "rtx: no flavour is called '$flavour' — debug, release, asan or nodlss" >&2
+            echo "rtx: no flavour is called '$flavour' — debug, release, asan, nodlss or package" >&2
             exit 2
             ;;
     esac
@@ -297,6 +303,28 @@ fetchWindowsSdl() {
     )
 }
 
+# **Qt, for the one flavour that builds the launcher and the wizard.** The dependency set carries
+# none, so it comes the way `windows.yml` takes it: aqt, pinned by release and checksum, installs
+# the version `CI/deps_versions.msvc.sh` names into deps/Qt, and the preset reads that version
+# through `QT_VER`. Once, judged by the directory the install leaves.
+fetchWindowsQt() {
+    local version="${QT_VER:?}" sum="f9e9acc05975f2e70e4935ace76b41882cda4b53eb779c9bcf1d87a95029a6b0"
+    qt="$root/deps/Qt/$version/msvc2019_64"
+    if [ -d "$qt" ]; then
+        return
+    fi
+
+    (
+        mkdir -p "$root/deps/Qt"
+        cd "$root/deps/Qt"
+        echo "fetching Qt $version" >&2
+        fetch --output aqt_x64.exe "https://github.com/miurahr/aqtinstall/releases/download/v3.1.15/aqt_x64.exe"
+        echo "$sum  aqt_x64.exe" | sha256sum --check --quiet --strict -
+        ./aqt_x64.exe install-qt windows desktop "$version" win64_msvc2019_64
+        rm -f aqt_x64.exe
+    )
+}
+
 # Configured once, which is the one moment the SDK is looked for: `NGX_ROOT` in the environment
 # names the checkout, as CMake's own `find_package` reads it, and a build directory remembers what
 # it found. `--clean-first` is never used here: it deletes files/lang/*.ts, which are source.
@@ -315,12 +343,18 @@ configureIfNeeded() {
     if onWindows; then
         fetchWindowsDeps
         fetchWindowsSdl
+        if [ "$flavour" = package ]; then
+            fetchWindowsQt
+        fi
     fi
 
     cmake -S "$root" --preset "$flavour-$system"
 
     if onWindows; then
         placeWindowsRuntime
+        if [ "$flavour" = package ]; then
+            placeWindowsQt
+        fi
     fi
 }
 
@@ -337,6 +371,21 @@ placeWindowsRuntime() {
     cp "$bin"/osgPlugins-3.6.5/*.dll "$build/osgPlugins-3.6.5/"
 }
 
+# **What the launcher and the wizard load, the list `windows.yml` places.** Qt's own deploy tool
+# would bring the whole of what it guesses at; upstream's list is the seven libraries and four
+# plugins the two programs reach, and the package installs every DLL the build directory holds.
+placeWindowsQt() {
+    local lib
+    for lib in Core Gui Network OpenGL OpenGLWidgets Widgets Svg; do
+        cp "$qt/bin/Qt6$lib.dll" "$build/"
+    done
+    mkdir -p "$build/styles" "$build/platforms" "$build/imageformats" "$build/iconengines"
+    cp "$qt/plugins/styles/qwindowsvistastyle.dll" "$build/styles/"
+    cp "$qt/plugins/platforms/qwindows.dll" "$build/platforms/"
+    cp "$qt/plugins/imageformats/qsvg.dll" "$build/imageformats/"
+    cp "$qt/plugins/iconengines/qsvgicon.dll" "$build/iconengines/"
+}
+
 describeFlavour "$flavour"
 if onWindows; then
     activateMsvc
@@ -345,6 +394,7 @@ if onWindows; then
     # shellcheck disable=SC1091
     source "$root/CI/deps_versions.msvc.sh"
     export VCPKG_TAG="${VCPKG_TAG:?}"
+    export QT_VER="${QT_VER:?}"
     deps="$root/deps/vcpkg-x64-windows-2022-$VCPKG_TAG"
 fi
 configureIfNeeded

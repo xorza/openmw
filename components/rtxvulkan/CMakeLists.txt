@@ -344,9 +344,14 @@ target_compile_definitions(openmw-rtx-vulkan PUBLIC $<$<NOT:$<CONFIG:Release>>:O
 target_compile_definitions(openmw-rtx-vulkan PUBLIC OPENMW_RTX_SHADER_DIR="${RTX_SPIRV_DIR}")
 
 if (OPENMW_RTX_DLSS)
-    # The static half is the target; the shared halves are the feature libraries it loads at
-    # runtime, and NGX looks for those in the application's folder unless it is told otherwise.
+    # The static half is the target; the shared half is the feature library it loads at runtime,
+    # from the directory of the running executable (`dlss.cpp` says why that one), so a copy sits
+    # beside every binary of the build and goes with the binaries an install ships. The SDK's own
+    # name is kept, version and all: it is what NGX asks the directory for.
     target_link_libraries(openmw-rtx-vulkan PRIVATE NGX::NGX)
-    target_compile_definitions(openmw-rtx-vulkan PUBLIC OPENMW_RTX_DLSS
-                               PRIVATE OPENMW_RTX_NGX_FEATURES="${NGX_FEATURE_DIR}")
+    target_compile_definitions(openmw-rtx-vulkan PUBLIC OPENMW_RTX_DLSS)
+    get_filename_component(_ngx_feature_name "${NGX_FEATURE_LIBRARY}" NAME)
+    copy_resource_file("${NGX_FEATURE_LIBRARY}" "${OpenMW_BINARY_DIR}" "${_ngx_feature_name}")
+    install(FILES "${NGX_FEATURE_LIBRARY}" DESTINATION "${CMAKE_INSTALL_BINDIR}")
+    unset(_ngx_feature_name)
 endif()

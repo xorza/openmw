@@ -43,8 +43,13 @@ Result variables
 
 .. variable:: NGX_FEATURE_DIR
 
-  The directory holding the release feature libraries, which the application names to NGX at
-  runtime.
+  The directory holding the release feature libraries.
+
+.. variable:: NGX_FEATURE_LIBRARY
+
+  The Ray Reconstruction feature library in that directory, ``nvngx_dlssd.dll`` or
+  ``libnvidia-ngx-dlssd.so.<version>``: the one the backend loads, and so the one a build places
+  beside its binaries and an install ships.
 
 Cache variables
 ^^^^^^^^^^^^^^^
@@ -116,6 +121,9 @@ if(NGX_LIBRARY)
         if(EXISTS "${_ngx_dlss_feature}")
             get_filename_component(NGX_FEATURE_DIR "${_ngx_library_dir}/../rel" ABSOLUTE)
             _ngx_read_dll_version("${_ngx_dlss_feature}" NGX_VERSION)
+            if(EXISTS "${NGX_FEATURE_DIR}/nvngx_dlssd.dll")
+                set(NGX_FEATURE_LIBRARY "${NGX_FEATURE_DIR}/nvngx_dlssd.dll")
+            endif()
         endif()
     else()
         file(GLOB _ngx_dlss_feature "${_ngx_library_dir}/rel/libnvidia-ngx-dlss.so.*")
@@ -123,6 +131,9 @@ if(NGX_LIBRARY)
             set(NGX_FEATURE_DIR "${_ngx_library_dir}/rel")
             string(REGEX MATCH "\\.so\\.([0-9]+\\.[0-9]+\\.[0-9]+)$" _ngx_version_match "${_ngx_dlss_feature}")
             set(NGX_VERSION "${CMAKE_MATCH_1}")
+            if(EXISTS "${NGX_FEATURE_DIR}/libnvidia-ngx-dlssd.so.${NGX_VERSION}")
+                set(NGX_FEATURE_LIBRARY "${NGX_FEATURE_DIR}/libnvidia-ngx-dlssd.so.${NGX_VERSION}")
+            endif()
         endif()
         unset(_ngx_version_match)
     endif()
@@ -140,7 +151,7 @@ endif()
 
 include(FindPackageHandleStandardArgs)
 find_package_handle_standard_args(NGX
-        REQUIRED_VARS NGX_LIBRARY NGX_INCLUDE_DIR NGX_FEATURE_DIR
+        REQUIRED_VARS NGX_LIBRARY NGX_INCLUDE_DIR NGX_FEATURE_DIR NGX_FEATURE_LIBRARY
         VERSION_VAR NGX_VERSION
         REASON_FAILURE_MESSAGE "Clone it with `git clone --depth 1 ${_ngx_branch}https://github.com/NVIDIA/DLSS.git` and point NGX_ROOT at the checkout.")
 unset(_ngx_branch)

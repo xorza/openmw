@@ -10,6 +10,7 @@
 #include <nvsdk_ngx_helpers_dlssd.h>
 #include <nvsdk_ngx_vk.h>
 
+#include <components/files/fixedpath.hpp>
 #include <components/rtx/error.hpp>
 
 #include "device.hpp"
@@ -41,11 +42,14 @@ namespace Rtx
             return path.c_str();
         }
 
-        /// Where NGX finds the feature libraries it loads at runtime: its own search is the
-        /// application's folder alone, and these are nowhere near the binary.
+        /// Where NGX finds the feature library it loads at runtime: the directory of the running
+        /// executable, which the build and an install put the library in. Named rather than left
+        /// to NGX's default, because the SDK calls that default "the application folder" and says
+        /// no more, and a folder that turned out to be the working directory would find nothing in
+        /// a game started from anywhere else.
         const wchar_t* featurePath()
         {
-            static const std::wstring path = std::filesystem::path(OPENMW_RTX_NGX_FEATURES).wstring();
+            static const std::wstring path = Files::TargetPathType("openmw").getLocalPath().wstring();
 
             return path.c_str();
         }

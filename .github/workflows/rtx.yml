@@ -19,15 +19,30 @@
 # compilers, the format check holds and the device-free tests pass; the gate stays on a box with
 # a card.
 #
+# **A release is a tag, and the same two legs.** A push of a tag `rtx-v*` runs everything above
+# and then, on each leg, the `package` flavour and the archive a player takes: an AppImage on
+# Linux, which carries Qt, OSG, MyGUI and SDL and leaves Vulkan to the driver, and a zip on
+# Windows, which is what a fork under a renderer nobody has installed before should be rather
+# than an installer that registers itself where a stock OpenMW would. The release job then puts
+# both on a draft release, to be read before it is published. The packaging can be tried without
+# a tag: run the workflow by hand with `package` on, and the archives come back as artifacts.
+#
 # Every action is pinned to a full commit, the token can only read and is not left in the
-# checkout, and a newer push cancels the run it supersedes.
+# checkout — the one job that writes a release says so itself and runs on a tag alone — and a
+# newer push cancels the run it supersedes.
 name: Ray tracing
 
 on:
   push:
     branches: [master]
+    tags: [rtx-v*]
   pull_request:
   workflow_dispatch:
+    inputs:
+      package:
+        description: Build the release archives as well, and keep them as artifacts
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -39,6 +54,8 @@ concurrency:
 env:
   # The tag components/rtxvulkan/CMakeLists.txt asks FindNGX for, exactly.
   NGX_TAG: v310.7.0
+  # Whether this run packages: on a release tag, or when asked by hand.
+  PACKAGE: ${{ startsWith(github.ref, 'refs/tags/rtx-v') || inputs.package == true }}
 
 jobs:
   format:
@@ -223,6 +240,78 @@ jobs:
       - name: The backend without DLSS
         run: apps/rtxtool/rtx nodlss build openmw-rtx-vulkan
 
+      - name: Package
+        if: env.PACKAGE == 'true'
+        # The portable layout, installed whole, then wrapped the way each system takes it.
+        #
+        # **The AppImage, the way the format's own guide says to make one.** The layout goes under
+        # `usr/bin`, since the binaries find their openmw.cfg beside themselves and the launcher
+        # starts the game from its own directory; the desktop file, the icon and the metainfo move
+        # up to `usr/share`, where the tools and a desktop integrator look for them. The runtime
+        # at the front of the file is the static one, pinned here by release and checksum: it runs
+        # on FUSE 2, FUSE 3 or none, where the old runtime dies on every distribution that has
+        # dropped libfuse2, and without it appimagetool fetches whatever the runtime's continuous
+        # release holds that day. The Qt plugin bundles the Wayland platform beside X11, so the
+        # launcher opens on a session with no XWayland. The Vulkan loader stays out, because the
+        # one on a player's machine is the one that matches their driver. The update information
+        # points AppImageUpdate at this repository's releases and writes the `.zsync` beside the
+        # file. AppStream validation is off: upstream's metainfo carries warnings appstreamcli
+        # refuses, and its identity, the launcher's desktop id, is right. The tools are AppImages
+        # themselves and a runner has no FUSE, so they extract and run. It is built on 24.04, so it
+        # runs on distributions with glibc 2.39 or later, which is 2024's.
+        #
+        # The zip is cpack's, off the same install rules upstream's installer is made of. Both are
+        # named after the ref, so a tag names its archives and a run by hand names the branch.
+        env:
+          LINUXDEPLOY_SHA256: c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d
+          LINUXDEPLOY_QT_SHA256: 15106be885c1c48a021198e7e1e9a48ce9d02a86dd0a1848f00bdbf3c1c92724
+          RUNTIME_SHA256: 2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d
+        run: |
+          apps/rtxtool/rtx package build
+          mkdir -p dist
+          if [ "$RUNNER_OS" = Linux ]; then
+            sudo apt-get install -y qt6-wayland zsync
+            cmake --install build-package --prefix "$PWD/AppDir/usr/bin"
+            mv AppDir/usr/bin/share AppDir/usr/share
+            curl --fail --retry 3 -L -o linuxdeploy \
+              https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20251107-1/linuxdeploy-x86_64.AppImage
+            curl --fail --retry 3 -L -o linuxdeploy-plugin-qt \
+              https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/1-alpha-20250213-1/linuxdeploy-plugin-qt-x86_64.AppImage
+            curl --fail --retry 3 -L -o runtime-x86_64 \
+              https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64
+            echo "$LINUXDEPLOY_SHA256  linuxdeploy" | sha256sum -c -
+            echo "$LINUXDEPLOY_QT_SHA256  linuxdeploy-plugin-qt" | sha256sum -c -
+            echo "$RUNTIME_SHA256  runtime-x86_64" | sha256sum -c -
+            chmod +x linuxdeploy linuxdeploy-plugin-qt
+            executables=()
+            for file in AppDir/usr/bin/*; do
+              [ -f "$file" ] && [ -x "$file" ] && executables+=(--executable "$file")
+            done
+            APPIMAGE_EXTRACT_AND_RUN=1 QMAKE=/usr/bin/qmake6 PATH="$PWD:$PATH" \
+              EXTRA_PLATFORM_PLUGINS='libqwayland-generic.so;libqwayland-egl.so' \
+              LDAI_RUNTIME_FILE="$PWD/runtime-x86_64" LDAI_NO_APPSTREAM=1 \
+              LDAI_UPDATE_INFORMATION='gh-releases-zsync|xorza|openmw-rtx|latest|openmw-rtx-v*-linux-x86_64.AppImage.zsync' \
+              LDAI_OUTPUT="dist/openmw-${GITHUB_REF_NAME}-linux-x86_64.AppImage" \
+              ./linuxdeploy --appdir AppDir "${executables[@]}" \
+                --desktop-file AppDir/usr/share/applications/org.openmw.launcher.desktop \
+                --icon-file AppDir/usr/share/pixmaps/openmw.png \
+                --exclude-library 'libvulkan.so*' --plugin qt --output appimage
+            mv ./*.zsync dist/ 2>/dev/null || true
+          else
+            cpack -G ZIP --config build-package/CPackConfig.cmake -B dist
+            rm -rf dist/_CPack_Packages
+            mv dist/*.zip "dist/openmw-${GITHUB_REF_NAME}-windows-x64.zip"
+          fi
+          ls -l dist
+
+      - name: Archive
+        if: env.PACKAGE == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: package-${{ matrix.os }}
+          path: dist/*
+          if-no-files-found: error
+
       - name: Logs
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -232,3 +321,25 @@ jobs:
             build-debug/CMakeCache.txt
             build-debug/**/*.log
             build-nodlss/CMakeCache.txt
+
+  release:
+    # A draft, with both archives, on the tag that was pushed. Only this job can write, and it
+    # runs on nothing but a release tag; a leg that failed leaves no release at all.
+    if: startsWith(github.ref, 'refs/tags/rtx-v')
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: package-*
+          path: dist
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          draft: true
+          files: dist/*
+          fail_on_unmatched_files: true

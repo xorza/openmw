@@ -152,6 +152,28 @@
             }
         },
         {
+            "name": "package",
+            "hidden": true,
+            "$comment": [
+                "What a release archive holds: the release build with every assert out, the launcher, the wizard",
+                "and the two importers a player meets, and no tests. `OPENMW_LOCAL_INSTALL` is upstream's portable",
+                "layout, everything in one directory with relative paths, which is what the archive is; the",
+                "binaries find their openmw.cfg beside themselves wherever the directory is put. The CS stays off,",
+                "as the `rtx` preset says. Listed first among what a visible preset inherits, so what it turns",
+                "on beats what `windows` turns off."
+            ],
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "BUILD_COMPONENTS_TESTS": "OFF",
+                "BUILD_OPENMW_TESTS": "OFF",
+                "BUILD_LAUNCHER": "ON",
+                "BUILD_WIZARD": "ON",
+                "BUILD_MWINIIMPORTER": "ON",
+                "BUILD_ESSIMPORTER": "ON",
+                "OPENMW_LOCAL_INSTALL": "ON"
+            }
+        },
+        {
             "name": "debug-linux",
             "inherits": [ "debug", "linux", "rtx" ],
             "binaryDir": "${sourceDir}/build-debug"
@@ -192,6 +214,23 @@
                 "CMAKE_C_FLAGS_INIT": "-Z7 -Oy-",
                 "CMAKE_CXX_FLAGS_INIT": "-Z7 -Oy-",
                 "CMAKE_EXE_LINKER_FLAGS_INIT": "-DEBUG"
+            }
+        },
+        {
+            "name": "package-linux",
+            "inherits": [ "package", "linux", "rtx" ],
+            "binaryDir": "${sourceDir}/build-package"
+        },
+        {
+            "name": "package-windows",
+            "inherits": [ "package", "windows", "rtx" ],
+            "binaryDir": "${sourceDir}/build-package",
+            "$comment": [
+                "Qt, which the set has none of and the launcher and the wizard are made of: the one `rtx` fetches",
+                "into deps/ for this flavour, by the version CI/deps_versions.msvc.sh pins and exports as QT_VER."
+            ],
+            "cacheVariables": {
+                "CMAKE_PREFIX_PATH": "${sourceDir}/deps/Qt/$env{QT_VER}/msvc2019_64"
             }
         },
         {
