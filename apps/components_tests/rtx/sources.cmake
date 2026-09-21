@@ -1,10 +1,10 @@
 # What this fork adds to the test binaries, listed here so that upstream's list stays upstream's.
 # Paths are relative to `apps/components_tests`, which is where this is included from.
 #
-# Three lists, because there are two binaries. `components-tests` holds what runs on any machine;
-# `rtx-gpu-tests` holds what opens a device, and fails outright where there is none, so a run on
-# a box without a driver cannot pass by skipping half the suite. The support list is compiled into
-# both.
+# Two binaries. `components-tests` holds what runs on any machine; `rtx-gpu-tests` holds what
+# opens a device, and fails outright where there is none, so a run on a box without a driver
+# cannot pass by skipping half the suite. The support list is compiled into both, and two more
+# lists at the end name the tests that take the flags differently.
 set(RTX_TEST_FILES
     rtx/alphaimage.cpp
     rtx/bluenoise.cpp

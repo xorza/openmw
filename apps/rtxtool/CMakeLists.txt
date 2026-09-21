@@ -21,10 +21,10 @@ set(RTXTOOL_HOSTED_FILES
     stopwriter.hpp
 )
 
-source_group(apps\\rtxtool FILES ${RTXTOOL_FILES} ${RTXTOOL_HOSTED_FILES} main.cpp)
+source_group(apps\\rtxtool FILES ${RTXTOOL_HOSTED_FILES} main.cpp)
 
 # A library so the tests can reach into it, the way apps/openmw builds openmw-lib.
-add_library(openmw-rtxtool-lib STATIC ${RTXTOOL_FILES})
+openmw_rtx_library(openmw-rtxtool-lib ${RTXTOOL_FILES})
 
 # `PUBLIC`, because the interface names all of them: `options.hpp` takes Boost's option maps,
 # `run.hpp` an `SDLUtil` mode, and the fork's own types throughout.
@@ -36,8 +36,6 @@ target_link_libraries(openmw-rtxtool-lib PUBLIC
     openmw-rtx-vulkan
     components
 )
-
-openmw_rtx_target(openmw-rtxtool-lib)
 
 # Boost's `typed_value::notify` assigns through a notifier pointer that is null unless one was
 # asked for, and GCC 16 reports the assignment as a potential null dereference — inside

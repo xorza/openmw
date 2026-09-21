@@ -5,8 +5,10 @@
 # SDK and no NGX, and macOS can have neither, so each of their three configures carries the one
 # line the fork adds to them, `-D OPENMW_RTX=OFF`: push.yml for Ubuntu, windows.yml, and
 # CI/before_script.macos.sh. What they prove is what this workflow cannot: that the tree still
-# builds without the ray tracer, and upstream's own suites on three systems. Nothing here is
-# switched off in the repository's settings, because a fresh fork does not carry a setting.
+# builds without the ray tracer, and upstream's own suites on three systems. On master and pull
+# requests, which is the second line the fork adds: three runners for three quarters of an hour
+# say nothing a branch needs. Nothing here is switched off in the repository's settings, because
+# a fresh fork does not carry a setting.
 #
 # **One job, two legs.** Everything after the dependencies is the same three lines on both
 # systems, because `apps/rtxtool/rtx` is where the systems differ — so the workflow states the
@@ -21,11 +23,12 @@
 #
 # **A release is a tag, and the same two legs.** A push of a tag `rtx-v*` runs everything above
 # and then, on each leg, the `package` flavour and the archive a player takes: an AppImage on
-# Linux, which carries Qt, OSG, MyGUI and SDL and leaves Vulkan to the driver, and a zip on
-# Windows, which is what a fork under a renderer nobody has installed before should be rather
-# than an installer that registers itself where a stock OpenMW would. The release job then puts
-# both on a draft release, to be read before it is published. The packaging can be tried without
-# a tag: run the workflow by hand with `package` on, and the archives come back as artifacts.
+# Linux, which carries Qt, OSG, MyGUI, SDL and the Vulkan loader and leaves the driver to the
+# host, and on Windows the portable folder, which is what a fork under a renderer nobody has
+# installed before should be rather than an installer that registers itself where a stock OpenMW
+# would. The release job zips the folder and puts both on a draft release, to be read before it
+# is published. The packaging can be tried without a tag: run the workflow by hand with `package`
+# on, and the archives come back as artifacts, in the one zip GitHub wraps around each.
 #
 # Every action is pinned to a full commit, the token can only read and is not left in the
 # checkout — the one job that writes a release says so itself and runs on a tag alone — and a
@@ -47,8 +50,10 @@ on:
 permissions:
   contents: read
 
+# A push supersedes the push before it on the same ref. A run asked for by hand stands alone: it
+# is wanted whole, and a push in the meantime must neither cancel it nor be cancelled by it.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}${{ github.event_name == 'workflow_dispatch' && format('-{0}', github.run_id) || '' }}
   cancel-in-progress: true
 
 env:
@@ -92,6 +97,8 @@ jobs:
           - os: ubuntu-24.04
             vulkan: 1.4.357.1
             vulkan-sha256: 4b41e3b30e8aedaa5dac7c136561ab463eb316a25a54e2c6245f2c299ea1fb85
+            # An AppImage is compressed already; the Windows folder is not.
+            artifact-compression: 0
             # What FindNGX reads on this system: the headers, the static library and the release
             # features, and neither the debug features nor the other system's.
             ngx: |
@@ -100,6 +107,7 @@ jobs:
           - os: windows-2022
             vulkan: 1.4.357.0
             vulkan-sha256: 81f474711e9042f4cd22b31b2f7a8870db2e428b21586fb43dd80150be97310d
+            artifact-compression: 6
             # The loader, which the SDK's installer does not carry and a runner with no driver
             # does not have: LunarG's runtime components, checksum from the same listing.
             vulkan-loader-sha256: a14672efed15aafc7f5a16572d35cd3a3416eadf670aeee3cdf50ee32d5fbf83
@@ -117,24 +125,28 @@ jobs:
           persist-credentials: false
 
       - name: OpenMW dependencies
-        # Upstream's own list, plus what rtx asks for: Ninja and the system Google Test.
+        # Upstream's own list, plus what rtx asks for: Ninja and the system Google Test, and for
+        # the archive, Qt's Wayland platform and zsync — a few seconds on every run, so the
+        # package step stays the one line it is on Windows.
         if: runner.os == 'Linux'
         run: |
           sudo add-apt-repository -y ppa:openmw/openmw
           sudo apt-get update
           sudo CI/install_debian_deps.sh gcc openmw-deps openmw-deps-dynamic
-          sudo apt-get install -y ninja-build libgtest-dev libgmock-dev
+          sudo apt-get install -y ninja-build libgtest-dev libgmock-dev qt6-wayland zsync
 
       - name: OpenMW dependencies cache
-        # Windows has no package for them: `rtx` fetches upstream's prebuilt set and SDL's own
-        # package into deps/ at the first configure, and this keeps them between runs. The key
-        # names the tag upstream pins and the script that pins SDL, so a bump of either fetches
-        # afresh.
+        # Windows has no package for them: `rtx` fetches upstream's prebuilt set, SDL's own
+        # package and Qt into deps/ at the first configure, and this keeps them between runs. The
+        # key names the tags upstream pins and the script that pins the rest, so a bump of either
+        # saves afresh; an older cache is restored all the same, because `rtx` judges each set by
+        # the directory it leaves and fetches only what a bump changed.
         if: runner.os == 'Windows'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: deps
           key: deps-${{ matrix.os }}-${{ hashFiles('CI/deps_versions.msvc.sh', 'apps/rtxtool/rtx') }}
+          restore-keys: deps-${{ matrix.os }}-
 
       - name: Vulkan SDK cache
         id: vulkan
@@ -242,76 +254,20 @@ jobs:
 
       - name: Package
         if: env.PACKAGE == 'true'
-        # The portable layout, installed whole, then wrapped the way each system takes it.
-        #
-        # **The AppImage, the way the format's own guide says to make one.** The layout goes under
-        # `usr/bin`, since the binaries find their openmw.cfg beside themselves and the launcher
-        # starts the game from its own directory; the desktop file, the icon and the metainfo move
-        # up to `usr/share`, where the tools and a desktop integrator look for them. The runtime
-        # at the front of the file is the static one, pinned here by release and checksum: it runs
-        # on FUSE 2, FUSE 3 or none, where the old runtime dies on every distribution that has
-        # dropped libfuse2, and without it appimagetool fetches whatever the runtime's continuous
-        # release holds that day. Qt's X11 platform alone, which runs through XWayland on a Wayland
-        # session: the plugin's pinned release bundles the Wayland platform on request but not the
-        # shell and buffer integrations it needs beside it, and a Wayland window without a shell
-        # never maps. The Vulkan loader stays out, because the
-        # one on a player's machine is the one that matches their driver. The update information
-        # points AppImageUpdate at this repository's releases and writes the `.zsync` beside the
-        # file. AppStream validation is off: upstream's metainfo carries warnings appstreamcli
-        # refuses, and its identity, the launcher's desktop id, is right. The tools are AppImages
-        # themselves and a runner has no FUSE, so they extract and run. It is built on 24.04, so it
-        # runs on distributions with glibc 2.39 or later, which is 2024's.
-        #
-        # The zip is cpack's, off the same install rules upstream's installer is made of. Both are
-        # named after the ref, so a tag names its archives and a run by hand names the branch.
-        env:
-          LINUXDEPLOY_SHA256: c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d
-          LINUXDEPLOY_QT_SHA256: 15106be885c1c48a021198e7e1e9a48ce9d02a86dd0a1848f00bdbf3c1c92724
-          RUNTIME_SHA256: 2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d
-        run: |
-          apps/rtxtool/rtx package build
-          mkdir -p dist
-          if [ "$RUNNER_OS" = Linux ]; then
-            sudo apt-get install -y zsync
-            cmake --install build-package --prefix "$PWD/AppDir/usr/bin"
-            mv AppDir/usr/bin/share AppDir/usr/share
-            curl --fail --retry 3 -L -o linuxdeploy \
-              https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20251107-1/linuxdeploy-x86_64.AppImage
-            curl --fail --retry 3 -L -o linuxdeploy-plugin-qt \
-              https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/1-alpha-20250213-1/linuxdeploy-plugin-qt-x86_64.AppImage
-            curl --fail --retry 3 -L -o runtime-x86_64 \
-              https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64
-            echo "$LINUXDEPLOY_SHA256  linuxdeploy" | sha256sum -c -
-            echo "$LINUXDEPLOY_QT_SHA256  linuxdeploy-plugin-qt" | sha256sum -c -
-            echo "$RUNTIME_SHA256  runtime-x86_64" | sha256sum -c -
-            chmod +x linuxdeploy linuxdeploy-plugin-qt
-            executables=()
-            for file in AppDir/usr/bin/*; do
-              [ -f "$file" ] && [ -x "$file" ] && executables+=(--executable "$file")
-            done
-            APPIMAGE_EXTRACT_AND_RUN=1 QMAKE=/usr/bin/qmake6 PATH="$PWD:$PATH" \
-              LDAI_RUNTIME_FILE="$PWD/runtime-x86_64" LDAI_NO_APPSTREAM=1 \
-              LDAI_UPDATE_INFORMATION='gh-releases-zsync|xorza|openmw-rtx|latest|openmw-rtx-v*-linux-x86_64.AppImage.zsync' \
-              LDAI_OUTPUT="dist/openmw-${GITHUB_REF_NAME}-linux-x86_64.AppImage" \
-              ./linuxdeploy --appdir AppDir "${executables[@]}" \
-                --desktop-file AppDir/usr/share/applications/org.openmw.launcher.desktop \
-                --icon-file AppDir/usr/share/pixmaps/openmw.png \
-                --exclude-library 'libvulkan.so*' --plugin qt --output appimage
-            mv ./*.zsync dist/ 2>/dev/null || true
-          else
-            cpack -G ZIP --config build-package/CPackConfig.cmake -B dist
-            rm -rf dist/_CPack_Packages
-            mv dist/*.zip "dist/openmw-${GITHUB_REF_NAME}-windows-x64.zip"
-          fi
-          ls -l dist
+        # The portable layout, wrapped the way each system takes it: `rtx` says how. Named after
+        # the ref, so a tag names its archives and a run by hand names the branch.
+        run: apps/rtxtool/rtx package archive "$GITHUB_REF_NAME"
 
       - name: Archive
         if: env.PACKAGE == 'true'
+        # `dist` whole, so the folder keeps its name inside the zip GitHub wraps around the
+        # artifact, which is the only zip a run's page offers.
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: package-${{ matrix.os }}
-          path: dist/*
+          name: openmw-${{ github.ref_name }}-${{ matrix.os }}
+          path: dist
           if-no-files-found: error
+          compression-level: ${{ matrix.artifact-compression }}
 
       - name: Logs
         if: failure()
@@ -322,6 +278,7 @@ jobs:
             build-debug/CMakeCache.txt
             build-debug/**/*.log
             build-nodlss/CMakeCache.txt
+            build-package/CMakeCache.txt
 
   release:
     # A draft, with both archives, on the tag that was pushed. Only this job can write, and it
@@ -335,9 +292,19 @@ jobs:
     steps:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: package-*
+          pattern: openmw-*
           path: dist
           merge-multiple: true
+
+      - name: Zip the Windows folder
+        # A release attaches files, so the folder becomes the zip here, named after itself.
+        run: |
+          cd dist
+          for folder in */; do
+            zip -qr "${folder%/}.zip" "$folder"
+            rm -r "$folder"
+          done
+          ls -l
 
       - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:

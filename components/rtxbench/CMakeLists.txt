@@ -37,12 +37,8 @@ set(RTX_BENCH_FILES
     threadwatch.hpp
 )
 
-source_group(components\\rtxbench FILES ${RTX_BENCH_FILES})
-
-add_library(openmw-rtx-bench STATIC ${RTX_BENCH_FILES})
+openmw_rtx_library(openmw-rtx-bench ${RTX_BENCH_FILES})
 
 # `PUBLIC`, because `benchrecord.hpp` names `Rtx::SceneStats` and the three reconstruction enums,
 # and `frametimes.hpp` names `Rtx::GpuSpan`: every consumer needs the core's include paths.
 target_link_libraries(openmw-rtx-bench PUBLIC openmw-rtx)
-
-openmw_rtx_target(openmw-rtx-bench)

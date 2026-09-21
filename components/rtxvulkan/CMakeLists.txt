@@ -302,17 +302,13 @@ else()
     list(APPEND RTX_VULKAN_FILES noupscaler.cpp)
 endif()
 
-source_group(components\\rtxvulkan FILES ${RTX_VULKAN_FILES})
-
-add_library(openmw-rtx-vulkan STATIC ${RTX_VULKAN_FILES})
+openmw_rtx_library(openmw-rtx-vulkan ${RTX_VULKAN_FILES})
 
 # Vulkan is private: a host reaches the backend through `createrenderer.hpp`, which names no
 # Vulkan type, so nothing a host compiles needs the headers.
 # The tests reach into the backend and link Vulkan themselves. Linux hides a breach of this, its
 # SDK headers sitting under `/usr/include`, and Windows is where one fails.
 target_link_libraries(openmw-rtx-vulkan PUBLIC openmw-rtx PRIVATE Vulkan::Vulkan SDL2::SDL2 components)
-
-openmw_rtx_target(openmw-rtx-vulkan)
 
 add_dependencies(openmw-rtx-vulkan openmw-rtx-vulkan-shaders)
 

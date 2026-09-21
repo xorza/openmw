@@ -23,10 +23,6 @@ set(RTX_MYGUI_FILES
     texture.hpp
 )
 
-source_group(components\\myguirtx FILES ${RTX_MYGUI_FILES})
-
-add_library(openmw-rtx-mygui STATIC ${RTX_MYGUI_FILES})
+openmw_rtx_library(openmw-rtx-mygui ${RTX_MYGUI_FILES})
 
 target_link_libraries(openmw-rtx-mygui PUBLIC openmw-rtx components)
-
-openmw_rtx_target(openmw-rtx-mygui)
