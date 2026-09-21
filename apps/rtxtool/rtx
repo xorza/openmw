@@ -666,6 +666,12 @@ runRepeat() {
 # appstreamcli refuses, and its identity, the launcher's desktop id, is right. The tools are
 # AppImages themselves and a runner has no FUSE, so they extract and run. Built on Ubuntu 24.04,
 # it runs on distributions with glibc 2.39 or later, which is 2024's.
+#
+# **The DLSS library is out of the AppDir while linuxdeploy runs.** Its last pass patches an rpath
+# into every ELF file it finds there, named or not, and NVIDIA's feature library is signed: with
+# four kilobytes of rpath added, NGX said the device offered no Ray Reconstruction. So the deploy
+# pass runs without it, the file goes back beside the binaries untouched, and the image is then
+# written by the AppImage plugin called on its own, which patches nothing.
 fetchAppImageTools() {
     local tools="$root/deps/appimage"
     mkdir -p "$tools"
@@ -682,6 +688,7 @@ fetchAppImageTools() {
     done <<'EOT'
 linuxdeploy https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20251107-1/linuxdeploy-x86_64.AppImage c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d
 linuxdeploy-plugin-qt https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/1-alpha-20250213-1/linuxdeploy-plugin-qt-x86_64.AppImage 15106be885c1c48a021198e7e1e9a48ce9d02a86dd0a1848f00bdbf3c1c92724
+linuxdeploy-plugin-appimage https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/1-alpha-20250213-1/linuxdeploy-plugin-appimage-x86_64.AppImage 992d502a248e14ab185448ddf6f6e7d25558cb84d4623c354c3af350c25fccb3
 runtime-x86_64 https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64 2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d
 EOT
 }
@@ -710,6 +717,11 @@ archiveLinux() {
     done
     printf 'export OSG_LIBRARY_PATH="$this_dir/usr/lib"\n' > "$appdir/apprun-hooks/osg-plugins.sh"
 
+    local kept="$appdir.kept"
+    rm -rf "$kept"
+    mkdir -p "$kept"
+    mv "$appdir"/usr/bin/libnvidia-ngx-*.so.* "$kept/" 2> /dev/null || true
+
     local executables=() file
     for file in "$appdir"/usr/bin/*; do
         if [ -f "$file" ] && [ -x "$file" ]; then
@@ -717,17 +729,23 @@ archiveLinux() {
         fi
     done
 
-    mkdir -p "$dist"
     APPIMAGE_EXTRACT_AND_RUN=1 QMAKE="$(command -v qmake6)" PATH="$tools:$PATH" \
         EXTRA_PLATFORM_PLUGINS='libqwayland-generic.so;libqwayland-egl.so' EXTRA_QT_MODULES=waylandcompositor \
-        LDAI_RUNTIME_FILE="$tools/runtime-x86_64" LDAI_NO_APPSTREAM=1 \
-        LDAI_UPDATE_INFORMATION='gh-releases-zsync|xorza|openmw-rtx|latest|openmw-rtx-v*-linux-x86_64.AppImage.zsync' \
-        LDAI_OUTPUT="$dist/openmw-$name-linux-x86_64.AppImage" \
         "$tools/linuxdeploy" --appdir "$appdir" "${executables[@]}" \
             --deploy-deps-only "$appdir/usr/lib/osgPlugins-$osgVersion" \
             --desktop-file "$appdir/usr/share/applications/org.openmw.launcher.desktop" \
             --icon-file "$appdir/usr/share/pixmaps/openmw.png" \
-            --exclude-library 'libvulkan.so*' --plugin qt --output appimage
+            --exclude-library 'libvulkan.so*' --plugin qt
+
+    mv "$kept"/* "$appdir/usr/bin/" 2> /dev/null || true
+    rmdir "$kept"
+
+    mkdir -p "$dist"
+    APPIMAGE_EXTRACT_AND_RUN=1 \
+        LDAI_RUNTIME_FILE="$tools/runtime-x86_64" LDAI_NO_APPSTREAM=1 \
+        LDAI_UPDATE_INFORMATION='gh-releases-zsync|xorza|openmw-rtx|latest|openmw-rtx-v*-linux-x86_64.AppImage.zsync' \
+        LDAI_OUTPUT="$dist/openmw-$name-linux-x86_64.AppImage" \
+        "$tools/linuxdeploy-plugin-appimage" --appdir "$appdir"
     mv "$root"/*.zsync "$dist/" 2> /dev/null || true
 }
 
