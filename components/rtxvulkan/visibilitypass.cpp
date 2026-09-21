@@ -205,13 +205,13 @@ namespace Rtx
     }
 
     VisibilityPass::VisibilityPass(const Device& device, const std::filesystem::path& shaderDirectory,
-        const SetLayout& textureLayout, const SetLayout& channelLayout, const SetLayout& volumeLayout, bool countHits,
+        const SetLayout& textureLayout, const SetLayout& channelLayout, const SetLayout& volumeLayout, bool counting,
         const bool specialize, const Reorder reorder)
         : mDevice(device)
         , mBlueNoise(uploadBlueNoise(device))
         , mConstants(Buffer::deviceLocal(device, sizeof(Shaders::VisibilityConstants),
               VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, "frame constants"))
-        , mCountHits(countHits ? 1u : 0u)
+        , mCounting(counting ? 1u : 0u)
         , mReorder(reorderWordOf(reorder))
         , mSpecialize(specialize)
         , mChannelLayout(channelLayout.get())
@@ -285,9 +285,9 @@ namespace Rtx
                 const bool volume = wanted[at].mVolume;
 
                 // One word per `constant_id`, in the order `lib/variants.glsl` declares them. The
-                // volume traces no primary ray, so it counts none whatever the build asked for;
-                // every other constant it takes is the tuple's own.
-                const std::array<std::uint32_t, 5> specialization{ volume ? 0u : mCountHits, variant.mSun ? 1u : 0u,
+                // volume traces no primary ray and so adds no miss, but its froxels are a boundary
+                // the finiteness count watches, so it counts under the same word as the trace.
+                const std::array<std::uint32_t, 5> specialization{ mCounting, variant.mSun ? 1u : 0u,
                     variant.mMoons ? 1u : 0u, variant.mSea ? 1u : 0u, mReorder };
 
                 if (volume)

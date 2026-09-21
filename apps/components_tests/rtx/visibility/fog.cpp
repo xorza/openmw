@@ -726,6 +726,37 @@ namespace Rtx::Testing
             EXPECT_NEAR(ratio, 0.969, 0.05) << "banked air against even air, over nine viewpoints";
         }
 
+        /// **A store that is not finite is counted at the boundary it crossed, and a sound frame
+        /// counts nought.** A fog colour of NaN puts one into every froxel that holds air — the
+        /// columns of the frame by every slice, one scatter store each, with the sunward store and
+        /// the lamps' still finite. It reaches no store of the trace: the air folds into the pixel
+        /// through `max(shaded - peeled, 0)`, which on this card answers nought to a NaN — which is
+        /// why the fault it was found by read as black blocks and not as noise, and why the froxel
+        /// is a boundary of its own rather than trusted to show in the colour.
+        TEST_F(RtxVisibilityTest, aStoreThatIsNotFiniteIsCountedAtItsBoundary)
+        {
+            constexpr std::uint32_t size = 64;
+            Shaders::VisibilityConstants camera = makeCamera(
+                osg::Vec3f(0.0f, -50000.0f, 0.0f), osg::Vec3f(0.0f, -60000.0f, 0.0f), 90.0f, size, size, 100000.0f);
+
+            std::vector<float> luminance;
+            airThrough(camera, size, luminance);
+            EXPECT_EQ(mNotFinite.mFog, 0u);
+            EXPECT_EQ(mNotFinite.mColour, 0u);
+            EXPECT_EQ(mNotFinite.mGuide, 0u);
+
+            camera.mFogColour = osg::Vec3f(std::numeric_limits<float>::quiet_NaN(), 1.0f, 1.0f);
+            camera.mFogExtinction = 3.0e-6f;
+            std::vector<std::uint8_t> pixels;
+            countHits(makeWall(), {}, camera, size, pixels);
+
+            constexpr std::uint32_t columns = size / Shaders::FOG_VOLUME_SCALE;
+            EXPECT_EQ(mNotFinite.mFog, columns * columns * Shaders::FOG_VOLUME_SLICES)
+                << "8 by 8 columns by 64 slices, every one in air short of a wall behind the eye";
+            EXPECT_EQ(mNotFinite.mColour, 0u) << "the trace's own clamp takes the air's NaN to nought";
+            EXPECT_EQ(mNotFinite.mGuide, 0u);
+        }
+
         /// The wind carries the banks downwind, and a camera that walks with the wind sees the air
         /// stand still.
         ///

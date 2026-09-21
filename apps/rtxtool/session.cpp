@@ -816,6 +816,7 @@ namespace RtxTool
 
         mProgress.mOverlap.add(finished.mInFlight);
         mProgress.mGpu.add(finished.mGpu.spans());
+        mProgress.mNotFinite.add(finished.mNotFinite);
 
         // A frame that held, and no other: a run with no hold has no reading to summarise, and a
         // loop that left nothing behind is a frame `QueueHeld` counts as unheld.
@@ -907,6 +908,7 @@ namespace RtxTool
                 .mHold = mProgress.mHold,
                 .mHoldAskedMs = mRequest.mSetup.mProfile.mStressOverlapMs,
                 .mThreads = threads,
+                .mNotFinite = mProgress.mNotFinite,
             },
             mRecord);
 

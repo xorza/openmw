@@ -621,6 +621,16 @@ namespace RtxTool
                 return threads.mLongestFlatOut < Rtx::ThreadShare::sCompileWindows;
             }
 
+            case Rtx::Check::Finite:
+            {
+                const Rtx::NotFinite& wrote = facts.mNotFinite;
+                found = std::format(
+                    "{} stores not finite over the measured frames: {} in the fog volume, {} in the "
+                    "colour, {} in the guides",
+                    wrote.total(), wrote.mFog, wrote.mColour, wrote.mGuide);
+                return wrote.total() == 0;
+            }
+
             case Rtx::Check::CameraStands:
             {
                 // **Answered rather than compared, where the stop named no camera.** Measuring the

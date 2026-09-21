@@ -347,6 +347,7 @@ namespace Rtx::Testing
                     throw Error("the renderer drew a frame and gave none back");
 
                 hits = finished->mHits;
+                mNotFinite = finished->mNotFinite;
 
                 if (afterEach)
                     afterEach();
@@ -628,6 +629,9 @@ namespace Rtx::Testing
         /// test then holds this against. `renderRadiance` reads into the caller's own vector, so a
         /// read of this after one of those is a read of the frame before it.
         std::vector<float> mRadiance;
+
+        /// What the last frame `renderShot` drew wrote that was not finite, by boundary.
+        Rtx::NotFinite mNotFinite;
 
     private:
         /// The last frame's radiance, checked against the extent it was drawn at.

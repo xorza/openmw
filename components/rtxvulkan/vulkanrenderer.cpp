@@ -113,13 +113,13 @@ namespace Rtx
         , mDevice(mInstance, PhysicalDevice::select(mInstance.getHandle()),
               PipelineCacheSpec{ .mDirectory = options.mCacheDirectory, .mShaderDirectory = options.mShaderDirectory },
               deviceExtensionsFor(options))
-        , mCountHits(options.mCountHits)
+        , mCounting(options.mCounting)
         , mProfile(options.mProfile)
-        , mReadsCounts(mCountHits || mProfile.mStressOverlapMs > 0.0)
+        , mReadsCounts(mCounting || mProfile.mStressOverlapMs > 0.0)
         , mChannelLayout(GBuffer::describeLayout(mDevice))
         , mFogVolumeLayout(FogVolume::describeLayout(mDevice))
         , mTextureLayout(TextureArray::describeLayout(mDevice))
-        , mPass(mDevice, options.mShaderDirectory, mTextureLayout, mChannelLayout, mFogVolumeLayout, mCountHits,
+        , mPass(mDevice, options.mShaderDirectory, mTextureLayout, mChannelLayout, mFogVolumeLayout, mCounting,
               mProfile.mSpecializeLaunches, mProfile.mReorder)
         , mComposite(mDevice, options.mShaderDirectory)
         , mSpriteBin(mDevice, options.mShaderDirectory)
@@ -805,7 +805,7 @@ namespace Rtx
 
         // The miss count is an atomic sum over the frame, so the block starts each one at nothing
         // — and it is not started at all where nothing reads it back, which is the other half of
-        // taking the counter out of the game: the atomic went with `COUNT_HITS`, and this is the
+        // taking the counters out of the game: the atomics went with `COUNTING`, and this is the
         // write a frame that never reads it was still paying for.
         if (mReadsCounts)
             frame.mCounts.writable<Shaders::FrameCounts>(0, 1).front() = Shaders::FrameCounts{};
@@ -820,7 +820,7 @@ namespace Rtx
         Shaders::VisibilityConstants sampled = sampleCamera(camera, *mWorld, reconstruction, &mPreviousCamera);
 
         // The launch the misses are counted against, which is the traced extent and not the shown one.
-        frame.mCountedRays = mCountHits ? sampled.mCamera.mWidth * sampled.mCamera.mHeight : 0u;
+        frame.mCountedRays = mCounting ? sampled.mCamera.mWidth * sampled.mCamera.mHeight : 0u;
 
         // The puffs are composited over the reconstruction where something upscales, and over the
         // trace's own composite where nothing does. Named before the trace, because the set that

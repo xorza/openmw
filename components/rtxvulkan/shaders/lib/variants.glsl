@@ -29,13 +29,15 @@
 // `Rtx::VisibilityVariant` is the other half. It reads each of these off the frame's own constants,
 // and `VisibilityPass` keeps one pipeline per tuple.
 
-/// Whether the trace counts the primary rays that hit something.
+/// Whether the frame counts for the host — `counts.h`: the primary rays that hit something, and
+/// the values that were not finite at each boundary they crossed.
 ///
-/// **A harness facility, so the game's module does not carry the atomic at all.** `shot` prints the
-/// count, `bench` reports it and a test asserts on it, and nothing in the game ever reads it — so an
-/// unconditional `atomicAdd` was a debug write compiled into the shipping kernel. Specialized rather
-/// than branched on a uniform because the branch is what has to go, not just the write: with this
-/// false the constant folds away and the buffer is never touched.
+/// **A harness facility, so the game's module does not carry the atomics at all.** `shot` prints the
+/// hits, `bench` reports them, `check` asserts the finiteness and a test asserts on both, and
+/// nothing in the game ever reads either — so an unconditional `atomicAdd` was a debug write
+/// compiled into the shipping kernel. Specialized rather than branched on a uniform because the
+/// branch is what has to go, not just the write: with this false the constant folds away and the
+/// buffer is never touched.
 ///
 /// **Counted as misses, in the miss shader, and turned into hits on the host.** Every lane adding
 /// to one word serialises at that word: a million hits took four tenths of a millisecond of the
@@ -44,7 +46,7 @@
 /// for every primary ray that ends in nothing, so the misses are the same count from the other side,
 /// and a room adds nought. A ballot would add one word a subgroup instead, and a subgroup operation
 /// in the launch loses the device on this driver — `visibility.rgen` holds hit objects.
-layout(constant_id = 0) const bool COUNT_HITS = false;
+layout(constant_id = 0) const bool COUNTING = false;
 
 /// Whether the sun is over the horizon: the constant half of `sunUp`, which says the rest.
 layout(constant_id = 1) const bool HAS_SUN = true;

@@ -127,10 +127,12 @@ namespace Rtx
 
         ValidationOptions mValidation;
 
-        /// Whether the trace counts the primary rays that hit anything. On by default, so a reader
-        /// who forgets it gets a number rather than a silent nought; the game clears it. Not a
-        /// knob of the run's picture, which is why it is not in the profile.
-        bool mCountHits = true;
+        /// Whether the frame counts for the host: the primary rays that hit anything, and the
+        /// values that were not finite at each boundary they crossed — `FrameResult::mHits` and
+        /// `mNotFinite`. On by default, so a reader who forgets it gets a number rather than a
+        /// silent nought; the game clears it. Not a knob of the run's picture, which is why it is
+        /// not in the profile.
+        bool mCounting = true;
     };
 
     /// What a backend holds in one of its slots, as it says so itself. A slot and a scene are one
@@ -275,11 +277,36 @@ namespace Rtx
         std::uint32_t mCount = 0;
     };
 
+    /// Stores whose value was a NaN or an infinity, at each boundary a frame writes across into
+    /// a history or hands to the denoiser — `Shaders::FrameCounts::mNotFinite` by name. Every one
+    /// is a logic error: a history that takes one keeps it and spreads it to its neighbours a
+    /// frame, so the picture goes black in blocks from there, and nothing on the way refuses it.
+    /// Summed over a stop for `Check::Finite`.
+    struct NotFinite
+    {
+        std::uint32_t mFog = 0;
+        std::uint32_t mColour = 0;
+        std::uint32_t mGuide = 0;
+
+        void add(const NotFinite& more)
+        {
+            mFog += more.mFog;
+            mColour += more.mColour;
+            mGuide += more.mGuide;
+        }
+
+        std::uint32_t total() const { return mFog + mColour + mGuide; }
+    };
+
     struct FrameResult
     {
         /// Primary rays that hit something: what tells "the cell rendered" from "the camera faced
-        /// away" without opening the image. Nought where `RendererOptions::mCountHits` was cleared.
+        /// away" without opening the image. Nought where `RendererOptions::mCounting` was cleared.
         std::uint32_t mHits = 0;
+
+        /// What the frame wrote that was not finite, by boundary. Nought where
+        /// `RendererOptions::mCounting` was cleared.
+        NotFinite mNotFinite;
 
         /// What the hold's own clock said the hold came to, in milliseconds: what
         /// `RenderProfile::mStressOverlapMs` asked and the tick past it, on a run that holds, and

@@ -7,6 +7,7 @@
 #include <vector>
 
 #include <apps/openmw/mwrender/rtx/framereport.hpp>
+#include <components/rtx/renderer.hpp>
 #include <components/rtxbench/benchrecord.hpp>
 #include <components/rtxbench/benchrun.hpp>
 #include <components/rtxbench/frametimes.hpp>
@@ -58,6 +59,9 @@ namespace RtxTool
         /// The busiest of the process's other threads across the stop, which only `DriverQuiet`
         /// reads.
         const Rtx::ThreadShare& mThreads;
+
+        /// What the measured frames wrote that was not finite, summed, which only `Finite` reads.
+        const Rtx::NotFinite& mNotFinite;
     };
 
     /// Writes what `Rtx::Actions` asks of the place a stop stood at.

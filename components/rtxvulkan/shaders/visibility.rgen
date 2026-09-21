@@ -25,6 +25,7 @@
 #include "visibility.h"
 
 #include "lib/bindings.glsl"
+#include "lib/counts.glsl"
 #include "lib/fog.glsl"
 #include "lib/frame.glsl"
 #include "lib/medium.glsl"
@@ -384,7 +385,7 @@ void main()
     // **Coverage rides in the direct channel's alpha**, which every pass after this carries
     // through untouched: it is one everywhere but in a picture that has to say where it stops.
     const float coverage = (frame.mTransparentBackground != 0u && !hit) ? 0.0 : 1.0;
-    imageStore(direct, at, vec4(shaded, coverage));
+    RTX_STORE_COUNTED(direct, at, BOUNDARY_COLOUR, vec4(shaded, coverage))
 
     // **The bounce carries what the path took off it, and the albedo carries only the surface.**
     // The composite still multiplies the two, so the picture is the same product it always was; what
@@ -394,10 +395,10 @@ void main()
     //
     // Filtering the bounce with the transmittance already in it averages a quantity that varies as
     // slowly as fog does, which is to say it changes nothing.
-    imageStore(indirect, at, vec4(answer.mBounced * transmittance, 1.0));
-    imageStore(albedo, at, vec4(answer.mResponse.mDiffuse, 1.0));
-    imageStore(specular, at, vec4(answer.mResponse.mSpecular, 1.0));
-    imageStore(guide, at, vec4(answer.mResponse.mNormal, answer.mResponse.mRoughness));
+    RTX_STORE_COUNTED(indirect, at, BOUNDARY_COLOUR, vec4(answer.mBounced * transmittance, 1.0))
+    RTX_STORE_COUNTED(albedo, at, BOUNDARY_GUIDE, vec4(answer.mResponse.mDiffuse, 1.0))
+    RTX_STORE_COUNTED(specular, at, BOUNDARY_GUIDE, vec4(answer.mResponse.mSpecular, 1.0))
+    RTX_STORE_COUNTED(guide, at, BOUNDARY_GUIDE, vec4(answer.mResponse.mNormal, answer.mResponse.mRoughness))
 
     // **The sky moves too, and only its turn moves it.** `skyMotionOf` says why storing nothing here
     // is a smear across every camera rotation. The frame's own vector, always: no puff is in the
@@ -415,13 +416,13 @@ void main()
     }
     else
         moved = skyMotionOf(pixel, direction);
-    imageStore(motion, at, vec4(moved, 0.0, 0.0));
+    RTX_STORE_COUNTED(motion, at, BOUNDARY_GUIDE, vec4(moved, 0.0, 0.0))
 
     // **The one surface in this frame that shows something standing somewhere else.** Water is
     // shaded where it is seen, so the vector above describes the surface and not what is in it; this
     // is the other one, and the upscaler weighs the two by the specular albedo it was already given.
-    imageStore(reflectionMotion, at,
-        vec4(answer.mWater ? mirrorMotionOf(pixel, origin, answer.mMirror) : vec2(0.0), 0.0, 0.0));
+    RTX_STORE_COUNTED(reflectionMotion, at, BOUNDARY_GUIDE,
+        vec4(answer.mWater ? mirrorMotionOf(pixel, origin, answer.mMirror) : vec2(0.0), 0.0, 0.0))
 
     // **What the display pass has to draw the star field through**, which is everything this frame
     // put between the field and the eye: the sky's own layers in `skyShown`, and the pane, the
@@ -432,5 +433,5 @@ void main()
 
     // A miss is as far away as anything can be, and the hit object already carries `mFar` for it.
     // The arms' depth is the eye's own: `clipDepth` measures along the forward the two share.
-    imageStore(depth, at, vec4(hit ? clipDepth(direction, distance) : 1.0, distance, 0.0, 0.0));
+    RTX_STORE_COUNTED(depth, at, BOUNDARY_GUIDE, vec4(hit ? clipDepth(direction, distance) : 1.0, distance, 0.0, 0.0))
 }

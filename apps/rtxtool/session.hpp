@@ -164,9 +164,10 @@ namespace RtxTool
             std::uint64_t mFirstMeasured = 0;
 
             /// What the measured ones came to outside the distributions: how much of the last one hit
-            /// something, and how long they took between them.
+            /// something, how long they took between them, and what they wrote that was not finite.
             double mHitPercent = 0.0;
             double mWallMs = 0.0;
+            Rtx::NotFinite mNotFinite;
 
             /// The renderer's work of the frame behind, and the meshes it brought, waiting for the
             /// frame that closes the span they are in: `Session::frame` says which that is.
@@ -225,6 +226,7 @@ namespace RtxTool
                 mFirstMeasured = 0;
                 mHitPercent = 0.0;
                 mWallMs = 0.0;
+                mNotFinite = Rtx::NotFinite{};
                 mPendingSpend = Rtx::FrameSpend{};
                 mPendingArrived = 0;
                 mCell = nullptr;

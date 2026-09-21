@@ -238,11 +238,12 @@ namespace MWRender
         if (askedFor("OPENMW_RTX_GPU_VALIDATION"))
             options.mValidation.mLevel = Rtx::ValidationLevel::Gpu;
 
-        // **Counted exactly where a run is installed.** The count is a report's figure — it is
-        // what tells "the cell rendered" from "the camera faced away from it" — and nothing a
-        // player does ever reads it, so a played session is specialized without the atomic rather
-        // than writing a number to a buffer nobody looks at, once per pixel that hit anything.
-        options.mCountHits = run != nullptr;
+        // **Counted exactly where a run is installed.** The counts are a report's figures — what
+        // tells "the cell rendered" from "the camera faced away from it", and what `check` asserts
+        // finite — and nothing a player does ever reads them, so a played session is specialized
+        // without the atomics rather than writing numbers to a buffer nobody looks at, once per
+        // pixel that hit anything.
+        options.mCounting = run != nullptr;
 
         // **The knobs a measurement turns, handed over whole where the renderer is built**, so a
         // picture taken by the harness and a frame drawn by the game come from one configuration.

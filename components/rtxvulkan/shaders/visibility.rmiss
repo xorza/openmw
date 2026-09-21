@@ -15,6 +15,7 @@
 // `starsShown` in `bindings.glsl` says why.
 
 #include "lib/bindings.glsl"
+#include "lib/counts.glsl"
 #include "lib/frame.glsl"
 #include "lib/payload.glsl"
 #include "lib/sky.glsl"
@@ -25,9 +26,8 @@ layout(location = RTX_PAYLOAD) rayPayloadInEXT VisibilityPayload packed;
 void main()
 {
     // Before either early return: a ray that found water from under it, or a picture's background,
-    // reached nothing all the same. `COUNT_HITS` in `variants.glsl` says why the count is taken here.
-    if (COUNT_HITS)
-        atomicAdd(counts.mMisses, 1u);
+    // reached nothing all the same.
+    countMiss();
 
     Answer answer = noAnswer();
 

@@ -150,15 +150,15 @@ namespace Rtx
         ///        time, because a pipeline layout names every set it will ever see.
         /// @param channelLayout the same, for the set a `GBuffer` hands over.
         /// @param volumeLayout the same again, for the set a `FogVolume` hands over.
-        /// @param countHits whether the trace counts the primary rays that hit anything — a
-        ///        harness facility, specialized away rather than branched on.
+        /// @param counting whether the frame counts for the host — the hits and the values that
+        ///        were not finite — a harness facility, specialized away rather than branched on.
         /// @param specialize whether to make a kernel per tuple, or the full tuple's alone and
         ///        answer every frame with it — `RenderProfile::mSpecializeLaunches`.
         /// @param reorder whether the launch sorts its threads before the hit's shader runs, and
         ///        by what — `RenderProfile::mReorder`, a constant of every launch.
         VisibilityPass(const Device& device, const std::filesystem::path& shaderDirectory,
             const SetLayout& textureLayout, const SetLayout& channelLayout, const SetLayout& volumeLayout,
-            bool countHits, bool specialize, Reorder reorder);
+            bool counting, bool specialize, Reorder reorder);
 
         /// Writes the frame's block: `constants` with what only the passes know filled in — the
         /// tiles' widths, the lamps' grid, the froxel grid and where every table is, the bin's
@@ -250,9 +250,9 @@ namespace Rtx
         Buffer mConstants;
 
         /// Fixed for the life of the pass, where the four in `VisibilityVariant` are the frame's:
-        /// what counts hits is which binary was built and not what is being looked at, and the
-        /// sort is the run's. Both as the words the kernels are specialized with.
-        std::uint32_t mCountHits = 0;
+        /// what counts is which binary was built and not what is being looked at, and the sort is
+        /// the run's. Both as the words the kernels are specialized with.
+        std::uint32_t mCounting = 0;
         std::uint32_t mReorder = Shaders::REORDER_NONE;
 
         /// Whether the tables below hold a kernel per tuple, or the full tuple's alone.

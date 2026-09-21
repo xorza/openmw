@@ -212,9 +212,9 @@ namespace Rtx
         /// The interface's ring runs on its own count: a menu is drawn on frames with no world.
         std::uint64_t mGuiFrame = 0;
 
-        /// Whether the trace this builds counts its hits. `RendererOptions::mCountHits` says why the
-        /// game's does not.
-        bool mCountHits = false;
+        /// Whether the frame this builds counts for the host. `RendererOptions::mCounting` says why
+        /// the game's does not.
+        bool mCounting = false;
 
         /// What the run decided once, read where each knob is used: how wide both chains store
         /// their radiance, how long the queue is held, and what the frames are traced under —

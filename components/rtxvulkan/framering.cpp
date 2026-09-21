@@ -138,6 +138,9 @@ namespace Rtx
 
         FrameResult& report = mReports.emplace_back(FrameResult{
             .mHits = frame.mCountedRays - counted.mMisses,
+            .mNotFinite = NotFinite{ .mFog = counted.mNotFinite[Shaders::BOUNDARY_FOG],
+                .mColour = counted.mNotFinite[Shaders::BOUNDARY_COLOUR],
+                .mGuide = counted.mNotFinite[Shaders::BOUNDARY_GUIDE] },
             .mHeldMs = counted.mHeldNs * 1.0e-6,
             .mWaitMs = waited,
             .mInFlight = frame.mInFlight,
