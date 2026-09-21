@@ -47,10 +47,13 @@ A 2002 game made to look astonishing on current hardware. Vanilla content, new l
 Requirements
 ------------
 
-* NVIDIA RTX, Turing (RTX 20 series) or later
+* NVIDIA only: an RTX card, Turing (RTX 20 series) or later. The renderer is built on NVIDIA's
+  extensions and on DLSS, so no AMD or Intel GPU runs it.
 * Vulkan 1.4 with ray tracing pipelines, ray queries, position fetch and shader invocation
   reorder. A device missing any of them refuses to start rather than falling back.
 * DLSS Ray Reconstruction as the denoiser and upscaler (NGX, on by default at build time)
+
+Tested on one machine so far: a laptop RTX 4090 at 150 W, which is about a desktop RTX 4070.
 
 Building and running
 --------------------
