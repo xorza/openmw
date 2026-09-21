@@ -1,3 +1,4 @@
+#include <chrono>
 #include <filesystem>
 #include <memory>
 #include <stdexcept>
@@ -94,6 +95,33 @@ namespace MWRender
             // The rest are the game's own nodes, and a renderer that has none says so.
             EXPECT_FALSE(renderer.toggleRenderMode(Render_Wireframe));
             EXPECT_EQ(renderer.mApplied.size(), 4u);
+        }
+
+        /// **The default `awaitFrame` is the limiter the engine's loop used to hold**: it sleeps
+        /// to the limit and answers the limit's own length where it slept, and the wall where it
+        /// did not. The rasterizer keeps exactly the pacing it had, one call earlier in the loop.
+        TEST(RendererTest, theDefaultAwaitFrameSleepsToTheLimitAndAnswersIt)
+        {
+            using Clock = std::chrono::steady_clock;
+
+            RecordingRenderer renderer;
+            renderer.setFrameRateLimit(200.0f);
+            const Clock::duration limit
+                = std::chrono::duration_cast<Clock::duration>(std::chrono::duration<float>(1.0f / 200.0f));
+
+            renderer.awaitFrame();
+            const Clock::time_point began = Clock::now();
+            const Clock::duration stood = renderer.awaitFrame();
+            const Clock::duration slept = Clock::now() - began;
+            EXPECT_EQ(stood, limit) << "a frame it slept for stood for the limit, as the limiter answers";
+            EXPECT_GE(slept, std::chrono::milliseconds(4)) << "and it slept for it";
+
+            renderer.setFrameRateLimit(0.0f);
+            renderer.awaitFrame();
+            const Clock::time_point again = Clock::now();
+            const Clock::duration free = renderer.awaitFrame();
+            EXPECT_LT(Clock::now() - again, std::chrono::milliseconds(2)) << "no limit is no sleep";
+            EXPECT_LT(free, std::chrono::milliseconds(2)) << "and the wall is what stood";
         }
 
         /// A name this build has no renderer for is a configuration mistake, refused by name.

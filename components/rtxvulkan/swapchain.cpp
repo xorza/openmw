@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <initializer_list>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -58,13 +59,22 @@ namespace Rtx
 
         /// The present mode a vertical sync setting asks for. `Disabled` is mailbox and not
         /// immediate, because what a player turning vsync off reaches for is latency and not a
-        /// torn frame; immediate stands behind it for a surface with no mailbox. `Adaptive` is
-        /// FIFO that tears when a frame misses its refresh, as the rasterizer's does through SDL.
-        VkPresentModeKHR presentModeFor(VkPhysicalDevice device, VkSurfaceKHR surface, SDLUtil::VSyncMode mode)
+        /// torn frame; immediate stands behind it for a surface with no mailbox — and ahead of it
+        /// where the driver paces immediate and the player asked for the pacing, because the
+        /// pacing is that latency, and the driver offers it under immediate and not under mailbox
+        /// (measured on this driver: it paces immediate and relaxed FIFO, and neither of the other
+        /// two). `Adaptive` is FIFO that tears when a frame misses its refresh, as the rasterizer's
+        /// does through SDL. `Enabled` stays FIFO whether or not the driver paces it: a frame that
+        /// meets the refresh is the promise, and relaxed FIFO breaks it to be paced.
+        VkPresentModeKHR presentModeFor(VkPhysicalDevice device, VkSurfaceKHR surface, SDLUtil::VSyncMode mode,
+            const bool preferPaced, const PacedModes& paced)
         {
             switch (mode)
             {
                 case SDLUtil::VSyncMode::Disabled:
+                    if (preferPaced && paced.paces(VK_PRESENT_MODE_IMMEDIATE_KHR))
+                        return chooseFrom(
+                            device, surface, { VK_PRESENT_MODE_IMMEDIATE_KHR, VK_PRESENT_MODE_MAILBOX_KHR });
                     return chooseFrom(device, surface, { VK_PRESENT_MODE_MAILBOX_KHR, VK_PRESENT_MODE_IMMEDIATE_KHR });
                 case SDLUtil::VSyncMode::Adaptive:
                     return chooseFrom(device, surface, { VK_PRESENT_MODE_FIFO_RELAXED_KHR });
@@ -91,11 +101,13 @@ namespace Rtx
         }
     }
 
-    Swapchain::Swapchain(
-        const Device& device, VkSurfaceKHR surface, VkExtent2D extent, const SDLUtil::VSyncMode verticalSync)
+    Swapchain::Swapchain(const Device& device, VkSurfaceKHR surface, VkExtent2D extent,
+        const SDLUtil::VSyncMode verticalSync, const bool preferPaced, const PacedModes& paced)
         : mDevice(device)
         , mSurface(surface)
         , mVerticalSync(verticalSync)
+        , mPacedModes(paced)
+        , mPreferPaced(preferPaced)
     {
         VkBool32 supported = VK_FALSE;
         checkVk(vkGetPhysicalDeviceSurfaceSupportKHR(
@@ -105,11 +117,20 @@ namespace Rtx
             throw Unsupported("the queue this renderer submits on cannot present to this surface");
 
         mFormat = chooseFormat(device.getPhysicalDevice().getHandle(), surface);
-        mPresentMode = presentModeFor(device.getPhysicalDevice().getHandle(), surface, mVerticalSync);
+        mPresentMode
+            = presentModeFor(device.getPhysicalDevice().getHandle(), surface, mVerticalSync, mPreferPaced, mPacedModes);
 
         create(extent);
 
-        Log(Debug::Info) << "Swapchain: " << mImages.size() << " images, " << nameOf(mPresentMode);
+        // The surface's answer beside the mode in force, so a log says at a glance whether the
+        // driver paces this window and which modes would have it.
+        std::string pacedModes;
+        for (const VkPresentModeKHR mode : mPacedModes.get())
+            pacedModes += (pacedModes.empty() ? "" : ", ") + std::string(nameOf(mode));
+        Log(Debug::Info) << "Swapchain: " << mImages.size() << " images, " << nameOf(mPresentMode)
+                         << (mPaced ? ", paced by the driver" : "")
+                         << (pacedModes.empty() ? std::string("; the driver paces no mode of this surface")
+                                                : "; the driver paces " + pacedModes);
     }
 
     void Swapchain::create(VkExtent2D extent)
@@ -151,8 +172,17 @@ namespace Rtx
         if ((capabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR) == 0)
             throw Unsupported("this surface offers no opaque composite alpha, and the frame carries no alpha to blend");
 
+        // Opted into the driver's pacing where the surface paces this mode, which is what makes
+        // the sleep, the markers and the ids mean anything on this swapchain.
+        mPaced = mDevice.hasLatencyPacing() && mPacedModes.paces(mPresentMode);
+        const VkSwapchainLatencyCreateInfoNV paced{
+            .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_LATENCY_CREATE_INFO_NV,
+            .latencyModeEnable = VK_TRUE,
+        };
+
         const VkSwapchainCreateInfoKHR create{
             .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+            .pNext = mPaced ? &paced : nullptr,
             .surface = mSurface,
             .minImageCount = images,
             .imageFormat = mFormat.format,
@@ -192,12 +222,25 @@ namespace Rtx
             return false;
 
         mVerticalSync = mode;
+        return chooseMode();
+    }
 
+    bool Swapchain::setPreferPaced(const bool preferPaced)
+    {
+        if (preferPaced == mPreferPaced)
+            return false;
+
+        mPreferPaced = preferPaced;
+        return chooseMode();
+    }
+
+    bool Swapchain::chooseMode()
+    {
         // What the surface offers decides, so two settings can mean one mode. A driver with no
         // relaxed FIFO answers `Adaptive` with plain FIFO, and rebuilding the swapchain to arrive at
         // the mode it already had is a stall for nothing.
-        const VkPresentModeKHR wanted
-            = presentModeFor(mDevice.getPhysicalDevice().getHandle(), mSurface, mVerticalSync);
+        const VkPresentModeKHR wanted = presentModeFor(
+            mDevice.getPhysicalDevice().getHandle(), mSurface, mVerticalSync, mPreferPaced, mPacedModes);
         if (wanted == mPresentMode)
             return false;
 
@@ -226,18 +269,28 @@ namespace Rtx
         return true;
     }
 
-    bool Swapchain::present(VkSemaphore finished, std::uint32_t index, VkFence presented)
+    bool Swapchain::present(VkSemaphore finished, std::uint32_t index, VkFence presented, const std::uint64_t presentId)
     {
+        // The id ahead of the fence in the chain, each present only where it has one: the fence
+        // where the device signals one, the id where the driver paces.
         const VkSwapchainPresentFenceInfoKHR signalled{
             .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_FENCE_INFO_KHR,
             .swapchainCount = 1,
             .pFences = &presented,
         };
+        const VkPresentIdKHR identified{
+            .sType = VK_STRUCTURE_TYPE_PRESENT_ID_KHR,
+            .pNext = presented != VK_NULL_HANDLE ? &signalled : nullptr,
+            .swapchainCount = 1,
+            .pPresentIds = &presentId,
+        };
 
         const VkSwapchainKHR presenting = mHandle.get();
         const VkPresentInfoKHR present{
             .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
-            .pNext = presented != VK_NULL_HANDLE ? &signalled : nullptr,
+            .pNext = presentId != 0           ? static_cast<const void*>(&identified)
+                : presented != VK_NULL_HANDLE ? static_cast<const void*>(&signalled)
+                                              : nullptr,
             .waitSemaphoreCount = 1,
             .pWaitSemaphores = &finished,
             .swapchainCount = 1,

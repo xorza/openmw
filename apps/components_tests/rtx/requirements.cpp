@@ -1,4 +1,6 @@
+#include <algorithm>
 #include <set>
+#include <span>
 #include <string_view>
 #include <vector>
 
@@ -28,7 +30,7 @@ namespace Rtx
 
             std::set<const void*> linked;
             for (const VkBaseInStructure* next = reinterpret_cast<const VkBaseInStructure*>(&features.mFeatures2);
-                 next != nullptr; next = next->pNext)
+                next != nullptr; next = next->pNext)
                 linked.insert(next);
 
             EXPECT_EQ(linked.size(), 12u) << "a member was added to DeviceFeatures without chaining it";
@@ -51,7 +53,7 @@ namespace Rtx
 
             std::set<const void*> linked;
             for (const VkBaseInStructure* next = reinterpret_cast<const VkBaseInStructure*>(&properties.mProperties2);
-                 next != nullptr; next = next->pNext)
+                next != nullptr; next = next->pNext)
                 linked.insert(next);
 
             EXPECT_EQ(linked.size(), 6u) << "a member was added to DeviceProperties without chaining it";
@@ -74,6 +76,23 @@ namespace Rtx
                 EXPECT_TRUE(seen.insert(&required.mField(features)).second) << required.mName;
 
             EXPECT_EQ(seen.size(), getRequiredDeviceFeatures().size());
+        }
+
+        /// The driver's pacing is optional, both halves of it, and never required: a card without
+        /// Reflex traces as it did. Named here so a list edited to require one cannot pass.
+        TEST(RtxRequirementsTest, theDriversPacingIsOptionalAndComesInTwoHalves)
+        {
+            const std::span<const char* const> optional = getOptionalDeviceExtensions();
+            const auto listed = [&](const char* const name) {
+                return std::any_of(optional.begin(), optional.end(),
+                    [&](const char* const held) { return std::string_view(held) == name; });
+            };
+            EXPECT_TRUE(listed(VK_KHR_PRESENT_ID_EXTENSION_NAME));
+            EXPECT_TRUE(listed(VK_NV_LOW_LATENCY_2_EXTENSION_NAME));
+
+            const std::span<const char* const> required = getRequiredDeviceExtensions();
+            for (const char* const name : required)
+                EXPECT_FALSE(listed(name)) << name << " is both required and optional";
         }
 
         /// The two directions of the table have to agree: what `requestRequiredFeatures` writes is

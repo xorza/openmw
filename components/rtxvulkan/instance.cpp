@@ -65,17 +65,20 @@ namespace Rtx
 #else
         const bool wantDebugUtils = options.mLevel != ValidationLevel::Off;
 #endif
+        // The extended question of a surface, which surface maintenance rests on and which the
+        // driver's pacing answers through (`LatencyPacer`). Taken with any surface where the
+        // loader has it, so each of the two can stand without the other.
+        const bool surfaceCapabilities2
+            = !surfaceExtensions.empty() && hasInstanceExtension(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
+        if (surfaceCapabilities2)
+            extensions.push_back(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
+
         // What the device half of swapchain maintenance rests on: a present fence is the only
         // thing that says the presentation engine has finished with an image. Taken where the
         // loader has both, so a driver without them presents as before.
-        mSurfaceMaintenance = !surfaceExtensions.empty()
-            && hasInstanceExtension(VK_KHR_SURFACE_MAINTENANCE_1_EXTENSION_NAME)
-            && hasInstanceExtension(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
+        mSurfaceMaintenance = surfaceCapabilities2 && hasInstanceExtension(VK_KHR_SURFACE_MAINTENANCE_1_EXTENSION_NAME);
         if (mSurfaceMaintenance)
-        {
-            extensions.push_back(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
             extensions.push_back(VK_KHR_SURFACE_MAINTENANCE_1_EXTENSION_NAME);
-        }
 
         mDebugUtils = wantDebugUtils && hasInstanceExtension(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 
@@ -209,6 +212,15 @@ namespace Rtx
         // rethrows.
         try
         {
+            if (surfaceCapabilities2)
+            {
+                mGetSurfaceCapabilities2 = reinterpret_cast<PFN_vkGetPhysicalDeviceSurfaceCapabilities2KHR>(
+                    vkGetInstanceProcAddr(mHandle, "vkGetPhysicalDeviceSurfaceCapabilities2KHR"));
+                if (mGetSurfaceCapabilities2 == nullptr)
+                    throw Unsupported(
+                        "the loader advertises VK_KHR_get_surface_capabilities2 and does not dispatch it");
+            }
+
             if (validation)
             {
                 const auto create = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(

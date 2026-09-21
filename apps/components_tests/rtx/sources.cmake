@@ -31,6 +31,7 @@ set(RTX_TEST_FILES
     rtx/groundreader.cpp
     rtx/hitrecords.cpp
     rtx/instancerecord.cpp
+    rtx/latencypacer.cpp
     rtx/lightbuilder.cpp
     rtx/lightgrid.cpp
     rtx/meshreader.cpp
@@ -40,6 +41,8 @@ set(RTX_TEST_FILES
     rtx/moonbuilder.cpp
     rtx/nodekind.cpp
     rtx/offscreentrace.cpp
+    rtx/pacedmodes.cpp
+    rtx/pacing.cpp
     rtx/parallel.cpp
     rtx/physicaldevice.cpp
     rtx/reconstruction.cpp

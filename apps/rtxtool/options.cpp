@@ -389,6 +389,10 @@ namespace RtxTool
             "image size, as WIDTHxHEIGHT");
         option(sFramed, "fov", bpo::value<float>()->default_value(byDefault.mWindow.mFieldOfView),
             "vertical field of view, in degrees");
+        option(Verbs::View | Verbs::Bench, "reflex", bpo::value<std::string>(),
+            "how the driver paces the window: off, on or boost, as `[RTX] reflex` spells them. Not "
+            "given, the player's own under `view` and `off` for a measured run, where the driver's "
+            "sleep is a limiter with no limit and its markers a measurement");
         option(sPlaces, "pos", bpo::value<std::string>()->default_value(""),
             "where to put the camera, as x,y,z. Defaults to a view of the whole cell from outside it, "
             "which is a poor view of an interior. Write --pos=-100,200,300, or a leading minus reads "

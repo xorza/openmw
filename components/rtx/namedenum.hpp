@@ -64,6 +64,16 @@ namespace Rtx
             return result;
         }
 
+        /// The spellings, in the order they are listed: what a menu offering every value lists.
+        constexpr std::array<std::string_view, N> spellings() const
+        {
+            std::array<std::string_view, N> result{};
+            for (std::size_t at = 0; at < N; ++at)
+                result[at] = mNames[at].second;
+
+            return result;
+        }
+
         /// Every spelling as one sentence — "off, hit, hint or both" — for a help line and for the
         /// error a name nobody knows is answered with.
         std::string list() const

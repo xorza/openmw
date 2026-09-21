@@ -3,6 +3,8 @@
 #include "sdlinit.hpp"
 
 #include <components/misc/display.hpp>
+#include <components/rtx/menu.hpp>
+#include <components/rtx/pacing.hpp>
 #include <components/rtx/upscale.hpp>
 #include <components/settings/values.hpp>
 
@@ -101,8 +103,11 @@ bool Launcher::GraphicsPage::loadSettings()
         rayTracingCheckBox->setCheckState(Qt::Checked);
 
     // Nothing selected where the setting names a mode the list does not offer, so saveSettings leaves it alone
-    const std::optional<std::size_t> offered = Rtx::upscaleMenuIndex(Settings::rtx().mUpscale.get());
+    const std::optional<std::size_t> offered = Rtx::menuIndex(Rtx::sUpscaleMenu, Settings::rtx().mUpscale.get());
     rayTracingUpscaleComboBox->setCurrentIndex(offered ? static_cast<int>(*offered) : -1);
+
+    const std::optional<std::size_t> pacing = Rtx::menuIndex(Rtx::sLatencyMenu, Settings::rtx().mReflex.get());
+    rayTracingReflexComboBox->setCurrentIndex(pacing ? static_cast<int>(*pacing) : -1);
 
     rayTracingDistantLandSpinBox->setValue(static_cast<int>(std::lround(Settings::rtx().mDistantLandCells)));
 
@@ -112,7 +117,7 @@ bool Launcher::GraphicsPage::loadSettings()
         const QString why = tr("This build was made without the ray tracing renderer.");
         for (QWidget* widget :
             { static_cast<QWidget*>(rayTracingCheckBox), static_cast<QWidget*>(rayTracingUpscaleComboBox),
-                static_cast<QWidget*>(rayTracingDistantLandSpinBox) })
+                static_cast<QWidget*>(rayTracingReflexComboBox), static_cast<QWidget*>(rayTracingDistantLandSpinBox) })
         {
             widget->setEnabled(false);
             widget->setToolTip(why);
@@ -168,8 +173,14 @@ void Launcher::GraphicsPage::saveSettings()
     // Nothing chosen leaves the setting alone, see loadSettings
     const int chosenIndex = rayTracingUpscaleComboBox->currentIndex();
     if (chosenIndex >= 0)
-        if (const std::optional<std::string_view> chosen = Rtx::upscaleMenuName(static_cast<std::size_t>(chosenIndex)))
+        if (const std::optional<std::string_view> chosen
+            = Rtx::menuName(Rtx::sUpscaleMenu, static_cast<std::size_t>(chosenIndex)))
             Settings::rtx().mUpscale.set(std::string(*chosen));
+    const int pacingIndex = rayTracingReflexComboBox->currentIndex();
+    if (pacingIndex >= 0)
+        if (const std::optional<std::string_view> chosen
+            = Rtx::menuName(Rtx::sLatencyMenu, static_cast<std::size_t>(pacingIndex)))
+            Settings::rtx().mReflex.set(std::string(*chosen));
     Settings::rtx().mDistantLandCells.set(static_cast<float>(rayTracingDistantLandSpinBox->value()));
 
     int cWidth = 0;

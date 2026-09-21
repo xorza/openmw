@@ -218,6 +218,8 @@ set(RTX_VULKAN_FILES
     imageuse.hpp
     instance.cpp
     instance.hpp
+    latencypacer.cpp
+    latencypacer.hpp
     linepass.cpp
     linepass.hpp
     mipchainpass.cpp
@@ -225,6 +227,8 @@ set(RTX_VULKAN_FILES
     memory.cpp
     memory.hpp
     owned.hpp
+    pacedmodes.cpp
+    pacedmodes.hpp
     physicaldevice.cpp
     physicaldevice.hpp
     pipeline.hpp

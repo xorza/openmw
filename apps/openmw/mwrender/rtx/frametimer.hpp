@@ -5,6 +5,7 @@
 #include <optional>
 #include <string_view>
 
+#include <components/rtx/latencyreport.hpp>
 #include <components/rtxbench/frametimes.hpp>
 
 namespace MWRender
@@ -37,7 +38,10 @@ namespace MWRender
         /// Adds one frame's whole time to the rate. @return the window title to set, or empty until
         /// a second has run out. Never allocates: the text is written into this object's own bytes,
         /// and ends in a nought a C string wants.
-        std::string_view addFrame(double frameMs);
+        ///
+        /// @param latency the driver's newest timings, where the driver paces: the title carries
+        ///        the input-to-present figure beside the rate, and nothing where there is none.
+        std::string_view addFrame(double frameMs, const std::optional<Rtx::LatencyReport>& latency);
 
     private:
         std::optional<std::chrono::steady_clock::time_point> mEntered;
@@ -47,6 +51,6 @@ namespace MWRender
         Rtx::FrameRate mRate;
 
         /// What the window's title is written from, once a second and never allocated.
-        std::array<char, 96> mTitle{};
+        std::array<char, 128> mTitle{};
     };
 }

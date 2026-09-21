@@ -58,6 +58,12 @@ namespace Rtx
             // stage reached rather than an address: `GpuTimer::open` sets one per zone in a build
             // that names things, and `Device::describeFault` reads them back.
             VK_NV_DEVICE_DIAGNOSTIC_CHECKPOINTS_EXTENSION_NAME,
+            // The driver's frame pacing — Reflex — and the number each present carries so the
+            // driver can tell one frame's markers from the next's. Both or neither: the pacing
+            // needs the present id, and the id alone is a number nothing reads. `LatencyPacer` is
+            // what uses them, and only where there is a window.
+            VK_KHR_PRESENT_ID_EXTENSION_NAME,
+            VK_NV_LOW_LATENCY_2_EXTENSION_NAME,
         };
 
         constexpr std::array sRequiredDeviceFeatures{

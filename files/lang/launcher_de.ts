@@ -219,6 +219,26 @@
         <translation>Qualität</translation>
     </message>
     <message>
+        <source>NVIDIA Reflex</source>
+        <translation>NVIDIA Reflex</translation>
+    </message>
+    <message>
+        <source>How the driver paces the frame. On holds the game before each frame&apos;s input is read, so the input is sampled as late as it will still reach the screen on time. Boost holds the card at its top clock as well, at a power cost. Off leaves the driver&apos;s pacing as a frame limiter.</source>
+        <translation>Wie der Treiber die Bilder taktet. „An“ hält das Spiel an, bevor die Eingabe eines Bildes gelesen wird, damit sie so spät wie möglich abgetastet wird und das Bild den Bildschirm dennoch rechtzeitig erreicht. „Boost“ hält die Karte zusätzlich auf ihrem höchsten Takt, auf Kosten der Leistungsaufnahme. „Aus“ belässt die Taktung des Treibers als Bildratenbegrenzer.</translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <translation>Aus</translation>
+    </message>
+    <message>
+        <source>On</source>
+        <translation>An</translation>
+    </message>
+    <message>
+        <source>On + Boost</source>
+        <translation>An + Boost</translation>
+    </message>
+    <message>
         <source>Ray Tracing Distant Land</source>
         <translation>Raytracing-Fernsicht</translation>
     </message>
@@ -784,7 +804,7 @@ Logs and settings changed through the launcher and in-game will be saved here.</
     </message>
     <message>
         <source>Off</source>
-        <translation type="unfinished"></translation>
+        <translation type="unfinished">Aus</translation>
     </message>
     <message>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;How many threads will be spawned to compute physics update in the background. A value of 0 means that the update will be performed in the main thread.&lt;/p&gt;&lt;p&gt;A value greater than 1 requires the Bullet library be compiled with multithreading support.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
@@ -969,7 +989,7 @@ Logs and settings changed through the launcher and in-game will be saved here.</
     </message>
     <message>
         <source>On</source>
-        <translation type="unfinished"></translation>
+        <translation type="unfinished">An</translation>
     </message>
     <message>
         <source>Select your preferred HRTF profile.</source>

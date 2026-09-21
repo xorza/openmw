@@ -101,7 +101,7 @@ namespace Rtx
             EXPECT_TRUE(samples.empty());
 
             // Two frames. The first waited 4.5 ms of its 10; the second, with nothing in flight
-            // to wait for, waited nought.
+            // to wait for, waited nought and was held 0.75 ms by the driver before its input.
             FrameSpend first;
             first.at(Timing::Wait) = 4.5;
             first.at(Timing::Finish) = 4.75;
@@ -110,6 +110,8 @@ namespace Rtx
 
             FrameSpend second;
             second.at(Timing::Trace) = 1.5;
+            second.at(Timing::Update) = 2.0;
+            second.at(Timing::Sleep) = 0.75;
             samples.add(8.0, second);
 
             EXPECT_EQ(samples.size(), 2u);
@@ -125,9 +127,9 @@ namespace Rtx
             std::ifstream written(file);
             std::string text((std::istreambuf_iterator<char>(written)), std::istreambuf_iterator<char>());
             EXPECT_EQ(text,
-                "frame finish wait walk fold place bake textures upload trace views present update\n"
-                "10.000 4.750 4.500 0.000 0.000 0.000 0.000 0.000 0.000 1.250 0.000 0.000 0.000\n"
-                "8.000 0.000 0.000 0.000 0.000 0.000 0.000 0.000 0.000 1.500 0.000 0.000 0.000\n");
+                "frame finish wait walk fold place bake textures upload trace views present update sleep\n"
+                "10.000 4.750 4.500 0.000 0.000 0.000 0.000 0.000 0.000 1.250 0.000 0.000 0.000 0.000\n"
+                "8.000 0.000 0.000 0.000 0.000 0.000 0.000 0.000 0.000 1.500 0.000 0.000 2.000 0.750\n");
 
             // A directory nobody made is named rather than written past.
             EXPECT_THROW(writeFrameTimes(TestingOpenMW::outputFilePath("no-such-dir") / "frame-times.txt", samples),

@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
@@ -151,6 +152,12 @@ namespace Rtx
 
         const FrameTimes& at(const Timing timing) const { return mRows[indexOf(timing)]; }
         FrameTimes& at(const Timing timing) { return mRows[indexOf(timing)]; }
+
+        /// The driver's own input-to-present figure over the measured frames, in milliseconds,
+        /// where the driver paced the window — the one latency a player feels, measured by the
+        /// only party that sees the whole pipeline. Nothing on a headless run, which is every
+        /// measured one, and the JSON says so by leaving the key out.
+        std::optional<FrameTimes> mLatency;
 
         /// What the device itself says each stretch of the frame cost, most expensive first. Empty
         /// where the device cannot write timestamps.

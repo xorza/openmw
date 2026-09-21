@@ -990,6 +990,28 @@
                                 <UserString key="HStretch" value="true"/>
                             </Widget>
 
+                            <Widget type="AutoSizedTextBox" skin="SandText" name="RayTracingReflexText">
+                                <Property key="Caption" value="#{OMWEngine:RayTracingReflex}"/>
+                            </Widget>
+
+                            <Widget type="HBox" align="Stretch">
+                                <UserString key="HStretch" value="true"/>
+                                <UserString key="VStretch" value="false"/>
+                                <!-- In the order `Rtx::sLatencyModeNames` states, which is what turns a
+                                     position here into a mode and back. Off and on are the vsync box's
+                                     own words, so one page spells a toggle one way. -->
+                                <Widget type="ComboBox" skin="MW_ComboBox" position="0 0 200 24" name="RayTracingReflexList">
+                                    <Property key="AddItem" value="#{Interface:Off}"/>
+                                    <Property key="AddItem" value="#{Interface:On}"/>
+                                    <Property key="AddItem" value="#{OMWEngine:RayTracingReflexBoost}"/>
+                                </Widget>
+                                <Widget type="Spacer"/>
+                            </Widget>
+
+                            <Widget type="Widget" position="0 0 0 8" align="Top HStretch">
+                                <UserString key="HStretch" value="true"/>
+                            </Widget>
+
                             <Widget type="AutoSizedTextBox" skin="SandText" name="RayTracingDistantLandText">
                                 <Property key="Caption" value="#{OMWEngine:RayTracingDistantLand}"/>
                             </Widget>

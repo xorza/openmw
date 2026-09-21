@@ -154,7 +154,7 @@ adopted camera after the frame is described, and a renderer reads it at the mome
 
 | caller                             | calls                                                                                              |
 |------------------------------------|----------------------------------------------------------------------------------------------------|
-| `OMW::Engine::go`                  | `createRenderer` or `EngineHost::createRenderer`, `setFrameClock`, `advance` per loop               |
+| `OMW::Engine::go`                  | `createRenderer` or `EngineHost::createRenderer`, `setFrameClock`, `setFrameRateLimit`; `awaitFrame` then `advance` per loop |
 | `OMW::Engine::prepareEngine`       | `setTraversalRoot`, `prepareResources`, `setScreenshotWriter`, `getWindow`                          |
 | `OMW::Engine::frame`               | `getStartTick`, `getStats`, `eventTraversal`, `updateTraversal`                                     |
 | `RenderingManager` ctor and dtor   | `createSceneRoot`, `attachWorld`, `getCamera`, `getCompileOperation`, `detachWorld`                 |
@@ -385,13 +385,16 @@ empty answer here.
 
 The in-game settings window has a ray tracing group (`RayTracing*` widgets in
 `files/data/mygui/openmw_settings_window.layout`, `SettingsWindow` in `mwgui/settingswindow.cpp`):
-the enable button with a restart hint, the upscale combo box, the distant land slider, and an
-"unavailable" hint where `Settings::sRayTracingBuilt` is false. The launcher's graphics page
-has the same three controls. The combo boxes list `Rtx::sUpscaleMenu` in order, so a mode added
-to `sUpscaleNames` reaches both menus; `upscaleMenuName` and `upscaleMenuIndex` translate.
-`off` is not offered, because Ray Reconstruction is the denoiser. The upscale mode and the
-reach take effect at once through `processChangedSettings`; the rest at the next start. The
-strings are `OMWEngine:RayTracing*` and the launcher's `.ts` files.
+the enable button with a restart hint, the upscale combo box, the Reflex combo box, the
+distant land slider, and an "unavailable" hint where `Settings::sRayTracingBuilt` is false. The
+launcher's graphics page has the same four controls. The combo boxes list `Rtx::sUpscaleMenu`
+and `Rtx::sLatencyMenu` in order, so a mode added to either's `NamedEnum` reaches both menus;
+`Rtx::menuName` and `Rtx::menuIndex` (`menu.hpp`) translate between a position and a spelling.
+`off` is not offered for the upscaler, because Ray Reconstruction is the denoiser. The upscale
+mode, the Reflex mode and the reach take effect at once through `processChangedSettings`; the
+rest at the next start. The strings are `OMWEngine:RayTracing*` — with the Reflex box's off and
+on the vsync box's own `Interface:Off` and `Interface:On`, so one page spells a toggle one way
+— and the launcher's `.ts` files.
 
 ---
 
@@ -601,9 +604,19 @@ picture, `BloomPass`, `ExposurePass`, `SunGlarePass`, `TonePass`, `LinePass`. On
 frame and for every picture; a `Display` record says what one picture asks of it.
 
 **Presenting.** `PresentTargets` holds two byte images at the output extent, swapped by every
-present. `Presenter` holds the surface, the `Swapchain` and a semaphore per image. The
-renderer never draws into a swapchain image: it blits, because a surface's format is not one a
-compute shader may store to.
+present. `Presenter` holds the surface, the `Swapchain`, a semaphore per image and the
+`LatencyPacer`. The renderer never draws into a swapchain image: it blits, because a surface's
+format is not one a compute shader may store to.
+
+**Pacing.** `LatencyPacer` (`latencypacer.hpp`) is the driver's frame pacing — Reflex,
+`VK_NV_low_latency2` with `VK_KHR_present_id` — over one swapchain: one sleep before each
+present, at the top of the frame before input is read; the markers around the simulation, the
+submission and the present; the id every present and every submit carries. Live where the
+device offers both extensions and the surface paces the present mode in force (`PacedModes`,
+read off `VkLatencySurfaceCapabilitiesNV` once per surface), dormant otherwise, and every
+present is paced where it is live at all: `[RTX] reflex` moves two flags inside the sleep mode
+and the frame-rate limit is the interval the sleep enforces. [`reflex.md`](reflex.md) is the
+whole of it, with what the probe found.
 
 **The upscaler.** `Upscaler` (`upscaler.hpp`) is the one seam to DLSS. The build links
 `DlssUpscaler` or `noupscaler.cpp`, whose `makeUpscaler` refuses every mode by name. The
@@ -839,8 +852,10 @@ asserted so.
 
 ### 11.2 One frame
 
-The engine's loop: `mClock.advance`, `Renderer::advance` (frame number, reference time,
-simulation time), then `Engine::frame`: input and update as upstream; `eventTraversal`
+The engine's loop: `Renderer::awaitFrame` (the seam's frame-rate limiter, or the driver's
+sleep where it paces, with the frame's start markers — before input, so what is read after it
+is what the frame shows), `mClock.advance`, `Renderer::advance` (frame number, reference
+time, simulation time), then `Engine::frame`: input and update as upstream; `eventTraversal`
 (nothing); `RenderingManager::describeFrame` (the `SceneFrame` is described and kept);
 `updateTraversal` (`RenderManager::update(step)`, the `PoseUpdate` visitor over the root while
 the world is shown, then the camera's own update callback, which writes the view matrix); the
@@ -848,7 +863,7 @@ Lua worker; `RenderingManager::renderFrame` → `RtxRenderer::renderFrame(frame)
 
 | step | phase   | what happens                                                                                                              | timing row |
 |------|---------|---------------------------------------------------------------------------------------------------------------------------|------------|
-| 1    | Walking | `FrameTimer::enter`: the gap since the renderer last left is the game's                                                   | `Update`   |
+| 1    | Walking | `Rtx::Renderer::endSimulation`: the game's work is done, the renderer's begins; `FrameTimer::enter`: the gap since the renderer last left is the game's, with the driver's sleep inside it | `Update`, `Sleep` |
 | 2    | Walking | the sky's clock steps, on an unpaused frame with a sky                                                                    |            |
 | 3    | Walking | `RtxWindow::fit`: once the size has settled, `Renderer::resize` (a comparison where nothing changed) and the viewport      |            |
 | 4    | Walking | if `!drawsWorld()`: `renderGui()` and return                                                                              |            |
@@ -967,7 +982,8 @@ the presenter whether the swapchain wants a rebuild before it compares the exten
   ring at no world (the thread stops, every hold goes back), then retires at a fresh epoch. The
   scene is empty afterwards, asserted.
 - `processChangedSettings`: `[RTX] upscale` → `setUpscale`, and a refused mode is written back
-  to the setting; `[RTX] distant land cells` or `[Camera] viewing distance` →
+  to the setting; `[RTX] reflex` → `setPacing`, a swapchain rebuild where the present mode
+  moves with it; `[RTX] distant land cells` or `[Camera] viewing distance` →
   `WorldMirror::setReach`. `setVSync` → `setVerticalSync`, a swapchain rebuild.
 
 ---
@@ -1048,6 +1064,7 @@ draw one frame.
 | what a frame is on the device                  | `components/rtx/shaders/visibility.h`, `camera.h`, `scene.h`, `look.h`    |
 | the backend's frame                            | `components/rtxvulkan/vulkanrenderer.cpp`, `tracechain.cpp`, `displaychain.hpp` |
 | the frames in flight                           | `components/rtxvulkan/framering.hpp`, `timeline.hpp`, `graveyard.hpp`    |
+| the driver's frame pacing                      | `docs/rtx/reflex.md`, `components/rtx/pacing.hpp`, `components/rtxvulkan/latencypacer.hpp`, `presenter.hpp` |
 | a scene on the device                          | `components/rtxvulkan/devicescene.hpp`, `sceneacceleration.hpp`, `scenebuffers.hpp` |
 | the light transport                            | `shaders/visibility.rgen`, `lib/shading.glsl`, `lib/traversal.glsl`, `lib/lights.glsl` |
 | the denoiser and the upscaler                  | `components/rtx/reconstruction.hpp`, `components/rtxvulkan/atrouspass.hpp`, `accumulatepass.hpp`, `upscaler.hpp` |

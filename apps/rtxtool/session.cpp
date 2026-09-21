@@ -119,6 +119,7 @@ namespace RtxTool
                 longest = std::max(longest, stop.mSchedule.mSpec.getMeasured());
 
         mProgress.mSamples.reserve(longest);
+        mProgress.mLatencyMs.reserve(longest);
 
         mRecord.reserve(mRequest.mStops.size());
 
@@ -742,6 +743,7 @@ namespace RtxTool
         // measured frame's work is closed by nothing: it ran after the last span ended.
         Rtx::FrameSpend closed = mProgress.mPendingSpend;
         closed.at(Rtx::Timing::Update) = report.mSpend.at(Rtx::Timing::Update);
+        closed.at(Rtx::Timing::Sleep) = report.mSpend.at(Rtx::Timing::Sleep);
         const std::uint32_t closedArrived = mProgress.mPendingArrived;
         mProgress.mPendingSpend = report.mSpend;
         mProgress.mPendingArrived = report.mArrivedMeshes;
@@ -752,6 +754,11 @@ namespace RtxTool
         mProgress.mSamples.add(frameMs, closed);
         mProgress.mArrivals.add(frameMs, closedArrived, closed);
         mProgress.mWallMs += frameMs;
+
+        // The driver's own figure of the newest frame it finished, kept where there is one: a
+        // series of its own and not a row, because it is not a stretch of the host's frame.
+        if (report.mLatency.has_value())
+            mProgress.mLatencyMs.push_back(static_cast<double>(report.mLatency->mInputToPresentUs) / 1000.0);
 
         // **Counted here and not where the route moved**, because a crossing is a dropped frame and
         // this is where what it dropped is known. The move pulls the next ring in and that read
@@ -894,6 +901,8 @@ namespace RtxTool
         place.mWallSeconds = mProgress.mWallMs / 1000.0;
         for (std::size_t at = 0; at < Rtx::sTimingCount; ++at)
             place.mRows[at] = Rtx::summarise(mProgress.mSamples.mRows[at]);
+        if (!mProgress.mLatencyMs.empty())
+            place.mLatency = Rtx::summarise(mProgress.mLatencyMs);
         place.mClock = mProgress.mClock;
         place.mCard = mProgress.mCard;
         place.mThreads = threads;

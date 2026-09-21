@@ -1,6 +1,7 @@
 #include "renderer.hpp"
 
 #include <cassert>
+#include <chrono>
 #include <stdexcept>
 #include <string>
 
@@ -12,6 +13,7 @@
 #include <osg/Group>
 #include <osg/Stats>
 
+#include <components/misc/frameratelimiter.hpp>
 #include <components/sceneutil/screencapture.hpp>
 #include <components/settings/values.hpp>
 
@@ -42,6 +44,17 @@ namespace MWRender
     {
         assert(mClock != nullptr && "a frame before the host's clock was handed over");
         return *mClock;
+    }
+
+    void Renderer::setFrameRateLimit(const float limit)
+    {
+        mLimiter = Misc::makeFrameRateLimiter(limit);
+    }
+
+    std::chrono::steady_clock::duration Renderer::awaitFrame()
+    {
+        mLimiter.limit();
+        return mLimiter.getLastFrameDuration();
     }
 
     void Renderer::setScreenshotWriter(SceneUtil::AsyncScreenCaptureOperation& writer)

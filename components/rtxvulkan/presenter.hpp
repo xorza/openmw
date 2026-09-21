@@ -2,13 +2,18 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include <vulkan/vulkan_core.h>
 
+#include <components/rtx/latencyreport.hpp>
+#include <components/rtx/pacing.hpp>
 #include <components/sdlutil/vsyncmode.hpp>
 
 #include "handles.hpp"
+#include "latencypacer.hpp"
+#include "pacedmodes.hpp"
 
 struct SDL_Window;
 
@@ -16,6 +21,7 @@ namespace Rtx
 {
     class Device;
     class Image;
+    class Instance;
     class Swapchain;
 
     /// The surface, the swapchain, and everything that keeps a frame from overtaking the one in
@@ -36,13 +42,28 @@ namespace Rtx
         /// of the device's pool like any other, so it signals the timeline and carries what was
         /// deferred ahead of it — a submit of its own that took a timeline value would let the
         /// graveyard free what a deferred batch names before it ran.
-        Presenter(const Device& device, VkInstance instance, SDL_Window* window, SDLUtil::VSyncMode verticalSync);
+        Presenter(const Device& device, const Instance& instance, SDL_Window* window, SDLUtil::VSyncMode verticalSync,
+            const Pacing& pacing);
         ~Presenter();
 
         /// Blits `frame`, in `VK_IMAGE_LAYOUT_GENERAL` and left there, onto the next swapchain
         /// image and queues it. False where the surface no longer matches the window, which is not
-        /// an error: the caller resizes and asks again.
+        /// an error: the caller resizes and asks again. A present the driver paces is marked
+        /// around the call and carries its id; one that owes a sleep pays it first.
         bool present(const Image& frame);
+
+        /// The driver's pacing, forwarded — `Renderer::pacesFrames` and the three beside it. The
+        /// pacer is this object's because it is the swapchain's: a rebuild and a mode change
+        /// both tell it where it stands.
+        bool pacesFrames() const { return mPacer.isLive(); }
+
+        /// Costs a rebuild where the mode moves the present mode — the vertical sync's `Disabled`
+        /// is immediate where the player asks for the pacing and mailbox where not — and nothing
+        /// otherwise.
+        void setPacing(const Pacing& pacing);
+        void awaitFrame();
+        void endSimulation(bool flash) { mPacer.endSimulation(flash); }
+        std::optional<LatencyReport> describeLatency() const { return mPacer.describeLatency(); }
 
         /// Whether the swapchain has to be remade to show `extent`. Split from `rebuild` because a
         /// rebuild frees the command buffers a handed-over batch may be sitting beside, so the
@@ -71,13 +92,33 @@ namespace Rtx
 
         void destroy();
 
+        /// Remakes the swapchain at `extent` with everything that hangs off it: the sync objects,
+        /// the pacer's swapchain and the pool's id. Waits for everything in flight first.
+        void remake(VkExtent2D extent);
+
+        /// Points the pacer at the swapchain as it now stands: after every creation of it.
+        void followSwapchain();
+
+        /// Tells the pool the id the next submit carries, after every step of the pacer's that
+        /// moves it: a follow, a sleep, a present.
+        void passPresentId();
+
         const Device& mDevice;
         VkInstance mInstance = VK_NULL_HANDLE;
         VkSurfaceKHR mSurface = VK_NULL_HANDLE;
 
+        /// Which present modes the surface paces under, read once the surface exists and before
+        /// the swapchain, which is made under one of them or not.
+        PacedModes mPacedModes;
+
         /// By pointer because it is built from `mSurface`, which cannot exist before the
         /// constructor's body.
         std::unique_ptr<Swapchain> mSwapchain;
+
+        /// What the driver's sleep signals: the pacer's for as long as it lives, and never the
+        /// queue's clock (`LatencyPacer`).
+        Semaphore mSleepSemaphore;
+        LatencyPacer mPacer;
 
         /// What an acquire signals and the blit behind it waits.
         struct Acquisition

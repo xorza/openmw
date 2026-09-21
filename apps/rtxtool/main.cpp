@@ -29,6 +29,7 @@
 #include <components/platform/process.hpp>
 #include <components/rtx/cellgrid.hpp>
 #include <components/rtx/error.hpp>
+#include <components/rtx/pacing.hpp>
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/residency.hpp>
@@ -200,15 +201,19 @@ namespace RtxTool
             framed.mWindow.mHeight = size.mHeight;
             framed.mWindow.mFieldOfView = variables["fov"].as<float>();
             framed.mWindow.mVerticalSync = watched ? Settings::video().mVsyncMode.get() : SDLUtil::VSyncMode::Disabled;
+            framed.mWindow.mLatency = given("reflex")
+                ? Rtx::sLatencyModeNames.require(variables["reflex"].as<std::string>(), "a Reflex mode")
+                : watched ? Rtx::sLatencyModeNames.require(Settings::rtx().mReflex.get(), "a Reflex mode")
+                          : Rtx::LatencyMode::Off;
             framed.mDay = variables["day"].as<int>();
 
             // **The two knobs the settings define, and the harness restates nowhere.** Given on the
             // line, the line's; a window's, the player's; a measured run's, the file's default.
             const float distantCells = given("distant-cells") ? variables["distant-cells"].as<float>()
-                : watched                                     ? Settings::rtx().mDistantLandCells.get()
+                : watched ? Settings::rtx().mDistantLandCells.get()
                           : std::stof(shippedDefault(command.mConfig, "RTX", "distant land cells"));
             const bool distantStatics = given("distant-statics") ? variables["distant-statics"].as<bool>()
-                : watched                                        ? Settings::terrain().mObjectPaging.get()
+                : watched ? Settings::terrain().mObjectPaging.get()
                           : shippedDefault(command.mConfig, "Terrain", "object paging") == "true";
 
             // The size rule's constant is the player's own, since no option names it, and the
@@ -387,6 +392,7 @@ namespace RtxTool
             Settings::video().mResolutionY.set(static_cast<int>(window.mHeight));
             Settings::video().mWindowMode.set(Settings::WindowMode::Windowed);
             Settings::video().mVsyncMode.set(window.mVerticalSync);
+            Settings::rtx().mReflex.set(std::string(Rtx::sLatencyModeNames.name(window.mLatency)));
             Settings::camera().mFieldOfView.set(window.mFieldOfView);
 
             // **Physics on the frame's own thread, so a run is the same run twice.** A physics

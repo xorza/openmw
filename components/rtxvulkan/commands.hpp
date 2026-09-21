@@ -76,6 +76,12 @@ namespace Rtx
         std::uint64_t submit(VkCommandBuffer commands, std::span<const VkSemaphoreSubmitInfo> waits = {},
             std::span<const VkSemaphoreSubmitInfo> signals = {});
 
+        /// What the driver's pacing knows the frame as, for every submit from here on to carry —
+        /// `VkLatencySubmissionPresentIdNV` — until it is told another. Nought carries nothing,
+        /// which is every submit where the driver paces nothing. The presenter's to say, after
+        /// each sleep and each present; the pool knows no presenter.
+        void setPresentId(std::uint64_t presentId) { mPresentId = presentId; }
+
         const Device& getDevice() const { return mDevice; }
 
         // Read by the tests and by nothing else.
@@ -155,6 +161,9 @@ namespace Rtx
         /// Refilled per submit: a frame is three of them, and none allocates.
         std::vector<VkCommandBufferSubmitInfo> mSubmitScratch;
         std::vector<VkSemaphoreSubmitInfo> mSignalScratch;
+
+        /// See `setPresentId`.
+        std::uint64_t mPresentId = 0;
     };
 
     /// How much staging a batch takes at a time, sized so a town's tens of megabytes of textures

@@ -13,6 +13,7 @@
 #include <string_view>
 
 #include <MyGUI_ITexture.h>
+#include <SDL_mouse.h>
 #include <SDL_video.h>
 #include <osg/Camera>
 #include <osg/FrameStamp>
@@ -40,6 +41,7 @@
 #include <components/rtx/frameworld.hpp>
 #include <components/rtx/moonbuilder.hpp>
 #include <components/rtx/namedenum.hpp>
+#include <components/rtx/pacing.hpp>
 #include <components/rtx/poseupdate.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/sceneuploader.hpp>
@@ -110,6 +112,18 @@ namespace MWRender
             profile.mExposure = std::nullopt;
 
             return profile;
+        }
+
+        /// How the driver is to pace the frame, read here and nowhere else: where the renderer is
+        /// made, and again when the menu moves the mode. A name the modes do not spell is refused
+        /// rather than defaulted, like an upscale mode's; the limit is `[Video]`'s, as the
+        /// interval the driver's sleep enforces.
+        Rtx::Pacing pacingFromSettings()
+        {
+            return Rtx::Pacing{
+                .mMode = Rtx::sLatencyModeNames.require(Settings::rtx().mReflex.get(), "a Reflex mode"),
+                .mMinimumIntervalUs = Rtx::minimumIntervalOf(Settings::video().mFramerateLimit),
+            };
         }
 
         /// The three settings the mirror is handed, read here and nowhere else: into a played
@@ -197,6 +211,7 @@ namespace MWRender
         options.mHeight = mWindow.getHeight();
         options.mWindow = mWindow.get();
         options.mVerticalSync = Settings::video().mVsyncMode;
+        options.mPacing = pacingFromSettings();
         // **The run's answer.** A launcher making a measurement says on its command line whether
         // the layers load, because a figure taken under them is not one to compare against
         // anything; `playedSetup` says what a session with no command line answers.
@@ -609,10 +624,48 @@ namespace MWRender
         mRenderer->setVerticalSync(mode);
     }
 
+    std::chrono::steady_clock::duration RtxRenderer::awaitFrame()
+    {
+        mPhase.expect(Phase::Between);
+
+        // Asked every frame and not once, because a present mode the surface does not pace moves
+        // the answer, and a frame the driver stopped pacing is one the host's limiter holds.
+        if (!mRenderer->pacesFrames())
+        {
+            mSleptMs = 0.0;
+            return Renderer::awaitFrame();
+        }
+
+        const std::chrono::steady_clock::time_point began = std::chrono::steady_clock::now();
+        mRenderer->awaitFrame();
+        const std::chrono::steady_clock::time_point opened = std::chrono::steady_clock::now();
+        mSleptMs = Rtx::since(began, opened);
+
+        // The same interval the limiter answers, one opening to the next with the sleep inside it;
+        // nought before the first, which is the first frame's answer either way.
+        const std::chrono::steady_clock::duration stood
+            = mOpened.has_value() ? opened - *mOpened : std::chrono::steady_clock::duration::zero();
+        mOpened = opened;
+        return stood;
+    }
+
+    bool RtxRenderer::takeClick()
+    {
+        // The state the frame's own input pump left, so the flash lands in the frame that
+        // processed the click and not the one after. Only the press: a button held is one click.
+        const bool down = (SDL_GetMouseState(nullptr, nullptr) & SDL_BUTTON_LMASK) != 0;
+        const bool clicked = down && !mLeftButtonDown;
+        mLeftButtonDown = down;
+        return clicked;
+    }
+
     void RtxRenderer::processChangedSettings(const Settings::CategorySettingVector& changed)
     {
         if (changed.contains({ "RTX", "upscale" }))
             setUpscale(Settings::rtx().mUpscale.get());
+
+        if (changed.contains({ "RTX", "reflex" }))
+            mRenderer->setPacing(pacingFromSettings());
 
         // The menu moves the reach while the game runs, and the ring, the air and the map all
         // follow it: a slider that took effect at the next start was a slider that did nothing.
@@ -702,6 +755,12 @@ namespace MWRender
     {
         mPhase.step(Phase::Walking, Phase::Between);
 
+        // The game's work is done and the renderer's begins, said before the frame with the world
+        // hidden turns back: a present from there is still a frame the driver counts. The click is
+        // read here, off the state this frame's input pump left.
+        const bool flash = Settings::rtx().mReflexFlash && takeClick();
+        mRenderer->endSimulation(flash);
+
         const osg::FrameStamp& when = frame.mWhen;
 
         FrameReport report;
@@ -719,6 +778,7 @@ namespace MWRender
         // traced frame after any of those reported the whole gap as one frame.
         const std::chrono::steady_clock::time_point arrived = std::chrono::steady_clock::now();
         report.mSpend.at(Rtx::Timing::Update) = mTimer.sinceLeft(arrived);
+        report.mSpend.at(Rtx::Timing::Sleep) = mSleptMs;
         const std::optional<double> since = mTimer.enter(arrived);
 
         // The sky's own clock, stepped where the game stepped the dome's: every unpaused frame the
@@ -976,6 +1036,7 @@ namespace MWRender
             report.mFrameMs = *since;
             report.mWalked = mWalked;
             report.mUnreadableTextures = mUnreadable;
+            report.mLatency = mRenderer->describeLatency();
 
             // Every traced frame, whether or not the device has answered for one yet: the run
             // counts the frames it traced, and `RtxRun::frame` says why a count of answers is not
@@ -985,7 +1046,7 @@ namespace MWRender
 
             // Once a second, which is how often `Rtx::FrameRate` closes a line — and the window is asked
             // then whether anybody can see it, rather than a copy of that being kept here.
-            if (const std::string_view title = mTimer.addFrame(*since); !title.empty())
+            if (const std::string_view title = mTimer.addFrame(*since, report.mLatency); !title.empty())
                 mWindow.setTitle(title.data());
         }
     }

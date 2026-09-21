@@ -35,6 +35,10 @@ namespace Rtx
             spend.at(Timing::Finish) = 1.5;
             spend.at(Timing::Wait) = 1.4;
             spend.at(Timing::Walk) = 0.5;
+            // The driver's sleep is the largest figure of the frame and a share of `update`, so it
+            // is not among the stretches printed.
+            spend.at(Timing::Update) = 4.0;
+            spend.at(Timing::Sleep) = 3.5;
 
             arrivals.add(5.0, 0, spend);
             arrivals.add(9.0, 12, spend);
@@ -62,9 +66,18 @@ namespace Rtx
             const std::string described = describePlace(place);
             EXPECT_NE(described.find("2 frames extended the scene with 15 meshes"), std::string::npos) << described;
             // The three largest stretches, and never a share beside its whole: `upload` is most of
-            // `place` and `wait` most of `finish`, so `walk` is the third.
-            EXPECT_NE(described.find("9.0 ms (12 meshes: place 2.0 finish 1.5 walk 0.5)"), std::string::npos)
+            // `place`, `wait` most of `finish` and `sleep` most of `update`, so `update` leads and
+            // `finish` is the third.
+            EXPECT_NE(described.find("9.0 ms (12 meshes: update 4.0 place 2.0 finish 1.5)"), std::string::npos)
                 << described;
+
+            // The driver's own latency stands under the rows only where the driver paced the
+            // window, and the JSON leaves the key out otherwise.
+            EXPECT_EQ(described.find("latency ms"), std::string::npos) << described;
+            place.mLatency = FrameTimes{
+                .mMean = 12.0, .mMedian = 11.5, .mP95 = 14.0, .mP99 = 15.0, .mBest = 9.0, .mWorst = 20.0
+            };
+            EXPECT_NE(describePlace(place).find("latency ms"), std::string::npos) << describePlace(place);
         }
 
         /// A route flown short says so beside its crossings, and one that arrived says nothing.

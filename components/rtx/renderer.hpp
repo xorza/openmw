@@ -16,9 +16,11 @@
 #include "debuglines.hpp"
 #include "framedigest.hpp"
 #include "guirenderer.hpp"
+#include "latencyreport.hpp"
 #include "memoryreport.hpp"
 #include "mesh.hpp"
 #include "namedenum.hpp"
+#include "pacing.hpp"
 #include "reconstruction.hpp"
 #include "runs.hpp"
 #include "shaders/visibility.h"
@@ -117,6 +119,11 @@ namespace Rtx
         /// steers by hand and for a measured run, which is why off is the default; the game hands
         /// its own setting over, and `Renderer::setVerticalSync` follows a change to it.
         SDLUtil::VSyncMode mVerticalSync = SDLUtil::VSyncMode::Disabled;
+
+        /// How the driver paces the frame, where there is a window and a driver that paces. Off
+        /// for the same windows vertical sync is off for; the game hands its own setting over, and
+        /// `Renderer::setPacing` follows a change to it.
+        Pacing mPacing;
 
         ValidationOptions mValidation;
 
@@ -369,6 +376,33 @@ namespace Rtx
         /// How the presented image meets the monitor's refresh. Costs a swapchain rebuild, so a
         /// settings-change call and not a frame one.
         virtual void setVerticalSync(SDLUtil::VSyncMode mode) = 0;
+
+        /// Whether presents are paced by the driver: a window, a driver that paces, and a present
+        /// mode the surface paces under. Asked every frame, because a change of present mode
+        /// moves the answer; a renderer that answers no is paced by whoever calls it.
+        virtual bool pacesFrames() const = 0;
+
+        /// The pacing, changed while the frames run: a menu change, like `setVerticalSync`, and
+        /// like it a swapchain rebuild where the present mode moves with it — the mode the driver
+        /// paces under is not the one it does not.
+        virtual void setPacing(const Pacing& pacing) = 0;
+
+        /// Sleeps until the driver says the next frame may begin, and marks the frame's start and
+        /// its input sample. Once per present, before input is read, because what is read after
+        /// this is what the frame shows. Nothing where `pacesFrames` is false, and nothing on a
+        /// frame still open — the window hidden, a present that failed — because the driver counts
+        /// one sleep between two presents.
+        virtual void awaitFrame() = 0;
+
+        /// The game's work for the frame is done and the renderer's begins.
+        ///
+        /// @param flash whether this frame carries the analyser's flash: the driver draws a square
+        ///        the frame a click landed in, for a latency analyser to time against the click.
+        virtual void endSimulation(bool flash) = 0;
+
+        /// The driver's timings of the newest finished frame, or nothing where the driver paces
+        /// nothing or has finished nothing yet.
+        virtual std::optional<LatencyReport> describeLatency() const = 0;
 
         /// Traces one frame; `setScene` first, which is an assert. Returns before the device has
         /// drawn it, so the caller can place the next one meanwhile, and `finishFrame` reads back

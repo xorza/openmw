@@ -84,8 +84,8 @@ namespace Rtx
             // The stretches that sum to the frame, and not the frame itself nor a share of one
             // of them: `Timing` says `Wait` is most of `Finish` and `Upload` most of `Place`, so
             // a share beside its whole is one stretch printed twice.
-            constexpr std::array<Timing, 6> sNotStretches{ Timing::Frame, Timing::Wait, Timing::Fold, Timing::Bake,
-                Timing::Textures, Timing::Upload };
+            constexpr std::array<Timing, 7> sNotStretches{ Timing::Frame, Timing::Wait, Timing::Fold, Timing::Bake,
+                Timing::Textures, Timing::Upload, Timing::Sleep };
             std::array<Timing, sTimingCount> spends = sTimings.values();
             const auto end = std::remove_if(spends.begin(), spends.end(), [&](const Timing timing) {
                 return std::find(sNotStretches.begin(), sNotStretches.end(), timing) != sNotStretches.end();
@@ -217,6 +217,12 @@ namespace Rtx
         for (const Timing timing : sTimings.values())
             out += describeTimes(std::format("{} ms", sTimings.name(timing)), place.mRows[indexOf(timing)]);
 
+        // The driver's figure under the host's rows, in the same columns: the one number a player
+        // feels, from the only party that sees the whole of the pipeline. Only where the driver
+        // paced the window.
+        if (place.mLatency.has_value())
+            out += describeTimes("latency ms", *place.mLatency);
+
         // **The device's own account of the same frame, one figure each.** Six distributions would
         // be a wall; what this row answers is "which of them is the expensive one", and the row
         // above already says how much the whole frame varies. Each figure is the zone's share of
@@ -315,6 +321,8 @@ namespace Rtx
                  << std::format(R"(, "overlap": {{"mean": {:.4f}, "least": {}}}, "travelled": {:.4f}, )",
                         place.mOverlap.getMean(), place.mOverlap.mLeast, place.mTravelled);
 
+            if (place.mLatency.has_value())
+                file << R"("latencyMs": )" << asJson(*place.mLatency) << ", ";
             for (const Timing timing : sTimings.values())
                 file << std::format(R"("{}Ms": )", sTimings.name(timing)) << asJson(place.mRows[indexOf(timing)])
                      << ", ";

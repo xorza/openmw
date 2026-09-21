@@ -136,6 +136,10 @@ namespace MWRender
         void applyViewMask() override {}
         void applyWorldShown() override {}
 
+        /// The driver's sleep where the driver paces, and the seam's limiter where it does not,
+        /// asked every frame. What the sleep cost is the frame's `Sleep` row.
+        std::chrono::steady_clock::duration awaitFrame() override;
+
         void advance(double simulationTime) override;
         void eventTraversal() override;
         void updateTraversal() override;
@@ -281,6 +285,9 @@ namespace MWRender
         /// What a measured stop is allowed to look at beyond the report.
         FrameContext describeContext();
 
+        /// Whether the left mouse button went down since the last ask, off SDL's own state.
+        bool takeClick();
+
         /// Hands MyGUI's triangles to the renderer, where there is a GUI up at all.
         void drawGui();
 
@@ -386,5 +393,13 @@ namespace MWRender
         /// Whether a camera the builder refused has already been reported. `describeTrace` says why
         /// once is the whole of it.
         bool mComplained = false;
+
+        /// What the last `awaitFrame` cost in the driver's sleep, for the frame's `Sleep` row, and
+        /// when it returned, for the interval the next one answers. Nothing before the first.
+        double mSleptMs = 0.0;
+        std::optional<std::chrono::steady_clock::time_point> mOpened;
+
+        /// The left button as `takeClick` last saw it.
+        bool mLeftButtonDown = false;
     };
 }

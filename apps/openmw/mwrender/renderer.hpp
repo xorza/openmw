@@ -1,6 +1,7 @@
 #ifndef GAME_RENDER_RENDERER_H
 #define GAME_RENDER_RENDERER_H
 
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <memory>
@@ -11,6 +12,7 @@
 #include <osg/Vec3f>
 #include <osg/ref_ptr>
 
+#include <components/misc/frameratelimiter.hpp>
 #include <components/sdlutil/graphicslistener.hpp>
 #include <components/sdlutil/vsyncmode.hpp>
 #include <components/settings/categories.hpp>
@@ -229,6 +231,18 @@ namespace MWRender
         /// a run that repeats.
         void setFrameClock(const Misc::FrameClock& clock) { mClock = &clock; }
 
+        /// `[Video] framerate limit`, in frames a second, or nought for none. Once, beside the
+        /// clock: the setting is the launcher's and is not offered while the game runs.
+        void setFrameRateLimit(float limit);
+
+        /// Holds the game until the next frame may begin, and says how long the last one stood
+        /// for on the wall. The frame-rate limit lives here, and so does whatever pacing a
+        /// renderer has beyond it: a driver that says when to start the frame answers this. Once
+        /// per loop, before input is read, because what is read after this is what the frame
+        /// shows. The default is the limiter the engine's loop used to hold, one call earlier in
+        /// the loop, which is the same point in the cycle.
+        virtual std::chrono::steady_clock::duration awaitFrame();
+
         /// Stamps the next frame. Simulation time stops when the game is paused; reference time
         /// does not.
         virtual void advance(double simulationTime) = 0;
@@ -331,8 +345,7 @@ namespace MWRender
         /// menu, before there is a world, off the resource system `prepareResources` kept. Where
         /// the interface goes in the graph, if it goes anywhere, is the renderer's to decide.
         virtual std::unique_ptr<MyGUIPlatform::Platform> createGuiPlatform(
-            float scalingFactor, VFS::Path::NormalizedView resourcePath, const std::filesystem::path& logPath)
-            = 0;
+            float scalingFactor, VFS::Path::NormalizedView resourcePath, const std::filesystem::path& logPath) = 0;
 
     protected:
         /// Out of line with the destructor, so a subclass needs none of what the handles point at.
@@ -377,6 +390,9 @@ namespace MWRender
     private:
         Resource::ResourceSystem* mResources = nullptr;
         const Misc::FrameClock* mClock = nullptr;
+
+        /// What the default `awaitFrame` sleeps in and measures by, made anew by `setFrameRateLimit`.
+        Misc::FrameRateLimiter mLimiter{ std::chrono::steady_clock::duration::zero() };
         osg::ref_ptr<SceneUtil::AsyncScreenCaptureOperation> mScreenshotWriter;
         osg::ref_ptr<osg::Camera> mCamera;
         osg::ref_ptr<osg::FrameStamp> mFrameStamp;

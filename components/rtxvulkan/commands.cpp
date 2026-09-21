@@ -59,8 +59,16 @@ namespace Rtx
         mSignalScratch.push_back(timeline.signal(value));
         mSignalScratch.insert(mSignalScratch.end(), signals.begin(), signals.end());
 
+        // Which frame the driver's pacing is to count this submit under, where it paces: every
+        // submit between one present and the next is that next present's.
+        const VkLatencySubmissionPresentIdNV presented{
+            .sType = VK_STRUCTURE_TYPE_LATENCY_SUBMISSION_PRESENT_ID_NV,
+            .presentID = mPresentId,
+        };
+
         const VkSubmitInfo2 submit{
             .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
+            .pNext = mPresentId != 0 ? &presented : nullptr,
             .waitSemaphoreInfoCount = static_cast<std::uint32_t>(waits.size()),
             .pWaitSemaphoreInfos = waits.data(),
             .commandBufferInfoCount = static_cast<std::uint32_t>(mSubmitScratch.size()),

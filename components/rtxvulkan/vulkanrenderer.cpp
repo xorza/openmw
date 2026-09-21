@@ -164,8 +164,8 @@ namespace Rtx
         // Before the first targets, because a windowed renderer is sized by its surface rather
         // than by what the caller guessed the window would come up at.
         if (options.mWindow != nullptr)
-            mPresenter
-                = std::make_unique<Presenter>(mDevice, mInstance.getHandle(), options.mWindow, options.mVerticalSync);
+            mPresenter = std::make_unique<Presenter>(
+                mDevice, mInstance, options.mWindow, options.mVerticalSync, options.mPacing);
 
         const VkExtent2D output
             = mPresenter != nullptr ? mPresenter->getExtent() : VkExtent2D{ options.mWidth, options.mHeight };
@@ -290,6 +290,13 @@ namespace Rtx
         report += mDevice.getPhysicalDevice().describe();
 
         report += "\nDLSS Ray Reconstruction: " + describeUpscaling(mDevice, mInstance.getHandle()) + '\n';
+
+        // The device's half of the driver's pacing; the surface's half is a window's to answer,
+        // and this verb has none.
+        report += "frame pacing:      "
+            + std::string(mDevice.hasLatencyPacing() ? "the driver paces (VK_NV_low_latency2, presentId)"
+                                                     : "the host paces its own frames")
+            + '\n';
 
         // Reaching here is the part that proves the rest: the device resolved every entry point the
         // required extensions promise, and a driver advertising one it cannot dispatch fails before
@@ -584,6 +591,42 @@ namespace Rtx
         // A handed-over batch is submitted first, exactly as a resize does.
         mGuiTextures.finish();
         mPresenter->setVerticalSync(mode);
+    }
+
+    bool VulkanRenderer::pacesFrames() const
+    {
+        return mPresenter != nullptr && mPresenter->pacesFrames();
+    }
+
+    void VulkanRenderer::setPacing(const Pacing& pacing)
+    {
+        if (mPresenter == nullptr)
+            return;
+
+        // A handed-over batch is submitted first, as a vertical sync change does: the present mode
+        // may move with the pacing, and a rebuild frees what a batch may be sitting beside.
+        mGuiTextures.finish();
+        mPresenter->setPacing(pacing);
+    }
+
+    void VulkanRenderer::awaitFrame()
+    {
+        if (mPresenter != nullptr)
+            mPresenter->awaitFrame();
+    }
+
+    void VulkanRenderer::endSimulation(const bool flash)
+    {
+        if (mPresenter != nullptr)
+            mPresenter->endSimulation(flash);
+    }
+
+    std::optional<LatencyReport> VulkanRenderer::describeLatency() const
+    {
+        if (mPresenter == nullptr)
+            return std::nullopt;
+
+        return mPresenter->describeLatency();
     }
 
     std::uint64_t VulkanRenderer::getFrameCount() const

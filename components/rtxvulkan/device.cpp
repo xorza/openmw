@@ -131,10 +131,15 @@ namespace Rtx
         VkPhysicalDeviceSwapchainMaintenance1FeaturesKHR presentFences{
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SWAPCHAIN_MAINTENANCE_1_FEATURES_KHR,
         };
+        VkPhysicalDevicePresentIdFeaturesKHR presentId{
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_FEATURES_KHR,
+        };
 
         const bool offersFault = mPhysicalDevice.hasOptionalExtension(VK_EXT_DEVICE_FAULT_EXTENSION_NAME);
         const bool offersPresentFences = instance.hasSurfaceMaintenance()
             && mPhysicalDevice.hasOptionalExtension(VK_KHR_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME);
+        const bool offersPacing = mPhysicalDevice.hasOptionalExtension(VK_KHR_PRESENT_ID_EXTENSION_NAME)
+            && mPhysicalDevice.hasOptionalExtension(VK_NV_LOW_LATENCY_2_EXTENSION_NAME);
 
         // Only what the device offers is chained, into the query and into the creation alike. A
         // driver may offer an extension without the feature it provides, so each has to be asked;
@@ -150,6 +155,8 @@ namespace Rtx
             chain(fault);
         if (offersPresentFences)
             chain(presentFences);
+        if (offersPacing)
+            chain(presentId);
 
         if (asked != nullptr)
         {
@@ -163,6 +170,7 @@ namespace Rtx
 
         const bool describesFault = offersFault && fault.deviceFault == VK_TRUE;
         mPresentFences = offersPresentFences && presentFences.swapchainMaintenance1 == VK_TRUE;
+        const bool paces = offersPacing && presentId.presentId == VK_TRUE;
 
         // The same chain again, of what the device turned out to have rather than what it offered,
         // in front of the features the renderer requires.
@@ -171,6 +179,8 @@ namespace Rtx
             chain(fault);
         if (mPresentFences)
             chain(presentFences);
+        if (paces)
+            chain(presentId);
 
         const float priority = 1.0f;
         const VkDeviceQueueCreateInfo queue{
@@ -220,6 +230,15 @@ namespace Rtx
         {
             load(mHandle.get(), mCmdSetCheckpoint, "vkCmdSetCheckpointNV");
             load(mHandle.get(), mGetQueueCheckpointData, "vkGetQueueCheckpointDataNV");
+        }
+
+        if (paces)
+        {
+            load(mHandle.get(), mLatency.mSetSleepMode, "vkSetLatencySleepModeNV");
+            load(mHandle.get(), mLatency.mSleep, "vkLatencySleepNV");
+            load(mHandle.get(), mLatency.mSetMarker, "vkSetLatencyMarkerNV");
+            load(mHandle.get(), mLatency.mGetTimings, "vkGetLatencyTimingsNV");
+            mLatency.mWaitSemaphores = vkWaitSemaphores;
         }
 
         if (instance.hasDebugUtils())

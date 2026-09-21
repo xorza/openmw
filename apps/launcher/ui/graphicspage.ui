@@ -268,13 +268,42 @@
          </widget>
         </item>
         <item row="9" column="0">
+         <widget class="QLabel" name="rayTracingReflexLabel">
+          <property name="text">
+           <string>NVIDIA Reflex</string>
+          </property>
+         </widget>
+        </item>
+        <item row="9" column="1">
+         <widget class="QComboBox" name="rayTracingReflexComboBox">
+          <property name="toolTip">
+           <string>How the driver paces the frame. On holds the game before each frame's input is read, so the input is sampled as late as it will still reach the screen on time. Boost holds the card at its top clock as well, at a power cost. Off leaves the driver's pacing as a frame limiter.</string>
+          </property>
+          <item>
+           <property name="text">
+            <string>Off</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>On</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>On + Boost</string>
+           </property>
+          </item>
+         </widget>
+        </item>
+        <item row="10" column="0">
          <widget class="QLabel" name="rayTracingDistantLandLabel">
           <property name="text">
            <string>Ray Tracing Distant Land</string>
           </property>
          </widget>
         </item>
-        <item row="9" column="1">
+        <item row="10" column="1">
          <widget class="QSpinBox" name="rayTracingDistantLandSpinBox">
           <property name="toolTip">
            <string>How far out from the eye the world is built, in cells. The ray tracing renderer builds what rays can reach, which is a different question from how far the rasterizer can see.</string>
@@ -290,7 +319,7 @@
           </property>
          </widget>
         </item>
-        <item row="10" column="0">
+        <item row="11" column="0">
          <spacer name="verticalSpacer">
           <property name="orientation">
            <enum>Qt::Vertical</enum>

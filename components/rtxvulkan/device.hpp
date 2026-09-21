@@ -110,6 +110,20 @@ namespace Rtx
         PFN_vkGetPipelineExecutableStatisticsKHR mGetPipelineExecutableStatistics = nullptr;
     };
 
+    /// The driver's frame pacing, `VK_NV_low_latency2`, as entry points: null where the driver
+    /// offers no pacing, every one of them, because `Device::hasLatencyPacing` is the one question
+    /// and a table half filled is a call into null. `vkWaitSemaphores` is core and in the table all
+    /// the same, so that a test of the pacer can stand in for the wait as it stands in for the
+    /// rest — the pacer's own logic is host logic, and the tests that reach it have no device.
+    struct LatencyFunctions
+    {
+        PFN_vkSetLatencySleepModeNV mSetSleepMode = nullptr;
+        PFN_vkLatencySleepNV mSleep = nullptr;
+        PFN_vkSetLatencyMarkerNV mSetMarker = nullptr;
+        PFN_vkGetLatencyTimingsNV mGetTimings = nullptr;
+        PFN_vkWaitSemaphores mWaitSemaphores = nullptr;
+    };
+
     /// What a checkpoint on the queue points at: the zone the timer opened and the frame it was
     /// opened for, so a device loss can say "frame 83, `tlas`". Owned by the timer that set it
     /// and stable while the timer's slot lives, which is longer than a fault takes to be reported.
@@ -186,6 +200,12 @@ namespace Rtx
         /// engine has finished with an image — the only thing that says so, since a queue-idle
         /// proves the queue is empty and not that the compositor has let go.
         bool hasPresentFences() const { return mPresentFences; }
+
+        /// Whether the driver paces frames — `VK_NV_low_latency2` with `VK_KHR_present_id` and
+        /// its feature — which is the device's half of the answer; the surface has the other
+        /// half, `LatencyPacer` says which.
+        bool hasLatencyPacing() const { return mLatency.mSleep != nullptr; }
+        const LatencyFunctions& getLatencyFunctions() const { return mLatency; }
 
         /// Handed to every `vkCreate*Pipelines` on this device, so that a shader is compiled once
         /// per change rather than once per pipeline.
@@ -270,10 +290,7 @@ namespace Rtx
         // Read by the tests and by nothing else.
         /// Whether the driver offers `VK_EXT_device_fault` with its feature, and so whether
         /// `describeFault` has anything to ask.
-        bool canDescribeFault() const
-        {
-            return mGetDeviceFaultInfo != nullptr;
-        }
+        bool canDescribeFault() const { return mGetDeviceFaultInfo != nullptr; }
 
         /// What the device says about why it was lost, as lines for the message that reports it.
         /// Nothing where the driver offers no `VK_EXT_device_fault`. After a loss and never before,
@@ -311,6 +328,9 @@ namespace Rtx
         PFN_vkGetQueueCheckpointDataNV mGetQueueCheckpointData = nullptr;
 
         bool mPresentFences = false;
+
+        /// Every pointer null where the driver offers no pacing — `hasLatencyPacing`.
+        LatencyFunctions mLatency;
 
         // Last, so that they are torn down first, and in this order, because a later one dies
         // earlier: the graveyard frees through the pool and gives memory back to the allocator,

@@ -34,8 +34,6 @@
 #include <components/loadinglistener/asynclistener.hpp>
 #include <components/loadinglistener/loadinglistener.hpp>
 
-#include <components/misc/frameratelimiter.hpp>
-
 #include <components/sceneutil/screencapture.hpp>
 #include <components/sceneutil/unrefqueue.hpp>
 
@@ -662,6 +660,7 @@ void OMW::Engine::go()
     setWindowIcon();
 
     mEnvironment.setFrameRateLimit(Settings::video().mFramerateLimit);
+    mRenderer->setFrameRateLimit(mEnvironment.getFrameRateLimit());
 
     prepareEngine();
 
@@ -696,14 +695,16 @@ void OMW::Engine::go()
 
     // Start the main rendering loop
     MWWorld::DateTimeManager& timeManager = *mWorld->getTimeManager();
-    Misc::FrameRateLimiter frameRateLimiter = Misc::makeFrameRateLimiter(mEnvironment.getFrameRateLimit());
     const std::chrono::steady_clock::duration maxSimulationInterval(std::chrono::milliseconds(200));
     while (!mStateManager->hasQuitRequest())
     {
-        // What the wall says the last frame took, which a host's stated step overrules
-        const double measured = std::chrono::duration_cast<std::chrono::duration<double>>(
-            std::min(frameRateLimiter.getLastFrameDuration(), maxSimulationInterval))
-                                    .count();
+        // The renderer says when the frame may begin — the frame-rate limit, and the driver's
+        // pacing where there is one — and what the wall says the last frame took, which a host's
+        // stated step overrules. Before input, because what is read after this is what the frame
+        // shows.
+        const std::chrono::steady_clock::duration stood = mRenderer->awaitFrame();
+        const double measured
+            = std::chrono::duration_cast<std::chrono::duration<double>>(std::min(stood, maxSimulationInterval)).count();
 
         mClock.advance(measured);
         const double dt = mClock.getStep() * timeManager.getSimulationTimeScale();
@@ -723,8 +724,6 @@ void OMW::Engine::go()
             timeManager.setSimulationTime(timeManager.getSimulationTime() + dt);
             timeManager.setRenderingSimulationTime(timeManager.getRenderingSimulationTime() + dt);
         }
-
-        frameRateLimiter.limit();
     }
 
     mLuaWorker->join();

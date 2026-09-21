@@ -27,6 +27,8 @@
 #include <components/misc/strings/algorithm.hpp>
 #include <components/resource/resourcesystem.hpp>
 #include <components/resource/scenemanager.hpp>
+#include <components/rtx/menu.hpp>
+#include <components/rtx/pacing.hpp>
 #include <components/rtx/upscale.hpp>
 #include <components/sceneutil/lightmanager.hpp>
 #include <components/settings/values.hpp>
@@ -320,6 +322,8 @@ namespace MWGui
         getWidget(mRayTracingButton, "RayTracingButton");
         getWidget(mRayTracingUpscale, "RayTracingUpscaleList");
         getWidget(mRayTracingUpscaleText, "RayTracingUpscaleText");
+        getWidget(mRayTracingReflex, "RayTracingReflexList");
+        getWidget(mRayTracingReflexText, "RayTracingReflexText");
         getWidget(mRayTracingDistantLand, "RayTracingDistantLandSlider");
         getWidget(mRayTracingDistantLandText, "RayTracingDistantLandText");
         getWidget(mRayTracingRestartHint, "RayTracingRestartHint");
@@ -331,11 +335,14 @@ namespace MWGui
         mRayTracingButton->setEnabled(rayTracing);
         mRayTracingRestartHint->setVisible(rayTracing);
         for (MyGUI::Widget* widget : { static_cast<MyGUI::Widget*>(mRayTracingUpscale), mRayTracingUpscaleText,
-                 mRayTracingDistantLand, mRayTracingDistantLandText })
+                 static_cast<MyGUI::Widget*>(mRayTracingReflex), mRayTracingReflexText, mRayTracingDistantLand,
+                 mRayTracingDistantLandText })
             widget->setVisible(rayTracing);
 
         mRayTracingUpscale->eventComboChangePosition
             += MyGUI::newDelegate(this, &SettingsWindow::onRayTracingUpscaleChanged);
+        mRayTracingReflex->eventComboChangePosition
+            += MyGUI::newDelegate(this, &SettingsWindow::onRayTracingReflexChanged);
 
 #ifndef WIN32
         // hide gamma controls since it currently does not work under Linux
@@ -639,11 +646,21 @@ namespace MWGui
     void SettingsWindow::onRayTracingUpscaleChanged(MyGUI::ComboBox* sender, size_t pos)
     {
         // A layout with more entries than there are modes
-        const std::optional<std::string_view> chosen = Rtx::upscaleMenuName(pos);
+        const std::optional<std::string_view> chosen = Rtx::menuName(Rtx::sUpscaleMenu, pos);
         if (!chosen.has_value())
             return;
 
         Settings::rtx().mUpscale.set(std::string(*chosen));
+        apply();
+    }
+
+    void SettingsWindow::onRayTracingReflexChanged(MyGUI::ComboBox* sender, size_t pos)
+    {
+        const std::optional<std::string_view> chosen = Rtx::menuName(Rtx::sLatencyMenu, pos);
+        if (!chosen.has_value())
+            return;
+
+        Settings::rtx().mReflex.set(std::string(*chosen));
         apply();
     }
 
@@ -1036,9 +1053,12 @@ namespace MWGui
     void SettingsWindow::updateRayTracingSettings()
     {
         // Nothing selected where the setting names a mode the menu does not offer, or the list would overwrite it
-        const std::optional<std::size_t> offered = Rtx::upscaleMenuIndex(Settings::rtx().mUpscale.get());
+        const std::optional<std::size_t> offered = Rtx::menuIndex(Rtx::sUpscaleMenu, Settings::rtx().mUpscale.get());
 
         mRayTracingUpscale->setIndexSelected(offered.value_or(MyGUI::ITEM_NONE));
+
+        const std::optional<std::size_t> pacing = Rtx::menuIndex(Rtx::sLatencyMenu, Settings::rtx().mReflex.get());
+        mRayTracingReflex->setIndexSelected(pacing.value_or(MyGUI::ITEM_NONE));
     }
 
     void SettingsWindow::layoutControlsBox()

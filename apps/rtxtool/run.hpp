@@ -9,6 +9,7 @@
 
 #include <boost/program_options/variables_map.hpp>
 
+#include <components/rtx/pacing.hpp>
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/residency.hpp>
 #include <components/rtx/upscale.hpp>
@@ -82,6 +83,11 @@ namespace RtxTool
         /// How the present paces the frame. Off for a measured run, or the wait for the refresh
         /// lands in `wait ms`; a watched window keeps the player's own setting.
         SDLUtil::VSyncMode mVerticalSync = SDLUtil::VSyncMode::Disabled;
+
+        /// How the driver paces the frame, by the same rule: off for a measured run, where the
+        /// driver's sleep is a limiter with no limit and its markers a measurement; a watched
+        /// window keeps the player's own setting.
+        Rtx::LatencyMode mLatency = Rtx::LatencyMode::Off;
     };
 
     /// What a command's frames are traced with, read once off the command line into the two records

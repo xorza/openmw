@@ -58,7 +58,9 @@ set(RTX_FILES
     held.hpp
     instancerecord.cpp
     instancerecord.hpp
+    latencyreport.hpp
     light.hpp
+    menu.hpp
     lightbuilder.cpp
     lightbuilder.hpp
     lightgrid.cpp
@@ -94,6 +96,7 @@ set(RTX_FILES
     offscreentrace.hpp
     ownedtexture.cpp
     ownedtexture.hpp
+    pacing.hpp
     parallel.hpp
     placementtable.cpp
     placementtable.hpp

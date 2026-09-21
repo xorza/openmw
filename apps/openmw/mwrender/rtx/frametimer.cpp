@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <format>
+#include <optional>
 #include <utility>
 
 #include <components/rtx/framespend.hpp>
@@ -26,12 +27,17 @@ namespace MWRender
         return std::exchange(mPresentMs, 0.0);
     }
 
-    std::string_view FrameTimer::addFrame(const double frameMs)
+    std::string_view FrameTimer::addFrame(const double frameMs, const std::optional<Rtx::LatencyReport>& latency)
     {
         if (!mRate.add(frameMs))
             return {};
 
-        const auto written = std::format_to_n(mTitle.data(), mTitle.size() - 1, "OpenMW - {}", mRate.getText());
+        // The newest frame's and not the second's, because the second is the rate's: a latency
+        // averaged over a second would hide the frame the sleep let slip.
+        const auto written = latency.has_value()
+            ? std::format_to_n(mTitle.data(), mTitle.size() - 1, "OpenMW - {}, {:.1f} ms latency", mRate.getText(),
+                  static_cast<double>(latency->mInputToPresentUs) / 1000.0)
+            : std::format_to_n(mTitle.data(), mTitle.size() - 1, "OpenMW - {}", mRate.getText());
         *written.out = '\0';
 
         return std::string_view(mTitle.data(), static_cast<std::size_t>(written.out - mTitle.data()));

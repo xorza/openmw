@@ -38,6 +38,15 @@ namespace Settings
 
         /// Which Ray Reconstruction network runs, as `Rtx::sPresetNames` spells them.
         SettingValue<std::string> mPreset{ mIndex, "RTX", "preset" };
+
+        /// How the driver paces the frame, as `Rtx::sLatencyModeNames` spells the modes: off, on
+        /// or boost. Read where the renderer is made and again on a change, like the vertical
+        /// sync; a machine whose driver paces nothing keeps the setting and does nothing with it.
+        SettingValue<std::string> mReflex{ mIndex, "RTX", "reflex" };
+
+        /// Whether a left click marks its frame for the driver's latency analyser, which draws a
+        /// square on it. A measurement aid and never on by default.
+        SettingValue<bool> mReflexFlash{ mIndex, "RTX", "reflex flash" };
     };
 }
 

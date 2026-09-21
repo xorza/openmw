@@ -16,6 +16,7 @@
 #include "device.hpp"
 #include "image.hpp"
 #include "imageuse.hpp"
+#include "instance.hpp"
 #include "result.hpp"
 #include "swapchain.hpp"
 
@@ -46,18 +47,30 @@ namespace Rtx
         return names;
     }
 
-    Presenter::Presenter(
-        const Device& device, VkInstance instance, SDL_Window* window, const SDLUtil::VSyncMode verticalSync)
+    Presenter::Presenter(const Device& device, const Instance& instance, SDL_Window* window,
+        const SDLUtil::VSyncMode verticalSync, const Pacing& pacing)
         : mDevice(device)
-        , mInstance(instance)
+        , mInstance(instance.getHandle())
+        , mSleepSemaphore(makeTimelineSemaphore(device, "frame pacing"))
+        , mPacer(device.getLatencyFunctions(), device.getHandle(), mSleepSemaphore.get())
     {
         try
         {
-            if (SDL_Vulkan_CreateSurface(window, instance, &mSurface) == SDL_FALSE)
+            if (SDL_Vulkan_CreateSurface(window, mInstance, &mSurface) == SDL_FALSE)
                 throw Unsupported(std::string("SDL would not make a Vulkan surface: ") + SDL_GetError());
 
-            mSwapchain = std::make_unique<Swapchain>(device, mSurface, drawableSize(window), verticalSync);
+            // The surface's half of whether the driver paces, asked once: the device's half is
+            // the extension, and neither alone is an answer.
+            if (device.hasLatencyPacing())
+                mPacedModes
+                    = PacedModes(instance.getSurfaceCapabilities2(), device.getPhysicalDevice().getHandle(), mSurface);
+
+            mSwapchain = std::make_unique<Swapchain>(
+                device, mSurface, drawableSize(window), verticalSync, pacing.mMode != LatencyMode::Off, mPacedModes);
             remakeImageSync();
+
+            mPacer.setPacing(pacing);
+            followSwapchain();
         }
         catch (...)
         {
@@ -162,23 +175,48 @@ namespace Rtx
 
     void Presenter::rebuild(const VkExtent2D extent)
     {
-        mDevice.waitIdle();
-        mSwapchain->recreate(extent);
-        remakeImageSync();
+        remake(extent);
         mStale = false;
     }
 
     void Presenter::setVerticalSync(SDLUtil::VSyncMode mode)
     {
-        if (!mSwapchain->setVerticalSync(mode))
-            return;
+        // A present mode is a property of the swapchain object. Not `rebuild`, because that
+        // clears a staleness a window that changed size meanwhile still owes.
+        if (mSwapchain->setVerticalSync(mode))
+            remake(getExtent());
+    }
 
-        // The same three calls `rebuild` makes, because a present mode is a property of the
-        // swapchain object. Not `rebuild` itself, because that clears a staleness a window that
-        // changed size meanwhile still owes.
+    void Presenter::setPacing(const Pacing& pacing)
+    {
+        mPacer.setPacing(pacing);
+        if (mSwapchain->setPreferPaced(pacing.mMode != LatencyMode::Off))
+            remake(getExtent());
+    }
+
+    void Presenter::remake(const VkExtent2D extent)
+    {
         mDevice.waitIdle();
-        mSwapchain->recreate(getExtent());
+        mSwapchain->recreate(extent);
         remakeImageSync();
+        followSwapchain();
+    }
+
+    void Presenter::followSwapchain()
+    {
+        mPacer.follow(mSwapchain->getHandle(), mSwapchain->isPaced());
+        passPresentId();
+    }
+
+    void Presenter::passPresentId()
+    {
+        mDevice.getPool().setPresentId(mPacer.getPresentId());
+    }
+
+    void Presenter::awaitFrame()
+    {
+        mPacer.awaitFrame();
+        passPresentId();
     }
 
     VkExtent2D Presenter::getExtent() const
@@ -188,6 +226,11 @@ namespace Rtx
 
     bool Presenter::present(const Image& frame)
     {
+        // A present nothing slept for pays its sleep here, before the acquire, which is the
+        // earliest a loading screen's present can: the driver counts one sleep between two
+        // presents, and a run of presents with none would send it to a worse spot of its own.
+        awaitFrame();
+
         Acquisition& acquisition = mAcquiring[mAcquisition];
         mAcquisition = (mAcquisition + 1) % static_cast<std::uint32_t>(mAcquiring.size());
 
@@ -271,7 +314,13 @@ namespace Rtx
         acquisition.mBlit = blitted;
         image.mBlitOn = blitted;
 
-        if (mSwapchain->present(image.mRendered.get(), index, image.mPresented.get()))
+        mPacer.beforePresent();
+        const bool shown
+            = mSwapchain->present(image.mRendered.get(), index, image.mPresented.get(), mPacer.getPresentId());
+        mPacer.afterPresent();
+        passPresentId();
+
+        if (shown)
             return true;
 
         mStale = true;

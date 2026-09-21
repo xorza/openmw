@@ -87,6 +87,14 @@ namespace Rtx
         Upscale getUpscale() const override { return mProfile.mUpscaling.mMode; }
 
         void setVerticalSync(SDLUtil::VSyncMode mode) override;
+
+        /// The driver's pacing, which is the presenter's and nothing without one — a headless
+        /// renderer is paced by whoever calls it.
+        bool pacesFrames() const override;
+        void setPacing(const Pacing& pacing) override;
+        void awaitFrame() override;
+        void endSimulation(bool flash) override;
+        std::optional<LatencyReport> describeLatency() const override;
         FrameExtents getExtents() const override;
         const RenderProfile& getProfile() const override { return mProfile; }
         Reconstruction renderFrame(const Shaders::VisibilityConstants& camera, const FrameOptions& options) override;

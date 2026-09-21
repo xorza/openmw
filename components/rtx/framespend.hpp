@@ -27,9 +27,11 @@ namespace Rtx
     /// folding geometry that arrived on it. `Place` is the renderer being told what moved, split
     /// into `Bake`, `Textures` and `Upload` because its worst frame is hundreds of times its
     /// median and a profile cannot say which half. `Trace` and `Present` are the other two calls
-    /// into the backend, and `Update` is the rest of the loop, which is the game's. Timed rather
-    /// than profiled, because most of what a call into the driver costs is inside the driver with
-    /// no frame pointer to walk, and a thread asleep is nothing to a sampling profiler. Together
+    /// into the backend, and `Update` is the rest of the loop, which is the game's — with `Sleep`
+    /// the share of it the driver held the host for before the frame's input, where the driver
+    /// paces. Timed rather than profiled, because most of what a call into the driver costs is
+    /// inside the driver with no frame pointer to walk, and a thread asleep is nothing to a
+    /// sampling profiler. Together
     /// they close the frame: `Frame` less the rest is under 0.05 ms at every place that stands
     /// still, and a row that does not close is a stretch nobody has named.
     enum class Timing : std::uint32_t
@@ -50,6 +52,10 @@ namespace Rtx
         Views,
         Present,
         Update,
+
+        /// The driver holding the host before the frame's input, where the driver paces: a share of
+        /// `Update`, which is the whole gap between two frames and has the sleep inside it.
+        Sleep,
     };
 
     /// What a report heads each row with, and — with `Ms` after it — what the JSON names it. One
@@ -68,6 +74,7 @@ namespace Rtx
         std::pair{ Timing::Views, std::string_view("views") },
         std::pair{ Timing::Present, std::string_view("present") },
         std::pair{ Timing::Update, std::string_view("update") },
+        std::pair{ Timing::Sleep, std::string_view("sleep") },
     } };
 
     inline constexpr std::size_t sTimingCount = sTimings.mNames.size();

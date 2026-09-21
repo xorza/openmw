@@ -287,6 +287,26 @@
         <translation>Качество</translation>
     </message>
     <message>
+        <source>NVIDIA Reflex</source>
+        <translation>NVIDIA Reflex</translation>
+    </message>
+    <message>
+        <source>How the driver paces the frame. On holds the game before each frame&apos;s input is read, so the input is sampled as late as it will still reach the screen on time. Boost holds the card at its top clock as well, at a power cost. Off leaves the driver&apos;s pacing as a frame limiter.</source>
+        <translation>Как драйвер задаёт темп кадров. «Вкл» задерживает игру перед чтением ввода каждого кадра, чтобы ввод считывался как можно позже, но кадр всё ещё успевал на экран. «Boost» дополнительно удерживает карту на максимальной частоте ценой энергопотребления. «Выкл» оставляет темп драйвера лишь ограничителем кадров.</translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <translation>Выкл</translation>
+    </message>
+    <message>
+        <source>On</source>
+        <translation>Вкл</translation>
+    </message>
+    <message>
+        <source>On + Boost</source>
+        <translation>Вкл + Boost</translation>
+    </message>
+    <message>
         <source>Ray Tracing Distant Land</source>
         <translation>Удалённый ландшафт при трассировке лучей</translation>
     </message>

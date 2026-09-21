@@ -191,6 +191,11 @@ namespace RtxTool
             float mTurned = 0.0f;
 
             Rtx::FrameSamples mSamples;
+
+            /// The driver's input-to-present figure of every measured frame it timed, in
+            /// milliseconds: a window the driver paces has one a frame, a headless run none.
+            std::vector<double> mLatencyMs;
+
             Rtx::GpuBreakdown mGpu;
             Rtx::Crossings mCrossings;
             Rtx::Arrivals mArrivals;
@@ -223,6 +228,7 @@ namespace RtxTool
                 mTurned = 0.0f;
 
                 mSamples.clear();
+                mLatencyMs.clear();
                 mGpu = Rtx::GpuBreakdown{};
                 mCrossings = Rtx::Crossings{};
                 mArrivals = Rtx::Arrivals{};

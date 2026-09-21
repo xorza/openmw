@@ -76,3 +76,36 @@ also follow the settings window while the game runs.
 
    Takes effect on the next start. A name this does not know is refused rather than quietly
    defaulted.
+
+.. omw-setting::
+   :title: reflex
+   :type: string
+   :range: off, on, boost
+   :default: on
+
+   NVIDIA Reflex: how the driver paces the frame. Where the driver paces the window at all, the
+   game is held before each frame's input is read, so the input is sampled as late as it will
+   still reach the screen on time, and the :code:`framerate limit` is enforced at the same point
+   rather than after the present. :code:`off` keeps the driver's sleep as a frame limiter and its
+   markers as a measurement; :code:`on` asks for the low-latency mode; :code:`boost` holds the
+   card at its top clock beside it, at a power cost a laptop's owner decides.
+
+   The driver paces a surface under some present modes and not others — on the driver this was
+   built against, under immediate and relaxed FIFO, and under neither mailbox nor FIFO. So with
+   :code:`vsync mode` disabled and this on, the window presents immediately rather than through
+   mailbox; with it enabled the frame meets the refresh and the driver does not pace it. The
+   window's title carries the driver's own input-to-present figure beside the frame rate while
+   it paces.
+
+   Takes effect at once. A machine whose driver paces nothing keeps the setting and paces its
+   own frames. A name this does not know is refused rather than quietly defaulted.
+
+.. omw-setting::
+   :title: reflex flash
+   :type: boolean
+   :range: true, false
+   :default: false
+
+   Mark the frame a left click landed in for the driver's latency analyser, which draws a square
+   on that frame. A measurement aid, for a monitor that can time the square against the click,
+   and nothing a player wants on.

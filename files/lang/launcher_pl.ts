@@ -287,6 +287,26 @@
         <translation>Jakość</translation>
     </message>
     <message>
+        <source>NVIDIA Reflex</source>
+        <translation>NVIDIA Reflex</translation>
+    </message>
+    <message>
+        <source>How the driver paces the frame. On holds the game before each frame&apos;s input is read, so the input is sampled as late as it will still reach the screen on time. Boost holds the card at its top clock as well, at a power cost. Off leaves the driver&apos;s pacing as a frame limiter.</source>
+        <translation>Jak sterownik taktuje klatki. „Wł.” wstrzymuje grę przed odczytem wejścia każdej klatki, tak by wejście było próbkowane najpóźniej, jak to możliwe, a klatka wciąż trafiła na ekran na czas. „Boost” dodatkowo utrzymuje kartę na najwyższym taktowaniu, kosztem poboru mocy. „Wył.” pozostawia taktowanie sterownika jako ogranicznik klatek.</translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <translation>Wył.</translation>
+    </message>
+    <message>
+        <source>On</source>
+        <translation>Wł.</translation>
+    </message>
+    <message>
+        <source>On + Boost</source>
+        <translation>Wł. + Boost</translation>
+    </message>
+    <message>
         <source>Ray Tracing Distant Land</source>
         <translation>Odległy teren przy śledzeniu promieni</translation>
     </message>

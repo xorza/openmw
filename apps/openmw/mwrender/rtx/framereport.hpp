@@ -7,6 +7,7 @@
 
 #include <components/rtx/extractionstats.hpp>
 #include <components/rtx/framespend.hpp>
+#include <components/rtx/latencyreport.hpp>
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/shaders/visibility.h>
@@ -76,6 +77,10 @@ namespace MWRender
 
         /// How many textures the renderer has failed to read since it was built, and drew grey.
         std::uint32_t mUnreadableTextures = 0;
+
+        /// The driver's timings of the newest frame it finished, where the driver paces the
+        /// window; nothing on a headless run and before the first frame finished.
+        std::optional<Rtx::LatencyReport> mLatency;
     };
 
     /// What a measured stop may reach beyond the frame's own report. Borrowed and valid for one stop:

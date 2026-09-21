@@ -219,6 +219,26 @@
         <translation>Kvalitet</translation>
     </message>
     <message>
+        <source>NVIDIA Reflex</source>
+        <translation>NVIDIA Reflex</translation>
+    </message>
+    <message>
+        <source>How the driver paces the frame. On holds the game before each frame&apos;s input is read, so the input is sampled as late as it will still reach the screen on time. Boost holds the card at its top clock as well, at a power cost. Off leaves the driver&apos;s pacing as a frame limiter.</source>
+        <translation>Hur drivrutinen styr bildtakten. ”På” håller spelet innan varje bilds indata läses, så att indata samplas så sent som möjligt men ändå når skärmen i tid. ”Boost” håller dessutom kortet på sin högsta klockfrekvens, på bekostnad av effektförbrukningen. ”Av” låter drivrutinens styrning bara vara en bildfrekvensbegränsare.</translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <translation>Av</translation>
+    </message>
+    <message>
+        <source>On</source>
+        <translation>På</translation>
+    </message>
+    <message>
+        <source>On + Boost</source>
+        <translation>På + Boost</translation>
+    </message>
+    <message>
         <source>Ray Tracing Distant Land</source>
         <translation>Avlägsen terräng vid strålspårning</translation>
     </message>
