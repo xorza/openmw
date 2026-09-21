@@ -23,7 +23,8 @@
 #
 # **A release is a tag, and the same two legs.** A push of a tag `rtx-v*` runs everything above
 # and then, on each leg, the `package` flavour and the archive a player takes: an AppImage on
-# Linux, which carries Qt, OSG, MyGUI and SDL and leaves Vulkan to the driver, and a zip on
+# Linux, which carries Qt, OSG, MyGUI, SDL and the Vulkan loader and leaves the driver to the
+# host, and a zip on
 # Windows, which is what a fork under a renderer nobody has installed before should be rather
 # than an installer that registers itself where a stock OpenMW would. The release job then puts
 # both on a draft release, to be read before it is published. The packaging can be tried without

@@ -679,12 +679,17 @@ runRepeat() {
 # that day. The Qt plugin bundles the Wayland platform beside X11 and, through its
 # `waylandcompositor` module, the shell, buffer and decoration plugin sets a Wayland window needs —
 # without the shell one it never maps — so the launcher opens on a session with no XWayland. The
-# Vulkan loader stays out, because the one on a player's machine is the one that matches their
-# driver. The update information points AppImageUpdate at this repository's releases and writes
+# Vulkan loader goes in, the SDK's 1.4 one the binaries were linked against: the loader is not the
+# driver, any driver's ICD is found through the host's manifests whichever loader asks, and the
+# backend calls 1.4 entry points the loader exports — Ubuntu 24.04's 1.3 loader has none, and a
+# bare one refused the binary with `undefined symbol: vkCmdPushDescriptorSet`. The update
+# information points AppImageUpdate at this repository's releases and writes
 # the `.zsync` beside the file. AppStream validation is off: upstream's metainfo carries warnings
 # appstreamcli refuses, and its identity, the launcher's desktop id, is right. The tools are
-# AppImages themselves and a runner has no FUSE, so they extract and run. Built on Ubuntu 24.04,
-# it runs on distributions with glibc 2.39 or later, which is 2024's.
+# AppImages themselves and a runner has no FUSE, so they extract and run. What the image takes
+# from the host is the AppImage exclude list — glibc and libstdc++, the GL stack, X11, Wayland,
+# fontconfig, ALSA — and the binaries read glibc 2.38 and GCC 13's libstdc++ off it, which is
+# late 2023's: what a bare Ubuntu 24.04 with the runtime libraries of a desktop ran them on.
 #
 # **The DLSS library is out of the AppDir while linuxdeploy runs.** Its last pass patches an rpath
 # into every ELF file it finds there, named or not, and NVIDIA's feature library is signed: with
@@ -754,17 +759,19 @@ archiveLinux() {
             --deploy-deps-only "$appdir/usr/lib/osgPlugins-$osgVersion" \
             --desktop-file "$appdir/usr/share/applications/org.openmw.launcher.desktop" \
             --icon-file "$appdir/usr/share/pixmaps/openmw.png" \
-            --exclude-library 'libvulkan.so*' --plugin qt
+            --plugin qt
 
     mv "$kept"/* "$appdir/usr/bin/" 2> /dev/null || true
     rmdir "$kept"
 
+    # From dist/, because appimagetool writes the .zsync into the working directory and the
+    # image where it is told.
     mkdir -p "$dist"
-    APPIMAGE_EXTRACT_AND_RUN=1 \
+    (cd "$dist" && APPIMAGE_EXTRACT_AND_RUN=1 \
         LDAI_RUNTIME_FILE="$tools/runtime-x86_64" LDAI_NO_APPSTREAM=1 \
         LDAI_UPDATE_INFORMATION='gh-releases-zsync|xorza|openmw-rtx|latest|openmw-rtx-v*-linux-x86_64.AppImage.zsync' \
         LDAI_OUTPUT="$dist/openmw-$name-linux-x86_64.AppImage" \
-        "$tools/linuxdeploy-plugin-appimage" --appdir "$appdir"
+        "$tools/linuxdeploy-plugin-appimage" --appdir "$appdir")
     rm -rf "$appdir"
 }
 
