@@ -75,7 +75,7 @@ namespace RtxTool
         void frame(const MWRender::FrameContext& context, const MWRender::FrameReport& report) override;
 
         /// The weather and the hour the run stands under, `Thunderstorm, 14:32`, off the note the
-        /// last frame took; empty before a stop has begun.
+        /// last frame took; empty until a stop has begun and been noted.
         std::string_view describeTitle() override;
 
         /// What the run came to: the places, the report, the verdict and where the eye was left.

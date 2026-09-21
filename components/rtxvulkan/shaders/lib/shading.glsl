@@ -104,10 +104,12 @@ vec3 gather(Surface surface, uint seed, uint path)
     // indirect term nothing resolves on its own, so a moon reaching it through a shadow ray of its
     // own was the dimmest half of the dimmest thing in the frame.
     //
-    // **A probability compared against the draw, and not a weight against a scaled draw.** The two
-    // are the same until a source weighs nothing: the running share is then flat across it, and a
-    // draw under the share before it has already picked. The draw is the moons' and the ray's pair
-    // is the sun's, so every lamp draw below keeps its place.
+    // **The pick is made against the weights and never against a quotient**, for the reason
+    // `fogSourcesFrom` gives: a share one ulp under one and the largest draw picked a source of no
+    // weight, whose chance divided the radiance by nought. A source that weighs nothing is never
+    // the draw, so the fallback past every comparison is the last source that weighs anything, and
+    // each comparison is a correctly rounded product against a running sum. The draw is the
+    // moons' and the ray's pair is the sun's, so every lamp draw below keeps its place.
     // **The three are named and not indexed**, for the reason `SkyChoice` gives: the pick is a value
     // the compiler cannot fold, and a local array read at one is a spill. The additions below are
     // the ones the loop made, in the order it made them, so the draw picks what it always picked.
@@ -119,13 +121,12 @@ vec3 gather(Surface surface, uint seed, uint path)
     const float total = sun.mWeight + masser.mWeight + secunda.mWeight;
     if (total > 0.0)
     {
-        const float sunShare = sun.mWeight / total;
-        const float moonShare = sunShare + masser.mWeight / total;
+        const float scaled = moonDraw[1].x * total;
 
-        SkyChoice picked = secunda;
-        if (moonDraw[1].x < sunShare)
+        SkyChoice picked = secunda.mWeight > 0.0 ? secunda : (masser.mWeight > 0.0 ? masser : sun);
+        if (sun.mWeight > 0.0 && scaled < sun.mWeight)
             picked = sun;
-        else if (moonDraw[1].x < moonShare)
+        else if (masser.mWeight > 0.0 && scaled < sun.mWeight + masser.mWeight)
             picked = masser;
 
         const float chance = picked.mWeight / total;

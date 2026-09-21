@@ -378,9 +378,15 @@ FogSources fogSourcesFrom(MoonTerms terms, float draw)
     const float total = masser + secunda;
     const float worthARay = FOG_SHAFT_FLOOR * brightest(frame.mFogColour);
 
-    // **A probability compared against the draw**, for the reason `gather` gives: a moon of no
-    // weight is never the draw, and one carrying all of it always is.
-    const bool drewMasser = total > 0.0 && draw < masser / total;
+    // **The pick is made against the weights and never against a quotient**, which is the rule
+    // `considerLamp` keeps too: a moon of no weight is never the draw, and one carrying all of it
+    // always is. `draw < masser / total` said the same on paper and not on the card: a divide is
+    // allowed 2.5 ULP here, `masser / masser` came back one ulp under one, and the one draw in
+    // sixteen million that equals it picked Secunda while she was down — a chance of nought, a
+    // `0 / 0` in the froxel, and a NaN the volume's history then spread across the frame in
+    // eight-pixel blocks. A product is correctly rounded and never exceeds `total`, so the guard
+    // on `secunda` is what settles the whole-weight case and the product settles the rest.
+    const bool drewMasser = masser > 0.0 && (!(secunda > 0.0) || draw * total < masser);
 
     // **Each flag carries its own constant and not only the terms behind it.** A moon's share folds
     // to nothing without one, but the comparison against a uniform does not fold with it — so the

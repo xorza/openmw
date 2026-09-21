@@ -175,13 +175,15 @@ namespace RtxTool
 
     std::string_view Session::describeTitle()
     {
-        if (!mStood.has_value())
+        // Nothing before a stop's first note: `beginStop` makes the note empty and returns, and
+        // `noteStanding` fills it on the frame after, so the title of the frame a stop begins on
+        // carries nothing rather than a place the run has not stood in yet. The two halves are
+        // one note, so the hour standing is the weather standing.
+        if (!mStood.has_value() || !mStood->mSky.mHour.has_value())
             return {};
 
-        // Both were noted before this frame was drawn, `noteStanding`, and the title is written
-        // after it: one missing is a call out of order. The hour as a clock reads it, so a title
-        // and the sky script's own answer agree.
-        const float hour = mStood->mSky.mHour.value();
+        // The hour as a clock reads it, so a title and the sky script's own answer agree.
+        const float hour = *mStood->mSky.mHour;
         const int whole = static_cast<int>(hour);
         const int minutes = static_cast<int>((hour - static_cast<float>(whole)) * 60.0f);
         const auto written = std::format_to_n(mTitleNote.data(), mTitleNote.size(), "{}, {:02}:{:02}",
