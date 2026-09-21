@@ -685,12 +685,14 @@ if (OPENMW_CXX_FLAGS)
     add_compile_options(${OPENMW_CXX_FLAGS})
 endif()
 
-# Components
-add_subdirectory (components)
-
+# Before upstream's components, whose CMakeLists names this fork's own files there for the flags
+# this defines; the ray tracer's libraries link `components` by name and are resolved at generation.
 if (OPENMW_RTX)
     include(components/rtx/build.cmake)
 endif()
+
+# Components
+add_subdirectory (components)
 
 # Apps and tools
 if (BUILD_OPENMW OR BUILD_OPENMW_TESTS)

@@ -159,3 +159,10 @@ endif()
 set(RTX_TEST_FILES_UPSTREAM
     rtx/nifsurface.cpp
 )
+
+# This fork's tests of what a build without the ray tracer compiles as well. They stand in
+# upstream's own list, so that build runs them too, and are named here for the fork's flags.
+set(RTX_TEST_FILES_EITHER
+    misc/frameclock.cpp
+    sceneutil/paintedtexture.cpp
+)

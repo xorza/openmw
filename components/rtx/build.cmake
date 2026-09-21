@@ -1,6 +1,7 @@
 # The ray tracing renderer's part of the top-level build: how this fork's own code is compiled, where
 # its resources and shared shader structures live, and which of its directories are built. Included
-# from the top-level `CMakeLists.txt` under `OPENMW_RTX`, so that file carries the options and one line.
+# from the top-level `CMakeLists.txt` under `OPENMW_RTX`, so that file carries the options and one
+# line — before `components`, so its CMakeLists can name the fork's files there.
 
 # **CMake 3.31, for the presets.** `CMakePresets.json` is where a build of this fork is described —
 # `apps/rtxtool/rtx` configures through it and so does an IDE — and a presets file of that version

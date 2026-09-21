@@ -126,7 +126,7 @@ if (OPENMW_RTX)
 
     # Per file rather than per target: this binary holds upstream's tests as well as this fork's, and
     # only the latter are ours to keep warning-free.
-    openmw_rtx_sources(${RTX_TEST_FILES} ${RTX_TEST_SUPPORT} ERRORS_ONLY ${RTX_TEST_FILES_UPSTREAM})
+    openmw_rtx_sources(${RTX_TEST_FILES} ${RTX_TEST_SUPPORT} ${RTX_TEST_FILES_EITHER} ERRORS_ONLY ${RTX_TEST_FILES_UPSTREAM})
 
     # The tests that open a device, as a binary of their own: `rtx/harness.cpp` refuses to start
     # without one, so a machine with no driver fails this run instead of passing an empty one. The
