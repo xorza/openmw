@@ -12,7 +12,15 @@ only what the fork adds.
 Screenshots
 -----------
 
-<!-- screenshots -->
+<img width="2560" height="1366" alt="screenshot017" src="https://github.com/user-attachments/assets/d99644a6-2395-4a9b-a095-53a54c7a27b2" />
+<img width="2560" height="1366" alt="screenshot016" src="https://github.com/user-attachments/assets/cc181eb8-713c-41f2-a093-2aea60d71c2a" />
+<img width="2560" height="1366" alt="screenshot015" src="https://github.com/user-attachments/assets/3490ca2f-df43-4850-b619-d63b28720f82" />
+<img width="2560" height="1366" alt="screenshot014" src="https://github.com/user-attachments/assets/7d53a672-1eb9-404c-9ad2-107ab6a102b8" />
+<img width="2560" height="1366" alt="screenshot008" src="https://github.com/user-attachments/assets/ad180077-1a39-4921-ba38-fc34aa566e55" />
+<img width="2560" height="1366" alt="screenshot003" src="https://github.com/user-attachments/assets/7ecbd7a4-37f5-4761-8596-79a2870a3a75" />
+<img width="2560" height="1366" alt="screenshot001" src="https://github.com/user-attachments/assets/2a5855df-bc04-4b08-929a-51edee2c4fcc" />
+<img width="2560" height="1366" alt="screenshot000" src="https://github.com/user-attachments/assets/d85dd6c8-8a77-4ddc-ae83-6ac1f58d42fb" />
+
 
 Demo video
 ----------
