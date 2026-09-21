@@ -159,7 +159,7 @@ return {
             speedClock(data.player, data.steps)
         end,
         RtxAddHours = function(data)
-            addHours(data.player, data.hours)
+            addHours(data.player, data.steps)
         end,
     },
 }

@@ -35,13 +35,17 @@ namespace MWRender
         /// What the presents since the last frame came to, and starts the sum again.
         double takePresent();
 
-        /// Adds one frame's whole time to the rate. @return the window title to set, or empty until
-        /// a second has run out. Never allocates: the text is written into this object's own bytes,
-        /// and ends in a nought a C string wants.
+        /// Adds one frame's whole time to the rate. @return whether a second has run out, which is
+        /// when the title is written again.
+        bool addFrame(double frameMs);
+
+        /// The window title for the second that ran out. Never allocates: the text is written into
+        /// this object's own bytes, and ends in a nought a C string wants.
         ///
         /// @param latency the driver's newest timings, where the driver paces: the title carries
         ///        the input-to-present figure beside the rate, and nothing where there is none.
-        std::string_view addFrame(double frameMs, const std::optional<Rtx::LatencyReport>& latency);
+        /// @param note what the run says of where it stands, after the rest, or empty for nothing.
+        std::string_view writeTitle(const std::optional<Rtx::LatencyReport>& latency, std::string_view note);
 
     private:
         std::optional<std::chrono::steady_clock::time_point> mEntered;

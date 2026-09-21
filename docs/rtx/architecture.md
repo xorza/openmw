@@ -214,7 +214,9 @@ one record, `RtxSetup`: an `Rtx::RunSetup` (profile, validation, `MirrorKnobs`, 
 stated step or the wall, settled adoption) and the `RtxRun` the host implements. A played
 session installs none, and `RtxRenderer` makes a `PlayedRun` whose every answer is the played
 one. `RtxRun` answers per frame: which sample to take, how many frames are summed, whether to
-walk twice, whether to keep the picture, and it receives every `FrameReport`.
+walk twice, whether to keep the picture, and it receives every `FrameReport`; once a second it
+says what the window's title carries after the rate, which the harness answers with the
+weather and the hour and a played session with nothing.
 `profileFromSettings` and `knobsFromSettings` in `rtxrenderer.cpp` are the only places the
 settings registry is read for the renderer. The core reads no settings.
 

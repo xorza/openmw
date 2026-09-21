@@ -1046,8 +1046,8 @@ namespace MWRender
 
             // Once a second, which is how often `Rtx::FrameRate` closes a line — and the window is asked
             // then whether anybody can see it, rather than a copy of that being kept here.
-            if (const std::string_view title = mTimer.addFrame(*since, report.mLatency); !title.empty())
-                mWindow.setTitle(title.data());
+            if (mTimer.addFrame(*since))
+                mWindow.setTitle(mTimer.writeTitle(report.mLatency, mInstalled.mRun.describeTitle()).data());
         }
     }
 }

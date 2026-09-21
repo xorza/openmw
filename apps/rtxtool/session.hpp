@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -72,6 +73,10 @@ namespace RtxTool
 
         /// Reports the frame, and asks the game to quit once the last stop is done.
         void frame(const MWRender::FrameContext& context, const MWRender::FrameReport& report) override;
+
+        /// The weather and the hour the run stands under, `Thunderstorm, 14:32`, off the note the
+        /// last frame took; empty before a stop has begun.
+        std::string_view describeTitle() override;
 
         /// What the run came to: the places, the report, the verdict and where the eye was left.
         Rtx::SessionResult describe() const;
@@ -257,6 +262,9 @@ namespace RtxTool
 
         /// Whether Home was down on the last frame, so a press prints once.
         bool mPrintKeyHeld = false;
+
+        /// What `describeTitle` is written into, once a second and never allocated.
+        std::array<char, 48> mTitleNote{};
 
         /// What the run has come to so far: the places, the report and the verdict. Its own type,
         /// because everything with something to say writes into all of it.

@@ -27,19 +27,30 @@ namespace MWRender
         return std::exchange(mPresentMs, 0.0);
     }
 
-    std::string_view FrameTimer::addFrame(const double frameMs, const std::optional<Rtx::LatencyReport>& latency)
+    bool FrameTimer::addFrame(const double frameMs)
     {
-        if (!mRate.add(frameMs))
-            return {};
+        return mRate.add(frameMs);
+    }
+
+    std::string_view FrameTimer::writeTitle(
+        const std::optional<Rtx::LatencyReport>& latency, const std::string_view note)
+    {
+        char* out = mTitle.data();
+        const auto room = [&] { return static_cast<std::size_t>(mTitle.data() + mTitle.size() - 1 - out); };
+
+        out = std::format_to_n(out, room(), "OpenMW - {}", mRate.getText()).out;
 
         // The newest frame's and not the second's, because the second is the rate's: a latency
         // averaged over a second would hide the frame the sleep let slip.
-        const auto written = latency.has_value()
-            ? std::format_to_n(mTitle.data(), mTitle.size() - 1, "OpenMW - {}, {:.1f} ms latency", mRate.getText(),
-                  static_cast<double>(latency->mInputToPresentUs) / 1000.0)
-            : std::format_to_n(mTitle.data(), mTitle.size() - 1, "OpenMW - {}", mRate.getText());
-        *written.out = '\0';
+        if (latency.has_value())
+            out = std::format_to_n(
+                out, room(), ", {:.1f} ms latency", static_cast<double>(latency->mInputToPresentUs) / 1000.0)
+                      .out;
 
-        return std::string_view(mTitle.data(), static_cast<std::size_t>(written.out - mTitle.data()));
+        if (!note.empty())
+            out = std::format_to_n(out, room(), " - {}", note).out;
+
+        *out = '\0';
+        return std::string_view(mTitle.data(), static_cast<std::size_t>(out - mTitle.data()));
     }
 }

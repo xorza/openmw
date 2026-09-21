@@ -16,8 +16,8 @@ local keys = {
     [input.KEY.Slash] = { event = 'RtxPauseClock' },
     [input.KEY.Comma] = { event = 'RtxSpeedClock', steps = -1 },
     [input.KEY.Period] = { event = 'RtxSpeedClock', steps = 1 },
-    [input.KEY.PageUp] = { event = 'RtxAddHours', hours = 1 },
-    [input.KEY.PageDown] = { event = 'RtxAddHours', hours = -1 },
+    [input.KEY.PageUp] = { event = 'RtxAddHours', steps = 1 },
+    [input.KEY.PageDown] = { event = 'RtxAddHours', steps = -1 },
 }
 
 return {
@@ -25,7 +25,7 @@ return {
         onKeyPress = function(key)
             local bound = keys[key.code]
             if bound then
-                core.sendGlobalEvent(bound.event, { player = self, hours = bound.hours, steps = bound.steps })
+                core.sendGlobalEvent(bound.event, { player = self, steps = bound.steps })
             end
         end,
     },

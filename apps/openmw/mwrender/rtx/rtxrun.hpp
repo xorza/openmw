@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <string_view>
 
 #include <components/rtxbench/runsetup.hpp>
 
@@ -50,6 +51,12 @@ namespace MWRender
         /// answers stood at different points of its sequence in two runs of one build. The two
         /// halves meet by frame number, `FrameReport::mFrame` and `FrameResult::mFrame`.
         virtual void frame(const FrameContext& context, const FrameReport& report) = 0;
+
+        /// What the window's title says after the rate: where the run stands, as the run notes it
+        /// — the weather and the hour, for a window whose keys turn both. Asked once a second,
+        /// when the title is written; empty is a title of the rate alone. Into the run's own
+        /// bytes, so nothing is allocated for a line the title bar shows.
+        virtual std::string_view describeTitle() = 0;
     };
 
     /// The run a played session is: every answer the played one, and nothing noted from any
@@ -62,6 +69,7 @@ namespace MWRender
         bool wantsSecondWalk() const override { return false; }
         bool wantsFrameCopy() const override { return false; }
         void frame(const FrameContext& context, const FrameReport& report) override {}
+        std::string_view describeTitle() override { return {}; }
     };
 
     /// What the harness installs before the engine starts, where the harness started this process:

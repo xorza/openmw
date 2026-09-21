@@ -1,6 +1,7 @@
 #include "session.hpp"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <format>
@@ -170,6 +171,22 @@ namespace RtxTool
         if (!stood.mSky.mWeather.has_value())
             stood.mSky.mWeather.emplace();
         *stood.mSky.mWeather = Rtx::weatherName(static_cast<std::uint32_t>(world.getCurrentWeatherScriptId()));
+    }
+
+    std::string_view Session::describeTitle()
+    {
+        if (!mStood.has_value())
+            return {};
+
+        // Both were noted before this frame was drawn, `noteStanding`, and the title is written
+        // after it: one missing is a call out of order. The hour as a clock reads it, so a title
+        // and the sky script's own answer agree.
+        const float hour = mStood->mSky.mHour.value();
+        const int whole = static_cast<int>(hour);
+        const int minutes = static_cast<int>((hour - static_cast<float>(whole)) * 60.0f);
+        const auto written = std::format_to_n(mTitleNote.data(), mTitleNote.size(), "{}, {:02}:{:02}",
+            std::string_view(mStood->mSky.mWeather.value()), whole, minutes);
+        return std::string_view(mTitleNote.data(), static_cast<std::size_t>(written.out - mTitleNote.data()));
     }
 
     void Session::abandon(const std::string_view why)
