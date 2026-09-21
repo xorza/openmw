@@ -11,8 +11,8 @@
 #   rtx <flavour> repeat [--pairs=N] [bench args]
 #                                        two runs of one binary walk one place and must agree
 #   rtx package archive [name]           the release archive out of the package build, into dist/:
-#                                        an AppImage on Linux, a zip on Windows, named after the
-#                                        ref or the name given
+#                                        an AppImage on Linux, the portable folder on Windows,
+#                                        named after the ref or the name given
 #   rtx <flavour> gate                   clang-format 14, build, the release and no-DLSS compiles, test,
 #                                        check, repeat — stops at the first failure
 #   rtx <flavour> <verb> [args]          openmw-rtxtool <verb>, under the flavour's validation
@@ -775,16 +775,16 @@ archiveLinux() {
     rm -rf "$appdir"
 }
 
-# **The zip is cpack's, off the same install rules upstream's installer is made of** — and a zip
+# **The portable folder, off the same install rules upstream's installer is made of** — a folder
 # rather than that installer, because a fork under a renderer nobody has installed before should
-# unpack beside a stock OpenMW, not register itself where one would.
+# unpack beside a stock OpenMW, not register itself where one would. The zip around it is made
+# where it is handed out: GitHub's own around a run's artifact, the release job's around a
+# release's, so nobody downloads a zip inside a zip.
 archiveWindows() {
-    local name="$1" dist="$root/dist"
-    require cpack "CMake's own, beside the cmake on the PATH"
-    mkdir -p "$dist"
-    cpack -G ZIP --config "$build/CPackConfig.cmake" -B "$dist"
-    rm -rf "$dist/_CPack_Packages"
-    mv "$dist"/*.zip "$dist/openmw-$name-windows-x64.zip"
+    local name="$1" dist="$root/dist" folder
+    folder="$dist/openmw-$name-windows-x64"
+    rm -rf "$folder"
+    cmake --install "$build" --prefix "$folder" > /dev/null
 }
 
 # The archive out of the package build, named after the argument or the ref: a tag names its
