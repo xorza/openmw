@@ -10,7 +10,7 @@
 # looks at — a scene's digest, a sheet of its textures — is a fact about the content rather than
 # about whichever host staged it.
 
-set(RTXBENCH_FILES
+set(RTX_BENCH_FILES
     benchrecord.cpp
     benchrecord.hpp
     benchrun.cpp
@@ -37,9 +37,9 @@ set(RTXBENCH_FILES
     threadwatch.hpp
 )
 
-source_group(components\\rtxbench FILES ${RTXBENCH_FILES})
+source_group(components\\rtxbench FILES ${RTX_BENCH_FILES})
 
-add_library(openmw-rtx-bench STATIC ${RTXBENCH_FILES})
+add_library(openmw-rtx-bench STATIC ${RTX_BENCH_FILES})
 
 # `PUBLIC`, because `benchrecord.hpp` names `Rtx::SceneStats` and the three reconstruction enums,
 # and `frametimes.hpp` names `Rtx::GpuSpan`: every consumer needs the core's include paths.

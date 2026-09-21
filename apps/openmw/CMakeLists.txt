@@ -35,17 +35,22 @@ add_openmw_dir (mwrender
 
 # Gated, because these are the only files in the game that name a graphics API other than OpenGL.
 if (OPENMW_RTX)
-    add_openmw_dir (mwrender/rtx
+    set(OPENMW_RTX_DIR
         classmasks debugwalk framereport frametimer rippleemitters rtxrenderer rtxrun rtxwindow skyreader tracedground tracedoverlay tracedterrain tracedview viewqueue
         worldmirror
         )
+    add_openmw_dir (mwrender/rtx ${OPENMW_RTX_DIR})
 
     # The seam and the ray tracer's own directory are this fork's files in upstream's target, and
     # every one of them reads the game's headers: the errors alone, for the reason `build.cmake`
-    # gives.
-    file(GLOB OPENMW_RTX_SOURCES mwrender/rtx/*.cpp)
-    foreach (seam ${OPENMW_RENDERER_SEAM})
-        list(APPEND OPENMW_RTX_SOURCES mwrender/${seam}.cpp)
+    # gives. A name with a header alone names a file nothing compiles, and a property on it is
+    # read by nothing.
+    set(OPENMW_RTX_SOURCES)
+    foreach (name ${OPENMW_RTX_DIR})
+        list(APPEND OPENMW_RTX_SOURCES mwrender/rtx/${name}.cpp)
+    endforeach()
+    foreach (name ${OPENMW_RENDERER_SEAM})
+        list(APPEND OPENMW_RTX_SOURCES mwrender/${name}.cpp)
     endforeach()
     openmw_rtx_sources(ERRORS_ONLY ${OPENMW_RTX_SOURCES})
 endif()
@@ -180,7 +185,7 @@ if(BUILD_OPENMW)
     target_link_libraries(openmw openmw-lib)
 
 if (OPENMW_RTX)
-    target_link_libraries(openmw-lib openmw-rtx openmw-rtx-vulkan openmw-rtx-bench openmw-myguirtx)
+    target_link_libraries(openmw-lib openmw-rtx openmw-rtx-vulkan openmw-rtx-bench openmw-rtx-mygui)
 endif()
 
     # Workaround necessary to ensure osgAnimation::MatrixLinearSampler dynamic casts work under Clang

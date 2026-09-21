@@ -117,12 +117,14 @@ target_link_libraries(components-tests
 
 if (OPENMW_RTX)
     # Vulkan itself as well, because these tests reach into the backend's own headers, which a host
-    # does not: the backend keeps Vulkan private behind `createrenderer.hpp`. Found here and not
-    # inherited: the imported target is scoped to the directory that finds it, and a build with the
-    # launcher off has no Qt to have found it at the top.
-    find_package(Vulkan REQUIRED)
+    # does not: `build.cmake` says where it is found and why.
     target_link_libraries(components-tests openmw-rtx openmw-rtx-bench
                           openmw-rtx-vulkan openmw-rtxtool-lib Vulkan::Vulkan)
+
+    # Where the build wrote the shaders, for the tests that read a module or stage the resources
+    # beside them. Told to the two test binaries and to nothing else: a path into the build tree is
+    # no fact about the backend.
+    target_compile_definitions(components-tests PRIVATE OPENMW_RTX_SHADER_DIR="${RTX_SPIRV_DIR}")
 
     # Per file rather than per target: this binary holds upstream's tests as well as this fork's, and
     # only the latter are ours to keep warning-free.
@@ -141,7 +143,8 @@ if (OPENMW_RTX)
     openmw_rtx_sources(${RTX_GPU_TEST_FILES})
     target_compile_definitions(rtx-gpu-tests
         PRIVATE OPENMW_DATA_DIR=u8"${CMAKE_CURRENT_BINARY_DIR}/data"
-                OPENMW_PROJECT_SOURCE_DIR=u8"${PROJECT_SOURCE_DIR}")
+                OPENMW_PROJECT_SOURCE_DIR=u8"${PROJECT_SOURCE_DIR}"
+                OPENMW_RTX_SHADER_DIR="${RTX_SPIRV_DIR}")
     if (UNIX AND NOT APPLE)
         target_link_libraries(rtx-gpu-tests ${CMAKE_THREAD_LIBS_INIT})
     endif()

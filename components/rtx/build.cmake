@@ -102,6 +102,12 @@ function(openmw_rtx_sources)
     endif()
 endfunction()
 
+# **Vulkan, found once and at the top.** An imported target is scoped to the directory that finds
+# it, and two directories link this one: the backend, and the tests that reach into the backend's
+# own headers, which a host never does — the backend keeps Vulkan private behind
+# `createrenderer.hpp`. Found here, both see the same target.
+find_package(Vulkan REQUIRED)
+
 # Where the RTX resources land. Not `OPENMW_RESOURCES_ROOT`: the top level only defines that for
 # non-Apple builds, and macOS derives its own — the bundle's `Contents/Resources` — inside
 # `apps/openmw/CMakeLists.txt`, which is configured after these subdirectories. Both roots it
@@ -112,6 +118,10 @@ if (APPLE)
 else()
     set(RTX_RESOURCES_ROOT "${OpenMW_BINARY_DIR}")
 endif()
+
+# Where the compiled shaders land, beside the other RTX resources: the backend writes them, the
+# game and the harness read them through `resources/`, and the tests are told the path outright.
+set(RTX_SPIRV_DIR "${RTX_RESOURCES_ROOT}/resources/rtx/shaders")
 
 # Where the structures shared with every shader language live. Both backends compile against
 # them, so the path is settled once rather than in each.

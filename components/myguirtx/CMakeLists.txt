@@ -4,7 +4,7 @@
 # about; what is left is a table of textures and a list of triangles, which is what `components/rtx`
 # offers and each of its backends implements.
 
-set(MYGUIRTX_FILES
+set(RTX_MYGUI_FILES
     additivelayer.cpp
     additivelayer.hpp
     rendermanager.cpp
@@ -23,10 +23,10 @@ set(MYGUIRTX_FILES
     texture.hpp
 )
 
-source_group(components\\myguirtx FILES ${MYGUIRTX_FILES})
+source_group(components\\myguirtx FILES ${RTX_MYGUI_FILES})
 
-add_library(openmw-myguirtx STATIC ${MYGUIRTX_FILES})
+add_library(openmw-rtx-mygui STATIC ${RTX_MYGUI_FILES})
 
-target_link_libraries(openmw-myguirtx PUBLIC openmw-rtx components)
+target_link_libraries(openmw-rtx-mygui PUBLIC openmw-rtx components)
 
-openmw_rtx_target(openmw-myguirtx)
+openmw_rtx_target(openmw-rtx-mygui)

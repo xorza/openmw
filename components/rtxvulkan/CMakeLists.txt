@@ -1,4 +1,4 @@
-# The Vulkan backend. Built only with -DOPENMW_RTX=ON.
+# The Vulkan backend.
 #
 # Everything here is Vulkan's: the device, its allocations, its acceleration structures and its
 # passes. What is true of the content rather than of the API lives in `openmw-rtx`, which this links
@@ -6,8 +6,6 @@
 
 # Ninja needs the NEW behaviour to consume glslc's depfile; upstream's policy version predates it.
 cmake_policy(SET CMP0116 NEW)
-
-find_package(Vulkan REQUIRED)
 
 # NVIDIA's NGX SDK, which is what DLSS is. Prebuilt, licensed by NVIDIA rather than by this tree,
 # and 750 MB — so it is found rather than vendored, submoduled or fetched: `cmake/FindNGX.cmake`,
@@ -85,7 +83,6 @@ endif()
 # build, never the frame. -MD gives ninja the include graph so editing a shared header rebuilds every
 # shader that includes it.
 set(RTX_SHADER_OUTPUTS)
-set(RTX_SPIRV_DIR "${RTX_RESOURCES_ROOT}/resources/rtx/shaders")
 
 # -g always: source correlation in Nsight is what makes a shader debuggable, and the debug info sits
 # in the module rather than costing anything at runtime.
@@ -315,33 +312,29 @@ add_library(openmw-rtx-vulkan STATIC ${RTX_VULKAN_FILES})
 # SDK headers sitting under `/usr/include`, and Windows is where one fails.
 target_link_libraries(openmw-rtx-vulkan PUBLIC openmw-rtx PRIVATE Vulkan::Vulkan SDL2::SDL2 components)
 
-# Vulkan Memory Allocator, the sub-allocator behind `memory.hpp`: one header, reached by
-# `memory.cpp` and nothing else. The system's where a package is installed, and the pinned release
-# fetched into the build tree otherwise, the way `extern/` takes Bullet and MyGUI when the system
-# has none. System headers either way, because the library's warnings are not this tree's to fix.
-find_package(VulkanMemoryAllocator CONFIG QUIET)
-if (NOT TARGET GPUOpen::VulkanMemoryAllocator)
-    include(FetchContent)
-    FetchContent_Declare(vma
-        URL https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator/archive/refs/tags/v3.4.0.tar.gz
-        URL_HASH SHA512=563acbcd8912d10d92c23715eba7acf0e7c1683af36021f415b36f359c2cce065f3906e395c32282a8410ec5c8179fbcb6412935c6629a49357475d4b4410e2a
-        SOURCE_DIR fetched/vma
-    )
-    FetchContent_MakeAvailable(vma)
-    set_target_properties(VulkanMemoryAllocator PROPERTIES
-        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES $<TARGET_PROPERTY:VulkanMemoryAllocator,INTERFACE_INCLUDE_DIRECTORIES>)
-endif()
-target_link_libraries(openmw-rtx-vulkan PRIVATE GPUOpen::VulkanMemoryAllocator)
-
 openmw_rtx_target(openmw-rtx-vulkan)
 
 add_dependencies(openmw-rtx-vulkan openmw-rtx-vulkan-shaders)
 
+# Vulkan Memory Allocator, the sub-allocator behind `memory.hpp`: one header, reached by
+# `memory.cpp` and nothing else. The system's where a package is installed, which the declaration
+# asks `find_package` for first, and the pinned release fetched into the build tree otherwise, the
+# way `extern/` takes Bullet and MyGUI when the system has none. `SYSTEM`, because the library's
+# warnings are not this tree's to fix; a package found is an imported target and system already.
+include(FetchContent)
+FetchContent_Declare(VulkanMemoryAllocator
+    URL https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator/archive/refs/tags/v3.4.0.tar.gz
+    URL_HASH SHA512=563acbcd8912d10d92c23715eba7acf0e7c1683af36021f415b36f359c2cce065f3906e395c32282a8410ec5c8179fbcb6412935c6629a49357475d4b4410e2a
+    SOURCE_DIR fetched/vma
+    SYSTEM
+    FIND_PACKAGE_ARGS CONFIG QUIET
+)
+FetchContent_MakeAvailable(VulkanMemoryAllocator)
+target_link_libraries(openmw-rtx-vulkan PRIVATE GPUOpen::VulkanMemoryAllocator)
+
 # Object names cost one call per object created, never per frame, and an unreadable capture is a
 # debugging session that does not happen.
 target_compile_definitions(openmw-rtx-vulkan PUBLIC $<$<NOT:$<CONFIG:Release>>:OPENMW_RTX_DEBUG_NAMES>)
-
-target_compile_definitions(openmw-rtx-vulkan PUBLIC OPENMW_RTX_SHADER_DIR="${RTX_SPIRV_DIR}")
 
 if (OPENMW_RTX_DLSS)
     # The static half is the target; the shared half is the feature library it loads at runtime,

@@ -48,18 +48,15 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL GNU)
     set_source_files_properties(options.cpp PROPERTIES COMPILE_OPTIONS -Wno-null-dereference)
 endif()
 
-# Named viewpoints. Copied here because this is the only thing that reads them, and beside the
-# backend's shaders under resources/rtx so one --resources finds both.
-copy_resource_file("${OpenMW_SOURCE_DIR}/files/rtx/views.cfg" "${RTX_RESOURCES_ROOT}" "resources/rtx/views.cfg")
-
-# Which of those a profiling run visits, and in what order.
-copy_resource_file("${OpenMW_SOURCE_DIR}/files/rtx/benches.cfg" "${RTX_RESOURCES_ROOT}" "resources/rtx/benches.cfg")
+# Named viewpoints, and which of them a profiling run visits in what order. Copied here because
+# this is the only thing that reads them, and beside the backend's shaders under resources/rtx so
+# one --resources finds both.
+copy_all_resource_files("${OpenMW_SOURCE_DIR}/files/rtx" "${RTX_RESOURCES_ROOT}" "resources/rtx" "views.cfg;benches.cfg")
 
 # The keys a watched run answers to, as a data directory of the harness's own: `hosted.cpp` adds it
 # and names the content file wherever there is a window, and the played game names neither.
-foreach(script rtxtool.omwscripts scripts/rtx/keys.lua scripts/rtx/sky.lua)
-    copy_resource_file("${OpenMW_SOURCE_DIR}/files/rtx/vfs/${script}" "${RTX_RESOURCES_ROOT}" "resources/rtx/vfs/${script}")
-endforeach()
+copy_all_resource_files("${OpenMW_SOURCE_DIR}/files/rtx/vfs" "${RTX_RESOURCES_ROOT}" "resources/rtx/vfs"
+                        "rtxtool.omwscripts;scripts/rtx/keys.lua;scripts/rtx/sky.lua")
 
 # **The harness links the game, because it drives one.** A run stands in the world the player
 # stands in — its cells read by `MWWorld::Scene`, its people dressed by `NpcAnimation`, its sky

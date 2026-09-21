@@ -217,6 +217,21 @@
             }
         },
         {
+            "name": "asan-linux",
+            "inherits": [ "asan", "linux", "rtx" ],
+            "binaryDir": "${sourceDir}/build-asan"
+        },
+        {
+            "name": "nodlss-linux",
+            "inherits": [ "nodlss", "linux", "rtx" ],
+            "binaryDir": "${sourceDir}/build-nodlss"
+        },
+        {
+            "name": "nodlss-windows",
+            "inherits": [ "nodlss", "windows", "rtx" ],
+            "binaryDir": "${sourceDir}/build-nodlss"
+        },
+        {
             "name": "package-linux",
             "inherits": [ "package", "linux", "rtx" ],
             "binaryDir": "${sourceDir}/build-package"
@@ -232,21 +247,6 @@
             "cacheVariables": {
                 "CMAKE_PREFIX_PATH": "${sourceDir}/deps/Qt/$env{QT_VER}/msvc2019_64"
             }
-        },
-        {
-            "name": "asan-linux",
-            "inherits": [ "asan", "linux", "rtx" ],
-            "binaryDir": "${sourceDir}/build-asan"
-        },
-        {
-            "name": "nodlss-linux",
-            "inherits": [ "nodlss", "linux", "rtx" ],
-            "binaryDir": "${sourceDir}/build-nodlss"
-        },
-        {
-            "name": "nodlss-windows",
-            "inherits": [ "nodlss", "windows", "rtx" ],
-            "binaryDir": "${sourceDir}/build-nodlss"
         }
     ]
 }

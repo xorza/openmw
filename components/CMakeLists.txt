@@ -612,25 +612,23 @@ endif()
 
 add_library(components STATIC ${COMPONENT_FILES})
 
-# This fork's own files inside upstream's library take the fork's flags, for the reason
-# `components/rtx/build.cmake` gives; the upstream files the fork edits keep upstream's. Every
-# system's file is named, and a name no system builds sets a property nothing reads.
 if (OPENMW_RTX)
-    openmw_rtx_sources(
-        platform/fifoposix.cpp platform/fifowin32.cpp platform/libraryposix.cpp platform/librarywin32.cpp
-        platform/memoryposix.cpp platform/memorywin32.cpp platform/processposix.cpp platform/processwin32.cpp
-        sceneutil/paintedtexture.cpp sky/sundisc.cpp sky/timeofday.cpp
-        )
-endif()
-
-# `Settings::sRayTracingBuilt` reads this. The option is a fact about the binary and every program
-# in this tree links this library.
-if (OPENMW_RTX)
+    # `Settings::sRayTracingBuilt` reads this. The option is a fact about the binary and every
+    # program in this tree links this library.
     target_compile_definitions(components PUBLIC OPENMW_RTX)
 
     # What `platform/libraryposix.cpp` opens a shared library with, on the C libraries that keep
     # it out of libc. Empty where libc has it.
     target_link_libraries(components ${CMAKE_DL_LIBS})
+
+    # This fork's own files inside upstream's library take the fork's flags, for the reason
+    # `components/rtx/build.cmake` gives; the upstream files the fork edits keep upstream's. Every
+    # system's file is named, and a name no system builds sets a property nothing reads.
+    openmw_rtx_sources(
+        platform/fifoposix.cpp platform/fifowin32.cpp platform/libraryposix.cpp platform/librarywin32.cpp
+        platform/memoryposix.cpp platform/memorywin32.cpp platform/processposix.cpp platform/processwin32.cpp
+        sceneutil/paintedtexture.cpp sky/sundisc.cpp sky/timeofday.cpp
+        )
 endif()
 
 if (ANDROID)

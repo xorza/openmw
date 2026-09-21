@@ -43,7 +43,7 @@ endif()
 
 if (OPENMW_RTX)
     set(RTX_TEST_FILES
-        ${CMAKE_SOURCE_DIR}/apps/components_tests/rtx/fallbackseed.cpp
+        ${OpenMW_SOURCE_DIR}/apps/components_tests/rtx/fallbackseed.cpp
         mwrender/debugwalk.cpp
         mwrender/frametimer.cpp
         mwrender/precipitation.cpp

@@ -1,4 +1,4 @@
-# The ray tracing renderer's API-neutral core. Built only with -DOPENMW_RTX=ON.
+# The ray tracing renderer's API-neutral core.
 #
 # **This library links no graphics API, and that is the point.** What belongs here is what is true
 # of Morrowind's content, of light transport, or of what the scene *is* — written once and read by

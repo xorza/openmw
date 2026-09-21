@@ -96,7 +96,7 @@ public `OPENMW_RTX` definition, read by `#ifdef OPENMW_RTX` in `mwrender/rendere
 | `openmw-rtx`                | `components/rtx`       | `components`                                                  |
 | `openmw-rtx-vulkan`         | `components/rtxvulkan` | `openmw-rtx`; Vulkan, SDL2, VMA, NGX as `PRIVATE`             |
 | `openmw-rtx-bench`          | `components/rtxbench`  | `openmw-rtx`                                                  |
-| `openmw-myguirtx`           | `components/myguirtx`  | `openmw-rtx`, `components`                                    |
+| `openmw-rtx-mygui`          | `components/myguirtx`  | `openmw-rtx`, `components`                                    |
 | `openmw-rtxtool-lib`        | `apps/rtxtool`         | the three component libraries, `components`, Boost, SDL2      |
 | `openmw-rtxtool`            | `apps/rtxtool`         | `openmw-rtxtool-lib`, `openmw-lib`                            |
 | `openmw-rtx-vulkan-shaders` | `components/rtxvulkan` | every `.spv` under `resources/rtx/shaders/`                   |
