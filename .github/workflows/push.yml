@@ -1,8 +1,9 @@
 name: Build and test
 
 on:
-- push
-- pull_request
+  push:
+    branches: [master]
+  pull_request:
 
 env:
   BUILD_TYPE: RelWithDebInfo

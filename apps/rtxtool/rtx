@@ -28,7 +28,7 @@
 #   package   build-package      release with the launcher, the wizard and the importers, in the
 #                                portable layout a release archive holds; `build` builds it all
 #
-# **One grammar for four builds**, because three scripts carried three: one had verbs only, one
+# **One grammar for five builds**, because three scripts carried three: one had verbs only, one
 # had tests by default and `tool` in front of a verb, and none built the game. What differed
 # between them is the table above, and everything else is the same eight lines.
 #
@@ -71,7 +71,7 @@ fi
 flavour="${1-}"
 what="${2-}"
 if [ -z "$flavour" ] || [ -z "$what" ]; then
-    sed -n '2,24p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2
+    sed -n '2,/^# \*\*/{/^# \*\*/d; s/^# \{0,1\}//p}' "${BASH_SOURCE[0]}" >&2
     exit 2
 fi
 shift 2
@@ -212,6 +212,25 @@ fetch() {
     curl --proto '=https' --fail --location --silent --show-error --retry 3 "$@"
 }
 
+# A tool a step needs, asked for before the step starts anything, with the package that brings it.
+require() {
+    if ! command -v "$1" > /dev/null; then
+        echo "rtx: $1 is not on the PATH, and this needs it: $2" >&2
+        exit 2
+    fi
+}
+
+# **One download, one checksum, one file**, for everything pinned here by SHA-256. Written beside
+# its final name and given it only once the checksum has passed: a run cut off mid-way, or a
+# mirror that served something else, leaves nothing a later run mistakes for the file.
+fetchChecked() {
+    local url="$1" sum="$2" file="$3"
+    echo "fetching $(basename "$file")" >&2
+    fetch --output "$file.partial" "$url"
+    echo "$sum  $file.partial" | sha256sum --check --quiet --strict -
+    mv "$file.partial" "$file"
+}
+
 # **Upstream's prebuilt dependency set, the way `windows.yml` gets it.** A manifest on
 # `openmw-deps` names the archive and its SHA-512 for the tag `CI/deps_versions.msvc.sh` pins —
 # the 2022 set, which upstream's own script links against Visual Studio 2026 as well. The
@@ -256,17 +275,13 @@ fetchClangFormat() {
         return
     fi
 
-    local unpack package="LLVM-14.0.6-win64.exe"
+    local unpack package="$root/deps/LLVM-14.0.6-win64.exe"
     unpack="$(sevenZip)"
     mkdir -p "$root/deps"
-    (
-        cd "$root/deps"
-        echo "fetching $package" >&2
-        fetch --output "$package" "https://github.com/llvm/llvm-project/releases/download/llvmorg-14.0.6/$package"
-        echo "e8dbb2f7de8e37915273d65c1c2f2d96844b96bb8e8035f62c5182475e80b9fc  $package" | sha256sum --check --quiet --strict -
-        "$unpack" e -y -o"$(dirname "$found")" "$package" bin/clang-format.exe > /dev/null
-        rm -f "$package"
-    )
+    fetchChecked "https://github.com/llvm/llvm-project/releases/download/llvmorg-14.0.6/$(basename "$package")" \
+        e8dbb2f7de8e37915273d65c1c2f2d96844b96bb8e8035f62c5182475e80b9fc "$package"
+    "$unpack" e -y -o"$(dirname "$found")" "$package" bin/clang-format.exe > /dev/null
+    rm -f "$package"
     echo "$found"
 }
 
@@ -292,18 +307,14 @@ fetchWindowsSdl() {
         return
     fi
 
-    local unpack package="SDL2-devel-$version-VC.zip"
+    local unpack package="$root/deps/SDL2-devel-$version-VC.zip"
     unpack="$(sevenZip)"
-    (
-        cd "$root/deps"
-        echo "fetching $package" >&2
-        fetch --output "$package" "https://github.com/libsdl-org/SDL/releases/download/release-$version/$package"
-        echo "$sum  $package" | sha256sum --check --quiet --strict -
-        rm -rf "$sdl.partial"
-        "$unpack" x -y -o"$sdl.partial" "$package" > /dev/null
-        mv "$sdl.partial/SDL2-$version" "$sdl"
-        rm -rf "$sdl.partial" "$package"
-    )
+    fetchChecked "https://github.com/libsdl-org/SDL/releases/download/release-$version/$(basename "$package")" \
+        "$sum" "$package"
+    rm -rf "$sdl.partial"
+    "$unpack" x -y -o"$sdl.partial" "$package" > /dev/null
+    mv "$sdl.partial/SDL2-$version" "$sdl"
+    rm -rf "$sdl.partial" "$package"
 }
 
 # **Qt, for the one flavour that builds the launcher and the wizard.** The dependency set carries
@@ -317,15 +328,11 @@ fetchWindowsQt() {
         return
     fi
 
-    (
-        mkdir -p "$root/deps/Qt"
-        cd "$root/deps/Qt"
-        echo "fetching Qt $version" >&2
-        fetch --output aqt_x64.exe "https://github.com/miurahr/aqtinstall/releases/download/v3.1.15/aqt_x64.exe"
-        echo "$sum  aqt_x64.exe" | sha256sum --check --quiet --strict -
-        ./aqt_x64.exe install-qt windows desktop "$version" win64_msvc2019_64
-        rm -f aqt_x64.exe
-    )
+    mkdir -p "$root/deps/Qt"
+    fetchChecked "https://github.com/miurahr/aqtinstall/releases/download/v3.1.15/aqt_x64.exe" "$sum" \
+        "$root/deps/Qt/aqt_x64.exe"
+    (cd "$root/deps/Qt" && ./aqt_x64.exe install-qt windows desktop "$version" win64_msvc2019_64)
+    rm -f "$root/deps/Qt/aqt_x64.exe"
 }
 
 # Configured once, which is the one moment the SDK is looked for: `NGX_ROOT` in the environment
@@ -411,16 +418,26 @@ buildTargets() {
     cmake --build "$build" -j"$(nproc)" --target "$@" -- -k 0
 }
 
-# Where the game keeps its saves, answered the way `Files::LinuxPath` and `Files::WindowsPath`
-# answer it: `XDG_DATA_HOME` or `~/.local/share`, and the Documents folder the system names —
-# which is not `~/Documents` on a box where OneDrive has moved it — under `My Games`.
+# Where the game keeps its saves, and where it reads its own openmw.cfg and settings.cfg,
+# answered the way `Files::LinuxPath` and `Files::WindowsPath` answer them: two directories on
+# Linux, `XDG_DATA_HOME` or `~/.local/share` and `XDG_CONFIG_HOME` or `~/.config`, and one on
+# Windows, the Documents folder the system names — which is not `~/Documents` on a box where
+# OneDrive has moved it — under `My Games`.
 userDataDir() {
+    if onWindows; then
+        userConfigDir
+    else
+        echo "${XDG_DATA_HOME:-$HOME/.local/share}/openmw"
+    fi
+}
+
+userConfigDir() {
     if onWindows; then
         local documents
         documents="$(powershell -NoProfile -NonInteractive -Command "[Environment]::GetFolderPath('MyDocuments')")"
         echo "$(cygpath "$documents")/My Games/OpenMW"
     else
-        echo "${XDG_DATA_HOME:-$HOME/.local/share}/openmw"
+        echo "${XDG_CONFIG_HOME:-$HOME/.config}/openmw"
     fi
 }
 
@@ -448,7 +465,7 @@ setupGame() {
     fi
 
     local cfg
-    cfg="$(userDataDir)/openmw.cfg"
+    cfg="$(userConfigDir)/openmw.cfg"
     if [ -e "$cfg" ]; then
         echo "rtx: $cfg is already there; move it away to start over" >&2
         exit 2
@@ -490,15 +507,17 @@ checkFormat() {
         | xargs -P "$(nproc)" "$clangFormat" --dry-run -Werror)
 }
 
-# **The fork's two libraries, compiled the way a number is taken.** `-DNDEBUG` compiles every
-# assert out, and a diagnostic that fires only once the assert is gone — a lookup the optimizer
-# can now prove reaches a null — is one the debug build never sees. A minute with the cache warm,
-# in a subshell so the gate's own flavour stays what it was.
+# **The fork's libraries, compiled the way a number is taken.** `-DNDEBUG` compiles every assert
+# out, and a diagnostic that fires only once the assert is gone — a lookup the optimizer can now
+# prove reaches a null — is one the debug build never sees. Every library the fork owns, since the
+# flags that make a warning an error reach each of them; the fork's files inside upstream's
+# targets are compiled by `build` in this flavour, which is the build a number is quoted from. A
+# minute with the cache warm, in a subshell so the gate's own flavour stays what it was.
 compileWithoutAsserts() {
     (
         describeFlavour release
         configureIfNeeded
-        buildTargets openmw-rtx openmw-rtx-vulkan
+        buildTargets openmw-rtx openmw-rtx-bench openmw-rtx-vulkan openmw-rtx-mygui openmw-rtxtool-lib
     )
 }
 
@@ -680,10 +699,7 @@ fetchAppImageTools() {
         if [ -f "$tools/$file" ]; then
             continue
         fi
-        echo "fetching $file" >&2
-        fetch --output "$tools/$file.partial" "$url"
-        echo "$sum  $tools/$file.partial" | sha256sum --check --quiet --strict -
-        mv "$tools/$file.partial" "$tools/$file"
+        fetchChecked "$url" "$sum" "$tools/$file"
         chmod +x "$tools/$file"
     done <<'EOT'
 linuxdeploy https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20251107-1/linuxdeploy-x86_64.AppImage c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d
@@ -702,6 +718,9 @@ usedOsgPlugins() {
 
 archiveLinux() {
     local name="$1" dist="$root/dist" appdir="$root/AppDir" tools="$root/deps/appimage"
+    require qmake6 "the Qt plugin reads Qt's layout off it: qt6-base-dev-tools"
+    require pkg-config "OSG's version and library directory come off its .pc: pkg-config"
+    require zsyncmake "the update information wants a .zsync beside the image: zsync"
     fetchAppImageTools
 
     rm -rf "$appdir"
@@ -746,7 +765,7 @@ archiveLinux() {
         LDAI_UPDATE_INFORMATION='gh-releases-zsync|xorza|openmw-rtx|latest|openmw-rtx-v*-linux-x86_64.AppImage.zsync' \
         LDAI_OUTPUT="$dist/openmw-$name-linux-x86_64.AppImage" \
         "$tools/linuxdeploy-plugin-appimage" --appdir "$appdir"
-    mv "$root"/*.zsync "$dist/" 2> /dev/null || true
+    rm -rf "$appdir"
 }
 
 # **The zip is cpack's, off the same install rules upstream's installer is made of** — and a zip
@@ -754,6 +773,7 @@ archiveLinux() {
 # unpack beside a stock OpenMW, not register itself where one would.
 archiveWindows() {
     local name="$1" dist="$root/dist"
+    require cpack "CMake's own, beside the cmake on the PATH"
     mkdir -p "$dist"
     cpack -G ZIP --config "$build/CPackConfig.cmake" -B "$dist"
     rm -rf "$dist/_CPack_Packages"
@@ -790,9 +810,24 @@ case "$what" in
         setupGame "$@"
         ;;
     game)
+        # The newest quicksave of any character unless the line names a save, so the script
+        # names nobody's.
         buildTargets openmw
+        save=()
+        case " $* " in
+            *" --load-savegame"*) ;;
+            *)
+                quicksave="$(find "$(userDataDir)/saves" -name Quicksave.omwsave -printf '%T@ %p\n' 2> /dev/null \
+                    | sort -n | tail -1 | cut -d' ' -f2-)"
+                if [ -z "$quicksave" ]; then
+                    echo "rtx: no Quicksave.omwsave under $(userDataDir)/saves; name one with --load-savegame" >&2
+                    exit 2
+                fi
+                save=(--load-savegame "$quicksave")
+                ;;
+        esac
         cd "$build"
-        exec ./openmw --skip-menu --load-savegame "$(userDataDir)/saves/asd/Quicksave.omwsave" "$@"
+        exec ./openmw --skip-menu "${save[@]}" "$@"
         ;;
     repeat)
         buildTargets openmw-rtxtool

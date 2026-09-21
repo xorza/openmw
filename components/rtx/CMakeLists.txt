@@ -194,9 +194,7 @@ set(RTX_SHADER_HEADERS
     shaders/wave.h
 )
 
-source_group(components\\rtx FILES ${RTX_FILES} ${RTX_SHADER_HEADERS})
-
-add_library(openmw-rtx STATIC ${RTX_FILES} ${RTX_SHADER_HEADERS})
+openmw_rtx_library(openmw-rtx ${RTX_FILES} ${RTX_SHADER_HEADERS})
 
 # **`PUBLIC`, because the interface is not self-contained.** `sceneextractor.hpp` takes an
 # `osg::NodeVisitor` and an `osgParticle::ParticleSystem`, and `scenedesc.hpp` has always included
@@ -209,5 +207,3 @@ target_link_libraries(openmw-rtx PUBLIC components)
 # harness cannot come to disagree about when a frame is being checked.
 target_compile_definitions(openmw-rtx PUBLIC
                            $<$<NOT:$<CONFIG:Release>>:OPENMW_RTX_VALIDATION_BY_DEFAULT>)
-
-openmw_rtx_target(openmw-rtx)

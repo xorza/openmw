@@ -5,8 +5,10 @@
 # SDK and no NGX, and macOS can have neither, so each of their three configures carries the one
 # line the fork adds to them, `-D OPENMW_RTX=OFF`: push.yml for Ubuntu, windows.yml, and
 # CI/before_script.macos.sh. What they prove is what this workflow cannot: that the tree still
-# builds without the ray tracer, and upstream's own suites on three systems. Nothing here is
-# switched off in the repository's settings, because a fresh fork does not carry a setting.
+# builds without the ray tracer, and upstream's own suites on three systems. On master and pull
+# requests, which is the second line the fork adds: three runners for three quarters of an hour
+# say nothing a branch needs. Nothing here is switched off in the repository's settings, because
+# a fresh fork does not carry a setting.
 #
 # **One job, two legs.** Everything after the dependencies is the same three lines on both
 # systems, because `apps/rtxtool/rtx` is where the systems differ — so the workflow states the
@@ -47,8 +49,10 @@ on:
 permissions:
   contents: read
 
+# A push supersedes the push before it on the same ref. A run asked for by hand stands alone: it
+# is wanted whole, and a push in the meantime must neither cancel it nor be cancelled by it.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}${{ github.event_name == 'workflow_dispatch' && format('-{0}', github.run_id) || '' }}
   cancel-in-progress: true
 
 env:
@@ -117,24 +121,28 @@ jobs:
           persist-credentials: false
 
       - name: OpenMW dependencies
-        # Upstream's own list, plus what rtx asks for: Ninja and the system Google Test.
+        # Upstream's own list, plus what rtx asks for: Ninja and the system Google Test, and for
+        # the archive, Qt's Wayland platform and zsync — a few seconds on every run, so the
+        # package step stays the one line it is on Windows.
         if: runner.os == 'Linux'
         run: |
           sudo add-apt-repository -y ppa:openmw/openmw
           sudo apt-get update
           sudo CI/install_debian_deps.sh gcc openmw-deps openmw-deps-dynamic
-          sudo apt-get install -y ninja-build libgtest-dev libgmock-dev
+          sudo apt-get install -y ninja-build libgtest-dev libgmock-dev qt6-wayland zsync
 
       - name: OpenMW dependencies cache
-        # Windows has no package for them: `rtx` fetches upstream's prebuilt set and SDL's own
-        # package into deps/ at the first configure, and this keeps them between runs. The key
-        # names the tag upstream pins and the script that pins SDL, so a bump of either fetches
-        # afresh.
+        # Windows has no package for them: `rtx` fetches upstream's prebuilt set, SDL's own
+        # package and Qt into deps/ at the first configure, and this keeps them between runs. The
+        # key names the tags upstream pins and the script that pins the rest, so a bump of either
+        # saves afresh; an older cache is restored all the same, because `rtx` judges each set by
+        # the directory it leaves and fetches only what a bump changed.
         if: runner.os == 'Windows'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: deps
           key: deps-${{ matrix.os }}-${{ hashFiles('CI/deps_versions.msvc.sh', 'apps/rtxtool/rtx') }}
+          restore-keys: deps-${{ matrix.os }}-
 
       - name: Vulkan SDK cache
         id: vulkan
@@ -242,14 +250,9 @@ jobs:
 
       - name: Package
         if: env.PACKAGE == 'true'
-        # The portable layout, wrapped the way each system takes it: `rtx` says how, and what the
-        # AppImage needs from the runner is Qt's Wayland platform and zsync. Named after the ref,
-        # so a tag names its archives and a run by hand names the branch.
-        run: |
-          if [ "$RUNNER_OS" = Linux ]; then
-            sudo apt-get install -y qt6-wayland zsync
-          fi
-          apps/rtxtool/rtx package archive "$GITHUB_REF_NAME"
+        # The portable layout, wrapped the way each system takes it: `rtx` says how. Named after
+        # the ref, so a tag names its archives and a run by hand names the branch.
+        run: apps/rtxtool/rtx package archive "$GITHUB_REF_NAME"
 
       - name: Archive
         if: env.PACKAGE == 'true'
@@ -268,6 +271,7 @@ jobs:
             build-debug/CMakeCache.txt
             build-debug/**/*.log
             build-nodlss/CMakeCache.txt
+            build-package/CMakeCache.txt
 
   release:
     # A draft, with both archives, on the tag that was pushed. Only this job can write, and it

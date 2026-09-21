@@ -82,6 +82,17 @@ function(openmw_rtx_target target)
     endif()
 endfunction()
 
+# A library of this fork's own, out of the files named: grouped for an IDE under its directory
+# the way upstream groups its own, static like every library in this tree, and compiled with the
+# flags above. What each library links, and why publicly, stays in its own file.
+function(openmw_rtx_library target)
+    file(RELATIVE_PATH group "${OpenMW_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}")
+    string(REPLACE "/" "\\" group "${group}")
+    source_group("${group}" FILES ${ARGN})
+    add_library(${target} STATIC ${ARGN})
+    openmw_rtx_target(${target})
+endfunction()
+
 # This fork's files inside a target that is not its own — the game, upstream's test binaries —
 # where every other file keeps upstream's flags. The files named after `ERRORS_ONLY` read the
 # game's headers and take the errors without the checks; a file named on both sides is one of
