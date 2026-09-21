@@ -251,10 +251,10 @@ jobs:
         # at the front of the file is the static one, pinned here by release and checksum: it runs
         # on FUSE 2, FUSE 3 or none, where the old runtime dies on every distribution that has
         # dropped libfuse2, and without it appimagetool fetches whatever the runtime's continuous
-        # release holds that day. Qt's X11 platform alone, which runs through XWayland on a Wayland
-        # session: the plugin's pinned release bundles the Wayland platform on request but not the
-        # shell and buffer integrations it needs beside it, and a Wayland window without a shell
-        # never maps. The Vulkan loader stays out, because the
+        # release holds that day. The Qt plugin bundles the Wayland platform beside X11, and with
+        # it, through its `waylandcompositor` module, the shell, buffer and decoration plugin sets
+        # a Wayland window needs — without the shell one it never maps, and the launcher sits there
+        # — so the launcher opens on a session with no XWayland. The Vulkan loader stays out, because the
         # one on a player's machine is the one that matches their driver. The update information
         # points AppImageUpdate at this repository's releases and writes the `.zsync` beside the
         # file. AppStream validation is off: upstream's metainfo carries warnings appstreamcli
@@ -272,7 +272,7 @@ jobs:
           apps/rtxtool/rtx package build
           mkdir -p dist
           if [ "$RUNNER_OS" = Linux ]; then
-            sudo apt-get install -y zsync
+            sudo apt-get install -y qt6-wayland zsync
             cmake --install build-package --prefix "$PWD/AppDir/usr/bin"
             mv AppDir/usr/bin/share AppDir/usr/share
             curl --fail --retry 3 -L -o linuxdeploy \
@@ -290,6 +290,7 @@ jobs:
               [ -f "$file" ] && [ -x "$file" ] && executables+=(--executable "$file")
             done
             APPIMAGE_EXTRACT_AND_RUN=1 QMAKE=/usr/bin/qmake6 PATH="$PWD:$PATH" \
+              EXTRA_PLATFORM_PLUGINS='libqwayland-generic.so;libqwayland-egl.so' EXTRA_QT_MODULES=waylandcompositor \
               LDAI_RUNTIME_FILE="$PWD/runtime-x86_64" LDAI_NO_APPSTREAM=1 \
               LDAI_UPDATE_INFORMATION='gh-releases-zsync|xorza|openmw-rtx|latest|openmw-rtx-v*-linux-x86_64.AppImage.zsync' \
               LDAI_OUTPUT="dist/openmw-${GITHUB_REF_NAME}-linux-x86_64.AppImage" \
