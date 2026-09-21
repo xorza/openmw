@@ -84,6 +84,7 @@ file(GLOB UNITTEST_SRC_FILES
 
     esmterrain/testgridsampling.cpp
 
+    resource/testmultiobjectcache.cpp
     resource/testobjectcache.cpp
     resource/testresourcesystem.cpp
 

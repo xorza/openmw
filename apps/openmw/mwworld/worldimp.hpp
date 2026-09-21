@@ -248,6 +248,8 @@ namespace MWWorld
 
         bool isCellQuasiExterior() const override;
 
+        const std::set<CellStore*, std::less<>>& getActiveCells() const override;
+
         ESM::RefId getCurrentWorldspace() const;
 
         void getDoorMarkers(MWWorld::CellStore& cell, std::vector<DoorMarker>& out) override;
