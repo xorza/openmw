@@ -3,53 +3,9 @@
 #include <cassert>
 
 #include <osg/GL>
-#include <osg/State>
 
 namespace SceneUtil
 {
-    class PaintedTexture::Uploader final : public osg::Texture2D::SubloadCallback
-    {
-    public:
-        void load(const osg::Texture2D& texture, osg::State& state) const override
-        {
-            // This callback is installed by `PaintedTexture` alone, which is what makes the cast a
-            // statement rather than a question.
-            const auto& painted = static_cast<const PaintedTexture&>(texture);
-            const osg::Image& image = *painted.getImage();
-
-            glPixelStorei(GL_UNPACK_ALIGNMENT, image.getPacking());
-            glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, image.s(), image.t(), 0, GL_RGBA, GL_UNSIGNED_BYTE, image.data());
-
-            mSeen = painted.getPaintCount();
-        }
-
-        void subload(const osg::Texture2D& texture, osg::State& state) const override
-        {
-            const auto& painted = static_cast<const PaintedTexture&>(texture);
-            const Painted pending = painted.since(mSeen);
-            mSeen = pending.mPaints;
-            if (pending.mRegion.empty())
-                return;
-
-            const osg::Image& image = *painted.getImage();
-            const ImageRegion& region = pending.mRegion;
-
-            // The rectangle out of the middle of the image's rows, which is what the row length
-            // says; back to the default after, because the state object tracks neither.
-            glPixelStorei(GL_UNPACK_ALIGNMENT, image.getPacking());
-            glPixelStorei(GL_UNPACK_ROW_LENGTH, image.s());
-            glTexSubImage2D(GL_TEXTURE_2D, 0, region.mX, region.mY, region.mWidth, region.mHeight, GL_RGBA,
-                GL_UNSIGNED_BYTE, image.data(region.mX, region.mY));
-            glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
-        }
-
-    private:
-        /// One count and not one per context, because the game draws its interface through one
-        /// context.
-        mutable std::uint32_t mSeen = 0;
-    };
-
     PaintedTexture::PaintedTexture(osg::Image* image)
     {
         assert(image != nullptr && image->getPixelFormat() == GL_RGBA && image->getDataType() == GL_UNSIGNED_BYTE
@@ -57,10 +13,6 @@ namespace SceneUtil
 
         setImage(image);
         setUnRefImageDataAfterApply(false);
-        setResizeNonPowerOfTwoHint(false);
-        setInternalFormat(GL_RGBA);
-        setTextureSize(image->s(), image->t());
-        setSubloadCallback(new Uploader);
 
         setWrap(osg::Texture::WRAP_S, osg::Texture::CLAMP_TO_EDGE);
         setWrap(osg::Texture::WRAP_T, osg::Texture::CLAMP_TO_EDGE);
@@ -80,6 +32,7 @@ namespace SceneUtil
         // paint.
         mRecent[mPaints % sRemembered] = region;
         ++mPaints;
+        getImage()->dirty();
     }
 
     void PaintedTexture::paintAll()

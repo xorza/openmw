@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cassert>
 
+#include "tracedoverlay.hpp"
 #include "tracedview.hpp"
 
 namespace MWRender
@@ -17,8 +18,8 @@ namespace MWRender
         std::erase(mViews, &view);
         std::erase(mDeferred, &view);
 
-        // Nulled and not erased: a view can go from inside its own draw, and the loop below is
-        // walking this list by index.
+        // Nulled and not erased: a view can go from inside its own draw, while `draw` walks this
+        // list, and replacing a pointer leaves that walk's iterators where they were.
         std::replace(mDrawing.begin(), mDrawing.end(), &view, static_cast<TracedView*>(nullptr));
     }
 
@@ -28,7 +29,7 @@ namespace MWRender
             mDeferred.push_back(&view);
     }
 
-    void ViewQueue::draw(const std::uint32_t worldViews)
+    void ViewQueue::draw(const std::uint32_t worldViews, const PoseMoment& moment)
     {
         assert(mDrawing.empty() && "a flush inside a flush");
 
@@ -50,7 +51,7 @@ namespace MWRender
             if (view->isOfWorld())
                 ++world;
 
-            view->draw();
+            view->draw(moment);
         }
 
         mDrawing.clear();
@@ -61,5 +62,21 @@ namespace MWRender
         const auto found = std::find_if(
             mViews.begin(), mViews.end(), [&](const TracedView* view) { return view->coversFromAbove(over); });
         return found != mViews.end() ? *found : nullptr;
+    }
+
+    void ViewQueue::adoptOverlay(TracedOverlay& overlay)
+    {
+        mOverlays.push_back(&overlay);
+    }
+
+    void ViewQueue::forgetOverlay(TracedOverlay& overlay)
+    {
+        std::erase(mOverlays, &overlay);
+    }
+
+    void ViewQueue::finishOverlays()
+    {
+        for (TracedOverlay* overlay : mOverlays)
+            overlay->finish();
     }
 }

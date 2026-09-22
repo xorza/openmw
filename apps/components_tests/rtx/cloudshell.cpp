@@ -306,7 +306,7 @@ namespace Rtx
                 readCloudShell(scenes, VFS::Path::NormalizedView("meshes/sky_clouds_01.nif"));
                 FAIL() << "a missing cloud mesh was read as no deck";
             }
-            catch (const Error& what)
+            catch (const InputError& what)
             {
                 EXPECT_NE(std::string_view(what.what()).find("meshes/sky_clouds_01.nif"), std::string_view::npos)
                     << what.what();

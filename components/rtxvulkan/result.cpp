@@ -95,7 +95,7 @@ namespace Rtx
         if (result == VK_SUCCESS)
             return;
 
-        throw Error(describeFailure(result, call));
+        throw DeviceError(describeFailure(result, call));
     }
 
     void checkVkSupport(VkResult result, const char* call)
@@ -115,7 +115,7 @@ namespace Rtx
         if (result == VK_ERROR_DEVICE_LOST)
             message += device.describeFault();
 
-        throw Error(message);
+        throw DeviceError(message);
     }
 
     std::string timedOut(const char* what, std::uint64_t patience)
@@ -133,7 +133,7 @@ namespace Rtx
     void checkVkWait(const Device& device, const VkResult result, const char* what, const std::uint64_t patience)
     {
         if (result == VK_TIMEOUT)
-            throw Error(timedOut(what, patience));
+            throw DeviceError(timedOut(what, patience));
 
         checkVk(device, result, what);
     }

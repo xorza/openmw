@@ -5,8 +5,8 @@
 #include <gtest/gtest.h>
 
 #include <components/rtx/mirroridentity.hpp>
+#include <components/rtx/mirrorpass.hpp>
 #include <components/rtx/runs.hpp>
-#include <components/rtx/walk.hpp>
 
 namespace Rtx
 {

@@ -32,7 +32,7 @@ namespace MyGUIRtx
 
 namespace MWRender
 {
-    class RtxRenderer;
+    class ViewQueue;
 
     /// The world map's overlay as the ray tracer draws it: composited in main memory, in the image
     /// the save is written from, and mirrored into the interface through a `PaintedTexture` that
@@ -45,7 +45,8 @@ namespace MWRender
     class TracedOverlay final : public MapOverlay
     {
     public:
-        TracedOverlay(const MapOverlaySpec& spec, RtxRenderer& renderer, MyGUIRtx::RenderManager& gui);
+        /// @param views the list this joins, whose `finishOverlays` finishes its paints.
+        TracedOverlay(const MapOverlaySpec& spec, ViewQueue& views, MyGUIRtx::RenderManager& gui);
         ~TracedOverlay() override;
 
         void paintTile(const SceneUtil::ImageRegion& destination, std::shared_ptr<OffscreenView> tile) override;
@@ -72,10 +73,7 @@ namespace MWRender
         /// `compositeTile` into the image, and the texture told where it changed.
         void composite(const SceneUtil::ImageRegion& destination, const osg::Image& tile);
 
-        RtxRenderer& mRenderer;
-
-        int mWidth;
-        int mHeight;
+        ViewQueue& mViews;
 
         /// Where the land is above water: what stops an explored tile painting its cell's sea over
         /// the map's own.

@@ -12,8 +12,8 @@ namespace Rtx
     namespace
     {
         /// The counts in, the share out.
-        constexpr std::array<VkDescriptorSetLayoutBinding, 2> sBindings
-            = computeBindings<2>(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+        constexpr std::array<VkDescriptorSetLayoutBinding, Shaders::SUN_GLARE_BINDINGS> sBindings
+            = computeBindings<Shaders::SUN_GLARE_BINDINGS>(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
     }
 
     SunGlarePass::SunGlarePass(const Device& device, const std::filesystem::path& shaderDirectory)
@@ -47,9 +47,9 @@ namespace Rtx
             BufferUse{ VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT },
             Use::sBufferComputeRead);
 
-        DescriptorWrites<2> writes;
-        writes.buffer(0, mCounts.describe());
-        writes.buffer(1, mShare.describe());
+        DescriptorWrites<Shaders::SUN_GLARE_BINDINGS> writes;
+        writes.buffer(Shaders::SUN_GLARE_BIND_COUNT, mCounts.describe());
+        writes.buffer(Shaders::SUN_GLARE_BIND_SHARE, mShare.describe());
 
         const Shaders::SunGlareConstants constants{
             .mElapsed = elapsedSeconds,

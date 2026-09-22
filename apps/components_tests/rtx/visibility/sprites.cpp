@@ -14,6 +14,7 @@
 #include <components/vfs/pathutil.hpp>
 
 #include "../geometry.hpp"
+#include "../testcamera.hpp"
 #include "../testtexture.hpp"
 #include "fixture.hpp"
 
@@ -88,7 +89,7 @@ namespace Rtx::Testing
                     .mAlpha = 1.0f } };
                 scene.addEmitter(sprites, cut, false);
 
-                Shaders::VisibilityConstants camera = makeCamera(
+                Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(0.0f, 0.0f, 200.0f), osg::Vec3f(0.0f, 300.0f, 200.0f), 90.0f, size, size, 100000.0f);
                 camera.mSkyHorizon = osg::Vec3f(0.6f, 0.6f, 0.6f);
                 camera.mSkyZenith = camera.mSkyHorizon;
@@ -177,7 +178,7 @@ namespace Rtx::Testing
                         .mIntensity = osg::Vec3f(4.0e5f, 4.0e5f, 4.0e5f),
                         .mReach = 4000.0f });
 
-                Shaders::VisibilityConstants camera = makeCamera(
+                Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(0.0f, -1.0f, 400.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
 
                 camera.mSkyHorizon = osg::Vec3f();
@@ -251,7 +252,7 @@ namespace Rtx::Testing
                             .mMesh = scene.addMesh(
                                 MeshArrays{ .mPositions = sheetAt(4000.0f, z), .mIndices = sQuadIndices }) });
 
-                Shaders::VisibilityConstants camera = makeCamera(
+                Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(0.0f, -reach, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
 
                 camera.mSkyHorizon = osg::Vec3f();
@@ -316,7 +317,7 @@ namespace Rtx::Testing
 
                 // Forty up over four hundred along, so the centre ray runs down through the
                 // sprite's centre and on to the floor, near or far.
-                Shaders::VisibilityConstants camera = makeCamera(osg::Vec3f(0.0f, -400.0f, height + 40.0f),
+                Shaders::VisibilityConstants camera = Testing::makeCamera(osg::Vec3f(0.0f, -400.0f, height + 40.0f),
                     osg::Vec3f(0.0f, 0.0f, height), 60.0f, size, size, 100000.0f);
 
                 // An even sky lights the floor exactly and the puff not at all: a puff is lit by the
@@ -369,7 +370,7 @@ namespace Rtx::Testing
                         .mAlpha = 1.0f });
                 scene.addEmitter(flames, cut, true);
 
-                Shaders::VisibilityConstants camera = makeCamera(
+                Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(0.0f, -400.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
                 camera.mSkyHorizon = osg::Vec3f();
                 camera.mSkyZenith = osg::Vec3f();
@@ -422,7 +423,7 @@ namespace Rtx::Testing
                     .mAlpha = 1.0f } };
                 scene.addEmitter(sprites, cut, true, width);
 
-                Shaders::VisibilityConstants camera = makeCamera(
+                Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(0.0f, -400.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
                 camera.mSkyHorizon = osg::Vec3f();
                 camera.mSkyZenith = osg::Vec3f();
@@ -506,7 +507,7 @@ namespace Rtx::Testing
                     .mAlpha = 1.0f } };
                 scene.addEmitter(sprites, cut, false, 0.25f);
 
-                Shaders::VisibilityConstants camera = makeCamera(
+                Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(0.0f, -400.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
 
                 // The sun and nothing else, so what a pixel holds is the shape's own share of it.
@@ -578,7 +579,7 @@ namespace Rtx::Testing
                 // Additive, so what a pixel holds is the texel it read and nothing has to light it.
                 scene.addEmitter(sprites, cut, true, width);
 
-                Shaders::VisibilityConstants camera = makeCamera(
+                Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(0.0f, -800.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
                 camera.mSkyHorizon = osg::Vec3f();
                 camera.mSkyZenith = osg::Vec3f();
@@ -634,7 +635,7 @@ namespace Rtx::Testing
                     .mAlpha = 1.0f } };
                 scene.addEmitter(sprites, cut, false, 0.0f, bake);
 
-                Shaders::VisibilityConstants camera = makeCamera(
+                Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(0.0f, -400.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
                 camera.mSkyHorizon = osg::Vec3f();
                 camera.mSkyZenith = osg::Vec3f();
@@ -700,7 +701,7 @@ namespace Rtx::Testing
                         .mAlpha = 1.0f });
                 scene.addEmitter(sprites, cut, false);
 
-                Shaders::VisibilityConstants camera = makeCamera(
+                Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(0.0f, -400.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
                 camera.mSkyHorizon = osg::Vec3f();
                 camera.mSkyZenith = osg::Vec3f();
@@ -772,7 +773,7 @@ namespace Rtx::Testing
                     .mMesh
                     = scene.addMesh(MeshArrays{ .mPositions = sheetAt(100.0f, 300.0f), .mIndices = sQuadIndices }) });
 
-                Shaders::VisibilityConstants camera = makeCamera(
+                Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(0.0f, -1000.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 30.0f, size, size, 100000.0f);
                 camera.mSkyHorizon = osg::Vec3f();
                 camera.mSkyZenith = osg::Vec3f();

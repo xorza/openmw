@@ -13,6 +13,7 @@
 #include <osg/Transform>
 
 #include "materialresolver.hpp"
+#include "meshtable.hpp"
 #include "prepared.hpp"
 #include "runs.hpp"
 #include "worlddescent.hpp"
@@ -108,6 +109,10 @@ namespace Rtx
         MeshReading reading;
         if (!mMeshes.read(read, reading))
             return;
+
+        // Here on the reader's thread, where the model is refused whole, and not at the adoption,
+        // which is inside the frame's walk.
+        MeshTable::checkFits(reading.mArrays);
 
         PreparedModel& into = *mInto;
 

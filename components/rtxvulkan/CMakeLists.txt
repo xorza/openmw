@@ -152,6 +152,8 @@ add_custom_target(openmw-rtx-vulkan-shaders ALL DEPENDS ${RTX_SHADER_OUTPUTS}
 set(RTX_VULKAN_FILES
     accelerationstructure.cpp
     accelerationstructure.hpp
+    accumulatehistory.cpp
+    accumulatehistory.hpp
     accumulatepass.cpp
     accumulatepass.hpp
     atrouspass.cpp

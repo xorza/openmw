@@ -10,7 +10,6 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
-#include <string_view>
 
 #include <MyGUI_ITexture.h>
 #include <SDL_mouse.h>
@@ -33,7 +32,6 @@
 #include <components/resource/resourcesystem.hpp>
 #include <components/resource/scenemanager.hpp>
 #include <components/rtx/camera.hpp>
-#include <components/rtx/cellgrid.hpp>
 #include <components/rtx/error.hpp>
 #include <components/rtx/frameextents.hpp>
 #include <components/rtx/frameimage.hpp>
@@ -65,6 +63,7 @@
 #include "../skystate.hpp"
 #include "../vismask.hpp"
 #include "classmasks.hpp"
+#include "rtxsettings.hpp"
 #include "tracedground.hpp"
 #include "tracedoverlay.hpp"
 #include "tracedview.hpp"
@@ -72,95 +71,39 @@
 
 namespace MWRender
 {
-    std::uint32_t rayMaskOf(const osg::Node::NodeMask cullMask)
-    {
-        std::uint32_t mask = 0;
-        for (const ClassMask& held : sClassMasks)
-            if ((cullMask & held.mNodes) != 0)
-                mask |= Rtx::classBit(held.mClass);
-
-        if ((cullMask & (Mask_Water | Mask_SimpleWater)) != 0)
-            mask |= Rtx::Shaders::MASK_WATER;
-        if ((cullMask & (Mask_ParticleSystem | Mask_WeatherParticles)) != 0)
-            mask |= Rtx::Shaders::MASK_PARTICLE;
-
-        // No `MASK_MEDIUM`: a medium is gathered by a ray that casts with that bit alone, whatever
-        // the camera, and in the eye's own mask it would meet the shells of a class left out.
-        return mask;
-    }
-
     namespace
     {
-        /// What a played binary runs: the two choices `[RTX]` leaves a player, and for the rest the
-        /// one answer a played frame has. The knobs a measurement turns — delight, albedo, the
-        /// filter, the exposure, the crossings — are a run's, handed to the constructor by the
-        /// harness that makes one, and a settings file cannot reach them: one that could
-        /// once turned a played game into a fixed-step run for good.
-        ///
-        /// **Here and not in `components/rtx`**, because the settings registry is a global the core
-        /// has no other reason to read.
-        Rtx::RenderProfile profileFromSettings()
-        {
-            Rtx::RenderProfile profile;
-
-            profile.mUpscaling.mMode = Rtx::sUpscaleNames.require(Settings::rtx().mUpscale.get(), "an upscale mode");
-            profile.mUpscaling.mPreset
-                = Rtx::sPresetNames.require(Settings::rtx().mPreset.get(), "a Ray Reconstruction preset");
-
-            // A played session shows every frame and sums none, and measures its exposure off each.
-            profile.mRadianceWidth = Rtx::RadianceWidth::Shown;
-            profile.mExposure = std::nullopt;
-
-            return profile;
-        }
-
-        /// How the driver is to pace the frame, read here and nowhere else: where the renderer is
-        /// made, and again when the menu moves the mode. A name the modes do not spell is refused
-        /// rather than defaulted, like an upscale mode's; the limit is `[Video]`'s, as the
-        /// interval the driver's sleep enforces.
-        Rtx::Pacing pacingFromSettings()
-        {
-            return Rtx::Pacing{
-                .mMode = Rtx::sLatencyModeNames.require(Settings::rtx().mReflex.get(), "a Reflex mode"),
-                .mMinimumIntervalUs = Rtx::minimumIntervalOf(Settings::video().mFramerateLimit),
-            };
-        }
-
-        /// The three settings the mirror is handed, read here and nowhere else: into a played
-        /// session's `RunSetup`, and again when the menu moves the reach.
-        Rtx::MirrorKnobs knobsFromSettings()
-        {
-            return Rtx::MirrorKnobs{
-                .mReach = Rtx::distantLandReach(Settings::rtx().mDistantLandCells, Settings::camera().mViewingDistance),
-                .mDistantStatics = Settings::terrain().mObjectPaging,
-                .mMinSize = Settings::terrain().mObjectPagingMinSize,
-            };
-        }
-
-        /// What a played session is made with, where the harness installed nothing: the two knobs
-        /// `[RTX]` leaves a player and the played answer to everything else. The layers are the
-        /// build's, which `Rtx::sValidationByDefault` says is the one thing that should decide
-        /// them for a session with no command line. The clock is the wall: the eye adapts in real
-        /// time and the upscaler tunes itself against how fast a motion vector was travelled, so
-        /// each reader times what it is about — a setting that could state a step once made a
-        /// played game step by frames, and at two hundred of them a second the world ran three
-        /// times over.
+        /// What a played session is made with, where the harness installed nothing: what `[RTX]`
+        /// leaves a player, through the one derivation (`RtxSettings`), and the played answer to
+        /// everything else. The knobs a measurement turns — delight, albedo, the filter, the
+        /// exposure, the crossings — are a run's, handed to the constructor by the harness that
+        /// makes one, and a settings file cannot reach them: one that could once turned a played
+        /// game into a fixed-step run for good. A played session shows every frame and sums none,
+        /// and measures its exposure off each. The layers are the build's, which
+        /// `Rtx::sValidationByDefault` says is the one thing that should decide them for a session
+        /// with no command line. The clock is the wall: the eye adapts in real time and the
+        /// upscaler tunes itself against how fast a motion vector was travelled, so each reader
+        /// times what it is about — a setting that could state a step once made a played game step
+        /// by frames, and at two hundred of them a second the world ran three times over.
         Rtx::RunSetup playedRunSetup()
         {
+            const RtxSettings settings = RtxSettings::derive(RtxSettingValues::fromRegistry());
+
             return Rtx::RunSetup{
-                .mProfile = profileFromSettings(),
+                .mProfile = {
+                    .mUpscaling = settings.mUpscaling,
+                    .mExposure = std::nullopt,
+                    .mRadianceWidth = Rtx::RadianceWidth::Shown,
+                },
                 .mValidation
                 = { .mLevel = Rtx::sValidationByDefault ? Rtx::ValidationLevel::On : Rtx::ValidationLevel::Off },
-                .mMirror = knobsFromSettings(),
+                .mMirror = settings.mMirror,
+                .mLatency = settings.mLatency,
                 .mHeadless = false,
                 .mStep = std::nullopt,
                 .mSettled = std::nullopt,
             };
         }
-
-        /// A quarter of a Morrowind foot. Nothing is clipped against it — see `mNear` — so it only
-        /// has to be nearer than anything the eye can find itself inside of.
-        constexpr float sNear = 1.0f;
 
         /// Whether an environment variable is set to anything other than nothing or `0`.
         bool askedFor(const char* name)
@@ -183,6 +126,7 @@ namespace MWRender
         , mUpdateVisitor(new Rtx::PoseUpdate)
         , mStartTick(osg::Timer::instance()->tick())
         , mMirror(setup.mMirror)
+        , mLatency(setup.mLatency)
     {
         // **Made here, because there is no viewer to make them.** Every renderer needs the four and
         // one built on `osgViewer` gets them already wired together.
@@ -212,7 +156,9 @@ namespace MWRender
         options.mHeight = mWindow.getHeight();
         options.mWindow = mWindow.get();
         options.mVerticalSync = Settings::video().mVsyncMode;
-        options.mPacing = pacingFromSettings();
+        // No interval yet: the engine hands the limit over before the first frame, and
+        // `applyFrameRateLimit` passes it on.
+        options.mPacing = Rtx::Pacing{ .mMode = mLatency };
         // **The run's answer.** A launcher making a measurement says on its command line whether
         // the layers load, because a figure taken under them is not one to compare against
         // anything; `playedRunSetup` says what a session with no command line answers.
@@ -311,24 +257,6 @@ namespace MWRender
         visitor.setTraversalMode(was);
     }
 
-    void RtxRenderer::setReferenceEnabled(const ESM::RefNum refnum, const bool enabled)
-    {
-        mPhase.expect(Phase::Between);
-        mMirror.setReferenceEnabled(refnum, enabled);
-    }
-
-    void RtxRenderer::blacklistReference(const ESM::RefNum refnum)
-    {
-        mPhase.expect(Phase::Between);
-        mMirror.blacklistReference(refnum);
-    }
-
-    void RtxRenderer::forgetReferences()
-    {
-        mPhase.expect(Phase::Between);
-        mMirror.forgetReferences();
-    }
-
     void RtxRenderer::detachWorld()
     {
         // No frame phase expected: the world goes on the way out of an exception a frame threw,
@@ -358,7 +286,7 @@ namespace MWRender
 
     std::unique_ptr<Ground> RtxRenderer::createGround(const GroundSpec& spec)
     {
-        return std::make_unique<TracedGround>(spec.mSceneRoot, spec.mStorage, Mask_Terrain, spec.mWorldspace, *this);
+        return std::make_unique<TracedGround>(spec.mSceneRoot, spec.mStorage, Mask_Terrain, spec.mWorldspace, mMirror);
     }
 
     void RtxRenderer::addCell(const MWWorld::CellStore* cell)
@@ -500,27 +428,23 @@ namespace MWRender
         };
     }
 
-    PoseMoment RtxRenderer::describePose()
-    {
-        mPhase.expect(Phase::Views, Phase::Run);
-
-        return PoseMoment{ .mStamp = getFrameStamp(), .mImages = *getResources().getImageManager() };
-    }
-
     double RtxRenderer::drawViews()
     {
         mPhase.expect(Phase::Views, Phase::Run);
         assert(!mViews.isDrawing() && "drawViews inside drawViews");
 
         // **Asked for before there is a world, every time a game starts.** A cell asks for its map
-        // tile as it loads, which is the frame before the one that first mirrors it; the tile is
-        // drawn when there is something to draw it against rather than left blank until the local
-        // map happens to ask again.
-        if (!mViews.hasDeferred() || !mHasScene)
+        // tile as it loads, which is the frame before the one that first mirrors it; the tile waits
+        // here for something to draw it against rather than being left blank until the local map
+        // happens to ask again. Nothing asks whether there is one, because nothing reaches here
+        // without: `traceWorld` returns before this where nothing is placed, and the run's hook
+        // has only traced frames.
+        if (!mViews.hasDeferred())
             return 0.0;
 
         const std::chrono::steady_clock::time_point began = std::chrono::steady_clock::now();
-        mViews.draw(sWorldViewsPerFrame);
+        mViews.draw(
+            sWorldViewsPerFrame, PoseMoment{ .mStamp = getFrameStamp(), .mImages = *getResources().getImageManager() });
         return Rtx::since(began, std::chrono::steady_clock::now());
     }
 
@@ -606,19 +530,20 @@ namespace MWRender
     std::unique_ptr<OffscreenView> RtxRenderer::createWorldView(const OffscreenViewSpec& spec)
     {
         assert(mGui != nullptr && "a view before the interface was made");
-        return std::make_unique<TracedView>(spec, ViewKind::World, *this, *mGui, mMirror.getTraversals());
+        return std::make_unique<TracedView>(spec, ViewKind::World, *mRenderer, mViews, *mGui, mMirror.getTraversals());
     }
 
     std::unique_ptr<SubjectView> RtxRenderer::createSubjectView(const OffscreenViewSpec& spec)
     {
         assert(mGui != nullptr && "a view before the interface was made");
-        return std::make_unique<TracedView>(spec, ViewKind::Subject, *this, *mGui, mMirror.getTraversals());
+        return std::make_unique<TracedView>(
+            spec, ViewKind::Subject, *mRenderer, mViews, *mGui, mMirror.getTraversals());
     }
 
     std::unique_ptr<MapOverlay> RtxRenderer::createMapOverlay(const MapOverlaySpec& spec)
     {
         assert(mGui != nullptr && "an overlay before the interface was made");
-        return std::make_unique<TracedOverlay>(spec, *this, *mGui);
+        return std::make_unique<TracedOverlay>(spec, mViews, *mGui);
     }
 
     void RtxRenderer::setVSync(SDLUtil::VSyncMode mode)
@@ -626,29 +551,17 @@ namespace MWRender
         mRenderer->setVerticalSync(mode);
     }
 
-    std::chrono::steady_clock::duration RtxRenderer::awaitFrame()
+    bool RtxRenderer::holdFrame()
     {
         mPhase.expect(Phase::Between);
 
         // Asked every frame and not once, because a present mode the surface does not pace moves
         // the answer, and a frame the driver stopped pacing is one the host's limiter holds.
         if (!mRenderer->pacesFrames())
-        {
-            mSleptMs = 0.0;
-            return Renderer::awaitFrame();
-        }
+            return false;
 
-        const std::chrono::steady_clock::time_point began = std::chrono::steady_clock::now();
         mRenderer->awaitFrame();
-        const std::chrono::steady_clock::time_point opened = std::chrono::steady_clock::now();
-        mSleptMs = Rtx::since(began, opened);
-
-        // The same interval the limiter answers, one opening to the next with the sleep inside it;
-        // nought before the first, which is the first frame's answer either way.
-        const std::chrono::steady_clock::duration stood
-            = mOpened.has_value() ? opened - *mOpened : std::chrono::steady_clock::duration::zero();
-        mOpened = opened;
-        return stood;
+        return true;
     }
 
     bool RtxRenderer::takeClick()
@@ -661,37 +574,64 @@ namespace MWRender
         return clicked;
     }
 
+    void RtxRenderer::applyFrameRateLimit()
+    {
+        mRenderer->setPacing(getPacing());
+    }
+
+    Rtx::Pacing RtxRenderer::getPacing() const
+    {
+        return Rtx::Pacing{
+            .mMode = mLatency,
+            .mMinimumIntervalUs = Rtx::minimumIntervalOf(getFrameRateLimit()),
+        };
+    }
+
     void RtxRenderer::processChangedSettings(const Settings::CategorySettingVector& changed)
     {
-        if (changed.contains({ "RTX", "upscale" }))
-            setUpscale(Settings::rtx().mUpscale.get());
+        const bool upscale = changed.contains({ "RTX", "upscale" });
+        const bool reflex = changed.contains({ "RTX", "reflex" });
+        const bool reach
+            = changed.contains({ "RTX", "distant land cells" }) || changed.contains({ "Camera", "viewing distance" });
+        if (!upscale && !reflex && !reach)
+            return;
 
-        if (changed.contains({ "RTX", "reflex" }))
-            mRenderer->setPacing(pacingFromSettings());
+        // What asks is somebody choosing from a menu, so a spelling no mode has is reported and
+        // everything is left where it was.
+        std::optional<RtxSettings> settings;
+        try
+        {
+            settings = RtxSettings::derive(RtxSettingValues::fromRegistry());
+        }
+        catch (const Rtx::InputError& refused)
+        {
+            Log(Debug::Warning) << "Ray tracing kept the settings it had: " << refused.what();
+            return;
+        }
+
+        if (upscale)
+            setUpscale(settings->mUpscaling.mMode);
+
+        if (reflex)
+        {
+            mLatency = settings->mLatency;
+            mRenderer->setPacing(getPacing());
+        }
 
         // The menu moves the reach while the game runs, and the ring, the air and the map all
         // follow it: a slider that took effect at the next start was a slider that did nothing.
         // Handed over here and never read by a frame, so every part of a frame stands in one world.
-        if (changed.contains({ "RTX", "distant land cells" }) || changed.contains({ "Camera", "viewing distance" }))
-            mMirror.setReach(knobsFromSettings().mReach);
+        if (reach)
+            mMirror.setReach(settings->mMirror.mReach);
     }
 
-    /// A name a renderer cannot read, or a mode this machine cannot reach, is reported and left
-    /// where it was, because what asks is somebody choosing from a menu.
-    void RtxRenderer::setUpscale(const std::string_view name)
+    void RtxRenderer::setUpscale(const Rtx::Upscale upscale)
     {
-        const std::optional<Rtx::Upscale> upscale = Rtx::sUpscaleNames.named(name);
-        if (!upscale.has_value())
-        {
-            Log(Debug::Warning) << "Ray tracing kept the upscaler it had: no mode is named \"" << name << '"';
-            return;
-        }
-
         try
         {
-            mRenderer->setUpscale(*upscale);
+            mRenderer->setUpscale(upscale);
         }
-        catch (const Rtx::Error& what)
+        catch (const Rtx::Unsupported& what)
         {
             // What asks is somebody choosing from a menu, and a machine that cannot run the mode they
             // picked is an answer rather than a fault: the renderer keeps drawing under the one it
@@ -780,7 +720,7 @@ namespace MWRender
         // traced frame after any of those reported the whole gap as one frame.
         const std::chrono::steady_clock::time_point arrived = std::chrono::steady_clock::now();
         report.mSpend.at(Rtx::Timing::Update) = mTimer.sinceLeft(arrived);
-        report.mSpend.at(Rtx::Timing::Sleep) = mSleptMs;
+        report.mSpend.at(Rtx::Timing::Sleep) = std::chrono::duration<double, std::milli>(getLastHold()).count();
         const std::optional<double> since = mTimer.enter(arrived);
 
         // The sky's own clock, stepped where the game stepped the dome's: every unpaused frame the
@@ -855,8 +795,7 @@ namespace MWRender
 
         // The frame behind is collected, so the tile copies it carried are there to paint: what
         // `TracedOverlay::paintTile` was asked before its picture had come back.
-        if (mMapOverlay != nullptr)
-            mMapOverlay->finish();
+        mViews.finishOverlays();
 
         handOver(frame, report);
 
@@ -872,7 +811,10 @@ namespace MWRender
         mPhase.step(Phase::Tracing, Phase::Views);
         const std::optional<Rtx::Shaders::VisibilityConstants> constants = describeTrace(frame, view);
         if (!constants.has_value())
+        {
+            mRenderer->skipFrame();
             return;
+        }
 
         trace(frame, *constants, report, since);
     }
@@ -888,7 +830,7 @@ namespace MWRender
         //
         // **`collectFrame` and not `finishFrame`**: the frame behind stays on the device while this
         // one is placed, which is what keeps the device busy from one trace to the next — 0.9 ms
-        // of a 6 ms frame on the ship, in `.notes/bench.txt`. What comes back is the frame before
+        // of a 6 ms frame on the ship, measured with `bench`. What comes back is the frame before
         // it, so the bench row carries a report two frames behind this frame's wall time.
         // `Check::FramesOverlap` is what says the ring still holds two.
         //
@@ -915,8 +857,6 @@ namespace MWRender
         report.mSpend.at(Rtx::Timing::Place) = Rtx::since(handing, std::chrono::steady_clock::now());
         report.mRebuilt = handed.mKind == Rtx::SceneUpload::Kind::Rebuilt;
         report.mArrivedMeshes = handed.mArrivedMeshes;
-
-        mHasScene = true;
 
         if (report.mRebuilt)
             Log(Debug::Info) << "Ray tracing built " << mMirror.getScene().meshes().getRows().size() << " meshes into "
@@ -949,8 +889,8 @@ namespace MWRender
         // **The frame's field of view and not the setting's.** `WorldState` carries the one the
         // world settled on, which is the override wherever something asked for one — a zoom, a
         // cutscene, a script — and the setting only where nothing did.
-        std::optional<Rtx::Shaders::VisibilityConstants> constants = Rtx::makeCameraFromView(
-            view, frame.mEye.mFieldOfView, extents.mRenderWidth, extents.mRenderHeight, sNear, Rtx::sFarPlane);
+        std::optional<Rtx::Shaders::VisibilityConstants> constants = Rtx::makeCameraFromView(view,
+            frame.mEye.mFieldOfView, extents.mRenderWidth, extents.mRenderHeight, Rtx::sNearPlane, Rtx::sFarPlane);
 
         // **Asked of the builder rather than tested for here**: a test here would be a copy of
         // the builder's contract with two places to be right. Reported once, because a camera
@@ -1036,7 +976,7 @@ namespace MWRender
 
         if (since.has_value())
         {
-            report.mFrameMs = *since;
+            report.mSpend.at(Rtx::Timing::Frame) = *since;
             report.mWalked = mWalked;
             report.mUnreadableTextures = mUnreadable;
             report.mLatency = mRenderer->describeLatency();

@@ -1,3 +1,4 @@
+#include <array>
 #include <optional>
 #include <stdexcept>
 
@@ -28,6 +29,15 @@ namespace Rtx
             EXPECT_EQ(menuIndex(sLatencyMenu, "fast"), std::nullopt);
             EXPECT_EQ(menuName(sLatencyMenu, 1), "on");
             EXPECT_EQ(menuName(sLatencyMenu, 3), std::nullopt);
+
+            // A menu's labels are held to that order: in it they pass, and with two swapped, or one
+            // spelled otherwise, they do not.
+            constexpr std::array<MenuLabel, 3> labels{ { { "off", "Off" }, { "on", "On" }, { "boost", "Boost" } } };
+            constexpr std::array<MenuLabel, 3> swapped{ { { "on", "On" }, { "off", "Off" }, { "boost", "Boost" } } };
+            constexpr std::array<MenuLabel, 3> misspelled{ { { "off", "Off" }, { "on", "On" }, { "Boost", "Boost" } } };
+            EXPECT_TRUE(followsMenu(labels, sLatencyMenu));
+            EXPECT_FALSE(followsMenu(swapped, sLatencyMenu));
+            EXPECT_FALSE(followsMenu(misspelled, sLatencyMenu));
         }
 
         /// The interval the sleep enforces is the limit turned round, to the nearest microsecond,

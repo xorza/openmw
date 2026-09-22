@@ -62,6 +62,7 @@ namespace MWRender
     class GlWorld;
     class PostProcessor;
     class ScreenshotManager;
+    class GlMapOverlay;
 
     /// The picture as OpenSceneGraph draws it: a GL window, a viewer and upstream's frame loop.
     ///
@@ -69,8 +70,6 @@ namespace MWRender
     /// Every threading, realize and traversal decision here is upstream's, moved rather than
     /// rewritten, which is what makes "does the other renderer do this correctly" answerable by
     /// comparison (`CLAUDE.md`).
-    class GlMapOverlay;
-
     class GlRenderer final : public Renderer
     {
     public:

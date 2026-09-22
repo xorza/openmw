@@ -13,10 +13,11 @@
 
 #include "cellplacer.hpp"
 #include "cellsupply.hpp"
+#include "cellworld.hpp"
 #include "extractionstats.hpp"
 #include "held.hpp"
 #include "prepared.hpp"
-#include "residency.hpp"
+#include "sceneadopter.hpp"
 #include "scratch.hpp"
 #include "slots.hpp"
 #include "stepped.hpp"
@@ -89,7 +90,8 @@ namespace Rtx
         void setSettled(bool settled);
 
         /// `CellPlacer::setReferenceEnabled`, `blacklistReference` and `forgetReferences`, over the
-        /// cells held.
+        /// cells held. Between frames, which the ring's own turn asserts: a reference changed
+        /// between `follow` and the end of `collect` would land on cells the frame is placing.
         void setReferenceEnabled(ESM::RefNum refnum, bool enabled);
         void blacklistReference(ESM::RefNum refnum);
         void forgetReferences();

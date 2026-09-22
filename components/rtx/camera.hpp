@@ -12,10 +12,15 @@
 
 namespace Rtx
 {
-    /// Far enough to cross any cell. One number for every camera in the fork, because it is also
-    /// the sun's shadow-ray reach and what the depth buffer encodes against, so a harness that
-    /// traced to a different one measured a different frame from the game.
+    /// Far enough to cross any cell. Every camera's reach (`VisibilityConstants::mReach`), and the
+    /// world camera's clip as well, so a harness that traced to a different one measured a
+    /// different frame from the game.
     constexpr float sFarPlane = 200000.0f;
+
+    /// Where the depth buffer's zero sits: one unit, of the 8192 a cell is wide. Nothing is
+    /// clipped against it — `VisibilityConstants::mNear` says why a ray tracer has one at all — so
+    /// it only has to be nearer than anything the eye can find itself inside of.
+    constexpr float sNearPlane = 1.0f;
 
     /// A viewpoint's axes in world coordinates, unit, which is what a view matrix holds the inverse
     /// of. What a camera is built from, and what a walk hands the nodes that turn toward whoever
@@ -43,18 +48,6 @@ namespace Rtx
     /// equal to its own.
     Shaders::Camera cameraAtFieldOfView(const Shaders::Camera& camera, float verticalFovDegrees);
 
-    /// Constants for a pinhole camera at `origin` looking `along`, which need not be a unit vector.
-    /// The world's up is +Z. A zero direction, or one straight up or down, throws `Error`: these
-    /// arrive from a command line, so they are input and not a contract.
-    Shaders::VisibilityConstants makeCameraAlong(const osg::Vec3f& origin, const osg::Vec3f& along,
-        float verticalFovDegrees, std::uint32_t width, std::uint32_t height, float far);
-
-    /// The same, from a point to look at rather than a direction — for a viewpoint written down in
-    /// a file, and not for a moving eye: a float ulp where Morrowind's cells are is a hundredth of
-    /// a unit, so two points a unit apart name a direction a fifth of a degree out.
-    Shaders::VisibilityConstants makeCamera(const osg::Vec3f& origin, const osg::Vec3f& target,
-        float verticalFovDegrees, std::uint32_t width, std::uint32_t height, float far);
-
     /// A camera from a view matrix in OpenSceneGraph's convention: row vectors, and an eye space
     /// looking down its own -Z. The basis comes out of the matrix rather than from the world's up,
     /// which is what lets a map look straight down. Nothing for a matrix that cannot be inverted
@@ -64,8 +57,8 @@ namespace Rtx
 
     /// The same viewpoint with no perspective in it: every ray travels the view direction, and
     /// which one a pixel sends comes from where it sits on a box `worldWidth` by `worldHeight`
-    /// centred on the eye. Throws `Error` for a box with no extent, which is a caller's contract
-    /// and not a matrix's.
+    /// centred on the eye. A box with no extent is a caller's contract and not a matrix's, and
+    /// `Rtx::contract` holds it.
     std::optional<Shaders::VisibilityConstants> makeOrthographicCameraFromView(const osg::Matrixf& view,
         float worldWidth, float worldHeight, std::uint32_t width, std::uint32_t height, float near, float far);
 

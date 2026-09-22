@@ -12,6 +12,13 @@ namespace Rtx::Shaders
 {
 #endif
 
+    /// Where `spritelight.comp` binds what it reads and writes in set 0, and how many there are.
+    /// The shader's layout and the pass's own layout and writes are numbered by these and by
+    /// nothing else, so the two cannot drift apart.
+    const uint SPRITE_LIGHT_BIND_SOURCE = 0;
+    const uint SPRITE_LIGHT_BIND_BAKE = 1;
+    const uint SPRITE_LIGHT_BINDINGS = 2;
+
     /// One level of the bake, which is one dispatch.
     struct SpriteLightConstants
     {

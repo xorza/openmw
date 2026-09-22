@@ -64,6 +64,11 @@ namespace Rtx
 
         Stepped<FrameState> mState{ FrameState::Idle };
 
+        /// Whether the trace closed the frame, or `FrameRing::skip` did with none. An untraced
+        /// frame is waited for like any other and comes back with no report: it has no counts, no
+        /// picture and nothing a run could count against a traced frame.
+        bool mTraced = false;
+
         /// `FrameResult::mInFlight`, taken at the submit.
         std::uint32_t mInFlight = 0;
 
@@ -142,6 +147,13 @@ namespace Rtx
         /// Submits what a frame recorded and counts it as in flight.
         void submit(FrameRecord& frame);
 
+        /// Whether the frame being recorded was begun and not yet submitted.
+        bool isOpen() const { return mSlots.at(getRecordingSlot()).mState.get() == FrameState::Begun; }
+
+        /// Closes the open frame with an empty trace: submitted and counted, so its placements'
+        /// buffers come back once it is waited for, and no report.
+        void skip();
+
         /// The oldest report in hand, waiting a frame out for one where there is none.
         std::optional<FrameResult> collect();
 
@@ -174,6 +186,8 @@ namespace Rtx
 
         /// Waits until the ring has a slot for the next frame.
         void makeRoom();
+
+        void close(FrameRecord& frame, bool traced);
 
         std::optional<FrameResult> takeReport();
 

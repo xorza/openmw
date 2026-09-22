@@ -44,6 +44,25 @@ namespace Rtx
         return mode == AlphaMode::Blend && blend != BlendKind::Over;
     }
 
+    /// What traversal is told about one placement: the facts of the material it wears, with the
+    /// placement's own fade applied (`Material::Traversed::placedAt`). The one rule, which the
+    /// counts that gate the trace and the instance records that drive traversal both read, so the
+    /// two cannot disagree about a placement.
+    struct PlacedTraversal
+    {
+        /// Whether traversal stops to ask whether a hit is a hole, where it would not stop for the
+        /// placement anyway: a translucent one is stopped for and never ends the ray.
+        bool mCutout = false;
+
+        /// Whether traversal stops to ask how much of a hit there is. Earned by the material, for a
+        /// pane, or by the placement, for an actor the game is fading — and never by a surface that
+        /// adds, whose alpha weights what it adds rather than deciding how much of it is there.
+        bool mTranslucent = false;
+
+        bool mMedium = false;
+        bool mAdditive = false;
+    };
+
     /// How a surface is shaded, as the file says it. Vanilla textures are pre-lit, so `mDiffuse` is
     /// not an albedo yet.
     ///
@@ -234,6 +253,18 @@ namespace Rtx
             bool mTwoSided = false;
 
             bool operator==(const Traversed& other) const = default;
+
+            /// What a placement wearing this at `opacity` tells traversal.
+            PlacedTraversal placedAt(const float opacity) const
+            {
+                const bool translucent = !mAdditive && (opacity < 1.0f || mTranslucent);
+                return PlacedTraversal{
+                    .mCutout = mCutout && !translucent,
+                    .mTranslucent = translucent,
+                    .mMedium = mMedium,
+                    .mAdditive = mAdditive,
+                };
+            }
         };
 
         Traversed getTraversed() const

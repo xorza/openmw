@@ -69,7 +69,7 @@ namespace Rtx
                 awaitVk(*mHarness->mDevice, fence, "a submit nobody made", 1'000'000ull);
                 ADD_FAILURE() << "the wait returned, so a device that never answers still looks like success";
             }
-            catch (const Error& e)
+            catch (const DeviceError& e)
             {
                 // Named, because a count says a frame is stuck and nothing about which one.
                 EXPECT_NE(std::string(e.what()).find("a submit nobody made"), std::string::npos) << e.what();
@@ -127,7 +127,7 @@ namespace Rtx
         TEST_F(RtxDeviceTest, aFileThatIsNotSpirvIsRejectedRatherThanHandedToTheDriver)
         {
             const std::filesystem::path missing = Testing::getShaderDirectory() / "there-is-no-such-shader.spv";
-            EXPECT_THROW(loadShaderModule(*mHarness->mDevice, missing), Error);
+            EXPECT_THROW(loadShaderModule(*mHarness->mDevice, missing), InputError);
         }
 
         TEST_F(RtxDeviceTest, theReportNamesTheDeviceAndItsRayTracingLimits)

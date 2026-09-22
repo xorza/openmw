@@ -51,7 +51,7 @@ namespace Rtx
     /// as `[RTX] upscale` takes them: fewest pixels traced first, every pixel last. `off` is not
     /// among them: Ray Reconstruction is the renderer's denoiser, so a menu that offered it would
     /// offer a worse picture as a speed setting. Derived from `sUpscaleNames`, the one list of the
-    /// spellings, so a mode added there reaches both menus.
+    /// spellings, so a mode added there stops the build until each menu gives it a label.
     inline constexpr std::array<std::string_view, sUpscaleNames.mNames.size() - 1> sUpscaleMenu = [] {
         std::array<std::string_view, sUpscaleNames.mNames.size() - 1> offered{};
         std::size_t at = 0;

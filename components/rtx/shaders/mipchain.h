@@ -12,6 +12,14 @@ namespace Rtx::Shaders
 {
 #endif
 
+    /// Where `mipchain.comp` binds what it reads and writes in set 0, and how many there are. The
+    /// shader's layout and the pass's own layout and writes are numbered by these and by nothing
+    /// else, so the two cannot drift apart.
+    const uint MIPCHAIN_BIND_SOURCE = 0;
+    const uint MIPCHAIN_BIND_ABOVE = 1;
+    const uint MIPCHAIN_BIND_INTO = 2;
+    const uint MIPCHAIN_BINDINGS = 3;
+
     /// The chain's workgroup, square.
     const uint MIP_CHAIN_WORKGROUP = 16u;
 

@@ -5,3 +5,4 @@
 
 - tracy
 - fsr and other denoisers and upscalers
+- postprocessing

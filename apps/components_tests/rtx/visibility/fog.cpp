@@ -16,6 +16,7 @@
 #include <components/vfs/pathutil.hpp>
 
 #include "../geometry.hpp"
+#include "../testcamera.hpp"
 #include "../testtexture.hpp"
 #include "fixture.hpp"
 
@@ -118,7 +119,7 @@ namespace Rtx::Testing
             constexpr float extinction = 3.5e-4f;
 
             const auto look = [&](float thickness) {
-                Shaders::VisibilityConstants camera = makeCamera(
+                Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(0.0f, -distance, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
                 litThroughFog(camera, thickness);
 
@@ -170,7 +171,7 @@ namespace Rtx::Testing
             // The ray runs level at z = 0, so how much fog it crosses is decided by where the layer
             // is put under it and by nothing else.
             const auto look = [&](float level, float thickness) {
-                Shaders::VisibilityConstants camera = makeCamera(
+                Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(0.0f, -distance, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
                 litThroughFog(camera, thickness, level);
 
@@ -195,7 +196,7 @@ namespace Rtx::Testing
             // could not see the step at all.
             constexpr float clearOfTheBase = 600.0f;
             const auto lookAbove = [&](float level) {
-                Shaders::VisibilityConstants camera = makeCamera(osg::Vec3f(0.0f, -distance, clearOfTheBase),
+                Shaders::VisibilityConstants camera = Testing::makeCamera(osg::Vec3f(0.0f, -distance, clearOfTheBase),
                     osg::Vec3f(0.0f, 0.0f, clearOfTheBase), 60.0f, size, size, 100000.0f);
                 litThroughFog(camera, extinction, level);
 
@@ -240,7 +241,7 @@ namespace Rtx::Testing
             // mean of `exp(-z / FOG_HEIGHT)` over the heights it passed.
             constexpr float climb = 2000.0f;
             const auto lookSloping = [&](const osg::Vec3f& eye, const osg::Vec3f& target) {
-                Shaders::VisibilityConstants camera = makeCamera(eye, target, 60.0f, size, size, 100000.0f);
+                Shaders::VisibilityConstants camera = Testing::makeCamera(eye, target, 60.0f, size, size, 100000.0f);
                 litThroughFog(camera, extinction);
 
                 // Stretched, because a ray leaving at forty-five degrees meets the wall two thousand
@@ -301,7 +302,7 @@ namespace Rtx::Testing
             const SceneDesc scene = makeFlooded(8000.0f, 400.0f);
 
             const auto look = [&](float extinction) {
-                Shaders::VisibilityConstants camera = makeCamera(
+                Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(0.0f, -1000.0f, -50.0f), osg::Vec3f(0.0f, 0.0f, -50.0f), 60.0f, size, size, 100000.0f);
                 litThroughFog(camera, extinction, 0.0f);
                 camera.mFogUniform = sVolumeOverEvenAir;
@@ -370,7 +371,7 @@ namespace Rtx::Testing
                         .mReach = reach,
                     });
 
-                Shaders::VisibilityConstants camera = makeCamera(
+                Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(0.0f, -distance, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
                 litThroughFog(camera, extinction);
 
@@ -475,7 +476,7 @@ namespace Rtx::Testing
                         .mReach = Fixture::sReach,
                     });
 
-                Shaders::VisibilityConstants camera = makeCamera(osg::Vec3f(0.0f, -Fixture::sDistance, 0.0f),
+                Shaders::VisibilityConstants camera = Testing::makeCamera(osg::Vec3f(0.0f, -Fixture::sDistance, 0.0f),
                     osg::Vec3f(0.0f, 0.0f, 0.0f), 10.0f, size, size, 100000.0f);
                 litThroughFog(camera, Fixture::sExtinction);
                 camera.mFogUniform = sVolumeOverEvenAir;
@@ -552,7 +553,7 @@ namespace Rtx::Testing
                 .mReach = Fixture::sReach,
             });
 
-            Shaders::VisibilityConstants camera = makeCamera(osg::Vec3f(0.0f, -Fixture::sDistance, 0.0f),
+            Shaders::VisibilityConstants camera = Testing::makeCamera(osg::Vec3f(0.0f, -Fixture::sDistance, 0.0f),
                 osg::Vec3f(0.0f, 0.0f, 0.0f), 10.0f, size, size, 100000.0f);
             litThroughFog(camera, Fixture::sExtinction);
             camera.mFogUniform = sVolumeOverEvenAir;
@@ -592,7 +593,7 @@ namespace Rtx::Testing
         ///
         /// **Two ways a froxel grid gets the last slice wrong, and one measurement for both.** The
         /// slice a surface stands inside is sampled on both sides of it unless the sampling knows
-        /// where the surface is — `fogdepth.comp` says what that drew — and what a pixel reads
+        /// where the surface is — `fogdepth.rgen` says what that drew — and what a pixel reads
         /// between two slices' edges is a shape the integrate pass has to have agreed to, which
         /// `FogSlice` says. Either error is a function of where inside its slice the surface
         /// stands, so the wall is put at four depths across three slices and the volume is held
@@ -638,7 +639,7 @@ namespace Rtx::Testing
                     .mReach = Fixture::sReach,
                 });
 
-                Shaders::VisibilityConstants camera = makeCamera(
+                Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(0.0f, -distance, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 10.0f, size, size, 100000.0f);
                 litThroughFog(camera, fogged ? Fixture::sExtinction : 0.0f);
                 camera.mFogUniform = banked ? sVolumeOverEvenAir : 1.0f;
@@ -701,7 +702,7 @@ namespace Rtx::Testing
             constexpr std::size_t count = std::size_t{ size } * size;
 
             const auto air = [&](float uniform, float where) {
-                Shaders::VisibilityConstants camera = makeCamera(osg::Vec3f(where, -50000.0f, 0.0f),
+                Shaders::VisibilityConstants camera = Testing::makeCamera(osg::Vec3f(where, -50000.0f, 0.0f),
                     osg::Vec3f(where, -60000.0f, 0.0f), 90.0f, size, size, 100000.0f);
                 camera.mFogUniform = uniform;
 
@@ -736,7 +737,7 @@ namespace Rtx::Testing
         TEST_F(RtxVisibilityTest, aStoreThatIsNotFiniteIsCountedAtItsBoundary)
         {
             constexpr std::uint32_t size = 64;
-            Shaders::VisibilityConstants camera = makeCamera(
+            Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -50000.0f, 0.0f), osg::Vec3f(0.0f, -60000.0f, 0.0f), 90.0f, size, size, 100000.0f);
 
             std::vector<float> luminance;
@@ -781,7 +782,7 @@ namespace Rtx::Testing
 
             const auto frame = [&](const osg::Vec2f& blown, const osg::Vec3f& eye) {
                 Shaders::VisibilityConstants camera
-                    = makeCamera(eye, eye + osg::Vec3f(0.0f, -10000.0f, 0.0f), 90.0f, size, size, 100000.0f);
+                    = Testing::makeCamera(eye, eye + osg::Vec3f(0.0f, -10000.0f, 0.0f), 90.0f, size, size, 100000.0f);
                 camera.mFogUniform = 0.0f;
                 camera.mFogDrift = blown;
                 camera.mSkyTime = seconds;
@@ -849,11 +850,11 @@ namespace Rtx::Testing
             // Level, so the centre ray holds one height and the medium along it is uniform — which
             // is what lets the two frames cancel to the phase function alone.
             const auto lookPast = [&](float towardsY) {
-                Shaders::VisibilityConstants camera = makeCamera(
+                Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(0.0f, 0.0f, 0.0f), osg::Vec3f(0.0f, 1000.0f, 0.0f), 60.0f, size, size, 100000.0f);
 
                 // The sun a quarter of the way up, ahead of the camera or behind it. Both carry the
-                // same climb, so `fogSunDepth` is the same for each and cancels.
+                // same climb, so `fogBeamDepth` is the same for each and cancels.
                 osg::Vec3f towards(0.0f, towardsY, 0.5f);
                 towards.normalize();
                 camera.mSun = Shaders::sunSource(towards, osg::Vec3f(irradiance, irradiance, irradiance));
@@ -941,7 +942,7 @@ namespace Rtx::Testing
                         .mPositions = sheetAt(40000.0f, lidded ? 500.0f : -500.0f), .mIndices = sQuadIndices }),
                     .mMaterial = scene.addMaterial(Material{ .mTwoSided = true }) });
 
-                Shaders::VisibilityConstants camera = makeCamera(
+                Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(0.0f, 0.0f, 0.0f), osg::Vec3f(0.0f, 1000.0f, 0.0f), 60.0f, size, size, 100000.0f);
 
                 // Ahead of the camera and well up, so the phase function has something to scatter
@@ -1016,7 +1017,7 @@ namespace Rtx::Testing
                     .mAlpha = 1.0f } };
                 scene.addEmitter(sprites, cut, true);
 
-                Shaders::VisibilityConstants camera = makeCamera(
+                Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(0.0f, -height, height), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
 
                 // Nothing but the sprite in the pixel: black air adds no colour of its own, and an
@@ -1051,7 +1052,7 @@ namespace Rtx::Testing
         /// The air behind a pane is the air that is there.
         ///
         /// **A column of the volume ends where the eye's own ray ends, and the eye sees through
-        /// glass.** `fogdepth.comp` stopped each column at the first surface its ray met, so every
+        /// glass.** `fogdepth.rgen` stopped each column at the first surface its ray met, so every
         /// slice past a pane was left as it stood and the room behind a window carried no air at
         /// all: a wall four thousand units off behind a pane at one thousand kept 0.66 of its light
         /// where 0.25 is what the air leaves it, and taking the pane out of the scene put it back.
@@ -1080,7 +1081,7 @@ namespace Rtx::Testing
                 if (paned)
                     addPane(scene, uprightQuadAt(2400.0f, 1000.0f - wallAway), osg::Vec4f(0.0f, 0.0f, 0.0f, 0.5f));
 
-                Shaders::VisibilityConstants camera = makeCamera(
+                Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(0.0f, -wallAway, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
                 litThroughFog(camera, thickness);
 
@@ -1172,7 +1173,7 @@ namespace Rtx::Testing
                 if (behindAnother)
                     addPane(scene, uprightQuadAt(2400.0f, 500.0f - wallAway), osg::Vec4f(0.0f, 0.0f, 0.0f, 0.5f));
 
-                Shaders::VisibilityConstants camera = makeCamera(
+                Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(0.0f, -wallAway, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
                 litThroughFog(camera, thickness);
 
@@ -1230,7 +1231,7 @@ namespace Rtx::Testing
         /// air, so both of them left the frame together the moment their share of the sky's term
         /// crossed the threshold, rather than losing only their shadow.
         ///
-        /// **And they left it one column at a time.** `fogSourcesAlong` takes the phase from the
+        /// **And they left it one column at a time.** `fogVolumeAlong` takes the phase from the
         /// column's own direction, so neighbouring columns sit either side of the threshold and the
         /// tent the integrate pass reads averages a lit column with a black one. What that draws is
         /// a seam across the air rather than a step in time.
@@ -1270,7 +1271,7 @@ namespace Rtx::Testing
             constexpr std::array<float, 4> irradiances{ 0.001f, 0.01f, 0.1f, 1.0f };
 
             const auto lit = [&](float irradiance) {
-                Shaders::VisibilityConstants camera = makeCamera(
+                Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(0.0f, 0.0f, 0.0f), osg::Vec3f(0.0f, 1000.0f, 0.0f), 60.0f, size, size, 100000.0f);
 
                 camera.mFogColour = haze;

@@ -395,7 +395,7 @@ namespace Rtx
                     VFS::Path::NormalizedView("meshes/sky_night_01.nif"));
                 FAIL() << "a missing star dome was read as no stars";
             }
-            catch (const Error& what)
+            catch (const InputError& what)
             {
                 EXPECT_NE(std::string_view(what.what()).find("meshes/sky_night_01.nif"), std::string_view::npos)
                     << what.what();

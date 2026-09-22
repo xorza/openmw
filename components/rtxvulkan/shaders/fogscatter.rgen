@@ -12,8 +12,8 @@
 // this pass and `fogdepth.rgen`, never in the trace's own shadow and ambient rays, which ask the
 // same questions through the same functions from inside a launch. The one thing that separates
 // the two is how the card interrupts them: a compute dispatch is preempted mid-instruction, a
-// traversal in flight with it, and a launch is not. `.notes/bench.txt` has the runs. The launch
-// is the froxel grid itself, so no invocation lands outside it.
+// traversal in flight with it, and a launch is not. The launch is the froxel grid itself, so no
+// invocation lands outside it.
 //
 // **A thread to a froxel, and every question asked where the answer is used.** This pass and
 // `fogintegrate.comp` are the two halves of one march: this one computes the properties of a

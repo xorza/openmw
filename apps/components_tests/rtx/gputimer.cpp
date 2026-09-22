@@ -23,6 +23,7 @@
 
 #include "geometry.hpp"
 #include "harness.hpp"
+#include "testcamera.hpp"
 
 namespace Rtx
 {
@@ -122,7 +123,7 @@ namespace Rtx
             mRenderer->setScene(Rtx::SceneSlot::world(), scene, {});
 
             const Shaders::VisibilityConstants camera
-                = makeCamera(osg::Vec3f(), osg::Vec3f(0.0f, 100.0f, 0.0f), 60.0f, sSize, sSize, 10000.0f);
+                = Testing::makeCamera(osg::Vec3f(), osg::Vec3f(0.0f, 100.0f, 0.0f), 60.0f, sSize, sSize, 10000.0f);
 
             const Drawn drawn = draw(*mRenderer, camera);
             if (drawn.mGpu.spans().empty())

@@ -20,9 +20,9 @@ namespace Rtx
     {
         /// What is being read, and what is being written. The first is sampled rather than loaded,
         /// because both kernels are counted in bilinear fetches.
-        constexpr std::array<VkDescriptorSetLayoutBinding, 2> sBindings{
-            computeBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER),
-            computeBinding(1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
+        constexpr std::array<VkDescriptorSetLayoutBinding, Shaders::BLOOM_BINDINGS> sBindings{
+            computeBinding(Shaders::BLOOM_BIND_SOURCE, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER),
+            computeBinding(Shaders::BLOOM_BIND_LEVEL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
         };
     }
 
@@ -71,9 +71,10 @@ namespace Rtx
         // Sampled from `GENERAL` rather than moved to a read-only layout. A level is written as
         // a storage image and read as a sampled one within a few dispatches of each other, and the
         // layout this renderer keeps everything in is one both accesses are legal from.
-        DescriptorWrites<2> writes;
-        writes.image(0, source.describeSampled(mSampler.get()), VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-        writes.image(1, target.describeStorage());
+        DescriptorWrites<Shaders::BLOOM_BINDINGS> writes;
+        writes.image(Shaders::BLOOM_BIND_SOURCE, source.describeSampled(mSampler.get()),
+            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+        writes.image(Shaders::BLOOM_BIND_LEVEL, target.describeStorage());
 
         const Shaders::BloomConstants constants{
             .mWidth = target.getWidth(),

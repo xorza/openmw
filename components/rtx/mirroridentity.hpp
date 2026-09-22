@@ -10,8 +10,8 @@
 
 #include <osg/ref_ptr>
 
+#include "mirrorpass.hpp"
 #include "runs.hpp"
-#include "walk.hpp"
 
 namespace Rtx
 {
@@ -237,7 +237,9 @@ namespace Rtx
             {
                 if (keeps(entry->second))
                 {
-                    if (live != nullptr)
+                    // An entry that names no row — a drawable the mirror refused — keeps nothing
+                    // alive in the scene.
+                    if (live != nullptr && entry->second.mIndex != sNoIndex)
                         live->push_back(entry->second.mIndex);
                     ++entry;
                     continue;

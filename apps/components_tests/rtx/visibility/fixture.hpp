@@ -9,6 +9,7 @@
 #include <optional>
 #include <source_location>
 #include <span>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -21,7 +22,6 @@
 
 #include <components/rtx/camera.hpp>
 #include <components/rtx/debuglines.hpp>
-#include <components/rtx/error.hpp>
 #include <components/rtx/material.hpp>
 #include <components/rtx/mesh.hpp>
 #include <components/rtx/moonbuilder.hpp>
@@ -40,6 +40,7 @@
 
 #include "../geometry.hpp"
 #include "../harness.hpp"
+#include "../testcamera.hpp"
 #include "../testtexture.hpp"
 
 namespace Rtx::Testing
@@ -163,7 +164,7 @@ namespace Rtx::Testing
     inline Shaders::VisibilityConstants wallCamera(std::uint32_t size, const osg::Vec3f& irradiance,
         const osg::Vec3f& origin = osg::Vec3f(100.0f, -100.0f, 0.0f), const osg::Vec3f& target = osg::Vec3f())
     {
-        Shaders::VisibilityConstants camera = makeCamera(origin, target, 60.0f, size, size, 10000.0f);
+        Shaders::VisibilityConstants camera = Testing::makeCamera(origin, target, 60.0f, size, size, 10000.0f);
         camera.mSun = Shaders::sunSource(osg::Vec3f(0.0f, -1.0f, 0.0f), irradiance);
 
         return camera;
@@ -350,7 +351,7 @@ namespace Rtx::Testing
                 // rather than a sum to be divided back down.
                 const std::optional<FrameResult> finished = mRenderer->finishFrame();
                 if (!finished.has_value())
-                    throw Error("the renderer drew a frame and gave none back");
+                    throw std::runtime_error("the renderer drew a frame and gave none back");
 
                 hits = finished->mHits;
                 mNotFinite = finished->mNotFinite;
@@ -419,7 +420,7 @@ namespace Rtx::Testing
         {
             const std::size_t wanted = std::size_t{ size } * size * 4;
             if (read.size() != wanted)
-                throw Error("a probe read back " + std::to_string(read.size()) + " values where a "
+                throw std::runtime_error("a probe read back " + std::to_string(read.size()) + " values where a "
                     + std::to_string(size) + " by " + std::to_string(size) + " frame is " + std::to_string(wanted));
         }
 

@@ -12,6 +12,16 @@ namespace Rtx::Shaders
 {
 #endif
 
+    /// Where `composite.comp` binds what it reads and writes in set 0, and how many there are. The
+    /// shader's layout and the pass's own layout and writes are numbered by these and by nothing
+    /// else, so the two cannot drift apart.
+    const uint COMPOSITE_BIND_DIRECT = 0;
+    const uint COMPOSITE_BIND_INDIRECT = 1;
+    const uint COMPOSITE_BIND_ALBEDO = 2;
+    const uint COMPOSITE_BIND_SUM = 3;
+    const uint COMPOSITE_BIND_COLOUR = 4;
+    const uint COMPOSITE_BINDINGS = 5;
+
     /// Threads along each edge of the composite's workgroup.
     const uint COMPOSITE_WORKGROUP = 8;
 

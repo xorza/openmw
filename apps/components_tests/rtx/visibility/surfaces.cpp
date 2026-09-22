@@ -36,6 +36,7 @@
 #include "../geometry.hpp"
 #include "../harness.hpp"
 #include "../layers.hpp"
+#include "../testcamera.hpp"
 #include "../testtexture.hpp"
 #include "fixture.hpp"
 
@@ -130,7 +131,7 @@ namespace Rtx::Testing
             constexpr std::uint32_t size = 32;
             constexpr std::size_t centre = centreValueOf(size);
 
-            Shaders::VisibilityConstants camera = makeCamera(
+            Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
             camera.mShowAlbedo = 1u;
 
@@ -259,7 +260,7 @@ namespace Rtx::Testing
             constexpr std::uint32_t size = 32;
             constexpr std::size_t centre = centreValueOf(size);
 
-            Shaders::VisibilityConstants camera = makeCamera(
+            Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
             camera.mShowAlbedo = 1u;
 
@@ -318,7 +319,7 @@ namespace Rtx::Testing
         TEST_F(RtxVisibilityTest, aMeshInTheSecondBlockIsShadedOutOfTheSecondBlock)
         {
             constexpr std::uint32_t size = 64;
-            Shaders::VisibilityConstants camera = makeCamera(
+            Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
 
             // **Lit, and lit from the side.** An unlit wall is the same black whatever its normals
@@ -449,7 +450,7 @@ namespace Rtx::Testing
             scene.addInstance(
                 MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = mesh, .mMaterial = material });
 
-            Shaders::VisibilityConstants camera = makeCamera(
+            Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
             camera.mShowAlbedo = 1u;
 
@@ -502,7 +503,7 @@ namespace Rtx::Testing
             scene.addInstance(MeshInstance{
                 .mTransform = osg::Matrixf::scale(fills, 1.0f, fills), .mMesh = mesh, .mMaterial = material });
 
-            Shaders::VisibilityConstants camera = makeCamera(
+            Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
             camera.mShowAlbedo = 1u;
             camera.mDelight = 1.0f;
@@ -562,7 +563,7 @@ namespace Rtx::Testing
             scene.addInstance(
                 MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = mesh, .mMaterial = material });
 
-            Shaders::VisibilityConstants camera = makeCamera(
+            Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
             camera.mDelight = 0.0f;
 
@@ -606,7 +607,7 @@ namespace Rtx::Testing
             const std::array<osg::Vec3f, 4> tint{ osg::Vec3f(0.5f, 1.0f, 0.25f), osg::Vec3f(0.5f, 1.0f, 0.25f),
                 osg::Vec3f(0.5f, 1.0f, 0.25f), osg::Vec3f(0.5f, 1.0f, 0.25f) };
 
-            Shaders::VisibilityConstants camera = makeCamera(
+            Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
             camera.mShowAlbedo = 1u;
             camera.mDelight = 0.0f;
@@ -650,7 +651,7 @@ namespace Rtx::Testing
 
             const std::array<osg::Vec3f, 4> colours{ glow, glow, glow, glow };
 
-            const Shaders::VisibilityConstants camera = makeCamera(
+            const Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
 
             const auto render = [&](VertexColour mode, const osg::Vec3f& emissive, std::vector<std::uint8_t>& pixels) {
@@ -715,7 +716,7 @@ namespace Rtx::Testing
             const std::array<TextureData, 2> textures{ grey, sheet.mData };
 
             const osg::Vec3f tint(1.0f, 0.5f, 0.25f);
-            const Shaders::VisibilityConstants camera = makeCamera(
+            const Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
 
             const auto render = [&](bool sheeted, std::vector<float>& radiance) {
@@ -819,8 +820,8 @@ namespace Rtx::Testing
             TestTexture ladder;
             paintMipLadder(ladder);
 
-            const Shaders::VisibilityConstants camera
-                = makeCamera(osg::Vec3f(0.0f, -away, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
+            const Shaders::VisibilityConstants camera = Testing::makeCamera(
+                osg::Vec3f(0.0f, -away, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
 
             const auto levelOf = [&](std::span<const osg::Vec3f> normals) {
                 SceneDesc scene;
@@ -885,7 +886,7 @@ namespace Rtx::Testing
             sheet.mData.mSlot = 2;
             const std::array<TextureData, 3> textures{ grey, dark, sheet.mData };
 
-            Shaders::VisibilityConstants camera = makeCamera(
+            Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
             camera.mShowAlbedo = 1u;
             camera.mDelight = 0.0f;
@@ -1195,7 +1196,7 @@ namespace Rtx::Testing
             // `sampleCamera`, the way a frame's does, so the test reads the whole path and not a
             // field a test set by hand.
             const auto renderAt = [&](float distance, float levelBias) {
-                Shaders::VisibilityConstants camera = makeCamera(
+                Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(0.0f, -distance, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
                 camera.mShowAlbedo = 1u;
 
@@ -1268,7 +1269,7 @@ namespace Rtx::Testing
             constexpr std::array<float, 2> firstMask{ 1.0f, 0.0f };
             constexpr std::array<float, 2> secondMask{ 0.0f, 1.0f };
 
-            Shaders::VisibilityConstants camera = makeCamera(
+            Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
             camera.mShowAlbedo = 1u;
 
@@ -1364,7 +1365,7 @@ namespace Rtx::Testing
             constexpr std::array<float, 1> quarter{ 0.25f };
             constexpr std::array<float, 1> threeQuarters{ 0.75f };
 
-            Shaders::VisibilityConstants camera = makeCamera(
+            Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
             camera.mShowAlbedo = 1u;
 

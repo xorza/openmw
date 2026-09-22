@@ -116,7 +116,7 @@ namespace Rtx
         // Before anything is started, so a refusal leaves the runtime that is up untouched. A
         // constructor that threw after `Init` would have shut the first one down on the way out.
         if (sLive != nullptr)
-            throw Error("NGX keeps one runtime per process and one is already up");
+            throw Unsupported("NGX keeps one runtime per process and one is already up");
 
         const wchar_t* const searched[] = { featurePath() };
 

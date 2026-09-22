@@ -58,12 +58,13 @@ namespace Rtx
 
         /// Whether traversal must stop and ask the shader whether a hit is a hole. Without it the
         /// geometry's own opaque flag stands, traversal commits the first triangle it meets, and a
-        /// canopy stays the rectangle it was painted on.
+        /// canopy stays the rectangle it was painted on. `PlacedTraversal::mCutout`: false for a
+        /// translucent placement, which is stopped for anyway.
         bool mCutout = false;
 
         /// Whether traversal must stop and ask the shader how much of a hit there is — separate
-        /// from `mCutout`, which asks whether there is anything at the hit at all. Earned by the
-        /// material, for a pane of glass, or by the placement, for an actor the game is fading.
+        /// from `mCutout`, which asks whether there is anything at the hit at all.
+        /// `PlacedTraversal::mTranslucent`.
         bool mTranslucent = false;
 
         /// Whether this adds to the frame and covers nothing, which is built non-opaque so the

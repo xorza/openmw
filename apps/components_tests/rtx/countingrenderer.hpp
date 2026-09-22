@@ -112,10 +112,11 @@ namespace Rtx::Testing
             ++mFrames;
             return {};
         }
-        std::uint64_t getFrameCount() const override { return mFrames; }
+        void skipFrame() override { ++mSkipped; }
+        std::uint64_t getFrameCount() const override { return mFrames + mSkipped; }
         std::optional<Rtx::FrameResult> finishFrame() override { return std::nullopt; }
         std::optional<Rtx::FrameResult> collectFrame() override { return std::nullopt; }
-        bool presentFrame() override { return true; }
+        void presentFrame() override {}
 
         /// The GUI is not what this counts. Slots go up and nothing is drawn.
         Rtx::GuiSlot addGuiTexture(std::uint32_t, std::uint32_t) override { return Rtx::GuiSlot::at(mGuiTextures++); }
@@ -206,6 +207,7 @@ namespace Rtx::Testing
         /// Every texture slot given back, across every call, in the order it was named.
         std::vector<std::uint32_t> mDropped;
         std::uint64_t mFrames = 0;
+        std::uint64_t mSkipped = 0;
         std::uint32_t mDropCalls = 0;
 
     private:

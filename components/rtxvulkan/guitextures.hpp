@@ -105,8 +105,7 @@ namespace Rtx
         bool takeCopy(GuiSlot slot, std::span<std::uint8_t> into);
 
         /// Submits what has been recorded, and what was already handed over, and waits for both —
-        /// for a resize and shutdown, where there is no next submit, and for a staging arena that
-        /// fills before its frame is over, which is the only wait left on the frame path.
+        /// for a resize and shutdown, where there is no next submit.
         void finish();
 
     private:
@@ -146,10 +145,10 @@ namespace Rtx
         /// arenas hand them back exactly one frame early.
         static constexpr std::uint32_t sStagingArenas = sFrameSlots + 1;
 
-        /// Written a run at a time, turned over by `startFrame`, and each grown to the largest
-        /// single region ever written, so a video frame does not allocate. Sized to a region rather
-        /// than to a frame's worth of them: a frame that writes more than one buries the arena and
-        /// takes a fresh one of the same size (`reserve`), which bounds what an arena can grow to.
+        /// Written a run at a time, turned over by `startFrame`, and each grown to the most one
+        /// frame ever wrote into it: a frame that overflows its arena buries it and takes a fresh
+        /// one as large as that frame's writes so far (`reserve`), so a frame that writes as much
+        /// again, a video's every frame, allocates nothing.
         std::array<Buffer, sStagingArenas> mStaging;
         std::uint32_t mArena = 0;
         VkDeviceSize mStagingUsed = 0;

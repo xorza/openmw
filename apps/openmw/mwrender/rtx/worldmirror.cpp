@@ -21,11 +21,11 @@
 #include <components/resource/scenemanager.hpp>
 #include <components/rtx/camera.hpp>
 #include <components/rtx/cellgrid.hpp>
+#include <components/rtx/cellworld.hpp>
 #include <components/rtx/extractionstats.hpp>
 #include <components/rtx/frameworld.hpp>
 #include <components/rtx/mesh.hpp>
 #include <components/rtx/renderer.hpp>
-#include <components/rtx/residency.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/slot.hpp>
 #include <components/rtx/texturebuilder.hpp>
@@ -119,9 +119,9 @@ namespace MWRender
         // The sky is not mirrored: the engine rebuilds it every frame, state sets and all, so
         // walking it churns the identity maps and makes every frame a full rebuild, and a ray that
         // reaches the sky gets this renderer's own. The simple water is the local map's copy of the
-        // sea, which a mirror walking both would place twice. What the content hides is asked of the
-        // loader, whose hidden bit is one bit rather than none so the update traversal still reaches
-        // a hidden bone.
+        // sea, which a mirror walking both would place twice. What the content hides is the one bit
+        // `sWorldTraversal` names, rather than none, so the update traversal still reaches a hidden
+        // bone.
         mExtractor.setTraversalMask(worldTraversal(mShowsPlayer));
 
         // Where the engine stamps its identities: the cell roots under the scene root and the

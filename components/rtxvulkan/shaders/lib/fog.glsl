@@ -767,7 +767,8 @@ vec4 fogEdgeAlong(vec3 origin, vec3 direction, float distance)
         return vec4(0.0, 0.0, 0.0, 1.0);
 
     // Clamped at the reach, since past it there is no more world to hide and a sky ray carries
-    // `mFar` rather than a distance to anything.
+    // its length — `mFar` for the eye's own, `mReach` for the rest — rather than a distance to
+    // anything.
     const float range = min(distance, frame.mFogEdge) / frame.mFogEdge;
 
     // The integral of `exp(range / FOG_EDGE_RAMP)`, normalised to one where the ground stops, so a

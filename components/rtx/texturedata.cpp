@@ -12,7 +12,7 @@ namespace Rtx
             return 0;
 
         // Exactly, because a bake that grew this vector as it walked reached the heap once a level
-        // — which is what `aScratchTheCallerKeepsLeavesABakeNothingButItsAnswerToAllocate` counts.
+        // — which is what `aScratchTheCallerKeepsAnswersForEachImageAndAllocatesForNone` counts.
         mLevels.reserve(levelsTo1x1(width, height));
 
         std::size_t bytes = 0;

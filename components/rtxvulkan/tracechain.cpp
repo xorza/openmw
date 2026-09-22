@@ -8,6 +8,8 @@
 #include <components/rtx/shaders/composite.h>
 #include <components/rtx/shaders/visibility.h>
 
+#include "accumulatepass.hpp"
+#include "atrouspass.hpp"
 #include "barriers.hpp"
 #include "compositepass.hpp"
 #include "gputimer.hpp"
@@ -32,22 +34,14 @@ namespace Rtx
         }
     }
 
-    TraceChain::TraceChain(const Device& device, const SetLayout& channels, const SetLayout& fog,
-        const VisibilityPass& visibility, const CompositePass& composite, const SpriteBinPass& spriteBin,
-        const SpriteShadePass& spriteShade, const std::filesystem::path& shaders, const VkImageUsageFlags colourUsage,
+    TraceChain::TraceChain(const Device& device, const TracePasses& passes, const VkImageUsageFlags colourUsage,
         const std::string_view colourName)
         : mDevice(device)
-        , mChannelLayout(channels)
-        , mFogVolumeLayout(fog)
-        , mVisibility(visibility)
-        , mComposite(composite)
-        , mSpriteBin(spriteBin)
-        , mSpriteShade(spriteShade)
+        , mPasses(passes)
         , mColourUsage(colourUsage)
         , mColourName(colourName)
         , mBins([&](FrameSlot) { return SpriteBin{ device }; })
-        , mAccumulate(device, shaders)
-        , mFilter(device, shaders)
+        , mHistory(device)
     {
     }
 
@@ -62,10 +56,11 @@ namespace Rtx
         // and what is shown is shown from it.
         mColour = Image(mDevice, mWidth, mHeight, radianceFormat(radiance), mColourUsage, mColourName);
 
-        mChannels = std::make_unique<GBuffer>(mDevice, mChannelLayout, mWidth, mHeight, radiance);
-        mFogVolume = std::make_unique<FogVolume>(mDevice, mFogVolumeLayout, mWidth, mHeight);
-        mAccumulate.resize(mWidth, mHeight);
-        mFilter.resize(mWidth, mHeight);
+        mChannels = std::make_unique<GBuffer>(mDevice, mPasses.mChannels, mWidth, mHeight, radiance);
+        mFogVolume = std::make_unique<FogVolume>(mDevice, mPasses.mFog, mWidth, mHeight);
+        mHistory.resize(mWidth, mHeight);
+        if (mFilterScratch.isEmpty() || mFilterScratch.getWidth() != mWidth || mFilterScratch.getHeight() != mHeight)
+            mFilterScratch = AtrousPass::makeScratch(mDevice, mWidth, mHeight);
     }
 
     void TraceChain::grow(const std::uint32_t width, const std::uint32_t height, const RadianceWidth radiance)
@@ -82,8 +77,8 @@ namespace Rtx
         // The temporal half first: the accumulator hands on the variance of its mean, which is
         // what lets the levels below stop at an edge in the light and not only in the geometry.
         openZone(timer, commands, "accumulate");
-        const Image& moments = mAccumulate.record(commands, *mChannels, camera, far, historyLost);
-        const Image& blended = mAccumulate.getBlended();
+        const Image& moments = mPasses.mAccumulate.record(commands, mHistory, *mChannels, camera, far, historyLost);
+        const Image& blended = mHistory.getBlended();
         closeZone(timer, commands);
 
         // The cascade reads what the accumulator just wrote, in both images, and it reads through
@@ -97,8 +92,8 @@ namespace Rtx
         handed.flush();
 
         openZone(timer, commands, "filter");
-        const Image& indirect
-            = mFilter.record(commands, *mChannels, blended, moments, mAccumulate.getHistory(), camera);
+        const Image& indirect = mPasses.mFilter.record(
+            commands, *mChannels, blended, moments, mHistory.getHistory(), mFilterScratch, camera);
         closeZone(timer, commands);
 
         return indirect;
@@ -146,15 +141,15 @@ namespace Rtx
         if (bins)
             bin.take(sprites, what.mAsked.mCamera, commands);
 
-        mVisibility.writeFrame(commands, inputs, bin, getSpriteTileList(inputs), what.mSampled, what.mAirLost);
+        mPasses.mVisibility.writeFrame(commands, inputs, bin, getSpriteTileList(inputs), what.mSampled, what.mAirLost);
 
         if (bins)
         {
-            mVisibility.recordSpriteShelter(commands, inputs, what.mSampled, sprites.mSpriteCount, what.mTimer);
+            mPasses.mVisibility.recordSpriteShelter(commands, inputs, what.mSampled, sprites.mSpriteCount, what.mTimer);
             bin.record(commands,
                 Binning{
-                    .mShading = mSpriteShade,
-                    .mPass = mSpriteBin,
+                    .mShading = mPasses.mSpriteShade,
+                    .mPass = mPasses.mSpriteBin,
                     .mSource = sprites,
                     .mOrigin = what.mAsked.mOrigin,
                     .mCamera = what.mAsked.mCamera,
@@ -164,7 +159,7 @@ namespace Rtx
         }
 
         mChannels->begin(commands);
-        mVisibility.record(commands, inputs, what.mSampled, what.mTimer);
+        mPasses.mVisibility.record(commands, inputs, what.mSampled, what.mTimer);
         mChannels->handOver(commands);
 
         // Where the bounce ended up: the filter's last level, or the channel the trace wrote where
@@ -175,7 +170,7 @@ namespace Rtx
                 = &recordDenoise(commands, what.mSampled.mCamera, what.mSampled.mFar, what.mHistoryLost, what.mTimer);
 
         openZone(what.mTimer, commands, "composite");
-        mComposite.record(commands, *mChannels, *indirect, what.mSum, mColour,
+        mPasses.mComposite.record(commands, *mChannels, *indirect, what.mSum, mColour,
             Shaders::CompositeConstants{
                 .mWidth = what.mSampled.mCamera.mWidth,
                 .mHeight = what.mSampled.mCamera.mHeight,

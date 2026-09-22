@@ -14,12 +14,12 @@
 #include <components/sceneutil/offscreenframing.hpp>
 
 #include "frameimage.hpp"
+#include "mirrorpass.hpp"
 #include "renderer.hpp"
 #include "sceneuploader.hpp"
 #include "shaders/visibility.h"
 #include "slot.hpp"
 #include "viewscene.hpp"
-#include "walk.hpp"
 
 namespace osg
 {

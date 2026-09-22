@@ -14,10 +14,10 @@ namespace Rtx
     namespace
     {
         /// The upload in, the level above in, the level written out.
-        constexpr std::array<VkDescriptorSetLayoutBinding, 3> sBindings{
-            computeBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER),
-            computeBinding(1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
-            computeBinding(2, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
+        constexpr std::array<VkDescriptorSetLayoutBinding, Shaders::MIPCHAIN_BINDINGS> sBindings{
+            computeBinding(Shaders::MIPCHAIN_BIND_SOURCE, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER),
+            computeBinding(Shaders::MIPCHAIN_BIND_ABOVE, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
+            computeBinding(Shaders::MIPCHAIN_BIND_INTO, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
         };
     }
 
@@ -47,11 +47,12 @@ namespace Rtx
             if (level > 0)
                 chain.transition(commands, Use::sComputeReadWrite, Use::sComputeReadWrite);
 
-            DescriptorWrites<3> writes;
-            writes.image(0, source.describeSampled(sampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL),
+            DescriptorWrites<Shaders::MIPCHAIN_BINDINGS> writes;
+            writes.image(Shaders::MIPCHAIN_BIND_SOURCE,
+                source.describeSampled(sampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL),
                 VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-            writes.image(1, chain.describeStorage(level > 0 ? level - 1 : 0));
-            writes.image(2, chain.describeStorage(level));
+            writes.image(Shaders::MIPCHAIN_BIND_ABOVE, chain.describeStorage(level > 0 ? level - 1 : 0));
+            writes.image(Shaders::MIPCHAIN_BIND_INTO, chain.describeStorage(level));
 
             const Shaders::MipChainConstants constants{
                 .mLevel = level,

@@ -13,16 +13,16 @@
 
 #include <components/esm3/refnum.hpp>
 #include <components/rtx/cellring.hpp>
+#include <components/rtx/cellworld.hpp>
 #include <components/rtx/compositequeue.hpp>
 #include <components/rtx/extractionstats.hpp>
 #include <components/rtx/framespend.hpp>
 #include <components/rtx/frameworld.hpp>
-#include <components/rtx/residency.hpp>
+#include <components/rtx/mirrorpass.hpp>
 #include <components/rtx/ripple.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneextractor.hpp>
 #include <components/rtx/sceneuploader.hpp>
-#include <components/rtx/walk.hpp>
 
 namespace Resource
 {

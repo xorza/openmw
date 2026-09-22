@@ -8,7 +8,7 @@
 #include <osg/Math>
 #include <osg/Matrixd>
 
-#include "error.hpp"
+#include "contract.hpp"
 #include "shaders/camera.h"
 #include "shaders/scene.h"
 
@@ -64,6 +64,7 @@ namespace Rtx
                 .mOrigin = origin,
                 .mNear = near,
                 .mFar = far,
+                .mReach = sFarPlane,
 
                 // Every bounce, until a world says the reconstruction follows the frame —
                 // `VisibilityConstants::mBounceRate` says why a frame built by hand keeps them all.
@@ -111,7 +112,11 @@ namespace Rtx
             .mUp = osg::Vec3f(world(1, 0), world(1, 1), world(1, 2)),
         };
 
-        if (basis.mForward.normalize() <= 0.f || basis.mRight.normalize() <= 0.f || basis.mUp.normalize() <= 0.f)
+        // **Not `<= 0`, which NaN passes.** `osg::Matrixf::invert` inverts a singular view — an eye
+        // looking at itself, or straight down along the up it was given — into NaN and says it
+        // succeeded, and every axis of it then normalises to a length of NaN.
+        if (!(basis.mForward.normalize() > 0.f) || !(basis.mRight.normalize() > 0.f) || !(basis.mUp.normalize() > 0.f)
+            || basis.mOrigin.isNaN())
             return std::nullopt;
 
         return basis;
@@ -162,8 +167,7 @@ namespace Rtx
     {
         assert(width > 0 && height > 0);
 
-        if (!(worldWidth > 0.f) || !(worldHeight > 0.f))
-            throw Error("an orthographic camera with no extent sees nothing");
+        contract(worldWidth > 0.f && worldHeight > 0.f, "an orthographic camera with no extent sees nothing");
 
         const std::optional<ViewBasis> basis = basisOf(view);
         if (!basis.has_value())
@@ -197,53 +201,5 @@ namespace Rtx
         // Centred, so the offsets straddle the pixel centre rather than filling the quadrant below
         // and to the right of it.
         return osg::Vec2f(radicalInverse(term, 2) - 0.5f, radicalInverse(term, 3) - 0.5f);
-    }
-
-    Shaders::VisibilityConstants makeCamera(const osg::Vec3f& origin, const osg::Vec3f& target,
-        float verticalFovDegrees, std::uint32_t width, std::uint32_t height, float far)
-    {
-        const osg::Vec3f along = target - origin;
-        if (along.length2() <= 0.0f)
-            throw Error("the camera is standing where it is looking");
-
-        return makeCameraAlong(origin, along, verticalFovDegrees, width, height, far);
-    }
-
-    Shaders::VisibilityConstants makeCameraAlong(const osg::Vec3f& origin, const osg::Vec3f& along,
-        float verticalFovDegrees, std::uint32_t width, std::uint32_t height, float far)
-    {
-        assert(width > 0 && height > 0);
-
-        osg::Vec3f forward = along;
-        if (forward.length2() <= 0.0f)
-            throw Error("the camera has no direction to look along");
-        forward.normalize();
-
-        const osg::Vec3f worldUp(0.0f, 0.0f, 1.0f);
-        osg::Vec3f right = forward ^ worldUp;
-        if (right.length2() <= 1e-6f)
-            throw Error("the camera looks along the world's up axis, which leaves its roll undefined");
-        right.normalize();
-
-        osg::Vec3f up = right ^ forward;
-        up.normalize();
-
-        const Spread spread = spreadOf(verticalFovDegrees, width, height);
-
-        // A quarter of a Morrowind foot. Nothing is clipped against it — see `mNear` — so it only
-        // has to be nearer than anything the eye can find itself inside of.
-        Shaders::VisibilityConstants camera = beforeWorld(origin, 1.0f, far);
-        camera.mCamera = Shaders::Camera{
-            .mForward = forward,
-            .mRight = right * spread.mHalfWidth,
-            .mUp = up * spread.mHalfHeight,
-            .mSpreadAngle = spread.mAngle,
-            .mOrthographic = 0,
-            .mWidth = width,
-            .mHeight = height,
-        };
-        camera.mArms = camera.mCamera;
-
-        return camera;
     }
 }

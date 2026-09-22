@@ -3,10 +3,11 @@
 #include <array>
 #include <cstddef>
 #include <optional>
-#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
+
+#include "error.hpp"
 
 namespace Rtx
 {
@@ -51,7 +52,7 @@ namespace Rtx
             // Concatenated and not formatted: this header reaches the settings registry, which
             // every translation unit of the game includes, and `<format>` is not a price to pay
             // there for a cold path's message.
-            throw std::runtime_error('"' + std::string(spelling) + "\" is not " + std::string(what) + ": " + list());
+            throw InputError('"' + std::string(spelling) + "\" is not " + std::string(what) + ": " + list());
         }
 
         /// The values, in the order they are listed.

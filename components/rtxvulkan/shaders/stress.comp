@@ -18,7 +18,7 @@
 
 layout(local_size_x = STRESS_WORKGROUP) in;
 
-layout(set = 0, binding = 0, scalar) buffer Counted
+layout(set = 0, binding = STRESS_BIND_COUNTS, scalar) buffer Counted
 {
     FrameCounts counts;
 };

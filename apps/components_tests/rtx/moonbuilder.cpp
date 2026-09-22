@@ -176,9 +176,10 @@ namespace Rtx
 
         /// A painted phase is an angle: zero at full, pi at new, and an eighth of a turn a step.
         ///
-        /// **The steps are even, which is what lets one index stand for an angle.** `Sky::MoonPhase`
-        /// declares the eight in the game's own order and `SkyMoonTest` is where the clock's walk
-        /// over them is asserted; what is here is the angle each of them becomes.
+        /// **The steps are even, which is what lets one index stand for an angle.**
+        /// `Sky::MoonPhase` declares the eight in the game's own order and `MWWorldWeatherTest` is
+        /// where the clock's walk over them is asserted; what is here is the angle each of them
+        /// becomes.
         TEST(RtxMoonBuilderTest, aPaintedPhaseIsAnAngleFromFull)
         {
             const auto angleOf = [](const Sky::MoonPhase phase) {

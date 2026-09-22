@@ -29,6 +29,7 @@
 #include <components/vfs/pathutil.hpp>
 
 #include "../geometry.hpp"
+#include "../testcamera.hpp"
 #include "../testtexture.hpp"
 #include "fixture.hpp"
 
@@ -68,7 +69,7 @@ namespace Rtx::Testing
             constexpr std::uint32_t size = 33;
             constexpr std::size_t centre = centreValueOf(size);
 
-            const Shaders::VisibilityConstants base = makeCamera(
+            const Shaders::VisibilityConstants base = Testing::makeCamera(
                 osg::Vec3f(100.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
 
             const std::array occluder{
@@ -342,7 +343,7 @@ namespace Rtx::Testing
 
             // Nothing lights this scene at all: no lamp, no sun, no ambient. Whatever comes back is
             // the surface's own glow and nothing else.
-            const Shaders::VisibilityConstants camera = makeCamera(
+            const Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
 
             const auto render = [&](Index diffuse, Index emissiveMap, const osg::Vec3f& emissiveColour) {
@@ -434,7 +435,7 @@ namespace Rtx::Testing
 
             const std::array masked = cardAt(-50.0f);
 
-            Shaders::VisibilityConstants camera = makeCamera(
+            Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -150.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
             camera.mShowAlbedo = 1u;
 
@@ -518,7 +519,7 @@ namespace Rtx::Testing
             constexpr std::uint32_t size = 33;
             constexpr std::size_t centre = centreValueOf(size);
 
-            const Shaders::VisibilityConstants base = makeCamera(
+            const Shaders::VisibilityConstants base = Testing::makeCamera(
                 osg::Vec3f(100.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
 
             // Ten units across, a quarter of the way from the wall to the lamp: it covers the whole
@@ -623,7 +624,7 @@ namespace Rtx::Testing
 
             // Fourteen degrees off the wall's own plane, and the centre ray lands exactly on the
             // origin — so the cosines below are the shading normal's and nothing else's.
-            Shaders::VisibilityConstants camera = makeCamera(
+            Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(200.0f, -50.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
             camera.mSkyHorizon = osg::Vec3f();
             camera.mSkyZenith = osg::Vec3f();
@@ -710,7 +711,7 @@ namespace Rtx::Testing
                         .mReach = 500.0f,
                     });
 
-                Shaders::VisibilityConstants camera = makeCamera(
+                Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(100.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
                 camera.mSun
                     = Shaders::sunSource(lit / lit.length(), lamp ? osg::Vec3f() : osg::Vec3f(2.0f, 2.0f, 2.0f));
@@ -825,7 +826,7 @@ namespace Rtx::Testing
             static Shaders::VisibilityConstants lookAtTheWall()
             {
                 Shaders::VisibilityConstants camera
-                    = makeCamera(osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(), 60.0f, sSize, sSize, 10000.0f);
+                    = Testing::makeCamera(osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(), 60.0f, sSize, sSize, 10000.0f);
                 camera.mSkyHorizon = osg::Vec3f();
                 camera.mSkyZenith = osg::Vec3f();
                 return camera;
@@ -941,7 +942,7 @@ namespace Rtx::Testing
                     .mFill = fill ? 1u : 0u,
                 });
 
-                Shaders::VisibilityConstants camera = makeCamera(
+                Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(0.0f, -100.0f, 100.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
                 camera.mSkyHorizon = osg::Vec3f();
                 camera.mSkyZenith = osg::Vec3f();
@@ -983,7 +984,7 @@ namespace Rtx::Testing
                     .mFill = fill ? 1u : 0u,
                 });
 
-                Shaders::VisibilityConstants camera = makeCamera(
+                Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(100.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
                 camera.mSkyHorizon = osg::Vec3f();
                 camera.mSkyZenith = osg::Vec3f();
@@ -1103,7 +1104,7 @@ namespace Rtx::Testing
             const auto floorUnderTheLid = [&](const SceneDesc& scene, float fromSky, float lid) {
                 // Between the two, looking down, so the eye finds the floor and the floor's own
                 // bounce finds the lid.
-                Shaders::VisibilityConstants camera = makeCamera(
+                Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(0.0f, -1.0f, 0.5f * lid), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
 
                 camera.mSkyHorizon = osg::Vec3f();
@@ -1157,7 +1158,7 @@ namespace Rtx::Testing
             const SceneDesc scene = leaningFloor();
 
             const auto litFrom = [&](float upward) {
-                Shaders::VisibilityConstants camera = makeCamera(
+                Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(0.0f, -1.0f, 300.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
 
                 // Nothing but the sun, so what the floor shows is that one term.
@@ -1220,7 +1221,7 @@ namespace Rtx::Testing
 
             // Between the two, looking down, so the floor is what the eye finds either way.
             const auto floorUnder = [&](const SceneDesc& scene) {
-                Shaders::VisibilityConstants camera = makeCamera(
+                Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(0.0f, -1.0f, 50.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
 
                 camera.mSkyHorizon = osg::Vec3f();
@@ -1278,7 +1279,7 @@ namespace Rtx::Testing
             // As near straight down as `makeCamera` will take, so every ray lands on the floor and
             // every pixel is one bounce off a normal of +z with nothing else in the frame. Nothing
             // stands above the floor either, so every bounce escapes and the sky is the whole answer.
-            Shaders::VisibilityConstants camera = makeCamera(
+            Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -1.0f, 300.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
             camera.mSkyHorizon = horizon;
             camera.mSkyZenith = zenith;

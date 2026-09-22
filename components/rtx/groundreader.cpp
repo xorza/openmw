@@ -14,8 +14,8 @@
 #include <components/esm/exteriorcelllocation.hpp>
 #include <components/esm/util.hpp>
 
+#include "cellworld.hpp"
 #include "colour.hpp"
-#include "residency.hpp"
 
 namespace Rtx
 {

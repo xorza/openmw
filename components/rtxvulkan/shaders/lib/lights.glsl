@@ -44,7 +44,7 @@ SkySource skySourceAt(uint source)
 /// @param draw one pair in `[0, 1)`, which aims the ray inside the disc's cone.
 float skyVisible(SkySource sky, vec3 position, vec2 draw)
 {
-    return lightThrough(position, coneDirection(sky.mDirection, sky.mLimb, draw), frame.mFar)
+    return lightThrough(position, coneDirection(sky.mDirection, sky.mLimb, draw), frame.mReach)
         * cloudShadow(position, sky.mDirection);
 }
 
@@ -67,7 +67,7 @@ float skyVisible(vec3 position, uint source, vec2 draw)
 /// rather than clamping to the nearest.
 ///
 /// **By cell rather than by point, because a walk along a ray has the cell already.** The stretch a
-/// ray spends inside one cell is one list asked once, which is what `weighLampsAlong` is built on.
+/// ray spends inside one cell is one list asked once, which is what `weighLamps` is built on.
 uvec2 lampsInCell(vec3 cell)
 {
     if (any(lessThan(cell, vec3(0.0))) || any(greaterThanEqual(cell, vec3(frame.mLightGrid.mSize))))

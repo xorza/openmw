@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <filesystem>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -11,8 +10,7 @@
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/shaders/camera.h>
 
-#include "accumulatepass.hpp"
-#include "atrouspass.hpp"
+#include "accumulatehistory.hpp"
 #include "fogvolume.hpp"
 #include "frameslots.hpp"
 #include "gbuffer.hpp"
@@ -22,6 +20,8 @@
 
 namespace Rtx
 {
+    class AccumulatePass;
+    class AtrousPass;
     class CompositePass;
     class Device;
     class GpuTimer;
@@ -31,6 +31,22 @@ namespace Rtx
     struct TraceRecording;
     struct VisibilityInputs;
 
+    /// What every chain shares, whichever camera it is for: the layouts every `GBuffer` and every
+    /// `FogVolume` is shaped by, and the passes every trace runs. The renderer keeps one of each,
+    /// built once — a pipeline is a compile, and two chains that each made their own made it
+    /// twice — and what differs between two chains is the extent and what becomes of the picture.
+    struct TracePasses
+    {
+        const SetLayout& mChannels;
+        const SetLayout& mFog;
+        const VisibilityPass& mVisibility;
+        const CompositePass& mComposite;
+        const SpriteBinPass& mSpriteBin;
+        const SpriteShadePass& mSpriteShade;
+        const AccumulatePass& mAccumulate;
+        const AtrousPass& mFilter;
+    };
+
     /// Everything one camera's trace writes, at one extent — one chain however many cameras have
     /// one, so a barrier cannot go missing from a second copy. What differs between two of these
     /// is what the caller hands in: the extent, what may be done with the composite's image
@@ -39,19 +55,13 @@ namespace Rtx
     class TraceChain
     {
     public:
-        /// The denoising passes are built here and the images are not: nothing has an extent
-        /// until `resize` or `grow` is called.
+        /// Nothing has an extent until `resize` or `grow` is called.
         ///
-        /// @param channels, fog the layouts every `GBuffer` and every `FogVolume` here is shaped by.
-        /// @param visibility, composite, spriteBin, spriteShade the passes every trace runs,
-        ///        whichever camera it is for: the renderer keeps one of each, and what differs
-        ///        between two chains is the extent and what becomes of the picture.
+        /// @param passes what the chain traces with, which outlives it.
         /// @param colourUsage what the composite's output has done to it besides being written: an
         ///        upscaler samples a frame's and a measurement copies it out.
         /// @param colourName what a capture and a validation message call that image.
-        TraceChain(const Device& device, const SetLayout& channels, const SetLayout& fog,
-            const VisibilityPass& visibility, const CompositePass& composite, const SpriteBinPass& spriteBin,
-            const SpriteShadePass& spriteShade, const std::filesystem::path& shaders, VkImageUsageFlags colourUsage,
+        TraceChain(const Device& device, const TracePasses& passes, VkImageUsageFlags colourUsage,
             std::string_view colourName);
 
         /// Builds the chain at exactly this extent, whatever it was before. The caller has waited
@@ -111,14 +121,7 @@ namespace Rtx
             VkCommandBuffer commands, const Shaders::Camera& camera, float far, bool historyLost, GpuTimer* timer);
 
         const Device& mDevice;
-
-        const SetLayout& mChannelLayout;
-        const SetLayout& mFogVolumeLayout;
-
-        const VisibilityPass& mVisibility;
-        const CompositePass& mComposite;
-        const SpriteBinPass& mSpriteBin;
-        const SpriteShadePass& mSpriteShade;
+        TracePasses mPasses;
 
         VkImageUsageFlags mColourUsage;
         std::string mColourName;
@@ -134,10 +137,9 @@ namespace Rtx
         /// behind keeps the tables its trace reads while this frame's bin writes its own.
         PerSlot<SpriteBin> mBins;
 
-        /// Held by value rather than built with the extent, because what they read is pushed at
-        /// record time. The filter is not const only because it keeps a channel the size of the
-        /// picture.
-        AccumulatePass mAccumulate;
-        AtrousPass mFilter;
+        /// What the shared denoising passes keep of this camera: the accumulator's history, and the
+        /// filter's other half of the ping-pong (`AtrousPass::makeScratch`). Both at the extent.
+        AccumulateHistory mHistory;
+        Image mFilterScratch;
     };
 }

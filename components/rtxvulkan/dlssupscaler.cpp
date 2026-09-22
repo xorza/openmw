@@ -86,9 +86,13 @@ namespace Rtx
             const DlssSupport support = Dlss::probe(device, instance);
             return support.mAvailable ? "available" : "unavailable, " + support.mObstacle;
         }
-        catch (const Error& error)
+        catch (const Unsupported& obstacle)
         {
-            return std::string("unavailable, ") + error.what();
+            return std::string("unavailable, ") + obstacle.what();
+        }
+        catch (const DeviceError& failed)
+        {
+            return std::string("unavailable, ") + failed.what();
         }
     }
 

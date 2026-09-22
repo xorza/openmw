@@ -102,7 +102,8 @@ namespace Rtx
 
     /// The angular radius a placement gives that moon, in radians, out of the renderer the game
     /// already has: `Moons_<name>_Size` is scaled by 450/125 onto a quad of half-extent 0.5 a
-    /// thousand units off (`gl/skyutil.cpp`), so the disc is `atan(1.8 * size / 1000)`. Masser's
-    /// 94 comes to 9.6 degrees and Secunda's 40 to 4.1 — thirty-five times the sun.
+    /// thousand units off (`apps/openmw/mwrender/skyutil.cpp`), so the disc is `atan(1.8 * size /
+    /// 1000)`. Masser's 94 comes to 9.6 degrees and Secunda's 40 to 4.1 — thirty-five times the
+    /// sun.
     float moonAngularRadius(Moon moon);
 }

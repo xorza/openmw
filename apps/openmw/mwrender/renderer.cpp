@@ -2,8 +2,10 @@
 
 #include <cassert>
 #include <chrono>
+#include <optional>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 #include <SDL_hints.h>
 #include <SDL_video.h>
@@ -48,13 +50,28 @@ namespace MWRender
 
     void Renderer::setFrameRateLimit(const float limit)
     {
+        mFrameRateLimit = limit;
         mLimiter = Misc::makeFrameRateLimiter(limit);
+        applyFrameRateLimit();
     }
 
     std::chrono::steady_clock::duration Renderer::awaitFrame()
     {
-        mLimiter.limit();
-        return mLimiter.getLastFrameDuration();
+        const std::chrono::steady_clock::time_point began = std::chrono::steady_clock::now();
+        const bool held = holdFrame();
+        if (!held)
+            mLimiter.limit();
+
+        const std::chrono::steady_clock::time_point opened = std::chrono::steady_clock::now();
+        mLastHold = opened - began;
+
+        const std::optional<std::chrono::steady_clock::time_point> before = std::exchange(mOpened, opened);
+        if (!held)
+            return mLimiter.getLastFrameDuration();
+
+        // The limiter measures its next frame from here, as if it had held this one.
+        mLimiter = Misc::makeFrameRateLimiter(mFrameRateLimit, opened);
+        return before.has_value() ? opened - *before : std::chrono::steady_clock::duration::zero();
     }
 
     void Renderer::setScreenshotWriter(SceneUtil::AsyncScreenCaptureOperation& writer)

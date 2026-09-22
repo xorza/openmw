@@ -52,7 +52,8 @@ namespace Rtx
                 VkDescriptorSetLayoutBinding{ 0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT },
             };
             // Any non-zero push-constant size does; a range of zero is not a legal one to ask for.
-            EXPECT_THROW(ComputePipeline(*device, bindings, sizeof(float), {}, "no-such.comp.spv", "scratch"), Error);
+            EXPECT_THROW(
+                ComputePipeline(*device, bindings, sizeof(float), {}, "no-such.comp.spv", "scratch"), InputError);
 
             log->clear();
             device.reset();

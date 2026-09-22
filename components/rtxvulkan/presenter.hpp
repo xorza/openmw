@@ -38,19 +38,20 @@ namespace Rtx
         /// the instance has to be created with these enabled before the surface can be made.
         static std::vector<const char*> getInstanceExtensions(SDL_Window* window);
 
-        /// Throws `Error` where the surface or the swapchain will not come up. The blit is a submit
-        /// of the device's pool like any other, so it signals the timeline and carries what was
-        /// deferred ahead of it — a submit of its own that took a timeline value would let the
+        /// Throws `Unsupported` where the surface or the swapchain will not come up. The blit is a
+        /// submit of the device's pool like any other, so it signals the timeline and carries what
+        /// was deferred ahead of it — a submit of its own that took a timeline value would let the
         /// graveyard free what a deferred batch names before it ran.
         Presenter(const Device& device, const Instance& instance, SDL_Window* window, SDLUtil::VSyncMode verticalSync,
             const Pacing& pacing);
         ~Presenter();
 
         /// Blits `frame`, in `VK_IMAGE_LAYOUT_GENERAL` and left there, onto the next swapchain
-        /// image and queues it. False where the surface no longer matches the window, which is not
-        /// an error: the caller resizes and asks again. A present the driver paces is marked
-        /// around the call and carries its id; one that owes a sleep pays it first.
-        bool present(const Image& frame);
+        /// image and queues it. A surface that no longer matches the window is not an error: the
+        /// swapchain is marked stale, the one record of it, and `wantsResize` answers yes. A
+        /// present the driver paces is marked around the call and carries its id; one that owes a
+        /// sleep pays it first.
+        void present(const Image& frame);
 
         /// The driver's pacing, forwarded — `Renderer::pacesFrames` and the three beside it. The
         /// pacer is this object's because it is the swapchain's: a rebuild and a mode change

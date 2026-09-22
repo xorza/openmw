@@ -78,7 +78,7 @@ namespace Rtx
         {
             out = reinterpret_cast<T>(vkGetDeviceProcAddr(device, name));
             if (out == nullptr)
-                throw Error(
+                throw Unsupported(
                     std::string("the driver advertises the extension providing ") + name + " but does not dispatch it");
         }
     }

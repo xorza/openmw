@@ -20,6 +20,22 @@ namespace Rtx::Shaders
 {
 #endif
 
+    /// Where `ripplestep.comp` binds what it reads and writes in set 0, and how many there are. The
+    /// shader's layout and the pass's own layout and writes are numbered by these and by nothing
+    /// else, so the two cannot drift apart.
+    const uint RIPPLE_STEP_BIND_BEFORE = 0;
+    const uint RIPPLE_STEP_BIND_AFTER = 1;
+    const uint RIPPLE_STEP_BIND_IMPULSES = 2;
+    const uint RIPPLE_STEP_BINDINGS = 3;
+
+    /// Where `ripplecompose.comp` binds what it reads and writes in set 0, and how many there are.
+    /// The shader's layout and the pass's own layout and writes are numbered by these and by
+    /// nothing else, so the two cannot drift apart.
+    const uint RIPPLE_COMPOSE_BIND_FIELD = 0;
+    const uint RIPPLE_COMPOSE_BIND_SURFACE = 1;
+    const uint RIPPLE_COMPOSE_BIND_CURVATURE = 2;
+    const uint RIPPLE_COMPOSE_BINDINGS = 3;
+
     /// Texels along each axis of the field.
     const uint RIPPLE_GRID = 1024u;
 

@@ -42,8 +42,9 @@ namespace Rtx
     /// The writes one push or one set update is made of, and the infos they point at, in one
     /// object: a write names its info by address, so the two live together and neither moves —
     /// which is why this is neither copied nor moved, and why it is a local of the pass that
-    /// fills it. Appended in binding order, so a binding a shader grew and a pass did not is a
-    /// count the pass can check.
+    /// fills it. Appended in binding order, which a debug build asserts, so a binding a shader
+    /// grew and a pass did not is a count the pass can check, and two writes the pass swapped are a
+    /// failure and not two descriptors of one type landing on each other's slot.
     ///
     /// @tparam Bindings how many writes there are room for.
     /// @tparam Images how many image infos, where a binding is an array of them.
@@ -109,6 +110,8 @@ namespace Rtx
             const VkDescriptorImageInfo* image, const VkDescriptorBufferInfo* block)
         {
             assert(mCount < mWrites.size() && "more descriptor writes than the layout has bindings");
+            assert(
+                (mCount == 0 || mWrites[mCount - 1].dstBinding < binding) && "descriptor writes out of binding order");
 
             mWrites[mCount++] = VkWriteDescriptorSet{
                 .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,

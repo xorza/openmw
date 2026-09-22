@@ -47,6 +47,7 @@
 #include <components/rtxvulkan/upscaler.hpp>
 #include <components/rtxvulkan/vulkanrenderer.hpp>
 
+#include "testcamera.hpp"
 #include "testtexture.hpp"
 
 namespace Rtx
@@ -120,7 +121,7 @@ namespace Rtx
         /// which nothing else here would notice.
         TEST_F(RtxDlssTest, aSecondRuntimeIsRefusedRatherThanMade)
         {
-            EXPECT_THROW(Dlss(getDevice(), getInstance()), Error);
+            EXPECT_THROW(Dlss(getDevice(), getInstance()), Unsupported);
         }
 
         /// Asking whether Ray Reconstruction is available must not decide anything about who owns
@@ -135,7 +136,7 @@ namespace Rtx
             EXPECT_NO_THROW(sNgx->getRenderSize(sOutput, Upscale::Performance));
         }
 
-        /// **The frame budget's own numbers, asked of DLSS rather than assumed.** `plan.md` §5.3
+        /// **The frame budget's own numbers, asked of DLSS rather than assumed.** The budget
         /// settles on 1920×1080 internal to 3840×2160, and Performance is the mode that ratio comes
         /// from — so if DLSS asks for something else, every figure the project is measured against
         /// was measured at the wrong resolution.
@@ -171,7 +172,9 @@ namespace Rtx
         /// renderer has — silently, on the path a frame budget is measured against.
         TEST_F(RtxDlssTest, theAbsenceOfAnUpscalerNamesNoSizeToRenderAt)
         {
-            EXPECT_THROW(sNgx->getRenderSize(sOutput, Upscale::Off), Error);
+#ifndef NDEBUG
+            EXPECT_DEATH(sNgx->getRenderSize(sOutput, Upscale::Off), "an upscale mode that is the absence of one");
+#endif
         }
 
         /// **A flat frame is the one input whose correct output is arithmetic** rather than a
@@ -405,8 +408,8 @@ namespace Rtx
 
             // **One camera for both, and it is built for the render extent**, because that is what
             // both renderers trace at — the upscaler only changes what happens after.
-            Shaders::VisibilityConstants camera = makeCamera(osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(), 60.0f,
-                extents.mRenderWidth, extents.mRenderHeight, 10000.0f);
+            Shaders::VisibilityConstants camera = Testing::makeCamera(osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(),
+                60.0f, extents.mRenderWidth, extents.mRenderHeight, 10000.0f);
             camera.mSun = Shaders::sunSource(osg::Vec3f(0.0f, -0.6f, -0.8f), osg::Vec3f(2.0f, 2.0f, 2.0f));
             camera.mSkyHorizon = osg::Vec3f();
             camera.mSkyZenith = osg::Vec3f();
@@ -482,8 +485,8 @@ namespace Rtx
             scene.addEmitter(sprites, cut, false);
 
             const auto cameraAt = [](const std::uint32_t width, const std::uint32_t height) {
-                Shaders::VisibilityConstants camera
-                    = makeCamera(osg::Vec3f(0.0f, -200.0f, 0.0f), osg::Vec3f(), 60.0f, width, height, 10000.0f);
+                Shaders::VisibilityConstants camera = Testing::makeCamera(
+                    osg::Vec3f(0.0f, -200.0f, 0.0f), osg::Vec3f(), 60.0f, width, height, 10000.0f);
                 // The sun behind the wall, so the wall is black and the puff — lit whole from any
                 // side, as `ballPuff` says a puff is — is the one bright thing in the picture.
                 camera.mSun = Shaders::sunSource(osg::Vec3f(0.0f, 0.6f, -0.8f), osg::Vec3f(2.0f, 2.0f, 2.0f));
@@ -563,8 +566,8 @@ namespace Rtx
             const auto drawTwice = [&] {
                 const FrameExtents extents = upscaling->getExtents();
 
-                Shaders::VisibilityConstants camera = makeCamera(osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(), 60.0f,
-                    extents.mRenderWidth, extents.mRenderHeight, 10000.0f);
+                Shaders::VisibilityConstants camera = Testing::makeCamera(osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(),
+                    60.0f, extents.mRenderWidth, extents.mRenderHeight, 10000.0f);
                 camera.mSun = Shaders::sunSource(osg::Vec3f(0.0f, -0.6f, -0.8f), osg::Vec3f(2.0f, 2.0f, 2.0f));
 
                 // Two, because an upscaler has no history on the first and the frame after one is
@@ -612,8 +615,8 @@ namespace Rtx
             const auto drawAndRead = [&] {
                 const FrameExtents extents = upscaling->getExtents();
 
-                Shaders::VisibilityConstants camera = makeCamera(osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(), 60.0f,
-                    extents.mRenderWidth, extents.mRenderHeight, 10000.0f);
+                Shaders::VisibilityConstants camera = Testing::makeCamera(osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(),
+                    60.0f, extents.mRenderWidth, extents.mRenderHeight, 10000.0f);
                 camera.mSun = Shaders::sunSource(osg::Vec3f(0.0f, -0.6f, -0.8f), osg::Vec3f(2.0f, 2.0f, 2.0f));
                 upscaling->renderFrame(camera, FrameOptions{});
 

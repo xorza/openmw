@@ -9,18 +9,14 @@ namespace Rtx
     {
         const MeshInstance& placed = row.mInstance;
         const Material::Traversed& worn = row.mWorn;
-
-        // `InstanceRecord::mTranslucent`'s own rule: earned by the material, for a pane, or by the
-        // placement, for an actor the game is fading — and never by a surface that adds, whose
-        // alpha weights what it adds rather than deciding how much of it is there.
-        const bool translucent = !worn.mAdditive && (placed.mOpacity < 1.0f || worn.mTranslucent);
+        const PlacedTraversal traversed = worn.placedAt(placed.mOpacity);
 
         return InstanceCounts{
             .mPlaced = 1,
-            .mCutout = worn.mCutout && !translucent ? 1u : 0u,
+            .mCutout = traversed.mCutout ? 1u : 0u,
             .mWater = worn.mKind == MaterialKind::Water ? 1u : 0u,
-            .mMedium = worn.mMedium ? 1u : 0u,
-            .mAdditive = worn.mAdditive ? 1u : 0u,
+            .mMedium = traversed.mMedium ? 1u : 0u,
+            .mAdditive = traversed.mAdditive ? 1u : 0u,
             .mFirstPerson = placed.mClass == InstanceClass::FirstPerson ? 1u : 0u,
         };
     }

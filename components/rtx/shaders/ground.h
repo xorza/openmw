@@ -14,6 +14,12 @@ namespace Rtx::Shaders
 {
 #endif
 
+    /// Where `groundcomposite.comp` binds what it reads and writes in set 0, and how many there
+    /// are. The shader's layout and the pass's own layout and writes are numbered by these and by
+    /// nothing else, so the two cannot drift apart.
+    const uint GROUND_COMPOSITE_BIND_TARGET = 0;
+    const uint GROUND_COMPOSITE_BINDINGS = 1;
+
     /// How large a composite is, square: the rasterizer's `composite map resolution` default,
     /// stated here because this path forces that setting past every chunk. A power of two, so the
     /// chain halves exactly and ends at one texel.

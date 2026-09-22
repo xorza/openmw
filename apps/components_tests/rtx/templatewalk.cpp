@@ -16,6 +16,7 @@
 #include <osg/Vec3f>
 #include <osg/ref_ptr>
 
+#include <components/rtx/error.hpp>
 #include <components/rtx/prepared.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/surface.hpp>
@@ -111,6 +112,20 @@ namespace Rtx::Testing
             // **Nothing was stepped.** A frame's walk moves a flipbook's clock; this one may not,
             // because the template is every clone's and every thread's.
             EXPECT_EQ(frames->getValue(), 1);
+        }
+
+        /// **A mesh past one block refuses its model on the reader's thread**, where the reader
+        /// leaves the model out of its cell. Left to the adoption, the same check threw inside the
+        /// frame's walk.
+        TEST(RtxTemplateWalkTest, aMeshPastOneBlockRefusesTheModelWhereItIsRead)
+        {
+            osg::ref_ptr<osg::Group> root = new osg::Group;
+            root->addChild(makeQuad());
+            root->addChild(makePastOneBlock());
+
+            PreparedModel model;
+            TemplateWalk walk;
+            EXPECT_THROW(walk.read(*root, ~0u, model), InputError);
         }
     }
 }

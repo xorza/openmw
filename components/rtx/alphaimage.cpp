@@ -196,7 +196,7 @@ namespace Rtx
         {
             described = describeImage(image, levels);
         }
-        catch (const Error& what)
+        catch (const InputError& what)
         {
             // A format nothing in the game produces, which is a mod's business rather than a broken
             // contract. The caller gets the answer that changes nothing about how the surface is

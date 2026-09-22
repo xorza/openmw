@@ -2,6 +2,7 @@
 
 #include "MyGUI_LanguageManager.h"
 
+#include <components/debug/debuglog.hpp>
 #include <components/lua/util.hpp>
 
 #include "../mwbase/environment.hpp"
@@ -40,8 +41,17 @@ namespace MWLua
     {
         std::shared_ptr<Fx::Technique> mShader;
 
+        // A renderer with no chain, which the ray tracer is, loads the name alone: the script runs,
+        // and its technique draws nothing, as under a chain that is switched off
+        std::string mRequested;
+
         Shader(std::shared_ptr<Fx::Technique> shader)
             : mShader(std::move(shader))
+        {
+        }
+
+        explicit Shader(std::string_view requested)
+            : mRequested(requested)
         {
         }
 
@@ -62,24 +72,18 @@ namespace MWLua
             = Action_None;
     };
 
-    namespace
-    {
-        // The shader chain, or a Lua error under a renderer that has none
-        MWRender::PostProcessor& postProcessor()
-        {
-            MWRender::PostProcessor* post = MWBase::Environment::get().getWorld()->getPostProcessor();
-            if (post == nullptr)
-                throw std::runtime_error("this renderer has no post-processing chain");
-            return *post;
-        }
-    }
-
     template <class T>
     auto getSetter(const Context& context)
     {
         return [context](const Shader& shader, const std::string& name, const T& value) {
+            if (!shader.mShader)
+                return;
+
             context.mLuaManager->addAction(
-                [=] { postProcessor().setUniform(shader.mShader, name, value); }, "SetUniformShaderAction");
+                [=] {
+                    MWBase::Environment::get().getWorld()->getPostProcessor()->setUniform(shader.mShader, name, value);
+                },
+                "SetUniformShaderAction");
         };
     }
 
@@ -87,7 +91,11 @@ namespace MWLua
     auto getArraySetter(const Context& context)
     {
         return [context](const Shader& shader, const std::string& name, const sol::table& table) {
-            auto targetSize = postProcessor().getUniformSize(shader.mShader, name);
+            if (!shader.mShader)
+                return;
+
+            auto targetSize
+                = MWBase::Environment::get().getWorld()->getPostProcessor()->getUniformSize(shader.mShader, name);
 
             if (!targetSize.has_value())
                 throw std::runtime_error(std::format("Failed setting uniform array '{}'", name));
@@ -109,7 +117,7 @@ namespace MWLua
 
             context.mLuaManager->addAction(
                 [shader, name, values = std::move(values)] {
-                    postProcessor().setUniform(shader.mShader, name, values);
+                    MWBase::Environment::get().getWorld()->getPostProcessor()->setUniform(shader.mShader, name, values);
                 },
                 "SetUniformShaderAction");
         };
@@ -129,44 +137,58 @@ namespace MWLua
                 if (optPos)
                     pos = optPos.value();
 
+                if (!self.mShader)
+                    return;
+
                 if (self.mShader && self.mShader->isValid())
                     self.mQueuedAction = Shader::Action_Enable;
 
                 context.mLuaManager->addAction([=, &self] {
                     self.mQueuedAction = Shader::Action_None;
 
-                    if (postProcessor().enableTechnique(self.mShader, pos) == MWRender::PostProcessor::Status_Error)
+                    if (MWBase::Environment::get().getWorld()->getPostProcessor()->enableTechnique(self.mShader, pos)
+                        == MWRender::PostProcessor::Status_Error)
                         throw std::runtime_error(std::format("Failed enabling shader '{}'", self.mShader->getName()));
                 });
             };
 
             shader["disable"] = [context](Shader& self) {
+                if (!self.mShader)
+                    return;
+
                 self.mQueuedAction = Shader::Action_Disable;
 
                 context.mLuaManager->addAction([&] {
                     self.mQueuedAction = Shader::Action_None;
 
-                    if (postProcessor().disableTechnique(self.mShader) == MWRender::PostProcessor::Status_Error)
+                    if (MWBase::Environment::get().getWorld()->getPostProcessor()->disableTechnique(self.mShader)
+                        == MWRender::PostProcessor::Status_Error)
                         throw std::runtime_error(std::format("Failed disabling shader '{}'", self.mShader->getName()));
                 });
             };
 
             shader["isEnabled"] = [](const Shader& self) {
+                if (!self.mShader)
+                    return false;
                 if (self.mQueuedAction == Shader::Action_Enable)
                     return true;
                 else if (self.mQueuedAction == Shader::Action_Disable)
                     return false;
-                return postProcessor().isTechniqueEnabled(self.mShader);
+                return MWBase::Environment::get().getWorld()->getPostProcessor()->isTechniqueEnabled(self.mShader);
             };
 
-            shader["name"] = sol::readonly_property(
-                [](const Shader& self) { return getLocalizedMyGUIString(self.mShader->getName()); });
-            shader["author"] = sol::readonly_property(
-                [](const Shader& self) { return getLocalizedMyGUIString(self.mShader->getAuthor()); });
-            shader["description"] = sol::readonly_property(
-                [](const Shader& self) { return getLocalizedMyGUIString(self.mShader->getDescription()); });
-            shader["version"] = sol::readonly_property(
-                [](const Shader& self) { return getLocalizedMyGUIString(self.mShader->getVersion()); });
+            shader["name"] = sol::readonly_property([](const Shader& self) {
+                return self.mShader ? getLocalizedMyGUIString(self.mShader->getName()) : self.mRequested;
+            });
+            shader["author"] = sol::readonly_property([](const Shader& self) {
+                return self.mShader ? getLocalizedMyGUIString(self.mShader->getAuthor()) : std::string();
+            });
+            shader["description"] = sol::readonly_property([](const Shader& self) {
+                return self.mShader ? getLocalizedMyGUIString(self.mShader->getDescription()) : std::string();
+            });
+            shader["version"] = sol::readonly_property([](const Shader& self) {
+                return self.mShader ? getLocalizedMyGUIString(self.mShader->getVersion()) : std::string();
+            });
 
             shader["setBool"] = getSetter<bool>(context);
             shader["setFloat"] = getSetter<float>(context);
@@ -183,7 +205,17 @@ namespace MWLua
         }
 
         api["load"] = [](const std::string& name) {
-            Shader shader{ postProcessor().loadTechnique(name, false) };
+            if (MWBase::Environment::get().getWorld()->getPostProcessor() == nullptr)
+            {
+                [[maybe_unused]] static const bool told = [] {
+                    Log(Debug::Info) << "This renderer has no post-processing chain: a script's shaders load and draw "
+                                        "nothing";
+                    return true;
+                }();
+                return Shader(std::string_view(name));
+            }
+
+            Shader shader{ MWBase::Environment::get().getWorld()->getPostProcessor()->loadTechnique(name, false) };
 
             if (!shader.mShader || !shader.mShader->isValid())
                 throw std::runtime_error(std::format("Failed loading shader '{}'", name));
@@ -193,8 +225,10 @@ namespace MWLua
 
         api["getChain"] = [context]() {
             sol::table chain(context.sol(), sol::create);
+            if (MWBase::Environment::get().getWorld()->getPostProcessor() == nullptr)
+                return chain;
 
-            for (const auto& shader : postProcessor().getChain())
+            for (const auto& shader : MWBase::Environment::get().getWorld()->getPostProcessor()->getChain())
             {
                 // Don't expose internal shaders to the API, they should be invisible to the user
                 if (shader->getInternal())

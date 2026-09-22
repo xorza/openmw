@@ -36,8 +36,8 @@ add_openmw_dir (mwrender
 # Gated, because these are the only files in the game that name a graphics API other than OpenGL.
 if (OPENMW_RTX)
     set(OPENMW_RTX_DIR
-        classmasks debugwalk framereport frametimer rippleemitters rtxrenderer rtxrun rtxwindow skyreader tracedground tracedoverlay tracedterrain tracedview viewqueue
-        worldmirror
+        classmasks debugwalk framereport frametimer rippleemitters rtxrenderer rtxrun rtxsettings rtxwindow skyreader tracedground
+        tracedoverlay tracedterrain tracedview viewqueue worldmirror
         )
     add_openmw_dir (mwrender/rtx ${OPENMW_RTX_DIR})
 

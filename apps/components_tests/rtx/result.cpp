@@ -23,7 +23,7 @@ namespace Rtx
         /// of throw this tree does not make as well as the kind it does.
         TEST(RtxResultTest, aTearDownLetsNothingOutWhateverItWasHanded)
         {
-            EXPECT_NO_THROW(tearDown("a teardown raised", [] { throw Error("the device was lost"); }));
+            EXPECT_NO_THROW(tearDown("a teardown raised", [] { throw DeviceError("the device was lost"); }));
             EXPECT_NO_THROW(tearDown("a teardown raised", [] { throw 7; }));
 
             bool ran = false;
@@ -152,7 +152,7 @@ namespace Rtx
                 enumerateVk<int>("a driver that never settles", aDriverWhoseListGrows(3, 1000));
                 ADD_FAILURE() << "the enumeration returned, so a list that never settles looks like one that did";
             }
-            catch (const Error& e)
+            catch (const DeviceError& e)
             {
                 EXPECT_NE(std::string(e.what()).find("a driver that never settles"), std::string::npos) << e.what();
                 EXPECT_NE(std::string(e.what()).find(std::to_string(sEnumerationTries)), std::string::npos) << e.what();

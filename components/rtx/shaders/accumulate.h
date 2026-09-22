@@ -57,6 +57,21 @@ namespace Rtx::Shaders
 {
 #endif
 
+    /// Where `accumulate.comp` binds what it reads and writes in set 0, and how many there are. The
+    /// shader's layout and the pass's own layout and writes are numbered by these and by nothing
+    /// else, so the two cannot drift apart.
+    const uint ACCUMULATE_BIND_INDIRECT = 0;
+    const uint ACCUMULATE_BIND_MOTION = 1;
+    const uint ACCUMULATE_BIND_GUIDE = 2;
+    const uint ACCUMULATE_BIND_DEPTH = 3;
+    const uint ACCUMULATE_BIND_HISTORY_COLOUR = 4;
+    const uint ACCUMULATE_BIND_HISTORY_SURFACE = 5;
+    const uint ACCUMULATE_BIND_HISTORY_MOMENTS = 6;
+    const uint ACCUMULATE_BIND_SURFACE_OUT = 7;
+    const uint ACCUMULATE_BIND_MOMENTS_OUT = 8;
+    const uint ACCUMULATE_BIND_BLENDED_OUT = 9;
+    const uint ACCUMULATE_BINDINGS = 10;
+
     /// Threads along each edge of the accumulator's workgroup.
     const uint ACCUMULATE_WORKGROUP = 8;
 

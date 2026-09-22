@@ -66,6 +66,7 @@ namespace Rtx
                 return InstanceRecord{};
 
             const Material::Traversed& worn = row.mWorn;
+            const PlacedTraversal traversed = worn.placedAt(instance.mOpacity);
             const bool water = worn.mKind == MaterialKind::Water;
 
             // Here because this is the one funnel every water surface reaches the device through;
@@ -88,13 +89,13 @@ namespace Rtx
                 // shadows or bounces casts with it, so such a surface is met by the one query that
                 // gathers what adds and by nothing else — which is what the rasterizer's
                 // shadow-casting masks say of a magic effect too.
-                .mMask = worn.mAdditive ? Shaders::MASK_ADDITIVE
-                                        : (water ? Shaders::MASK_WATER : classBit(instance.mClass))
-                        | (worn.mMedium ? Shaders::MASK_MEDIUM : 0u),
+                .mMask = traversed.mAdditive ? Shaders::MASK_ADDITIVE
+                                             : (water ? Shaders::MASK_WATER : classBit(instance.mClass))
+                        | (traversed.mMedium ? Shaders::MASK_MEDIUM : 0u),
 
-                .mCutout = worn.mCutout,
-                .mTranslucent = !worn.mAdditive && (instance.mOpacity < 1.0f || worn.mTranslucent),
-                .mAdditive = worn.mAdditive,
+                .mCutout = traversed.mCutout,
+                .mTranslucent = traversed.mTranslucent,
+                .mAdditive = traversed.mAdditive,
                 .mTwoSided = worn.mTwoSided || scene.meshes().getRows()[instance.mMesh].mShape.mFolded,
                 .mPlaced = true,
             };

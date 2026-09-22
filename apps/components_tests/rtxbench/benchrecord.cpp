@@ -40,11 +40,16 @@ namespace Rtx
             spend.at(Timing::Update) = 4.0;
             spend.at(Timing::Sleep) = 3.5;
 
-            arrivals.add(5.0, 0, spend);
-            arrivals.add(9.0, 12, spend);
-            arrivals.add(4.0, 0, spend);
-            arrivals.add(7.0, 3, spend);
-            arrivals.add(6.0, 0, spend);
+            const auto frameOf = [&](const double frameMs) {
+                FrameSpend frame = spend;
+                frame.at(Timing::Frame) = frameMs;
+                return frame;
+            };
+            arrivals.add(0, frameOf(5.0));
+            arrivals.add(12, frameOf(9.0));
+            arrivals.add(0, frameOf(4.0));
+            arrivals.add(3, frameOf(7.0));
+            arrivals.add(0, frameOf(6.0));
 
             EXPECT_EQ(arrivals.mFrames, 2u);
             EXPECT_EQ(arrivals.mMeshes, 15u);
@@ -52,10 +57,10 @@ namespace Rtx
             EXPECT_EQ(arrivals.getMeanMs(), 8.0) << "(9 + 7) / 2";
 
             ASSERT_EQ(arrivals.mWorstCount, 3u);
-            EXPECT_EQ(arrivals.mWorst[0].mFrameMs, 9.0);
+            EXPECT_EQ(arrivals.mWorst[0].getFrameMs(), 9.0);
             EXPECT_EQ(arrivals.mWorst[0].mArrivedMeshes, 12u);
-            EXPECT_EQ(arrivals.mWorst[1].mFrameMs, 7.0);
-            EXPECT_EQ(arrivals.mWorst[2].mFrameMs, 6.0);
+            EXPECT_EQ(arrivals.mWorst[1].getFrameMs(), 7.0);
+            EXPECT_EQ(arrivals.mWorst[2].getFrameMs(), 6.0);
             EXPECT_EQ(arrivals.mWorst[2].mArrivedMeshes, 0u);
 
             BenchPlace place;

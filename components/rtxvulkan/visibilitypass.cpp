@@ -177,7 +177,8 @@ namespace Rtx
 
         return VisibilityVariant{
             // Nought exactly where the sun is not up, and it fades to that across dusk rather than
-            // stepping — `VisibilityConstants::mSunIrradiance` says why there is no second field.
+            // stepping — `VisibilityConstants::mSun`'s irradiance says why there is no second
+            // field.
             .mSun = frame.mSun.mIrradiance != Shaders::vec3(),
             .mMoons = moons,
 
@@ -392,11 +393,8 @@ namespace Rtx
         // through. Nothing bound here may be nothing: a null handle at the dispatch is undefined
         // and cost this renderer a device before the layers were asked.
         assert(!counts.isEmpty() && !mConstants.isEmpty() && "an input bound as nothing");
-        assert(
-            inputs.mSunGlare != nullptr && !inputs.mSunGlare->isEmpty() && "a trace with no glare query to count into");
         writes.buffer(Shaders::BIND_COUNTS, counts.describe());
         writes.buffer(Shaders::BIND_FRAME, mConstants.describe(), VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-        writes.buffer(Shaders::BIND_SUN_GLARE, inputs.mSunGlare->describe());
 
         writes.images(Shaders::BIND_WAVE_SURFACE, surfaces, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
         writes.images(Shaders::BIND_WAVE_CURVATURE, curvatures, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
@@ -416,6 +414,10 @@ namespace Rtx
         writes.image(Shaders::BIND_RIPPLE_CURVATURE,
             inputs.mRipples->getCurvature().describeSampled(inputs.mRipples->getSampler()),
             VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+
+        assert(
+            inputs.mSunGlare != nullptr && !inputs.mSunGlare->isEmpty() && "a trace with no glare query to count into");
+        writes.buffer(Shaders::BIND_SUN_GLARE, inputs.mSunGlare->describe());
 
         // Every binding the layout declares, written exactly once — a shader that grew one and a
         // record that did not is the failure this counts.

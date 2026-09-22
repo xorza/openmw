@@ -3,10 +3,9 @@
 #include <cassert>
 #include <cstddef>
 #include <span>
-#include <string>
 #include <utility>
 
-#include <components/rtx/error.hpp>
+#include <components/rtx/contract.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/scene.h>
@@ -82,7 +81,7 @@ namespace Rtx
             // The bind pose into every copy, and only for a mesh that has one. A body stands in
             // whatever pose the copy being traced was last given, so a copy the pass has never
             // dispatched for it still has to hold something a refit can read. A static mesh has no
-            // run here at all: `buildMeshes` stages its vertices for the build and nothing else.
+            // run here at all: `buildArrived` stages its vertices for the build and nothing else.
             if (range.mDeform != Deform::None)
                 for (std::uint32_t slot = 0; slot < mPoses.count(); ++slot)
                     mPoses.at(FrameSlot{ slot })
@@ -103,7 +102,7 @@ namespace Rtx
         // Departures first, and their rooms go to the graveyard rather than straight back, so an
         // arrival this frame cannot be built into room a frame in flight is still tracing. The two
         // lists are disjoint, so a slot handed out again appears only among the arrivals and is
-        // dealt with by `buildMeshes`, which buries whatever the slot was holding.
+        // dealt with by `buildArrived`, which buries whatever the slot was holding.
         release(scene.meshes().getFreed());
 
         writeGeometry(batch, scene, scene.meshes().getArrived());
@@ -311,10 +310,8 @@ namespace Rtx
         // Checked here rather than left to the driver: a scene that grew a mesh since `setScene` is
         // a caller breaking `placeScene`'s contract, and the only other symptom is an invalid handle
         // inside `vkGetAccelerationStructureDeviceAddressKHR`.
-        if (scene.meshes().getRows().size() != mBottomLevel.size())
-            throw Error("the scene grew from " + std::to_string(mBottomLevel.size()) + " meshes to "
-                + std::to_string(scene.meshes().getRows().size())
-                + " without being built again; placeScene can only move what setScene made");
+        contract(scene.meshes().getRows().size() == mBottomLevel.size(),
+            "the scene grew without being built again; placeScene can only move what setScene made");
 
         mRowTable.sync(slot);
 

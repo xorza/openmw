@@ -52,8 +52,8 @@ namespace Rtx
     class FrameHashes
     {
     public:
-        /// Reads what a previous run wrote. Throws `Rtx::Error` where the file will not parse, so a
-        /// truncated reference is a failure and not a run that silently matches nothing.
+        /// Reads what a previous run wrote. Throws `Rtx::InputError` where the file will not parse,
+        /// so a truncated reference is a failure and not a run that silently matches nothing.
         static FrameHashes read(const std::filesystem::path& file);
 
         /// A frame drawn: `parts` is what `SceneDigester::digest` made of the description that

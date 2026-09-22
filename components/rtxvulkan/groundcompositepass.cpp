@@ -3,6 +3,8 @@
 #include <array>
 #include <cassert>
 
+#include <components/rtx/shaders/ground.h>
+
 #include "dispatch.hpp"
 #include "image.hpp"
 #include "imageuse.hpp"
@@ -13,8 +15,8 @@ namespace Rtx
     namespace
     {
         /// The composite's finest level, out.
-        constexpr std::array<VkDescriptorSetLayoutBinding, 1> sBindings{
-            computeBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
+        constexpr std::array<VkDescriptorSetLayoutBinding, Shaders::GROUND_COMPOSITE_BINDINGS> sBindings{
+            computeBinding(Shaders::GROUND_COMPOSITE_BIND_TARGET, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
         };
     }
 
@@ -33,8 +35,8 @@ namespace Rtx
 
         composite.transition(commands, Use::sUndefined, Use::sComputeWrite);
 
-        DescriptorWrites<1> writes;
-        writes.image(0, composite.describeStorage());
+        DescriptorWrites<Shaders::GROUND_COMPOSITE_BINDINGS> writes;
+        writes.image(Shaders::GROUND_COMPOSITE_BIND_TARGET, composite.describeStorage());
 
         // The scene's textures beside set zero, which the two are independent of: a pushed set
         // and a bound one only have to be in place by the dispatch.

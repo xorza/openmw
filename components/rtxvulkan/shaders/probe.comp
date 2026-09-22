@@ -37,8 +37,9 @@ layout(set = 0, binding = 1, scalar) writeonly buffer Readings
     vec3 readings[];
 };
 
-// Where the blocks are. A `HostBuffer` of addresses read through a descriptor, which is exactly the
-// shape the blocked scene needs and the one part of it nothing had asked the device about.
+// Where the blocks are. A host-written buffer (`BufferKind::HostWritten`) of addresses read through
+// a descriptor, which is exactly the shape the blocked scene needs and the one part of it nothing
+// had asked the device about.
 layout(set = 0, binding = 2, scalar) readonly buffer Blocks
 {
     uint64_t blockAddresses[];

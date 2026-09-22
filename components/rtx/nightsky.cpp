@@ -258,7 +258,7 @@ namespace Rtx
         // A gap in the content is named rather than drawn around: a night with no stars in it
         // reads as a renderer that forgot them.
         if (!scenes.getVFS()->exists(chosen))
-            throw Error("no night sky mesh at \"" + std::string(chosen.value()) + "\"");
+            throw InputError("no night sky mesh at \"" + std::string(chosen.value()) + "\"");
 
         LayerReader read;
         const_cast<osg::Node&>(*scenes.getTemplate(chosen, false)).accept(read);

@@ -15,14 +15,14 @@ namespace Rtx
     namespace
     {
         /// The frame in, the histogram out.
-        constexpr std::array<VkDescriptorSetLayoutBinding, 2> sHistogramBindings{
-            computeBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
-            computeBinding(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+        constexpr std::array<VkDescriptorSetLayoutBinding, Shaders::HISTOGRAM_BINDINGS> sHistogramBindings{
+            computeBinding(Shaders::HISTOGRAM_BIND_SOURCE, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
+            computeBinding(Shaders::HISTOGRAM_BIND_BINS, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
         };
 
         /// The histogram in, the one float out.
-        constexpr std::array<VkDescriptorSetLayoutBinding, 2> sReduceBindings
-            = computeBindings<2>(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+        constexpr std::array<VkDescriptorSetLayoutBinding, Shaders::EXPOSURE_BINDINGS> sReduceBindings
+            = computeBindings<Shaders::EXPOSURE_BINDINGS>(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 
     }
 
@@ -62,9 +62,9 @@ namespace Rtx
         mHistogram.clear(commands);
         mHistogram.transition(commands, Use::sBufferClearWrite, Use::sBufferComputeReadWrite);
 
-        DescriptorWrites<2> binning;
-        binning.image(0, frame.describeStorage());
-        binning.buffer(1, mHistogram.describe());
+        DescriptorWrites<Shaders::HISTOGRAM_BINDINGS> binning;
+        binning.image(Shaders::HISTOGRAM_BIND_SOURCE, frame.describeStorage());
+        binning.buffer(Shaders::HISTOGRAM_BIND_BINS, mHistogram.describe());
 
         const Shaders::HistogramConstants extent{
             .mWidth = frame.getWidth(),
@@ -79,9 +79,9 @@ namespace Rtx
         // is what this dispatch boundary is for.
         mHistogram.transition(commands, Use::sBufferComputeWrite, Use::sBufferComputeRead);
 
-        DescriptorWrites<2> reducing;
-        reducing.buffer(0, mHistogram.describe());
-        reducing.buffer(1, mExposure.describe());
+        DescriptorWrites<Shaders::EXPOSURE_BINDINGS> reducing;
+        reducing.buffer(Shaders::EXPOSURE_BIND_HISTOGRAM, mHistogram.describe());
+        reducing.buffer(Shaders::EXPOSURE_BIND_EXPOSURE, mExposure.describe());
 
         const Shaders::ExposureConstants counted{
             .mPixels = frame.getWidth() * frame.getHeight(),

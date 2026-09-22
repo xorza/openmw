@@ -2,6 +2,7 @@
 #include <filesystem>
 #include <memory>
 #include <stdexcept>
+#include <thread>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -34,6 +35,16 @@ namespace MWRender
             /// Whether the world was to be drawn, at each `applyWorldShown`.
             std::vector<bool> mApplied;
 
+            /// The limit the seam kept, at each `applyFrameRateLimit`.
+            std::vector<float> mLimits;
+
+            /// Whether `holdFrame` holds the frame itself, as a driver that paces does, and for how
+            /// long.
+            bool mHolds = false;
+            std::chrono::milliseconds mHold{ 0 };
+
+            using Renderer::getLastHold;
+
             void configureResources(Resource::ResourceSystem&) override {}
             SDL_Window* getWindow() const override { return nullptr; }
             std::unique_ptr<Ground> createGround(const GroundSpec&) override { return nullptr; }
@@ -63,6 +74,14 @@ namespace MWRender
             void adoptTraversalRoot(osg::Group&) override {}
             void applyViewMask() override {}
             void applyWorldShown() override { mApplied.push_back(drawsWorld()); }
+            void applyFrameRateLimit() override { mLimits.push_back(getFrameRateLimit()); }
+
+            bool holdFrame() override
+            {
+                if (mHolds)
+                    std::this_thread::sleep_for(mHold);
+                return mHolds;
+            }
         };
 
         /// **A cover that ends while `tws` is off leaves the world hidden, and `tws` under a cover
@@ -97,9 +116,11 @@ namespace MWRender
             EXPECT_EQ(renderer.mApplied.size(), 4u);
         }
 
-        /// **The default `awaitFrame` is the limiter the engine's loop used to hold**: it sleeps
-        /// to the limit and answers the limit's own length where it slept, and the wall where it
-        /// did not. The rasterizer keeps exactly the pacing it had, one call earlier in the loop.
+        /// **The default `awaitFrame` is the limiter the engine's loop used to hold**: it sleeps to
+        /// the limit and answers the limit's own length where it slept, and the wall where it did
+        /// not. The rasterizer keeps exactly the pacing it had, one call earlier in the loop. A
+        /// renderer that paces its own frames hears of each limit once, with the limit already
+        /// kept.
         TEST(RendererTest, theDefaultAwaitFrameSleepsToTheLimitAndAnswersIt)
         {
             using Clock = std::chrono::steady_clock;
@@ -122,6 +143,45 @@ namespace MWRender
             const Clock::duration free = renderer.awaitFrame();
             EXPECT_LT(Clock::now() - again, std::chrono::milliseconds(2)) << "no limit is no sleep";
             EXPECT_LT(free, std::chrono::milliseconds(2)) << "and the wall is what stood";
+
+            EXPECT_EQ(renderer.mLimits, (std::vector<float>{ 200.0f, 0.0f }));
+        }
+
+        /// **One opening for both holds.** Held by the renderer for three frames, by the limiter
+        /// for three and by the renderer for three again, every interval `awaitFrame` answers is
+        /// the wall from the frame before to this one. With a clock of each hold's own, the first
+        /// frame after a switch stood for the whole of the other hold's run: 60 ms here, where it
+        /// should stand for 10 or 20. What the renderer held is the hold `getLastHold` says.
+        TEST(RendererTest, anIntervalAfterASwitchOfHoldStandsForOneFrame)
+        {
+            using Clock = std::chrono::steady_clock;
+
+            RecordingRenderer renderer;
+            renderer.setFrameRateLimit(0.0f);
+            renderer.mHold = std::chrono::milliseconds(10);
+
+            renderer.awaitFrame();
+            Clock::time_point last = Clock::now();
+            for (const bool holds : { true, true, true, false, false, false, true, true, true })
+            {
+                renderer.mHolds = holds;
+
+                // The frame's own work, which the interval has inside it whichever hold follows.
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+                const Clock::duration stood = renderer.awaitFrame();
+                const Clock::time_point now = Clock::now();
+                const Clock::duration wall = now - last;
+                last = now;
+
+                // The seam's clock and this one are read a few instructions apart.
+                EXPECT_LT(std::chrono::abs(stood - wall), std::chrono::milliseconds(1))
+                    << (holds ? "held by the renderer" : "held by the limiter");
+                if (holds)
+                {
+                    EXPECT_GE(renderer.getLastHold(), std::chrono::milliseconds(10));
+                }
+            }
         }
 
         /// A name this build has no renderer for is a configuration mistake, refused by name.

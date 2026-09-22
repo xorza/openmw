@@ -134,16 +134,12 @@ namespace Rtx
 
         /// What one measured frame cost, and the shares of it this fork itself owns.
         ///
-        /// **A loop over the rows and not a line per figure.** `Timing::Frame` is the caller's, so
-        /// it is the only one named here, and every row is one sample longer for it: the rows are
-        /// read across each other, a frame at a time.
-        void add(double frameMs, const FrameSpend& spend)
+        /// **A loop over the rows and not a line per figure**, so every row is one sample longer
+        /// for it: the rows are read across each other, a frame at a time.
+        void add(const FrameSpend& spend)
         {
             for (const Timing timing : sTimings.values())
-                if (timing != Timing::Frame)
-                    at(timing).push_back(spend.at(timing));
-
-            at(Timing::Frame).push_back(frameMs);
+                at(timing).push_back(spend.at(timing));
         }
 
         bool empty() const { return at(Timing::Frame).empty(); }

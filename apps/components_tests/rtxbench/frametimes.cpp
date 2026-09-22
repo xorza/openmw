@@ -103,16 +103,18 @@ namespace Rtx
             // Two frames. The first waited 4.5 ms of its 10; the second, with nothing in flight
             // to wait for, waited nought and was held 0.75 ms by the driver before its input.
             FrameSpend first;
+            first.at(Timing::Frame) = 10.0;
             first.at(Timing::Wait) = 4.5;
             first.at(Timing::Finish) = 4.75;
             first.at(Timing::Trace) = 1.25;
-            samples.add(10.0, first);
+            samples.add(first);
 
             FrameSpend second;
+            second.at(Timing::Frame) = 8.0;
             second.at(Timing::Trace) = 1.5;
             second.at(Timing::Update) = 2.0;
             second.at(Timing::Sleep) = 0.75;
-            samples.add(8.0, second);
+            samples.add(second);
 
             EXPECT_EQ(samples.size(), 2u);
             for (const Timing timing : sTimings.values())

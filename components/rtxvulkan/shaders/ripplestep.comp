@@ -23,10 +23,10 @@
 
 layout(local_size_x = RIPPLE_WORKGROUP, local_size_y = RIPPLE_WORKGROUP) in;
 
-layout(set = 0, binding = 0, rg32f) uniform readonly image2D before;
-layout(set = 0, binding = 1, rg32f) uniform writeonly image2D after;
+layout(set = 0, binding = RIPPLE_STEP_BIND_BEFORE, rg32f) uniform readonly image2D before;
+layout(set = 0, binding = RIPPLE_STEP_BIND_AFTER, rg32f) uniform writeonly image2D after;
 
-layout(set = 0, binding = 2, scalar) readonly buffer Impulses
+layout(set = 0, binding = RIPPLE_STEP_BIND_IMPULSES, scalar) readonly buffer Impulses
 {
     GpuRippleImpulse impulses[];
 };

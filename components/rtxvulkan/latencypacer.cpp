@@ -101,7 +101,7 @@ namespace Rtx
         };
         const VkResult waited = mFunctions.mWaitSemaphores(mDevice, &wait, sPatience);
         if (waited == VK_TIMEOUT)
-            throw Error(timedOut("the driver's sleep releasing the frame", sPatience));
+            throw DeviceError(timedOut("the driver's sleep releasing the frame", sPatience));
         checkVk(waited, "vkWaitSemaphores on the frame pacing's semaphore");
 
         mark(VK_LATENCY_MARKER_SIMULATION_START_NV);

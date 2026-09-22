@@ -79,8 +79,8 @@ namespace Rtx
         /// The largest record index a hit object may name, which `openmw-rtxtool info` prints.
         VkPhysicalDeviceRayTracingInvocationReorderPropertiesEXT mInvocationReorder{};
 
-        /// The device's heaps and memory types, read once for the device that is chosen, because
-        /// `findMemoryType` runs on every allocation the renderer makes.
+        /// The device's heaps and memory types, read once for the device that is chosen: the memory
+        /// report names every heap in each report it makes (`Memory::report`).
         VkPhysicalDeviceMemoryProperties mMemory{};
     };
 

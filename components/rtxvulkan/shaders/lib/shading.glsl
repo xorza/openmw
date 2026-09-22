@@ -306,7 +306,7 @@ float ambientReaching(vec3 position, vec3 normal, vec3 plane, float transmission
     if (randomNext(state) >= AMBIENT_EXTERIOR_RATE)
         return 0.0;
 
-    return weight * lightThrough(position, towards, frame.mFar) / AMBIENT_EXTERIOR_RATE;
+    return weight * lightThrough(position, towards, frame.mReach) / AMBIENT_EXTERIOR_RATE;
 }
 
 /// What a surface a path ends at sends back: `pathEnd`, dimmed by one occlusion ray of its own,

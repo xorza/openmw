@@ -75,7 +75,7 @@ namespace Rtx
         /// **A field added to `Material` and not named here does not compile**, which is the whole
         /// of why this exists: the two lists it replaces were kept by hand, held different subsets,
         /// and a field added to neither would have left the gate quietly.
-        /// `ExtractionStats::countersOf` makes the same argument for the same reason.
+        /// `sCounters` in `extractionstats.cpp` makes the same argument for the same reason.
         template <class Texture, class Layers, class Value>
         void forEachMaterialField(const Material& material, Texture texture, Layers layers, Value value)
         {
@@ -170,6 +170,25 @@ namespace Rtx
             return whole.getWords();
         }
 
+        /// A table in blocks hashed where it lies, a block at a time. A table of one block or none
+        /// is hashed as the one span it would be laid out flat, so its words are the flat table's;
+        /// past one block the spans chain through the seed, which no flat hash can say.
+        template <class T>
+        void addBlocks(Digest& digest, const BlockedValues<T>& table)
+        {
+            if (table.size() == 0)
+                digest.add(std::span<const T>());
+            table.forEachBlock([&](const std::span<const T> block) { digest.add(block); });
+        }
+
+        template <class T>
+        std::array<std::uint64_t, 2> wordsOf(const BlockedValues<T>& table)
+        {
+            Digest whole;
+            addBlocks(whole, table);
+            return whole.getWords();
+        }
+
         /// A column of rows: every field of every row laid end to end in one buffer, so the column
         /// is one hash over its bytes and not one hash per field.
         class Column
@@ -241,7 +260,7 @@ namespace Rtx
                 std::array<Corner, 3> corners;
                 for (std::size_t corner = 0; corner < 3; ++corner)
                 {
-                    const std::size_t vertex = mesh.mVertices.mOffset + indices[at + corner];
+                    const std::uint32_t vertex = mesh.mVertices.mOffset + indices[at + corner];
                     corners[corner]
                         = Corner{ scene.meshes().getPositions()[vertex], scene.meshes().getNormals()[vertex],
                               scene.meshes().getTexCoords()[vertex], scene.meshes().getColours()[vertex] };
@@ -349,8 +368,8 @@ namespace Rtx
         take(ScenePart::Normals, wordsOf(meshes.getNormals()));
 
         Digest texCoords;
-        texCoords.add(meshes.getTexCoords());
-        texCoords.add(meshes.getSecondTexCoords());
+        addBlocks(texCoords, meshes.getTexCoords());
+        addBlocks(texCoords, meshes.getSecondTexCoords());
         take(ScenePart::TexCoords, texCoords.getWords());
 
         take(ScenePart::Indices, wordsOf(meshes.getIndices()));

@@ -26,6 +26,7 @@
 #include "../allocations.hpp"
 #include "../geometry.hpp"
 #include "../harness.hpp"
+#include "../testcamera.hpp"
 #include "fixture.hpp"
 
 namespace Rtx::Testing
@@ -98,7 +99,7 @@ namespace Rtx::Testing
             renderer->resize(size, size);
             renderer->setScene(Rtx::SceneSlot::world(), scene, {});
 
-            Shaders::VisibilityConstants camera = makeCamera(
+            Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
             camera.mSun.mIrradiance = osg::Vec3f(2.0f, 2.0f, 2.0f);
 

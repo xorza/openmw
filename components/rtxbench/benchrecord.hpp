@@ -67,9 +67,12 @@ namespace Rtx
     /// how many meshes its upload built structures for, and where the time went.
     struct WorstFrame
     {
-        double mFrameMs = 0.0;
         std::uint32_t mArrivedMeshes = 0;
+
+        /// Where the time went, `Timing::Frame` the whole of it.
         FrameSpend mSpend;
+
+        double getFrameMs() const { return mSpend.at(Timing::Frame); }
     };
 
     /// The frames whose upload extended the scene — a cell handed over, an actor entering with a
@@ -92,7 +95,7 @@ namespace Rtx
         std::array<WorstFrame, sKept> mWorst{};
         std::size_t mWorstCount = 0;
 
-        void add(double frameMs, std::uint32_t arrivedMeshes, const FrameSpend& spend);
+        void add(std::uint32_t arrivedMeshes, const FrameSpend& spend);
 
         double getMeanMs() const { return mFrames == 0 ? 0.0 : mSumMs / mFrames; }
     };

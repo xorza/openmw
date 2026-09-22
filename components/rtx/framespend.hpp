@@ -28,12 +28,13 @@ namespace Rtx
     /// into `Bake`, `Textures` and `Upload` because its worst frame is hundreds of times its
     /// median and a profile cannot say which half. `Trace` and `Present` are the other two calls
     /// into the backend, and `Update` is the rest of the loop, which is the game's — with `Sleep`
-    /// the share of it the driver held the host for before the frame's input, where the driver
-    /// paces. Timed rather than profiled, because most of what a call into the driver costs is
-    /// inside the driver with no frame pointer to walk, and a thread asleep is nothing to a
-    /// sampling profiler. Together
-    /// they close the frame: `Frame` less the rest is under 0.05 ms at every place that stands
-    /// still, and a row that does not close is a stretch nobody has named.
+    /// the share of it the host was held for before the frame's input: by the driver where the
+    /// driver paces, and by the frame-rate limiter where it does not. `Frame` is the whole of it,
+    /// from one trace's frame opening to the next. Timed rather than profiled, because most of
+    /// what a call into the driver costs is inside the driver with no frame pointer to walk, and a
+    /// thread asleep is nothing to a sampling profiler. Together they close the frame: `Frame` less
+    /// the rest is under 0.05 ms at every place that stands still, and a row that does not close
+    /// is a stretch nobody has named.
     enum class Timing : std::uint32_t
     {
         Frame,
@@ -53,8 +54,8 @@ namespace Rtx
         Present,
         Update,
 
-        /// The driver holding the host before the frame's input, where the driver paces: a share of
-        /// `Update`, which is the whole gap between two frames and has the sleep inside it.
+        /// The host held before the frame's input, by the driver or by the limiter: a share of
+        /// `Update`, which is the whole gap between two frames and has the hold inside it.
         Sleep,
     };
 
@@ -87,8 +88,7 @@ namespace Rtx
     /// What one measured frame spent on the host, by phase — an array over `Timing`, because that
     /// is what `FrameSamples` holds and what it becomes, and a signature of six doubles in a row is
     /// six chances to hand them over in the wrong order. In the core rather than the bench,
-    /// because `SceneUploader` writes `Bake`, `Textures` and `Upload`. `Timing::Frame` reaches
-    /// `FrameSamples` by a route of its own and is left at nought here.
+    /// because `SceneUploader` writes `Bake`, `Textures` and `Upload`.
     struct FrameSpend
     {
         std::array<double, sTimingCount> mMs{};

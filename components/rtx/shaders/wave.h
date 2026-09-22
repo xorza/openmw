@@ -21,6 +21,28 @@ namespace Rtx::Shaders
 {
 #endif
 
+    /// Where `waveform.comp` binds what it reads and writes in set 0, and how many there are. The
+    /// shader's layout and the pass's own layout and writes are numbered by these and by nothing
+    /// else, so the two cannot drift apart.
+    const uint WAVE_FORM_BIND_AMPLITUDES = 0;
+    const uint WAVE_FORM_BIND_FREQUENCIES = 1;
+    const uint WAVE_FORM_BIND_FIELD = 2;
+    const uint WAVE_FORM_BINDINGS = 3;
+
+    /// Where `wavecompose.comp` binds what it reads and writes in set 0, and how many there are.
+    /// The shader's layout and the pass's own layout and writes are numbered by these and by
+    /// nothing else, so the two cannot drift apart.
+    const uint WAVE_COMPOSE_BIND_FIELD = 0;
+    const uint WAVE_COMPOSE_BIND_SURFACE = 1;
+    const uint WAVE_COMPOSE_BIND_CURVATURE = 2;
+    const uint WAVE_COMPOSE_BINDINGS = 3;
+
+    /// Where `waveline.comp` binds what it reads and writes in set 0, and how many there are. The
+    /// shader's layout and the pass's own layout and writes are numbered by these and by nothing
+    /// else, so the two cannot drift apart.
+    const uint WAVE_LINE_BIND_FIELD = 0;
+    const uint WAVE_LINE_BINDINGS = 1;
+
     /// The largest grid any tile is sampled on, along each axis.
     ///
     /// **Large, because the component count is what this is for.** The widest tile holds fifty

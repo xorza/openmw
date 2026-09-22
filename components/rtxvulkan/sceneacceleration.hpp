@@ -137,7 +137,7 @@ namespace Rtx
         /// everything else.
         void writeGeometry(Batch& batch, const SceneDesc& scene, std::span<const Index> meshes);
 
-        /// Fills the refit build infos and sizes the scratch. Leaves `mRefitBuilds` holding exactly
+        /// Fills the refit build infos and sizes the scratch. Leaves `mRefit` holding exactly
         /// this frame's rebuilds, which is what both the caller and `recordRefit` read.
         void prepareRefit(const SceneDesc& scene, FrameSlot slot);
 

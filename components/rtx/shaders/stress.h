@@ -12,6 +12,12 @@ namespace Rtx::Shaders
 {
 #endif
 
+    /// Where `stress.comp` binds what it reads and writes in set 0, and how many there are. The
+    /// shader's layout and the pass's own layout and writes are numbered by these and by nothing
+    /// else, so the two cannot drift apart.
+    const uint STRESS_BIND_COUNTS = 0;
+    const uint STRESS_BINDINGS = 1;
+
     /// Lanes in the one workgroup the loop runs on. One group and not a frame's worth, because
     /// what the loop is for is to hold the queue for a stated time, and one group does that with
     /// the rest of the card idle — the frame behind it is what the hold is supposed to overlap.

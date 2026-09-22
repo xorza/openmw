@@ -108,7 +108,9 @@ namespace Rtx
         if (arrived || animatedThrough(shading))
             describeSprite(held, shading);
 
-        if (held.mSprite == nullptr)
+        // No image, or an image the texture table had no room for: a slot the shader reads the
+        // sprite out of is what an emitter is drawn with, and it has none.
+        if (held.mSprite == nullptr || held.mIndex == sNoIndex)
         {
             ++stats.mSpritelessEmitters;
             return;

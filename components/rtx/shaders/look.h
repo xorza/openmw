@@ -230,8 +230,9 @@ namespace Rtx::Shaders
     /// not its mean: a portrait's peak is several times its mean.
     ///
     /// **It reaches what is drawn and never what lights.** A bounce that escapes takes `skyGlow`,
-    /// which carries the sheets as one mean — `NightSky::mGlow` — so raising this raises that too and
-    /// `skyFill` takes it back out of the weather's own ambient. The night's light does not move.
+    /// which carries the sheets as one mean — `NightSky::mGlow` — so raising this raises that too
+    /// and `Skylight::mFill` takes it back out of the weather's own ambient. The night's light does
+    /// not move.
     const float STAR_RADIANCE = 0.45f;
 
     /// What a texel of the three nebulae is worth as radiance.
@@ -375,11 +376,11 @@ namespace Rtx::Shaders
     /// Reconstruction demodulates and filters hardest, which is why it is judged on a moving camera
     /// rather than a still.
     ///
-    /// **Half the rays are not half the time.** The rays here are short: a lane that skips one does not
-    /// release the warp, which runs on until the lanes that kept theirs are done, and a hashed draw
-    /// leaves no warp with thirty-two skipping lanes. The ambient ray runs to `mFar` and is nearly all
-    /// empty traversal, so halving those halves what the device does whatever the warp is doing. **A
-    /// rate is worth what the ray it drops is long.**
+    /// **Half the rays are not half the time.** The rays here are short: a lane that skips one does
+    /// not release the warp, which runs on until the lanes that kept theirs are done, and a hashed
+    /// draw leaves no warp with thirty-two skipping lanes. The ambient ray runs to `mReach` and is
+    /// nearly all empty traversal, so halving those halves what the device does whatever the warp
+    /// is doing. **A rate is worth what the ray it drops is long.**
     ///
     /// **Out of doors only, and that is not caution about the arithmetic.** A room's indirect light *is*
     /// its lamps seen once off a wall, so rating it there halves the samples of the term that carries
@@ -460,8 +461,8 @@ namespace Rtx::Shaders
     /// What share of exterior points are asked whether they reach the sky, the rest paying by weight.
     ///
     /// **Out of doors the ambient ray is the expensive one, by two orders of reach.** It runs to
-    /// `mFar` where a room's stops at `ROOM_FILL_REACH`, and it is nearly all sky — the traversal is
-    /// spent proving that nothing is there.
+    /// `mReach` where a room's stops at `ROOM_FILL_REACH`, and it is nearly all sky — the traversal
+    /// is spent proving that nothing is there.
     ///
     /// **A half and no further, because a third buys nothing.** A rate is a per-lane skip and the ray
     /// it skips is a long one, so a warp still runs until whichever of its thirty-two lanes kept a ray

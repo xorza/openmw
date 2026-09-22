@@ -50,7 +50,7 @@ namespace Rtx
             FrameRing ring(getDevice(), countHits);
 
             // Filled to the brim: nothing collects, so every frame stays in flight, exactly as
-            // `RtxTool::runWindow` leaves the ring.
+            // a watched window (`view`) leaves the ring.
             for (std::uint32_t frame = 0; frame < sFrameSlots; ++frame)
                 submitEmpty(ring);
 
@@ -158,6 +158,39 @@ namespace Rtx
             EXPECT_EQ(after->mFrame, 2u);
             ASSERT_EQ(after->mPixels.size(), other.size());
             EXPECT_TRUE(std::equal(after->mPixels.begin(), after->mPixels.end(), other.begin()));
+        }
+
+        /// **A frame the host refused to trace closes, and the next placement takes the next
+        /// slot.** Placed and skipped frame after frame, each slot holds the one placement buffer
+        /// its own frame took, where a frame left open took one more at every placement. A skipped
+        /// frame is numbered and waited for and comes back with no report, so the traced frame
+        /// after three of them is the one report, under the number it was submitted with.
+        TEST_F(RtxFrameRingTest, aSkippedFrameClosesAndComesBackWithNoReport)
+        {
+            FrameRing ring(getDevice(), false);
+
+            constexpr std::uint64_t skipped = 3;
+            for (std::uint64_t at = 0; at < skipped; ++at)
+            {
+                FrameRecord& frame = ring.begin();
+                const VkCommandBuffer placement = ring.takePlaceCommands(frame);
+                getPool().begin(placement);
+                getPool().submit(placement);
+
+                EXPECT_TRUE(ring.isOpen());
+                ring.skip();
+                EXPECT_FALSE(ring.isOpen());
+            }
+
+            EXPECT_EQ(ring.getRecording(), skipped) << "a skipped frame went unnumbered";
+            for (std::uint64_t frame = 0; frame < sFrameSlots; ++frame)
+                EXPECT_EQ(ring.slotOf(frame).mPlaceCommands.size(), 1u) << "slot of frame " << frame;
+
+            submitEmpty(ring);
+            const std::optional<FrameResult> traced = ring.collect();
+            ASSERT_TRUE(traced.has_value()) << "the skipped frames stood in front of the traced one";
+            EXPECT_EQ(traced->mFrame, skipped);
+            EXPECT_FALSE(ring.collect().has_value()) << "a skipped frame came back with a report";
         }
     }
 }

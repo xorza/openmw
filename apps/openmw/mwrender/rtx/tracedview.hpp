@@ -8,8 +8,8 @@
 #include <osg/ref_ptr>
 
 #include <components/myguirtx/rendermanager.hpp>
+#include <components/rtx/mirrorpass.hpp>
 #include <components/rtx/offscreentrace.hpp>
-#include <components/rtx/walk.hpp>
 
 #include "../offscreenview.hpp"
 
@@ -24,9 +24,14 @@ namespace Resource
     class ImageManager;
 }
 
+namespace Rtx
+{
+    class Renderer;
+}
+
 namespace MWRender
 {
-    class RtxRenderer;
+    class ViewQueue;
 
     /// The moment a picture of its own subject walks that subject at.
     ///
@@ -71,9 +76,11 @@ namespace MWRender
         /// every view's. A subtree both can reach would otherwise be posed by whichever counter
         /// got there first and frozen for the other.
         ///
+        /// @param backend what the trace is recorded into.
+        /// @param views the list this joins and asks to be drawn on, which outlives it.
         /// @param gui whose texture the trace writes into, and which draws it.
-        TracedView(const OffscreenViewSpec& spec, ViewKind kind, RtxRenderer& host, MyGUIRtx::RenderManager& gui,
-            Rtx::Traversals& traversals);
+        TracedView(const OffscreenViewSpec& spec, ViewKind kind, Rtx::Renderer& backend, ViewQueue& views,
+            MyGUIRtx::RenderManager& gui, Rtx::Traversals& traversals);
         ~TracedView() override;
 
         void setView(const osg::Matrixf& view) override { mTrace.setView(view); }
@@ -81,9 +88,10 @@ namespace MWRender
         void sceneChanged() override;
         void redraw() override;
 
-        /// The drawing `redraw` asked for: the subject posed, walked and handed over, and the trace
-        /// recorded. The host calls it inside the frame's window, once there is a world.
-        void draw();
+        /// The drawing `redraw` asked for: the subject posed at `moment`, walked and handed over,
+        /// and the trace recorded. The queue calls it inside the frame's window, once there is a
+        /// world.
+        void draw(const PoseMoment& moment);
 
         bool isOfWorld() const { return mTrace.isOfWorld(); }
 
@@ -122,7 +130,7 @@ namespace MWRender
             Taken,
         };
 
-        RtxRenderer& mHost;
+        ViewQueue& mViews;
         Rtx::OffscreenTrace mTrace;
 
         /// The interface's own texture, taken from the manager under a name of this view's own:

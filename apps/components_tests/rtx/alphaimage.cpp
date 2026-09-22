@@ -22,7 +22,7 @@ namespace Rtx
 {
     namespace
     {
-        /// One block of `format`, described the way `TextureBuilder` hands one over.
+        /// One block of `format`, described the way a file's texture arrives (`TextureData`).
         Testing::TestTexture oneBlock(const TextureFormat format, std::initializer_list<std::uint8_t> bytes)
         {
             Testing::TestTexture texture;

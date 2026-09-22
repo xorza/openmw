@@ -98,7 +98,20 @@ namespace Rtx
 
     void FrameRing::submit(FrameRecord& frame)
     {
+        close(frame, true);
+    }
+
+    void FrameRing::skip()
+    {
+        FrameRecord& frame = slotOf(mFrame);
+        mDevice.getPool().begin(frame.mWorld.mCommands);
+        close(frame, false);
+    }
+
+    void FrameRing::close(FrameRecord& frame, const bool traced)
+    {
         frame.mState.step(FrameState::Submitted, FrameState::Begun);
+        frame.mTraced = traced;
         frame.mWorld.mSubmitted = mDevice.getPool().submit(frame.mWorld.mCommands);
         ++mFrame;
         frame.mInFlight = static_cast<std::uint32_t>(mFrame - mFinished);
@@ -116,6 +129,12 @@ namespace Rtx
         const double waited = since(start, std::chrono::steady_clock::now());
 
         frame.mState.step(FrameState::Idle, FrameState::Submitted);
+
+        if (!frame.mTraced)
+        {
+            ++mFinished;
+            return;
+        }
 
         // Read after the wait and never before: the counts are the device's, and the queries
         // are the device's clock.
@@ -158,13 +177,11 @@ namespace Rtx
         // What is already in hand before anything is waited for. A frame the ring drained to
         // make room has been finished and its report is here; waiting again would wait the frame
         // after it and hand back a report a frame ahead of the one the caller is asking about.
-        if (mReports.empty())
-        {
-            if (mFinished == mFrame)
-                return std::nullopt;
-
+        //
+        // Waited out one after another where the oldest were skipped, which come back with no
+        // report.
+        while (mReports.empty() && mFinished < mFrame)
             finishOldest();
-        }
 
         return takeReport();
     }

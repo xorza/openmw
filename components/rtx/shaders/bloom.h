@@ -13,6 +13,13 @@ namespace Rtx::Shaders
 {
 #endif
 
+    /// Where `bloomdown.comp` and `bloomup.comp` bind what they read and write in set 0, and how
+    /// many there are. The shader's layout and the pass's own layout and writes are numbered by
+    /// these and by nothing else, so the two cannot drift apart.
+    const uint BLOOM_BIND_SOURCE = 0;
+    const uint BLOOM_BIND_LEVEL = 1;
+    const uint BLOOM_BINDINGS = 2;
+
     /// Threads along each edge of a bloom workgroup.
     const uint BLOOM_WORKGROUP = 8;
 

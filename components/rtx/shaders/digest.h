@@ -21,6 +21,13 @@ namespace Rtx::Shaders
 {
 #endif
 
+    /// Where `digest.comp` binds what it reads and writes in set 0, and how many there are. The
+    /// shader's layout and the pass's own layout and writes are numbered by these and by nothing
+    /// else, so the two cannot drift apart.
+    const uint DIGEST_BIND_IMAGES = 0;
+    const uint DIGEST_BIND_LANES = 1;
+    const uint DIGEST_BINDINGS = 2;
+
     /// One side of the square of texels a workgroup digests.
     const uint DIGEST_WORKGROUP = 16u;
 

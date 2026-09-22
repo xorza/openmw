@@ -63,8 +63,8 @@ namespace Rtx::Testing
     ///
     /// **Held by whoever declares one rather than in a function-local static**, so that a gtest
     /// environment can close it while the process is still whole — see the teardowns in
-    /// `harness.cpp` and `rtxtool/installation.cpp`, and the comment on `DeviceTeardown` for what
-    /// static destruction did instead.
+    /// `harness.cpp`, and the comment on `DeviceEnvironment` there for what static destruction did
+    /// instead.
     template <class T>
     struct Once
     {

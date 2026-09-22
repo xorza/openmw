@@ -17,6 +17,7 @@
 #include "prepared.hpp"
 #include "runs.hpp"
 #include "scenedesc.hpp"
+#include "shaders/scene.h"
 #include "shapefold.hpp"
 #include "surface.hpp"
 
@@ -107,7 +108,11 @@ namespace Rtx
         for (const PreparedLayer& layer : ground.mLayers)
         {
             MaterialLayer row = layer.mRow;
-            row.mDiffuse = mScene.textures().add(layer.mTexture->mPath);
+
+            // A table with no room left names the neutral texel: the device reads a layer's slot
+            // with no test, as it reads a material's diffuse.
+            const Index slot = mScene.textures().add(layer.mTexture->mPath);
+            row.mDiffuse = slot != sNoIndex ? slot : Shaders::TEXTURE_NEUTRAL;
 
             // The row keeps no count: `maskOf` reads the grid's area back, so the run
             // the table hands out has to be exactly that long, which the reader asserts as it reads.

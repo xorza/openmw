@@ -12,12 +12,12 @@
 
 layout(local_size_x = 1) in;
 
-layout(set = 0, binding = 0, scalar) readonly buffer Count
+layout(set = 0, binding = SUN_GLARE_BIND_COUNT, scalar) readonly buffer Count
 {
     SunGlareCount count;
 };
 
-layout(set = 0, binding = 1, scalar) buffer Share
+layout(set = 0, binding = SUN_GLARE_BIND_SHARE, scalar) buffer Share
 {
     float share;
 };

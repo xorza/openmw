@@ -15,15 +15,15 @@ namespace Rtx
     namespace
     {
         /// The texture in, the sums out.
-        constexpr std::array<VkDescriptorSetLayoutBinding, 2> sSumBindings{
-            computeBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER),
-            computeBinding(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+        constexpr std::array<VkDescriptorSetLayoutBinding, Shaders::SHADING_SUM_BINDINGS> sSumBindings{
+            computeBinding(Shaders::SHADING_SUM_BIND_SOURCE, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER),
+            computeBinding(Shaders::SHADING_SUM_BIND_SUMS, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
         };
 
         /// The sums in, the map out.
-        constexpr std::array<VkDescriptorSetLayoutBinding, 2> sMapBindings{
-            computeBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            computeBinding(1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
+        constexpr std::array<VkDescriptorSetLayoutBinding, Shaders::SHADING_MAP_BINDINGS> sMapBindings{
+            computeBinding(Shaders::SHADING_MAP_BIND_SUMS, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            computeBinding(Shaders::SHADING_MAP_BIND_MAP, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
         };
 
         constexpr VkDeviceSize sSumBytes
@@ -52,18 +52,19 @@ namespace Rtx
             .mPunchThrough = data.mFormat == TextureFormat::Bc1RgbaSrgb ? 1u : 0u,
         };
 
-        DescriptorWrites<2> summing;
-        summing.image(0, source.describeSampled(sampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL),
+        DescriptorWrites<Shaders::SHADING_SUM_BINDINGS> summing;
+        summing.image(Shaders::SHADING_SUM_BIND_SOURCE,
+            source.describeSampled(sampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL),
             VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-        summing.buffer(1, mSums.describe());
+        summing.buffer(Shaders::SHADING_SUM_BIND_SUMS, mSums.describe());
         dispatch(commands, mSum, summing.get(), constants, Shaders::SHADING_EXTENT);
 
         mSums.transition(commands, Use::sBufferComputeWrite, Use::sBufferComputeRead);
         map.transition(commands, Use::sUndefined, Use::sComputeWrite);
 
-        DescriptorWrites<2> mapping;
-        mapping.buffer(0, mSums.describe());
-        mapping.image(1, map.describeStorage());
+        DescriptorWrites<Shaders::SHADING_MAP_BINDINGS> mapping;
+        mapping.buffer(Shaders::SHADING_MAP_BIND_SUMS, mSums.describe());
+        mapping.image(Shaders::SHADING_MAP_BIND_MAP, map.describeStorage());
         dispatch(commands, mMap, mapping.get(), constants, 1);
 
         map.transition(commands, Use::sComputeWrite, Use::sTextureSample);

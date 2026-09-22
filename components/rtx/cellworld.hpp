@@ -1,19 +1,13 @@
 #pragma once
 
-#include <osg/Drawable>
 #include <osg/Image>
 #include <osg/Node>
-#include <osg/StateSet>
 #include <osg/Vec3f>
 #include <osg/Vec4i>
 #include <osg/ref_ptr>
 
 #include <components/esm/refid.hpp>
 #include <components/vfs/pathutil.hpp>
-
-#include "materialresolver.hpp"
-#include "meshreader.hpp"
-#include "runs.hpp"
 
 namespace Terrain
 {
@@ -25,8 +19,9 @@ namespace Rtx
 {
     /// Where a cell's content is read from, by path: a model's template, and an image. An
     /// interface, so that a ring can be handed a model by a test that has no loader. The game
-    /// answers out of `Resource::SceneManager`, whose template is the one node every clone is copied
-    /// from and whose image cache hands one object to a template and to whoever asks for the path.
+    /// answers out of `Resource::SceneManager`, whose template is the one node every clone is
+    /// copied from and whose image cache hands one object to a template and to whoever asks for the
+    /// path.
     class ContentSource
     {
     public:
@@ -64,35 +59,6 @@ namespace Rtx
         bool isReadable() const { return mStorage != nullptr && mGround != nullptr && mContent != nullptr; }
 
         bool operator==(const CellWorld& other) const = default;
-    };
-
-    /// What a residency may do inside the walk that asks it: adopt rows through the mirror's own
-    /// resolvers, under the identity the walk would find a clone's mesh under, so that a mesh both
-    /// stand is one mesh. An adoption is a hold and a release gives it back, so the sweep keeps a
-    /// held entry whatever its stamp.
-    class SceneAdopter
-    {
-    public:
-        virtual ~SceneAdopter() = default;
-
-        SceneAdopter(const SceneAdopter&) = delete;
-        SceneAdopter& operator=(const SceneAdopter&) = delete;
-
-        /// The material of a reading somebody else made, adopted under the state set it names, with
-        /// one hold taken on it. `sNoIndex` and no hold where the reading names no state set.
-        virtual Index adoptMaterial(const MaterialReading& reading) = 0;
-
-        /// The same for a mesh, held under the identity the walk will find a clone's mesh under.
-        virtual Index adoptMesh(const osg::Drawable& drawable, const MeshReading& reading) = 0;
-
-        /// Gives one hold back on what `adoptMesh` held under `drawable`.
-        virtual void releaseMesh(const osg::Drawable& drawable) = 0;
-
-        /// The same for `adoptMaterial`, by the state set the reading named. Nothing for null.
-        virtual void releaseMaterial(const osg::StateSet* key) = 0;
-
-    protected:
-        SceneAdopter() = default;
     };
 
     /// What the mirror is handed of the settings, and never reads for itself: the two knobs the

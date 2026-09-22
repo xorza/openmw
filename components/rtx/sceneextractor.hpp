@@ -21,13 +21,13 @@
 #include "meshreader.hpp"
 #include "meshresolver.hpp"
 #include "mirroridentity.hpp"
+#include "mirrorpass.hpp"
 #include "nodekind.hpp"
-#include "residency.hpp"
 #include "runs.hpp"
+#include "sceneadopter.hpp"
 #include "scenedesc.hpp"
 #include "shading.hpp"
 #include "stepped.hpp"
-#include "walk.hpp"
 
 namespace osg
 {
@@ -289,7 +289,7 @@ namespace Rtx
         Traversals mOwnTraversals;
         Traversals& mTraversals;
 
-        /// Set in the constructor, because the default is asked of the loader rather than named.
+        /// Every node until the owner states a mask (`setTraversalMask`).
         osg::Node::NodeMask mTraversalMask;
 
         /// See `setStampDepth`.

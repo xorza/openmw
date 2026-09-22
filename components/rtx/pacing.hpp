@@ -22,7 +22,8 @@ namespace Rtx
     };
 
     /// How a `LatencyMode` is spelled in a setting file, on a command line and in a report — the
-    /// one list, so a mode added here reaches the parser and both menus at once.
+    /// one list, so a mode added here reaches the parser at once and stops the build until each
+    /// menu gives it a label.
     inline constexpr NamedEnum sLatencyModeNames{ std::array{
         std::pair{ LatencyMode::Off, std::string_view("off") },
         std::pair{ LatencyMode::On, std::string_view("on") },

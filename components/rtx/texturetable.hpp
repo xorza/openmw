@@ -12,6 +12,7 @@
 #include <components/vfs/pathutil.hpp>
 
 #include "runs.hpp"
+#include "shaders/scene.h"
 #include "slots.hpp"
 #include "texturewrap.hpp"
 
@@ -53,15 +54,21 @@ namespace Rtx
     class TextureTable
     {
     public:
+        /// How many slots stand at once: the bindless array's, less the one its neutral texel
+        /// takes. A world past it is content this renderer draws neutral, and never a frame that
+        /// stops: an arrival that would take one more slot is refused and counted.
+        static constexpr std::size_t sCapacity = Shaders::TEXTURE_NEUTRAL;
+
         /// The slot for `path` under `wrap`, taking one where this has not met the pair. Live from
         /// here, before anything names it, and until the last thing that named it lets go.
+        /// `sNoIndex` where the pair is new and `sCapacity` slots already stand.
         Index add(VFS::Path::NormalizedView path, TextureWrap wrap = TextureWrap::Repeat);
 
         /// The slot for a texture this renderer made — a composite baked for a distant chunk —
         /// keyed by `key` rather than by a file, taking one where `key` is not known. Two chunks
         /// that would bake the same image must find the same slot, so `key` has to be stable across
         /// frames. The same slots and the same reference counting as a file's. Clamped, because a
-        /// bake is one image whose coordinates run edge to edge.
+        /// bake is one image whose coordinates run edge to edge. `sNoIndex` as `add` answers it.
         Index addBaked(std::string_view key);
 
         /// The slot `path` stands in under any wrap, or `sNoIndex` where it stands in none. What a
@@ -69,10 +76,11 @@ namespace Rtx
         /// wrap, and the bake's key carries the file and not the wrap.
         Index findFile(VFS::Path::NormalizedView path) const;
 
-        /// Takes and gives back one name on a slot. `sNoIndex` is "none" and costs a compare. The
-        /// slot is freed by the `drop` after which nothing names it. A particle emitter's sprite
-        /// names a texture this way: an emitter is rebuilt every frame, so whatever recognises it
-        /// between frames is what has to hold the texture.
+        /// Takes and gives back one name on a slot. A slot this never hands out — `sNoIndex`, and
+        /// the neutral texel a layer names where the table had no room — is "none" and costs a
+        /// compare. The slot is freed by the `drop` after which nothing names it. A particle
+        /// emitter's sprite names a texture this way: an emitter is rebuilt every frame, so
+        /// whatever recognises it between frames is what has to hold the texture.
         void hold(Index texture);
         void drop(Index texture);
 
@@ -100,7 +108,14 @@ namespace Rtx
 
         void clearArrivals() { mChanges.clearArrivals(); }
 
+        // Read by the tests and by nothing else: a refusal is logged once, where it happens.
+        /// How many new textures were refused because `sCapacity` slots stood, ever.
+        std::uint32_t getRefused() const { return mRefused; }
+
     private:
+        /// Whether a new slot may be taken, counting and reporting the refusal where it may not.
+        bool hasRoom();
+
         /// Puts `row` in a free slot where there is one, in a new one otherwise, and counts the
         /// arrival.
         Index takeSlot(TextureRow row);
@@ -127,5 +142,6 @@ namespace Rtx
         std::unordered_map<std::string, Index, BakedHash, std::equal_to<>> mBakedIndex;
 
         std::uint64_t mRevision = 0;
+        std::uint32_t mRefused = 0;
     };
 }

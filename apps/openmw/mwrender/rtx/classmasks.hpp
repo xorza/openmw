@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <cstdint>
 
 #include <osg/Node>
 
@@ -28,4 +29,8 @@ namespace MWRender
         ClassMask{ Rtx::InstanceClass::Effect, Mask_Effect },
         ClassMask{ Rtx::InstanceClass::FirstPerson, Mask_FirstPerson },
     };
+
+    /// A camera's cull mask as the trace reads it: which `Rtx::InstanceClass`es its rays meet, and
+    /// whether it draws the sprites. The one translation, so both renderers read one mask.
+    std::uint32_t rayMaskOf(osg::Node::NodeMask cullMask);
 }

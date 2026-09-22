@@ -34,6 +34,26 @@ namespace Rtx
             ASSERT_EQ(kept.size(), fresh.size()) << when;
             for (std::size_t slot = 0; slot < kept.size(); ++slot)
                 EXPECT_TRUE(kept[slot] == fresh[slot]) << when << ": slot " << slot;
+
+            // **The counts that gate the trace are what the records tell traversal**, both being
+            // `PlacedTraversal`'s: a cutout counted that no record stops for is a walk the trace
+            // pays for nothing, and one a record stops for that is not counted is a hole never
+            // asked.
+            InstanceCounts told;
+            for (const InstanceRecord& record : kept)
+            {
+                if (!record.mPlaced)
+                    continue;
+                ++told.mPlaced;
+                told.mCutout += record.mCutout ? 1u : 0u;
+                told.mMedium += (record.mMask & Shaders::MASK_MEDIUM) != 0 ? 1u : 0u;
+                told.mAdditive += record.mAdditive ? 1u : 0u;
+            }
+            const InstanceCounts& counted = scene.placements().getCounts();
+            EXPECT_EQ(counted.mPlaced, told.mPlaced) << when;
+            EXPECT_EQ(counted.mCutout, told.mCutout) << when;
+            EXPECT_EQ(counted.mMedium, told.mMedium) << when;
+            EXPECT_EQ(counted.mAdditive, told.mAdditive) << when;
         }
 
         /// The rows a frame rewrites are the rows a rebuild would produce, through every kind of
@@ -114,6 +134,9 @@ namespace Rtx
             updateInstanceRecords(scene, kept, changed);
             expectSame(kept, scene, "faded");
             EXPECT_TRUE(kept[leaf].mTranslucent);
+            EXPECT_FALSE(kept[leaf].mCutout)
+                << "a faded leaf is asked how much of it there is, not whether it is a hole";
+            EXPECT_EQ(scene.placements().getCounts().mCutout, 0u);
             EXPECT_TRUE(kept[leaf].mMotion == still);
             scene.placements().advance();
 

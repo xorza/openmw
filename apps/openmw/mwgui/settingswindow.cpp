@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <optional>
+#include <span>
 #include <string_view>
 
 #include <unicode/locid.h>
@@ -167,6 +168,29 @@ namespace
             textBox->setCaption(labelCaption);
         }
     }
+
+    constexpr std::array<Rtx::MenuLabel, Rtx::sUpscaleMenu.size()> sUpscaleLabels{ {
+        { "ultraperformance", "#{OMWEngine:RayTracingUpscaleUltraPerformance}" },
+        { "performance", "#{OMWEngine:RayTracingUpscalePerformance}" },
+        { "balanced", "#{OMWEngine:RayTracingUpscaleBalanced}" },
+        { "quality", "#{OMWEngine:RayTracingUpscaleQuality}" },
+        { "dlaa", "#{OMWEngine:RayTracingUpscaleDlaa}" },
+    } };
+    static_assert(Rtx::followsMenu(sUpscaleLabels, Rtx::sUpscaleMenu));
+
+    // Off and on are the vsync box's own words, so one page spells a toggle one way
+    constexpr std::array<Rtx::MenuLabel, Rtx::sLatencyMenu.size()> sLatencyLabels{ {
+        { "off", "#{Interface:Off}" },
+        { "on", "#{Interface:On}" },
+        { "boost", "#{OMWEngine:RayTracingReflexBoost}" },
+    } };
+    static_assert(Rtx::followsMenu(sLatencyLabels, Rtx::sLatencyMenu));
+
+    void addMenuItems(MyGUI::ComboBox* box, std::span<const Rtx::MenuLabel> labels)
+    {
+        for (const Rtx::MenuLabel& label : labels)
+            box->addItem(MyGUI::LanguageManager::getInstance().replaceTags(label.mLabel));
+    }
 }
 
 namespace MWGui
@@ -278,6 +302,15 @@ namespace MWGui
         getWidget(unusedSlider, widgetName);
         unusedSlider->setVisible(false);
 
+        // One cell to a step, over the range the setting's own category states
+        MyGUI::ScrollBar* distantLand;
+        getWidget(distantLand, "RayTracingDistantLandSlider");
+        constexpr float fewestCells = Settings::RTXCategory::sMinDistantLandCellsInMenu;
+        constexpr float mostCells = Settings::RTXCategory::sMaxDistantLandCells;
+        distantLand->setUserString("SettingMin", MyGUI::utility::toString(fewestCells));
+        distantLand->setUserString("SettingMax", MyGUI::utility::toString(mostCells));
+        distantLand->setScrollRange(static_cast<std::size_t>(mostCells - fewestCells) + 1);
+
         configureWidgets(mMainWidget, true);
 
         setTitle("#{OMWEngine:SettingsWindow}");
@@ -339,6 +372,8 @@ namespace MWGui
                  mRayTracingDistantLandText })
             widget->setVisible(rayTracing);
 
+        addMenuItems(mRayTracingUpscale, sUpscaleLabels);
+        addMenuItems(mRayTracingReflex, sLatencyLabels);
         mRayTracingUpscale->eventComboChangePosition
             += MyGUI::newDelegate(this, &SettingsWindow::onRayTracingUpscaleChanged);
         mRayTracingReflex->eventComboChangePosition
@@ -645,7 +680,6 @@ namespace MWGui
 
     void SettingsWindow::onRayTracingUpscaleChanged(MyGUI::ComboBox* sender, size_t pos)
     {
-        // A layout with more entries than there are modes
         const std::optional<std::string_view> chosen = Rtx::menuName(Rtx::sUpscaleMenu, pos);
         if (!chosen.has_value())
             return;

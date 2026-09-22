@@ -6,10 +6,25 @@
 #include <string>
 #include <utility>
 
+#include <components/debug/debuglog.hpp>
+
 #include "contract.hpp"
 
 namespace Rtx
 {
+    bool TextureTable::hasRoom()
+    {
+        if (mRows.getLiveCount() < sCapacity)
+            return true;
+
+        // Once and not per texture: past this point every new texture is refused alike.
+        if (mRefused++ == 0)
+            Log(Debug::Warning) << "Ray tracing holds " << sCapacity
+                                << " textures, the most its array takes, and draws every one past it neutral";
+
+        return false;
+    }
+
     Index TextureTable::takeSlot(TextureRow row)
     {
         ++mRevision;
@@ -31,6 +46,9 @@ namespace Rtx
         auto known = mPathIndex.find(path);
         if (known != mPathIndex.end() && known->second[at] != sNoIndex)
             return known->second[at];
+
+        if (!hasRoom())
+            return sNoIndex;
 
         const Index index = takeSlot(TextureRow{
             .mKind = TextureKind::File,
@@ -70,6 +88,9 @@ namespace Rtx
         if (known != mBakedIndex.end())
             return known->second;
 
+        if (!hasRoom())
+            return sNoIndex;
+
         const Index index = takeSlot(TextureRow{
             .mKind = TextureKind::Baked,
             .mBaked = std::string(key),
@@ -82,7 +103,7 @@ namespace Rtx
 
     void TextureTable::hold(const Index texture)
     {
-        if (texture == sNoIndex)
+        if (texture >= sCapacity)
             return;
 
         mRows.hold(texture);
@@ -90,7 +111,7 @@ namespace Rtx
 
     void TextureTable::drop(const Index texture)
     {
-        if (texture == sNoIndex)
+        if (texture >= sCapacity)
             return;
 
         if (!mRows.drop(texture))

@@ -10,11 +10,11 @@
 #include <osg/Vec3f>
 
 #include "mirroridentity.hpp"
+#include "mirrorpass.hpp"
 #include "runs.hpp"
 #include "scenedesc.hpp"
 #include "sprite.hpp"
 #include "surface.hpp"
-#include "walk.hpp"
 
 namespace osg
 {

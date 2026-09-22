@@ -4,6 +4,8 @@
 #include <cassert>
 #include <cstddef>
 
+#include <components/rtx/shaders/digest.h>
+
 #include "buffer.hpp"
 #include "dispatch.hpp"
 #include "gputimer.hpp"
@@ -14,10 +16,10 @@ namespace Rtx
 {
     namespace
     {
-        constexpr std::array<VkDescriptorSetLayoutBinding, 2> sBindings{
-            VkDescriptorSetLayoutBinding{
-                0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, Shaders::DIGEST_IMAGES, VK_SHADER_STAGE_COMPUTE_BIT, nullptr },
-            computeBinding(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+        constexpr std::array<VkDescriptorSetLayoutBinding, Shaders::DIGEST_BINDINGS> sBindings{
+            VkDescriptorSetLayoutBinding{ Shaders::DIGEST_BIND_IMAGES, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+                Shaders::DIGEST_IMAGES, VK_SHADER_STAGE_COMPUTE_BIT, nullptr },
+            computeBinding(Shaders::DIGEST_BIND_LANES, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
         };
     }
 
@@ -51,9 +53,9 @@ namespace Rtx
         mLanes.clear(commands);
         mLanes.transition(commands, Use::sBufferClearWrite, Use::sBufferComputeReadWrite);
 
-        DescriptorWrites<2, Shaders::DIGEST_IMAGES> writes;
-        writes.images(0, described, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
-        writes.buffer(1, mLanes.describe());
+        DescriptorWrites<Shaders::DIGEST_BINDINGS, Shaders::DIGEST_IMAGES> writes;
+        writes.images(Shaders::DIGEST_BIND_IMAGES, described, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+        writes.buffer(Shaders::DIGEST_BIND_LANES, mLanes.describe());
 
         const Shaders::DigestConstants constants{ .mWidth = first.getWidth(), .mHeight = first.getHeight() };
         dispatch(commands, mPipeline, writes.get(), constants, groupsFor(first.getWidth(), Shaders::DIGEST_WORKGROUP),

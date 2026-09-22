@@ -242,7 +242,7 @@ namespace Rtx
     {
         // A gap in the content is named rather than drawn around, as `readNightSky` names its.
         if (!scenes.getVFS()->exists(mesh))
-            throw Error("no cloud mesh at \"" + std::string(mesh.value()) + "\"");
+            throw InputError("no cloud mesh at \"" + std::string(mesh.value()) + "\"");
 
         return readCloudShell(const_cast<osg::Node&>(*scenes.getTemplate(mesh, false)));
     }

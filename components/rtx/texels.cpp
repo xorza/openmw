@@ -79,7 +79,7 @@ namespace Rtx
         {
             described = describeImage(image, levels);
         }
-        catch (const Error& what)
+        catch (const InputError& what)
         {
             // A format nothing in the game produces, which is a mod's business rather than a broken
             // contract — the caller gets nothing and carries on without whatever this was worth.
@@ -205,7 +205,7 @@ namespace Rtx
         // file a fifth larger — and a run that keeps every frame writes hundreds of them.
         const osg::ref_ptr<osgDB::Options> options = new osgDB::Options("PNG_COMPRESSION 1");
         if (!osgDB::writeImageFile(*image, Files::pathToUnicodeString(path), options.get()))
-            throw Error("cannot write " + Files::pathToUnicodeString(path));
+            throw InputError("cannot write " + Files::pathToUnicodeString(path));
     }
 
     PngImage readPng(const std::filesystem::path& path)

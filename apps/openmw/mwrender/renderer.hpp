@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <string_view>
 #include <vector>
 
@@ -232,16 +233,21 @@ namespace MWRender
         void setFrameClock(const Misc::FrameClock& clock) { mClock = &clock; }
 
         /// `[Video] framerate limit`, in frames a second, or nought for none. Once, beside the
-        /// clock: the setting is the launcher's and is not offered while the game runs.
+        /// clock and before the first frame: the setting is the launcher's and is not offered while
+        /// the game runs. The one route the limit reaches a renderer by.
         void setFrameRateLimit(float limit);
 
         /// Holds the game until the next frame may begin, and says how long the last one stood
         /// for on the wall. The frame-rate limit lives here, and so does whatever pacing a
-        /// renderer has beyond it: a driver that says when to start the frame answers this. Once
-        /// per loop, before input is read, because what is read after this is what the frame
-        /// shows. The default is the limiter the engine's loop used to hold, one call earlier in
-        /// the loop, which is the same point in the cycle.
-        virtual std::chrono::steady_clock::duration awaitFrame();
+        /// renderer has beyond it (`holdFrame`). Once per loop, before input is read, because what
+        /// is read after this is what the frame shows. The limiter is the one the engine's loop
+        /// used to hold, one call earlier in the loop, which is the same point in the cycle, and it
+        /// answers as it did: the limit's own length for a frame it slept for.
+        ///
+        /// **One opening for both holds**, so a renderer that moves between them answers each
+        /// interval from the frame before it: a clock of each hold's own went stale while the
+        /// other ran, and the first frame after a switch stood for the whole of the other's run.
+        std::chrono::steady_clock::duration awaitFrame();
 
         /// Stamps the next frame. Simulation time stops when the game is paused; reference time
         /// does not.
@@ -372,6 +378,20 @@ namespace MWRender
         /// What `setFrameClock` handed over. Asserts that it has.
         const Misc::FrameClock& getFrameClock() const;
 
+        /// What `setFrameRateLimit` handed over, nought before it has.
+        float getFrameRateLimit() const { return mFrameRateLimit; }
+
+        /// `setFrameRateLimit`'s hook, with the limit already kept, for a renderer that paces its
+        /// own frames by it.
+        virtual void applyFrameRateLimit() {}
+
+        /// Holds the frame in a renderer's own pacing — a driver that says when to start the frame
+        /// — and says whether it did. Asked every frame; where it did not, the limiter holds it.
+        virtual bool holdFrame() { return false; }
+
+        /// How long the last `awaitFrame` held the game, in the limiter or in `holdFrame`.
+        std::chrono::steady_clock::duration getLastHold() const { return mLastHold; }
+
         /// The view mask has changed; put `getViewMask()` where this renderer reads it from.
         virtual void applyViewMask() = 0;
 
@@ -391,9 +411,16 @@ namespace MWRender
     private:
         Resource::ResourceSystem* mResources = nullptr;
         const Misc::FrameClock* mClock = nullptr;
+        float mFrameRateLimit = 0.0f;
 
-        /// What the default `awaitFrame` sleeps in and measures by, made anew by `setFrameRateLimit`.
+        /// What `awaitFrame` sleeps in where `holdFrame` did not hold, made anew by
+        /// `setFrameRateLimit` and moved to each opening a renderer's own hold made.
         Misc::FrameRateLimiter mLimiter{ std::chrono::steady_clock::duration::zero() };
+
+        /// When the last `awaitFrame` let the game go, nothing before the first, and how long it
+        /// held it.
+        std::optional<std::chrono::steady_clock::time_point> mOpened;
+        std::chrono::steady_clock::duration mLastHold{};
         osg::ref_ptr<SceneUtil::AsyncScreenCaptureOperation> mScreenshotWriter;
         osg::ref_ptr<osg::Camera> mCamera;
         osg::ref_ptr<osg::FrameStamp> mFrameStamp;

@@ -10,6 +10,8 @@
 
 #include <osg/Vec2f>
 
+#include <components/rtx/shaders/wave.h>
+
 #include "barriers.hpp"
 #include "commands.hpp"
 #include "device.hpp"
@@ -22,17 +24,17 @@ namespace Rtx
     namespace
     {
         /// The amplitudes, how fast each turns, and the three packed fields between them.
-        constexpr std::array<VkDescriptorSetLayoutBinding, 3> sFormBindings
-            = computeBindings<3>(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+        constexpr std::array<VkDescriptorSetLayoutBinding, Shaders::WAVE_FORM_BINDINGS> sFormBindings
+            = computeBindings<Shaders::WAVE_FORM_BINDINGS>(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 
-        constexpr std::array<VkDescriptorSetLayoutBinding, 1> sLineBindings
-            = computeBindings<1>(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+        constexpr std::array<VkDescriptorSetLayoutBinding, Shaders::WAVE_LINE_BINDINGS> sLineBindings
+            = computeBindings<Shaders::WAVE_LINE_BINDINGS>(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 
         /// The fields in, and the two textures out.
-        constexpr std::array<VkDescriptorSetLayoutBinding, 3> sComposeBindings{
-            computeBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            computeBinding(1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
-            computeBinding(2, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
+        constexpr std::array<VkDescriptorSetLayoutBinding, Shaders::WAVE_COMPOSE_BINDINGS> sComposeBindings{
+            computeBinding(Shaders::WAVE_COMPOSE_BIND_FIELD, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            computeBinding(Shaders::WAVE_COMPOSE_BIND_SURFACE, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
+            computeBinding(Shaders::WAVE_COMPOSE_BIND_CURVATURE, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
         };
 
         /// How many complex numbers the transform runs over for one tile: three packed fields, each
@@ -120,8 +122,8 @@ namespace Rtx
     void WavePass::transform(VkCommandBuffer commands, const Tile& tile, std::uint32_t count) const
     {
         // Bound and pushed once for the six dispatches below, which differ in their constants alone.
-        DescriptorWrites<1> writes;
-        writes.buffer(0, tile.mField.describe());
+        DescriptorWrites<Shaders::WAVE_LINE_BINDINGS> writes;
+        writes.buffer(Shaders::WAVE_LINE_BIND_FIELD, tile.mField.describe());
 
         bind(commands, mLinePipeline);
         pushDescriptors(commands, mLinePipeline, writes.get());
@@ -161,10 +163,10 @@ namespace Rtx
 
             opened.flush();
 
-            DescriptorWrites<3> forms;
-            forms.buffer(0, tile.mAmplitudes.describe());
-            forms.buffer(1, tile.mFrequencies.describe());
-            forms.buffer(2, tile.mField.describe());
+            DescriptorWrites<Shaders::WAVE_FORM_BINDINGS> forms;
+            forms.buffer(Shaders::WAVE_FORM_BIND_AMPLITUDES, tile.mAmplitudes.describe());
+            forms.buffer(Shaders::WAVE_FORM_BIND_FREQUENCIES, tile.mFrequencies.describe());
+            forms.buffer(Shaders::WAVE_FORM_BIND_FIELD, tile.mField.describe());
 
             const Shaders::WaveFormConstants shaped{
                 .mCount = grid,
@@ -177,10 +179,10 @@ namespace Rtx
 
             transform(commands, tile, grid);
 
-            DescriptorWrites<3> composes;
-            composes.buffer(0, tile.mField.describe());
-            composes.image(1, tile.mSurface.describeStorage());
-            composes.image(2, tile.mCurvature.describeStorage());
+            DescriptorWrites<Shaders::WAVE_COMPOSE_BINDINGS> composes;
+            composes.buffer(Shaders::WAVE_COMPOSE_BIND_FIELD, tile.mField.describe());
+            composes.image(Shaders::WAVE_COMPOSE_BIND_SURFACE, tile.mSurface.describeStorage());
+            composes.image(Shaders::WAVE_COMPOSE_BIND_CURVATURE, tile.mCurvature.describeStorage());
 
             const Shaders::WaveComposeConstants unpacked{ .mCount = grid };
             dispatch(commands, mComposePipeline, composes.get(), unpacked,

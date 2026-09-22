@@ -1,3 +1,4 @@
+#include <cstdint>
 #include <span>
 #include <vector>
 
@@ -14,10 +15,10 @@
 #include <components/rtx/mesh.hpp>
 #include <components/rtx/meshreader.hpp>
 #include <components/rtx/meshresolver.hpp>
+#include <components/rtx/mirrorpass.hpp>
 #include <components/rtx/nodekind.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
-#include <components/rtx/walk.hpp>
 
 #include "extractor/fixture.hpp"
 
@@ -162,10 +163,14 @@ namespace Rtx::Testing
             EXPECT_EQ(left.meshes().getRows()[0].mVertices.mCount, right.meshes().getRows()[0].mVertices.mCount);
             EXPECT_EQ(left.meshes().getRows()[0].mIndices.mCount, right.meshes().getRows()[0].mIndices.mCount);
             EXPECT_EQ(left.meshes().getRows()[0].mDeform, Deform::None);
-            EXPECT_EQ(std::vector(left.meshes().getPositions().begin(), left.meshes().getPositions().end()),
-                std::vector(right.meshes().getPositions().begin(), right.meshes().getPositions().end()));
-            EXPECT_EQ(std::vector(left.meshes().getIndices().begin(), left.meshes().getIndices().end()),
-                std::vector(right.meshes().getIndices().begin(), right.meshes().getIndices().end()));
+            const std::span<const osg::Vec3f> leftPositions = left.meshes().getMeshPositions(0);
+            const std::span<const osg::Vec3f> rightPositions = right.meshes().getMeshPositions(0);
+            const std::span<const std::uint32_t> leftIndices = left.meshes().getMeshIndices(0);
+            const std::span<const std::uint32_t> rightIndices = right.meshes().getMeshIndices(0);
+            EXPECT_EQ(std::vector(leftPositions.begin(), leftPositions.end()),
+                std::vector(rightPositions.begin(), rightPositions.end()));
+            EXPECT_EQ(std::vector(leftIndices.begin(), leftIndices.end()),
+                std::vector(rightIndices.begin(), rightIndices.end()));
 
             // The walk meeting the drawable after the ring adopted it finds the ring's mesh.
             EXPECT_EQ(adopted.mResolver.resolve(*quad, readDrawable(*quad, NodeKinds{}.of(*quad))), 0u);

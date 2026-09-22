@@ -41,6 +41,16 @@ namespace Rtx::Shaders
 {
 #endif
 
+    /// Where `atrous.comp` binds what it reads and writes in set 0, and how many there are. The
+    /// shader's layout and the pass's own layout and writes are numbered by these and by nothing
+    /// else, so the two cannot drift apart.
+    const uint ATROUS_BIND_SOURCE = 0;
+    const uint ATROUS_BIND_FILTERED = 1;
+    const uint ATROUS_BIND_GUIDE = 2;
+    const uint ATROUS_BIND_DEPTH = 3;
+    const uint ATROUS_BIND_MOMENTS = 4;
+    const uint ATROUS_BINDINGS = 5;
+
     /// Threads along each edge of a level's workgroup.
     const uint ATROUS_WORKGROUP = 8;
 

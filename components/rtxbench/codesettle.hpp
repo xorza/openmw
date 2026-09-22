@@ -14,8 +14,7 @@ namespace Rtx
     /// **The driver compiles the launches twice, and the second code is not the first.** Once
     /// when a pipeline is made, and again on an unnamed thread of its own, a core flat out for
     /// ten to fifteen seconds from the first pipelines' creation, swapping each launch's code in
-    /// as it is done and writing its disk cache as it goes. Nothing turns it off;
-    /// `.notes/repeatability-review.md` keeps the record of what was tried. What the driver's
+    /// as it is done and writing its disk cache as it goes. Nothing turns it off. What the driver's
     /// disk cache holds is the second code: a process whose launches come out of it starts on it,
     /// with no thread to wait for, and draws every frame the same as one that compiled and waited.
     /// So the process that compiled waits this out drawing frames, then starts again, and the one

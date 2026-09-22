@@ -44,8 +44,8 @@ namespace Rtx
     };
 
     /// Reads it off the cloud mesh the configuration names, which the host passes in. Throws
-    /// `Error` naming the mesh where the file does not exist, as `readNightSky` does. A mesh that
-    /// is there and says nothing hangs no layer, which the overload below says.
+    /// `InputError` naming the mesh where the file does not exist, as `readNightSky` does. A mesh
+    /// that is there and says nothing hangs no layer, which the overload below says.
     CloudShell readCloudShell(Resource::SceneManager& scenes, VFS::Path::NormalizedView mesh);
 
     /// The same reading, of a mesh already in hand.

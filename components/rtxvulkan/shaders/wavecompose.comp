@@ -15,7 +15,7 @@
 
 layout(local_size_x = WAVE_TILE_WORKGROUP, local_size_y = WAVE_TILE_WORKGROUP) in;
 
-layout(set = 0, binding = 0, scalar) readonly buffer Field
+layout(set = 0, binding = WAVE_COMPOSE_BIND_FIELD, scalar) readonly buffer Field
 {
     vec2 field[];
 };
@@ -30,10 +30,10 @@ layout(set = 0, binding = 0, scalar) readonly buffer Field
 /// **The elevation squared rides in the last channel**, where the coarsest level makes it the sea's
 /// own variance — the amplitude the whole spectrum is normalised to, and the one thing a test can
 /// hold the transform's scale to. Nothing shades from it.
-layout(set = 0, binding = 1, WAVE_TILE_FORMAT) uniform writeonly image2D surface;
+layout(set = 0, binding = WAVE_COMPOSE_BIND_SURFACE, WAVE_TILE_FORMAT) uniform writeonly image2D surface;
 
 /// The three curvatures, which is what the caustic differentiates the height field twice for.
-layout(set = 0, binding = 2, WAVE_TILE_FORMAT) uniform writeonly image2D curvature;
+layout(set = 0, binding = WAVE_COMPOSE_BIND_CURVATURE, WAVE_TILE_FORMAT) uniform writeonly image2D curvature;
 
 layout(push_constant, scalar) uniform Push
 {

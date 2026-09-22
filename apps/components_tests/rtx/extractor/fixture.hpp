@@ -34,6 +34,7 @@
 
 #include <components/nifosg/nifloader.hpp>
 #include <components/rtx/extractionstats.hpp>
+#include <components/rtx/meshtable.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneextractor.hpp>
 #include <components/rtx/surface.hpp>
@@ -165,12 +166,12 @@ namespace Rtx::Testing
 
     /// Puts the shared random sequence back where it started.
     ///
-    /// **`osgParticle` draws from `std::rand` for every range it reads**, the single-value ones these
-    /// fixtures set included — so a plume run from two different points in that sequence is two
-    /// different plumes, and a test comparing the two measures the sequence rather than what it
-    /// meant to. `apps/rtxtool/draws.cpp` is the same problem where a whole run is compared with
-    /// another, with the driver drawing from the sequence too; here the difference measured was
-    /// one unit in the last place of a height.
+    /// **`osgParticle` draws from `std::rand` for every range it reads**, the single-value ones
+    /// these fixtures set included — so a plume run from two different points in that sequence is
+    /// two different plumes, and a test comparing the two measures the sequence rather than what it
+    /// meant to. The harness's `--random-seed` (`hosted.cpp`) is the same problem where a whole run
+    /// is compared with another, with the driver drawing from the sequence too; here the difference
+    /// measured was one unit in the last place of a height.
     ///
     /// **Called per run and not once per test, which is why no fixture set-up does it.** The first
     /// run advances the sequence, so a reset at the top of the test would leave the second run
@@ -222,6 +223,20 @@ namespace Rtx::Testing
             osg::Vec3f(0.0f, 1.0f, 0.0f),
         }));
         geometry->addPrimitiveSet(makeTriangles({ 0, 1, 2, 0, 2, 3 }));
+        return geometry;
+    }
+
+    /// One triangle over one vertex more than a block holds: the mesh `MeshTable::checkFits`
+    /// refuses, which only a content file hands over.
+    inline osg::ref_ptr<osg::Geometry> makePastOneBlock()
+    {
+        osg::ref_ptr<osg::Vec3Array> positions = new osg::Vec3Array(MeshTable::sVertexBlock + 1);
+        (*positions)[1] = osg::Vec3f(1.0f, 0.0f, 0.0f);
+        (*positions)[2] = osg::Vec3f(0.0f, 1.0f, 0.0f);
+
+        osg::ref_ptr<osg::Geometry> geometry = new osg::Geometry;
+        geometry->setVertexArray(positions);
+        geometry->addPrimitiveSet(makeTriangles({ 0, 1, 2 }));
         return geometry;
     }
 

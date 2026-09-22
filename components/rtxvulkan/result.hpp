@@ -20,8 +20,9 @@ namespace Rtx
     /// Name of a `VkResult` as it is spelled in the header, for messages.
     std::string_view resultName(VkResult result);
 
-    /// Throws `Error` naming `call` and the result unless `result` is `VK_SUCCESS`. `VK_INCOMPLETE`
-    /// is a failure here, and `enumerateVk` is the one caller that answers it instead of raising it.
+    /// Throws `DeviceError` naming `call` and the result unless `result` is `VK_SUCCESS`.
+    /// `VK_INCOMPLETE` is a failure here, and `enumerateVk` is the one caller that answers it
+    /// instead of raising it.
     void checkVk(VkResult result, const char* call);
 
     /// The same, for a call that can lose the device: a submit, a wait, an acquire or a present.
@@ -42,8 +43,9 @@ namespace Rtx
     /// wrong — only that it stopped saying anything at all.
     void checkVkWait(const Device& device, VkResult result, const char* what, std::uint64_t patience);
 
-    /// Waits for `fence` and throws `Error` naming `what` if the device does not answer in time.
-    /// A deadline, because with `UINT64_MAX` a stalled submit took the whole test suite with it.
+    /// Waits for `fence` and throws `DeviceError` naming `what` if the device does not answer in
+    /// time. A deadline, because with `UINT64_MAX` a stalled submit took the whole test suite with
+    /// it.
     ///
     /// @param patience nanoseconds to allow; a parameter so a test can reach the failure.
     void awaitVk(const Device& device, VkFence fence, const char* what, std::uint64_t patience = sPatience);
@@ -95,7 +97,7 @@ namespace Rtx
             return into;
         }
 
-        throw Error(neverSettled(call));
+        throw DeviceError(neverSettled(call));
     }
 
     /// Logs `failure` and what was raised. `tearDown` calls this and nothing else should.

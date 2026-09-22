@@ -38,10 +38,12 @@ namespace SceneUtil
     /// image is the caller's to write and belongs to this texture for the rest of its life. Drawn
     /// clamped and filtered linearly, as both painters want their picture drawn.
     ///
-    /// The rasterizer draws it through a subload callback of its own, so it never reads the image's
-    /// modified count and never re-uploads whole. The draw thread reads what the game thread paints,
-    /// as it read the image before; a frame that reads a rectangle half painted draws it again next
-    /// frame, since the count moves after the bytes.
+    /// **The rasterizer uploads it as upstream uploads the fog**: `paint` dirties the image, and
+    /// the texture sends the whole of it on its next apply — a fog tile is 32 by 32 texels, and the
+    /// world map's overlay under the rasterizer is not one of these. The rectangles are for the
+    /// mirrors. The draw thread reads what the game thread paints, as it read the image before; a
+    /// frame that reads a rectangle half painted draws it again next frame, since the count moves
+    /// after the bytes.
     class PaintedTexture : public osg::Texture2D
     {
     public:
@@ -65,9 +67,6 @@ namespace SceneUtil
         std::uint32_t getPaintCount() const { return mPaints; }
 
     private:
-        /// What the rasterizer uploads with, in place of `osg::Texture2D`'s own whole-image path.
-        class Uploader;
-
         /// How many paints a reader may fall behind before it is handed the whole picture. Eight
         /// is a few frames of walking on the fog, and past that the union has grown to most of a
         /// tile anyway.

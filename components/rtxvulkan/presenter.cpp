@@ -224,7 +224,7 @@ namespace Rtx
         return mSwapchain->getExtent();
     }
 
-    bool Presenter::present(const Image& frame)
+    void Presenter::present(const Image& frame)
     {
         // A present nothing slept for pays its sleep here, before the acquire, which is the
         // earliest a loading screen's present can: the driver counts one sleep between two
@@ -243,7 +243,7 @@ namespace Rtx
         if (!mSwapchain->acquire(acquisition.mSemaphore.get(), index))
         {
             mStale = true;
-            return false;
+            return;
         }
 
         // This image may still be in the presentation engine's hands. Mailbox releases a frame
@@ -320,10 +320,7 @@ namespace Rtx
         mPacer.afterPresent();
         passPresentId();
 
-        if (shown)
-            return true;
-
-        mStale = true;
-        return false;
+        if (!shown)
+            mStale = true;
     }
 }

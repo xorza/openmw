@@ -21,12 +21,12 @@ namespace Rtx
         /// surface are and the one that says where the edges in the light are. All pushed. Sampled
         /// on the four this pass only reads, because a twenty-five tap gather wants the texture
         /// unit's cache — a few per cent of the cascade — and legal from `VK_IMAGE_LAYOUT_GENERAL`.
-        constexpr std::array<VkDescriptorSetLayoutBinding, 5> sBindings{
-            computeBinding(0, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE),
-            computeBinding(1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
-            computeBinding(2, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE),
-            computeBinding(3, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE),
-            computeBinding(4, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE),
+        constexpr std::array<VkDescriptorSetLayoutBinding, Shaders::ATROUS_BINDINGS> sBindings{
+            computeBinding(Shaders::ATROUS_BIND_SOURCE, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE),
+            computeBinding(Shaders::ATROUS_BIND_FILTERED, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
+            computeBinding(Shaders::ATROUS_BIND_GUIDE, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE),
+            computeBinding(Shaders::ATROUS_BIND_DEPTH, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE),
+            computeBinding(Shaders::ATROUS_BIND_MOMENTS, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE),
         };
 
         /// Both reads, because a level's inputs are sampled and its target is storage. An image
@@ -43,33 +43,29 @@ namespace Rtx
     }
 
     AtrousPass::AtrousPass(const Device& device, const std::filesystem::path& shaderDirectory)
-        : mDevice(device)
-        , mPipeline(
-              device, sBindings, sizeof(Shaders::AtrousConstants), {}, shaderDirectory / "atrous.comp.spv", "atrous")
+        : mPipeline(
+            device, sBindings, sizeof(Shaders::AtrousConstants), {}, shaderDirectory / "atrous.comp.spv", "atrous")
     {
     }
 
-    void AtrousPass::resize(std::uint32_t width, std::uint32_t height)
+    Image AtrousPass::makeScratch(const Device& device, std::uint32_t width, std::uint32_t height)
     {
-        if (!mScratch.isEmpty() && mScratch.getWidth() == width && mScratch.getHeight() == height)
-            return;
-
         // `SAMPLED` because a level reads what the level before it wrote, and it reads through
         // the texture unit. See `sBindings`.
-        mScratch = Image(mDevice, width, height, ATROUS_CHANNEL,
-            VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, "atrous-scratch");
+        return Image(device, width, height, ATROUS_CHANNEL, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+            "atrous-scratch");
     }
 
     const Image& AtrousPass::record(VkCommandBuffer commands, const GBuffer& buffer, const Image& blended,
-        const Image& moments, const Image& history, const Shaders::Camera& camera) const
+        const Image& moments, const Image& history, const Image& scratch, const Shaders::Camera& camera) const
     {
-        assert(!mScratch.isEmpty() && "record before resize");
-        assert(mScratch.getWidth() >= camera.mWidth && mScratch.getHeight() >= camera.mHeight);
+        assert(!scratch.isEmpty() && "a filter with no scratch to ping-pong through");
+        assert(scratch.getWidth() >= camera.mWidth && scratch.getHeight() >= camera.mHeight);
         assert(buffer.getWidth() >= camera.mWidth && buffer.getHeight() >= camera.mHeight);
 
         // Nothing has written the scratch yet this frame, so the first level may discard it. Every
         // level after reads what the one before wrote, which is what the barriers below order.
-        mScratch.transition(commands, Use::sUndefined, Use::sComputeWrite);
+        scratch.transition(commands, Use::sUndefined, Use::sComputeWrite);
 
         // One assignment and not eight, so the filter's rays and the trace's cannot come to
         // differ: this pass is handed the one struct, and the shader rebuilds the rays with the
@@ -105,14 +101,16 @@ namespace Rtx
 
             // Sampled from `GENERAL` on the four this pass only reads. A `SAMPLED_IMAGE`
             // descriptor names the image alone and no sampler, which is what `sBindings` declares.
-            DescriptorWrites<5> writes;
-            writes.image(0, source->describeSampled(VK_NULL_HANDLE), VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE);
-            writes.image(1, target->describeStorage());
+            DescriptorWrites<Shaders::ATROUS_BINDINGS> writes;
             writes.image(
-                2, buffer.get(Channel::Guide).describeSampled(VK_NULL_HANDLE), VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE);
-            writes.image(
-                3, buffer.get(Channel::Depth).describeSampled(VK_NULL_HANDLE), VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE);
-            writes.image(4, moments.describeSampled(VK_NULL_HANDLE), VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE);
+                Shaders::ATROUS_BIND_SOURCE, source->describeSampled(VK_NULL_HANDLE), VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE);
+            writes.image(Shaders::ATROUS_BIND_FILTERED, target->describeStorage());
+            writes.image(Shaders::ATROUS_BIND_GUIDE, buffer.get(Channel::Guide).describeSampled(VK_NULL_HANDLE),
+                VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE);
+            writes.image(Shaders::ATROUS_BIND_DEPTH, buffer.get(Channel::Depth).describeSampled(VK_NULL_HANDLE),
+                VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE);
+            writes.image(Shaders::ATROUS_BIND_MOMENTS, moments.describeSampled(VK_NULL_HANDLE),
+                VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE);
 
             level.mStep = 1u << pass;
 
@@ -123,7 +121,7 @@ namespace Rtx
             // not reading — the blend after the first level, and the scratch and the blend by turns
             // after that.
             source = target;
-            target = pass == 0 ? &blended : (source == &blended ? &mScratch : &blended);
+            target = pass == 0 ? &blended : (source == &blended ? &scratch : &blended);
         }
 
         // The cascade hands over what it wrote, because nothing after it does: with the last level

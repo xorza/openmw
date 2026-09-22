@@ -334,7 +334,7 @@ Hit noHit()
     hit.mMesh = 0u;
     hit.mCorner = uvec3(0u);
     hit.mBary = vec2(0.0);
-    hit.mDistance = frame.mFar;
+    hit.mDistance = frame.mReach;
     hit.mFootprint = 0.0;
     hit.mCrossed = vec3(0.0);
     hit.mShading = vec3(0.0);
@@ -389,7 +389,7 @@ Hit committedHit(
         /* decide whether traversal stops to ask, and forcing opacity here would override them and   */      \
         /* put every leaf back inside the card it was painted on.                                    */      \
         rayQueryInitializeEXT(                                                                              \
-            (query), sceneTop, facingFor(draws), (mask), (origin), (tmin), (direction), frame.mFar);        \
+            (query), sceneTop, facingFor(draws), (mask), (origin), (tmin), (direction), frame.mReach);      \
                                                                                                             \
         /* An lvalue the resolve needs and nothing here reads: a ray that keeps what it passed      */      \
         /* through cannot commit the surface it passed through, and this one commits.                */      \
@@ -464,7 +464,7 @@ float lightThrough(vec3 from, vec3 towards, float distance)
 ///
 /// **`reach` is the answer as well as the limit**, which is what makes such a ray short: an asker
 /// that only cares whether anything stands within a band hands over the band, and reads a miss as
-/// *no nearer than that*. Nothing here runs to `mFar` unless a caller asks it to.
+/// *no nearer than that*. Nothing here runs to `mReach` unless a caller asks it to.
 ///
 /// @param mask which surfaces stop the ray. `solidWithin` asks for solids alone.
 /// @param seeThrough whether a surface the eye would see through is walked past rather than stopped
@@ -589,7 +589,7 @@ Surface noSurface(vec3 origin)
     surface.mAlbedo = vec3(0.0);
     surface.mEmissiveColour = vec3(0.0);
     surface.mEmitted = vec3(0.0);
-    surface.mDistance = frame.mFar;
+    surface.mDistance = frame.mReach;
     surface.mInstance = 0u;
     surface.mFootprint = 0.0;
     surface.mOpacity = 1.0;

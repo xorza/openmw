@@ -34,7 +34,7 @@ namespace Rtx
     void SceneDesc::checkPoses(const Index posed, const MeshArrays& arrays)
     {
         if (posed != arrays.mPositions.size())
-            throw Error("a deforming mesh of " + std::to_string(arrays.mPositions.size())
+            throw InputError("a deforming mesh of " + std::to_string(arrays.mPositions.size())
                 + " vertices on a rig or morph of " + std::to_string(posed));
     }
 

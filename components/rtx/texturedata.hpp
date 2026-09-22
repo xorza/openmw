@@ -9,7 +9,7 @@
 #include <string_view>
 #include <vector>
 
-#include "error.hpp"
+#include "contract.hpp"
 #include "runs.hpp"
 #include "texturewrap.hpp"
 
@@ -136,7 +136,7 @@ namespace Rtx
                 return 0;
         }
 
-        throw Error("unknown texture format");
+        broken("unknown texture format");
     }
 
     /// Whether a format's bytes are display-encoded, which every content format's are. The one

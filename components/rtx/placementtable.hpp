@@ -102,9 +102,8 @@ namespace Rtx
 
     private:
         /// What a standing row counts as — one placed, and one of each figure its material and its
-        /// class put it in: the one rule, which `InstanceRecord`'s traversal flags are the other
-        /// reading of. A translucent row is never asked the cutout's question, so it is not counted
-        /// against the cutout's cost however its material is marked.
+        /// class put it in. The traversal figures are `PlacedTraversal`'s, which `InstanceRecord`'s
+        /// flags read too, so a row is counted as what traversal is told it is.
         static InstanceCounts shareOf(const PlacementRow& row);
 
         /// Adds the row's share to the counts, and takes it back again. The row is read both

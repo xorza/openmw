@@ -80,7 +80,7 @@ namespace MWRender
 
         /// The sun glare fader's three constants, read once as `SunGlareCallback` reads them:
         /// `Weather_Sun_Glare_Fader_Color` doubled and clamped, `_Max`, and `_Angle_Max` in
-        /// radians. `Rtx::Shaders::glare.h` says what each is.
+        /// radians. `glare.h` says what each is.
         osg::Vec3f mGlareColour;
         float mGlareMax;
         float mGlareAngleMax;

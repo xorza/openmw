@@ -162,8 +162,10 @@ namespace RtxTool
         Rtx::Stop& stood = *mStood;
         stood.mStand.mEye = osg::Vec3f(at);
 
-        // The direction and not a point on it, for the reason `Rtx::makeCamera` gives — but a view
-        // file holds a `look`, and a landmark's distance is what makes one readable.
+        // A point far along the direction and not one a unit ahead: a float ulp where Morrowind's
+        // cells are is a hundredth of a unit, so two points a unit apart name a direction a fifth
+        // of a degree out. A view file holds a `look`, and a landmark's distance is what makes one
+        // readable.
         stood.mStand.mLook = osg::Vec3f(at + camera.getOrient() * osg::Vec3d(0.0, sLookAhead, 0.0));
         stood.mSky.mHour = now.getHour();
         stood.mSky.mDay = now.getDay();
@@ -709,7 +711,7 @@ namespace RtxTool
     void Session::frame(const MWRender::FrameContext& context, const MWRender::FrameReport& report)
     {
         Rtx::Renderer& renderer = context.mRenderer.getBackend();
-        const double frameMs = report.mFrameMs;
+        const double frameMs = report.mSpend.at(Rtx::Timing::Frame);
 
         if (mDone || !mStarted)
             return;
@@ -755,7 +757,7 @@ namespace RtxTool
             answered(*report.mResult, renderer.getExtents());
 
         // **This frame's wall time closes the span the frame before it worked in.**
-        // `FrameReport::mFrameMs` runs from the last frame's opening to this one's, so what it
+        // `Timing::Frame` runs from the last frame's opening to this one's, so what it
         // holds is the game's update this frame arrived through and the renderer's work of the
         // frame before — the finish, the walk, the placement and the trace that ran after that
         // frame opened. Those are the rows kept beside it, and the meshes that work brought, so a
@@ -763,6 +765,7 @@ namespace RtxTool
         // are its own. What this frame does is kept for the frame after to close, and the last
         // measured frame's work is closed by nothing: it ran after the last span ended.
         Rtx::FrameSpend closed = mProgress.mPendingSpend;
+        closed.at(Rtx::Timing::Frame) = frameMs;
         closed.at(Rtx::Timing::Update) = report.mSpend.at(Rtx::Timing::Update);
         closed.at(Rtx::Timing::Sleep) = report.mSpend.at(Rtx::Timing::Sleep);
         const std::uint32_t closedArrived = mProgress.mPendingArrived;
@@ -772,8 +775,8 @@ namespace RtxTool
         if (mProgress.mSeen <= warmup)
             return;
 
-        mProgress.mSamples.add(frameMs, closed);
-        mProgress.mArrivals.add(frameMs, closedArrived, closed);
+        mProgress.mSamples.add(closed);
+        mProgress.mArrivals.add(closedArrived, closed);
         mProgress.mWallMs += frameMs;
 
         // The driver's own figure of the newest frame it finished, kept where there is one: a

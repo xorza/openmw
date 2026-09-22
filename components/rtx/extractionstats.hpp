@@ -98,17 +98,24 @@ namespace Rtx
         /// content, whose longest cycle is exactly what is held.
         std::uint32_t mWornBeyondKept = 0;
 
-        /// Particle systems the walk met and could not draw, because nothing described them or what
-        /// did named no diffuse map. A canary that should be zero now that the rasterizer's
-        /// `MWRender::RippleSimulation`, built by hand under `Mask_Water`, is the rasterizer's own
-        /// and stands in no world this walks. Three counts and not one, because an undescribed
-        /// surface, an undescribed ground pass and a missing plume each cost something different.
+        /// Particle systems the walk met and could not draw, because nothing described them, what
+        /// did named no diffuse map, or the texture table had no room for it. A canary that should
+        /// be zero now that the rasterizer's `MWRender::RippleSimulation`, built by hand under
+        /// `Mask_Water`, is the rasterizer's own and stands in no world this walks. Three counts
+        /// and not one, because an undescribed surface, an undescribed ground pass and a missing
+        /// plume each cost something different.
         std::uint32_t mSpritelessEmitters = 0;
 
         FormatCensus mFormats;
 
         /// Geometry with no vertices or no triangles. Morrowind ships some.
         std::uint32_t mSkippedEmpty = 0;
+
+        /// Drawables this walk refused for good: geometry a content file describes and this
+        /// renderer cannot take — a mesh past one block, a skin naming a vertex the mesh has not
+        /// got. Counted on the walk that refused each and never again, because the mirror keeps the
+        /// refusal for as long as the drawable stands and reads it no more.
+        std::uint32_t mRefused = 0;
 
         /// Every lamp the scene has: the `LightSource`s taken off the graph, and the `LIGH`
         /// records the cell ring stands for the cells the game has not loaded. A `LIGH` record is

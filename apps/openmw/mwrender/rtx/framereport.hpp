@@ -43,12 +43,10 @@ namespace MWRender
     struct FrameReport
     {
         /// What this fork owns of the frame, by phase. `Rtx::Timing` says which figure is a share
-        /// of which.
+        /// of which. `Timing::Frame` is the whole frame, measured from one trace to the next:
+        /// everything the game does between them, which is the number a player feels and the one
+        /// `FrameResult::mWaitMs` cannot see.
         Rtx::FrameSpend mSpend;
-
-        /// The whole frame, measured from one trace to the next: everything the game does between
-        /// them, which is the number a player feels and the one `FrameResult::mWaitMs` cannot see.
-        double mFrameMs = 0.0;
 
         /// Whether the hand-over rebuilt the scene from nothing, which a crossing is counted by.
         bool mRebuilt = false;

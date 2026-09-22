@@ -6,7 +6,7 @@
 #include <cstring>
 #include <utility>
 
-#include <components/rtx/error.hpp>
+#include <components/rtx/contract.hpp>
 
 #include "barriers.hpp"
 #include "buffer.hpp"
@@ -56,7 +56,7 @@ namespace Rtx
                     return 0;
 
                 default:
-                    throw Error("no texel size is recorded for this image format");
+                    broken("no texel size is recorded for this image format");
             }
         }
     }

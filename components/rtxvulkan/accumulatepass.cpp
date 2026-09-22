@@ -2,11 +2,9 @@
 
 #include <array>
 #include <cassert>
-#include <cstddef>
 
 #include <components/rtx/frameimage.hpp>
 #include <components/rtx/shaders/accumulate.h>
-#include <components/rtx/shaders/atrous.h>
 #include <components/rtx/shaders/camera.h>
 #include <components/rtx/shaders/look.h>
 
@@ -23,54 +21,23 @@ namespace Rtx
         /// arrives in, the two of those this pass writes back, and the blend the cascade reads.
         /// Ten and not eleven, because the first wavelet level writes the history this reads next
         /// frame — SVGF's feedback.
-        constexpr std::size_t sBindingCount = 10;
-
-        constexpr std::array<VkDescriptorSetLayoutBinding, sBindingCount> sBindings
-            = computeBindings<sBindingCount>(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
-
-        /// `SAMPLED` beside `STORAGE` on what the cascade after this reads. `AtrousPass` takes
-        /// its taps through the texture unit and a sampled descriptor needs the bit at creation,
-        /// which is a promise made here and kept there.
-        constexpr VkImageUsageFlags sReadAndWrite = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        constexpr std::array<VkDescriptorSetLayoutBinding, Shaders::ACCUMULATE_BINDINGS> sBindings
+            = computeBindings<Shaders::ACCUMULATE_BINDINGS>(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
     }
 
     AccumulatePass::AccumulatePass(const Device& device, const std::filesystem::path& shaderDirectory)
-        : mDevice(device)
-        , mPipeline(device, sBindings, sizeof(Shaders::AccumulateConstants), {},
-              shaderDirectory / "accumulate.comp.spv", "accumulate")
+        : mPipeline(device, sBindings, sizeof(Shaders::AccumulateConstants), {},
+            shaderDirectory / "accumulate.comp.spv", "accumulate")
     {
     }
 
-    void AccumulatePass::resize(std::uint32_t width, std::uint32_t height)
+    const Image& AccumulatePass::record(VkCommandBuffer commands, AccumulateHistory& history, const GBuffer& buffer,
+        const Shaders::Camera& camera, float far, bool reset) const
     {
-        if (!mBlended.isEmpty() && mBlended.getWidth() == width && mBlended.getHeight() == height)
-            return;
-
-        for (std::size_t i = 0; i < 2; ++i)
-        {
-            mColour[i] = Image(mDevice, width, height, ACCUMULATE_COLOUR, sReadAndWrite,
-                i == 0 ? "accumulate-colour-0" : "accumulate-colour-1");
-            mSurface[i] = Image(mDevice, width, height, ACCUMULATE_SURFACE, VK_IMAGE_USAGE_STORAGE_BIT,
-                i == 0 ? "accumulate-surface-0" : "accumulate-surface-1");
-            mMoments[i] = Image(mDevice, width, height, ACCUMULATE_MOMENTS, sReadAndWrite,
-                i == 0 ? "accumulate-moments-0" : "accumulate-moments-1");
-        }
-
-        mBlended = Image(mDevice, width, height, ATROUS_CHANNEL, sReadAndWrite, "accumulate-blended");
-
-        mCurrent = 0;
-        mFresh = true;
-    }
-
-    const Image& AccumulatePass::record(
-        VkCommandBuffer commands, const GBuffer& buffer, const Shaders::Camera& camera, float far, bool reset)
-    {
-        assert(!mColour[0].isEmpty() && "record before resize");
         assert(far > 0.0f && "a frame with no far plane to scale a stored distance by");
-        assert(mColour[0].getWidth() >= camera.mWidth && mColour[0].getHeight() >= camera.mHeight);
+        assert(history.getWidth() >= camera.mWidth && history.getHeight() >= camera.mHeight);
 
-        const std::size_t previous = mCurrent;
-        mCurrent = 1 - mCurrent;
+        const AccumulateHistory::Turn turn = history.turn();
 
         // Every image this frame writes is written whole before it is read, so each is discarded;
         // the last frame's accesses to all of them — the cascade's writes over the blend among them —
@@ -81,55 +48,37 @@ namespace Rtx
         // every frame after, it rests where the last frame's writes left it.
         Barriers barriers(commands);
 
-        if (mFresh)
-            for (const Image* image : { &mColour[previous], &mSurface[previous], &mMoments[previous] })
+        if (turn.mFresh)
+            for (const Image* image : { &turn.mColourBefore, &turn.mSurfaceBefore, &turn.mMomentsBefore })
                 barriers.add(image->describeTransition(Use::sUndefined, Use::sComputeRead));
 
-        for (const Image* image : { &mColour[mCurrent], &mSurface[mCurrent], &mMoments[mCurrent], &mBlended })
+        for (const Image* image : { &turn.mColour, &turn.mSurface, &turn.mMoments, &turn.mBlended })
             barriers.add(image->describeTransition(Use::sUndefined, Use::sComputeWrite));
 
         barriers.flush();
 
-        DescriptorWrites<sBindingCount> writes;
-        writes.image(0, buffer.get(Channel::Indirect).describeStorage());
-        writes.image(1, buffer.get(Channel::Motion).describeStorage());
-        writes.image(2, buffer.get(Channel::Guide).describeStorage());
-        writes.image(3, buffer.get(Channel::Depth).describeStorage());
-        writes.image(4, mColour[previous].describeStorage());
-        writes.image(5, mSurface[previous].describeStorage());
-        writes.image(6, mMoments[previous].describeStorage());
-        writes.image(7, mSurface[mCurrent].describeStorage());
-        writes.image(8, mMoments[mCurrent].describeStorage());
-        writes.image(9, mBlended.describeStorage());
-        assert(writes.size() == sBindingCount && "a binding the layout declares was left unwritten");
+        DescriptorWrites<Shaders::ACCUMULATE_BINDINGS> writes;
+        writes.image(Shaders::ACCUMULATE_BIND_INDIRECT, buffer.get(Channel::Indirect).describeStorage());
+        writes.image(Shaders::ACCUMULATE_BIND_MOTION, buffer.get(Channel::Motion).describeStorage());
+        writes.image(Shaders::ACCUMULATE_BIND_GUIDE, buffer.get(Channel::Guide).describeStorage());
+        writes.image(Shaders::ACCUMULATE_BIND_DEPTH, buffer.get(Channel::Depth).describeStorage());
+        writes.image(Shaders::ACCUMULATE_BIND_HISTORY_COLOUR, turn.mColourBefore.describeStorage());
+        writes.image(Shaders::ACCUMULATE_BIND_HISTORY_SURFACE, turn.mSurfaceBefore.describeStorage());
+        writes.image(Shaders::ACCUMULATE_BIND_HISTORY_MOMENTS, turn.mMomentsBefore.describeStorage());
+        writes.image(Shaders::ACCUMULATE_BIND_SURFACE_OUT, turn.mSurface.describeStorage());
+        writes.image(Shaders::ACCUMULATE_BIND_MOMENTS_OUT, turn.mMoments.describeStorage());
+        writes.image(Shaders::ACCUMULATE_BIND_BLENDED_OUT, turn.mBlended.describeStorage());
+        assert(writes.size() == Shaders::ACCUMULATE_BINDINGS && "a binding the layout declares was left unwritten");
 
         const Shaders::AccumulateConstants constants{
             .mCamera = camera,
-            .mReset = (reset || mFresh) ? 1u : 0u,
+            .mReset = (reset || turn.mFresh) ? 1u : 0u,
             .mDistanceScale = Shaders::ACCUMULATE_DISTANCE_RANGE / far,
         };
 
         dispatch(commands, mPipeline, writes.get(), constants, groupsFor(camera.mWidth, Shaders::ACCUMULATE_WORKGROUP),
             groupsFor(camera.mHeight, Shaders::ACCUMULATE_WORKGROUP));
 
-        mFresh = false;
-
-        return mMoments[mCurrent];
-    }
-
-    const Image& AccumulatePass::getBlended() const
-    {
-        assert(!mBlended.isEmpty() && "the blend asked for before a resize made one");
-        assert(!mFresh && "the blend asked for before any frame was accumulated into it");
-
-        return mBlended;
-    }
-
-    const Image& AccumulatePass::getHistory() const
-    {
-        assert(!mColour[mCurrent].isEmpty() && "the history asked for before a resize made one");
-        assert(!mFresh && "the history asked for before the frame that hands it over");
-
-        return mColour[mCurrent];
+        return turn.mMoments;
     }
 }

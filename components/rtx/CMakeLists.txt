@@ -28,6 +28,7 @@ set(RTX_FILES
     cellring.hpp
     cellsupply.cpp
     cellsupply.hpp
+    cellworld.hpp
     cloudshell.cpp
     cloudshell.hpp
     colour.cpp
@@ -84,6 +85,7 @@ set(RTX_FILES
     mipchain.cpp
     mipchain.hpp
     mirroridentity.hpp
+    mirrorpass.hpp
     monitor.hpp
     moonbuilder.cpp
     moonbuilder.hpp
@@ -104,10 +106,10 @@ set(RTX_FILES
     prepared.hpp
     reconstruction.hpp
     renderer.hpp
-    residency.hpp
     ripple.hpp
     runs.cpp
     runs.hpp
+    sceneadopter.hpp
     scenedesc.cpp
     scenedesc.hpp
     sceneextractor.cpp
@@ -148,7 +150,6 @@ set(RTX_FILES
     texturetable.hpp
     viewscene.cpp
     viewscene.hpp
-    walk.hpp
     wavecascade.cpp
     wavecascade.hpp
     wavespectrum.cpp

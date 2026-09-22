@@ -17,10 +17,11 @@
 #include <components/myguirtx/rendermanager.hpp>
 #include <components/myguirtx/texture.hpp>
 #include <components/rtx/frameimage.hpp>
-#include <components/rtx/walk.hpp>
+#include <components/rtx/mirrorpass.hpp>
 #include <components/sceneutil/offscreenframing.hpp>
 
-#include "rtxrenderer.hpp"
+#include "classmasks.hpp"
+#include "viewqueue.hpp"
 
 namespace MWRender
 {
@@ -49,10 +50,7 @@ namespace MWRender
                 .mTraversals = &traversals,
             };
         }
-    }
 
-    namespace
-    {
         /// MyGUI keys its textures by name, so each view names its own.
         std::string nextViewName()
         {
@@ -61,10 +59,10 @@ namespace MWRender
         }
     }
 
-    TracedView::TracedView(const OffscreenViewSpec& spec, ViewKind kind, RtxRenderer& host,
+    TracedView::TracedView(const OffscreenViewSpec& spec, ViewKind kind, Rtx::Renderer& backend, ViewQueue& views,
         MyGUIRtx::RenderManager& gui, Rtx::Traversals& traversals)
-        : mHost(host)
-        , mTrace(host.getBackend(), requestFor(spec, kind, traversals))
+        : mViews(views)
+        , mTrace(backend, requestFor(spec, kind, traversals))
         , mTexture(gui.takeTexture(nextViewName()))
     {
         const int width = static_cast<int>(mTrace.getWidth());
@@ -83,12 +81,12 @@ namespace MWRender
             std::memcpy(pixels + i * 4, colour, sizeof(colour));
         mTexture->unlock();
 
-        mHost.getViews().adopt(*this);
+        mViews.adopt(*this);
     }
 
     TracedView::~TracedView()
     {
-        mHost.getViews().forget(*this);
+        mViews.forget(*this);
     }
 
     bool TracedView::coversFromAbove(const osg::Vec2f& over) const
@@ -127,14 +125,13 @@ namespace MWRender
         if (mCopyState != CopyState::NotWanted)
             mCopyState = CopyState::Queued;
 
-        mHost.getViews().redraw(*this);
+        mViews.redraw(*this);
     }
 
-    void TracedView::draw()
+    void TracedView::draw(const PoseMoment& moment)
     {
         if (!mTrace.isOfWorld())
         {
-            const PoseMoment moment = mHost.describePose();
             if (!mTrace.rebuildSubject(moment.mStamp, moment.mStamp.getFrameNumber(), moment.mImages))
                 return;
         }

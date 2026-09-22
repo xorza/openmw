@@ -84,8 +84,14 @@ namespace Rtx
 
             nameComposite(mKey, asked.mMaterial);
 
+            // A table with no room left keeps the chunk on its stack, which the shader sums at the
+            // hit as it does for every chunk still waiting.
+            const Index slot = scene.textures().addBaked(mKey);
+            if (slot == sNoIndex)
+                continue;
+
             Material given = scene.materials().getRows()[asked.mMaterial];
-            given.mDiffuse = scene.textures().addBaked(mKey);
+            given.mDiffuse = slot;
             scene.setMaterial(asked.mMaterial, given);
 
             mFinished.push_back(Given{ .mSlot = given.mDiffuse, .mMaterial = asked.mMaterial });

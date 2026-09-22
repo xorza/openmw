@@ -247,9 +247,9 @@ namespace Rtx
     };
 
     /// Everything a run decides once about how the picture is made, in one bag for both hosts,
-    /// handed to the backend inside `RendererOptions` and read there. Nothing here changes while a
-    /// run is being made, so a frame reads what the run was handed rather than asking the registry
-    /// per knob per frame.
+    /// handed to the backend inside `RendererOptions` and read there. A frame reads what the run
+    /// was handed rather than asking the registry per knob per frame, and only a menu moves it
+    /// afterwards: `Renderer::setUpscale` changes `mUpscaling`, which `getProfile` then answers.
     struct RenderProfile
     {
         /// What the upscaler is built with.
@@ -287,7 +287,7 @@ namespace Rtx
         /// the sea, `VisibilityVariant` — or one launch that carries every case. The picture is
         /// the same either way, by the argument `lib/variants.glsl` makes; what differs is the
         /// trace's time in a room and how many launches the driver compiles, sixteen against two.
-        /// Off is the experiment `.notes/repeatability-review.md` names, and not a setting.
+        /// Off is an experiment — the harness's `--variants=false` — and not a setting.
         bool mSpecializeLaunches = true;
 
         /// How wide the radiance channels are stored, which `RadianceWidth` says is a question of

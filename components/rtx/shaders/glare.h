@@ -21,6 +21,13 @@ namespace Rtx::Shaders
 {
 #endif
 
+    /// Where `sunglare.comp` binds what it reads and writes in set 0, and how many there are. The
+    /// shader's layout and the pass's own layout and writes are numbered by these and by nothing
+    /// else, so the two cannot drift apart.
+    const uint SUN_GLARE_BIND_COUNT = 0;
+    const uint SUN_GLARE_BIND_SHARE = 1;
+    const uint SUN_GLARE_BINDINGS = 2;
+
     /// The angular radius of the disc the query counts, in radians.
     ///
     /// **The sun's quad and not the sun's disc.** The query draws `tx_sun_05.dds` on the celestial

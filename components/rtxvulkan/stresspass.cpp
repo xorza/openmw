@@ -15,8 +15,8 @@ namespace Rtx
 {
     namespace
     {
-        constexpr std::array<VkDescriptorSetLayoutBinding, 1> sBindings
-            = computeBindings<1>(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+        constexpr std::array<VkDescriptorSetLayoutBinding, Shaders::STRESS_BINDINGS> sBindings
+            = computeBindings<Shaders::STRESS_BINDINGS>(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
     }
 
     StressPass::StressPass(
@@ -31,8 +31,8 @@ namespace Rtx
     {
         timer.open(commands, RenderProfile::sHoldZone);
 
-        DescriptorWrites<1> writes;
-        writes.buffer(0, counts.describe());
+        DescriptorWrites<Shaders::STRESS_BINDINGS> writes;
+        writes.buffer(Shaders::STRESS_BIND_COUNTS, counts.describe());
         dispatch(commands, mPipeline, writes.get(), Shaders::StressConstants{ .mNanoseconds = mNanoseconds }, 1);
 
         timer.close(commands);

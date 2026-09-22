@@ -27,6 +27,7 @@
 #include "geometry.hpp"
 #include "guiquad.hpp"
 #include "harness.hpp"
+#include "testcamera.hpp"
 #include "testtexture.hpp"
 
 namespace Rtx
@@ -440,6 +441,42 @@ namespace Rtx
 
             EXPECT_EQ(inTexture(red, side, side - 1, side - 1), (std::array<std::uint8_t, 4>{ 255, 0, 0, 255 }));
             EXPECT_EQ(inTexture(green, side, side - 1, side - 1), (std::array<std::uint8_t, 4>{ 0, 255, 0, 255 }));
+
+            // **An arena grows to the frame and not to the region**, so a frame that writes both
+            // again lands in one arena: after one lap in which every arena overflowed, each frame's
+            // two regions sit end to end in the arena three frames back. Grown to the region, every
+            // such frame buried its arena for a new one, so the red region came out of the buffer
+            // the green one took three frames before, and never out of the same arena twice.
+            constexpr std::uint32_t grown = 3;
+            constexpr std::uint32_t measured = 6;
+            std::array<const std::uint8_t*, measured> redAt{};
+            std::array<const std::uint8_t*, measured> greenAt{};
+            for (std::uint32_t frame = 0; frame < grown + measured; ++frame)
+            {
+                drawQuad(red, -1.0f, 1.0f, 1.0f, -1.0f, Testing::packColour(255, 255, 255, 255));
+
+                const std::span<std::uint8_t> redInto = mRenderer->lendGuiTexture(red, whole);
+                std::copy(redRows.begin(), redRows.end(), redInto.begin());
+                mRenderer->sendGuiTexture(red);
+                const std::span<std::uint8_t> greenInto = mRenderer->lendGuiTexture(green, whole);
+                std::copy(greenRows.begin(), greenRows.end(), greenInto.begin());
+                mRenderer->sendGuiTexture(green);
+
+                if (frame >= grown)
+                {
+                    redAt[frame - grown] = redInto.data();
+                    greenAt[frame - grown] = greenInto.data();
+                }
+            }
+
+            for (std::uint32_t frame = 0; frame < measured; ++frame)
+                EXPECT_EQ(greenAt[frame], redAt[frame] + redRows.size())
+                    << "frame " << frame << ": the second region overflowed an arena grown to the first";
+
+            for (std::uint32_t frame = 0; frame + 3 < measured; ++frame)
+                EXPECT_EQ(redAt[frame], redAt[frame + 3]) << "frame " << frame << ": the arena was replaced again";
+
+            EXPECT_EQ(inTexture(green, side, 0, 0), (std::array<std::uint8_t, 4>{ 0, 255, 0, 255 }));
         }
 
         /// The GUI over a frame that was actually traced, which is the first time the two halves of
@@ -457,8 +494,8 @@ namespace Rtx
 
             mRenderer->setScene(Rtx::SceneSlot::world(), scene, {});
 
-            const Shaders::VisibilityConstants camera
-                = makeCamera(osg::Vec3f(), osg::Vec3f(0.0f, 100.0f, 0.0f), 60.0f, sExtent, sExtent, 1000000.0f);
+            const Shaders::VisibilityConstants camera = Testing::makeCamera(
+                osg::Vec3f(), osg::Vec3f(0.0f, 100.0f, 0.0f), 60.0f, sExtent, sExtent, 1000000.0f);
 
             mRenderer->renderFrame(camera, FrameOptions{});
             const std::array<std::uint8_t, 4> traced = at(sExtent - 2, 4);
@@ -904,7 +941,7 @@ namespace Rtx
             // Level, two hundred units over a sheet fifty across, so the frame is sky alone and the
             // sky is the one thing the two cameras below differ in. Far enough apart that the
             // exposure the first leaves behind is nowhere near the one a picture writes.
-            Shaders::VisibilityConstants bright = makeCamera(
+            Shaders::VisibilityConstants bright = Testing::makeCamera(
                 osg::Vec3f(0.0f, 0.0f, 200.0f), osg::Vec3f(0.0f, 1000.0f, 200.0f), 60.0f, sExtent, sExtent, 100000.0f);
             bright.mSkyHorizon = osg::Vec3f(0.8f, 0.8f, 0.8f);
             bright.mSkyZenith = bright.mSkyHorizon;

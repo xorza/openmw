@@ -17,7 +17,7 @@
 #include <vulkan/vulkan_core.h>
 
 #include <components/rtx/camera.hpp>
-#include <components/rtx/error.hpp>
+#include <components/rtx/contract.hpp>
 #include <components/rtx/framedigest.hpp>
 #include <components/rtx/frameimage.hpp>
 #include <components/rtx/memoryreport.hpp>
@@ -124,15 +124,15 @@ namespace Rtx
         , mComposite(mDevice, options.mShaderDirectory)
         , mSpriteBin(mDevice, options.mShaderDirectory)
         , mSpriteShade(mDevice, options.mShaderDirectory)
+        , mAccumulate(mDevice, options.mShaderDirectory)
+        , mFilter(mDevice, options.mShaderDirectory)
         // `SAMPLED` because an upscaler samples what it is handed, and one bit short of that is a
         // black frame nothing reports. See `GBuffer`, which carries it for the same reason.
         // `TRANSFER_SRC` because `readComposite` copies this out: it is the frame a measurement is
         // taken on, where `readPixels` gives the one a display would show.
-        , mFrame(mDevice, mChannelLayout, mFogVolumeLayout, mPass, mComposite, mSpriteBin, mSpriteShade,
-              options.mShaderDirectory,
+        , mFrame(mDevice, describeTracePasses(),
               VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, "colour")
-        , mView(mDevice, mChannelLayout, mFogVolumeLayout, mPass, mComposite, mSpriteBin, mSpriteShade,
-              options.mShaderDirectory, VK_IMAGE_USAGE_STORAGE_BIT, "view colour")
+        , mView(mDevice, describeTracePasses(), VK_IMAGE_USAGE_STORAGE_BIT, "view colour")
         , mDisplay(mDevice, mPass, mTextureLayout.get(), options.mShaderDirectory, PresentTargets::sFormat)
         , mDigest(mDevice, options.mShaderDirectory)
         , mWaves(mDevice, options.mShaderDirectory)
@@ -616,6 +616,8 @@ namespace Rtx
 
     void VulkanRenderer::endSimulation(const bool flash)
     {
+        assert(!mRing.isOpen() && "a frame the world was placed in was neither traced nor skipped");
+
         if (mPresenter != nullptr)
             mPresenter->endSimulation(flash);
     }
@@ -626,6 +628,26 @@ namespace Rtx
             return std::nullopt;
 
         return mPresenter->describeLatency();
+    }
+
+    void VulkanRenderer::skipFrame()
+    {
+        if (mRing.isOpen())
+            mRing.skip();
+    }
+
+    TracePasses VulkanRenderer::describeTracePasses() const
+    {
+        return TracePasses{
+            .mChannels = mChannelLayout,
+            .mFog = mFogVolumeLayout,
+            .mVisibility = mPass,
+            .mComposite = mComposite,
+            .mSpriteBin = mSpriteBin,
+            .mSpriteShade = mSpriteShade,
+            .mAccumulate = mAccumulate,
+            .mFilter = mFilter,
+        };
     }
 
     std::uint64_t VulkanRenderer::getFrameCount() const
@@ -647,7 +669,7 @@ namespace Rtx
     {
         if (mPresenter != nullptr)
         {
-            // Asked before anything is drained, because `fitToWindow` calls this every settled
+            // Asked before anything is drained, because `RtxWindow::fit` calls this every settled
             // frame. Same reason as the destructor's: remaking a swapchain waits the device idle
             // and frees the blit's buffers, and a batch handed over is sitting beside them waiting
             // for a submit. What that costs where no rebuild follows is `Presenter::wantsResize`.
@@ -751,14 +773,13 @@ namespace Rtx
         ++mGuiFrame;
     }
 
-    bool VulkanRenderer::presentFrame()
+    void VulkanRenderer::presentFrame()
     {
         assert(mPresenter != nullptr && "presentFrame on a renderer that was given no window");
         assert(mTargets.isOpen());
 
-        const bool shown = mPresenter->present(mTargets.current());
+        mPresenter->present(mTargets.current());
         mTargets.presented();
-        return shown;
     }
 
     Image& VulkanRenderer::claimTarget()
@@ -1173,7 +1194,7 @@ namespace Rtx
 
         // The frame that was finished, not the one the next will be written into. A present has
         // already swapped those two; with no window nothing presents, nothing swaps, and the frame
-        // just written is still the one `mTarget` names.
+        // just written is still the one `mTargets.current()` names.
         const Image& frame = mTargets.lastPresented() != nullptr ? *mTargets.lastPresented() : mTargets.current();
         frame.read(VK_IMAGE_LAYOUT_GENERAL, pixels);
     }
@@ -1225,7 +1246,7 @@ namespace Rtx
                 return;
 
             default:
-                throw Error("no float decode is recorded for this image format");
+                broken("no float decode is recorded for this image format");
         }
     }
 

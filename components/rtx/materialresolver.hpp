@@ -15,11 +15,11 @@
 #include "material.hpp"
 #include "meantexels.hpp"
 #include "mirroridentity.hpp"
+#include "mirrorpass.hpp"
 #include "runs.hpp"
 #include "scenedesc.hpp"
 #include "surface.hpp"
 #include "texels.hpp"
-#include "walk.hpp"
 
 namespace osg
 {

@@ -11,9 +11,9 @@
 
 #include <boost/program_options/variables_map.hpp>
 
+#include <components/rtx/cellworld.hpp>
 #include <components/rtx/pacing.hpp>
 #include <components/rtx/reconstruction.hpp>
-#include <components/rtx/residency.hpp>
 #include <components/rtx/upscale.hpp>
 #include <components/rtxbench/benchrun.hpp>
 #include <components/sdlutil/vsyncmode.hpp>
@@ -123,11 +123,6 @@ namespace RtxTool
         /// How the present paces the frame. Off for a measured run, or the wait for the refresh
         /// lands in `wait ms`; a watched window keeps the player's own setting.
         SDLUtil::VSyncMode mVerticalSync = SDLUtil::VSyncMode::Disabled;
-
-        /// How the driver paces the frame, by the same rule: off for a measured run, where the
-        /// driver's sleep is a limiter with no limit and its markers a measurement; a watched
-        /// window keeps the player's own setting.
-        Rtx::LatencyMode mLatency = Rtx::LatencyMode::Off;
     };
 
     /// What a command's frames are traced with, read once off the command line into the two records
@@ -138,11 +133,13 @@ namespace RtxTool
     {
         WindowRequest mWindow;
 
-        /// The two parts of the `RunSetup` the line frames: what the trace is configured by, and
-        /// how much world the mirror builds. The rest of the setup — the validation, the step,
-        /// whether there is a window — is each verb's to say, on the request `sessionFor` builds.
+        /// The three parts of the `RunSetup` the line frames: what the trace is configured by, how
+        /// much world the mirror builds, and how the driver paces the frame. The rest of the setup
+        /// — the validation, the step, whether there is a window — is each verb's to say, on the
+        /// request `sessionFor` builds.
         Rtx::RenderProfile mProfile{ .mUpscaling = { .mMode = sUpscaleByDefault } };
         Rtx::MirrorKnobs mMirror;
+        Rtx::LatencyMode mLatency = Rtx::LatencyMode::Off;
 
         /// Which day, counted from the one a new game begins on. Only the moons read it.
         int mDay = 0;

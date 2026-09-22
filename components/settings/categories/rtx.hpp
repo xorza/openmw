@@ -3,6 +3,7 @@
 
 #include <string>
 
+#include <components/settings/sanitizerimpl.hpp>
 #include <components/settings/settingvalue.hpp>
 
 namespace Settings
@@ -23,12 +24,22 @@ namespace Settings
 
         SettingValue<bool> mEnabled{ mIndex, "RTX", "enabled" };
 
-        /// How far out from the eye the world is built, in cells, read every frame by the world
-        /// mirror so the menu's slider moves the rings, the air and the map at once. How much world
-        /// exists is a property of the structure rays are cast against and not of the camera, which
-        /// is what `viewing distance` is about; the air is tuned to it as well as the ground
-        /// (`Rtx::distantLandReach`).
-        SettingValue<float> mDistantLandCells{ mIndex, "RTX", "distant land cells" };
+        /// The most cells `distant land cells` takes: a bound on how much world a frame is asked to
+        /// stand, and so on what the ring's ask costs. Nought stays nought, which hands the reach
+        /// back to `viewing distance`.
+        static constexpr float sMaxDistantLandCells = 10.0f;
+
+        /// The fewest the two menus offer. A file may name fewer, and the launcher leaves such a
+        /// value as it found it.
+        static constexpr float sMinDistantLandCellsInMenu = 4.0f;
+
+        /// How far out from the eye the world is built, in cells: handed to the world mirror where
+        /// the renderer is made and again when the menu moves it, so the rings, the air and the map
+        /// follow one number. How much world exists is a property of the structure rays are cast
+        /// against and not of the camera, which is what `viewing distance` is about; the air is
+        /// tuned to it as well as the ground (`Rtx::distantLandReach`).
+        SettingValue<float> mDistantLandCells{ mIndex, "RTX", "distant land cells",
+            makeClampSanitizerFloat(0.0f, sMaxDistantLandCells) };
 
         /// How hard DLSS Ray Reconstruction works, or `off`: a name `Rtx::sUpscaleNames` refuses
         /// rather than defaults. Changing it rebuilds every target, and a machine that cannot reach

@@ -32,6 +32,7 @@
 
 #include "../geometry.hpp"
 #include "../statistics.hpp"
+#include "../testcamera.hpp"
 #include "../testtexture.hpp"
 #include "../wavemoments.hpp"
 
@@ -103,7 +104,7 @@ namespace Rtx::Testing
             // inside the share `WATER_SHAFT_FLOOR` asks for, and at a depth a shaft happens at. Twenty
             // metres down there is little pattern left in the water to carry.
             const auto lookUp = [&](const SeaState& sea) {
-                Shaders::VisibilityConstants camera = makeCamera(
+                Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(0.0f, -0.05f, -500.0f), osg::Vec3f(0.0f, 0.0f, -490.0f), 60.0f, size, size, 10000.0f);
                 litThroughWater(camera);
 
@@ -170,7 +171,7 @@ namespace Rtx::Testing
                     scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
                         .mMesh = scene.addMesh(MeshArrays{ .mPositions = *lid, .mIndices = sQuadIndices }) });
 
-                Shaders::VisibilityConstants camera = makeCamera(
+                Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(0.0f, -0.05f, -eye), osg::Vec3f(0.0f, 0.0f, -eye + 10.0f), 60.0f, size, size, 10000.0f);
                 litThroughWater(camera, osg::DegreesToRadians(45.0f));
 
@@ -324,7 +325,7 @@ namespace Rtx::Testing
             const auto render = [&](float depth, const SeaState& sea, float seconds) {
                 const SceneDesc scene = makeFlooded(4000.0f, depth);
 
-                Shaders::VisibilityConstants camera = makeCamera(osg::Vec3f(0.0f, -1.0f, above - depth),
+                Shaders::VisibilityConstants camera = Testing::makeCamera(osg::Vec3f(0.0f, -1.0f, above - depth),
                     osg::Vec3f(0.0f, 0.0f, -depth), 90.0f, size, size, 100000.0f);
                 litThroughWater(camera);
                 camera.mTime = seconds;
@@ -493,7 +494,7 @@ namespace Rtx::Testing
 
             // Looking straight at a sun 45 degrees up, from clear of the only thing in the scene.
             const auto lookAtTheSun = [&](float fov) {
-                Shaders::VisibilityConstants camera = makeCamera(
+                Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(0.0f, -500.0f, 0.0f), osg::Vec3f(0.0f, -501.0f, 1.0f), fov, size, size, 10000.0f);
                 camera.mSun = Shaders::sunSource(
                     sunStandingAt(osg::DegreesToRadians(45.0f)), osg::Vec3f(irradiance, irradiance, irradiance));
@@ -576,7 +577,7 @@ namespace Rtx::Testing
                 const osg::Vec3f eye(0.0f, 0.0f, 6000.0f);
                 const osg::Vec3f at(0.0f, 14000.0f, 0.0f);
 
-                Shaders::VisibilityConstants camera = makeCamera(eye, at, 20.0f, size, size, 1000000.0f);
+                Shaders::VisibilityConstants camera = Testing::makeCamera(eye, at, 20.0f, size, size, 1000000.0f);
 
                 // The sun put exactly where the centre pixel's reflection points, which is the view
                 // mirrored in the water's plane and then reversed into a direction of travel. Off
@@ -705,7 +706,7 @@ namespace Rtx::Testing
             // the road test's sun at the centre pixel's mirror under a black sky.
             const auto render = [&](const osg::Vec3f& eye, const osg::Vec3f& at, bool sunlit, float rain, float time,
                                     std::vector<std::uint8_t>& pixels) {
-                Shaders::VisibilityConstants camera = makeCamera(eye, at, 20.0f, size, size, 1000000.0f);
+                Shaders::VisibilityConstants camera = Testing::makeCamera(eye, at, 20.0f, size, size, 1000000.0f);
 
                 if (sunlit)
                 {
@@ -802,7 +803,7 @@ namespace Rtx::Testing
             const std::span<const TextureData> textures(&ladder.mData, 1);
 
             // A fifth of a degree off the vertical, which is the least `makeCamera` will take.
-            Shaders::VisibilityConstants camera = makeCamera(
+            Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -50.0f, height), osg::Vec3f(0.0f, 0.0f, -depth), 20.0f, size, size, 100000.0f);
             camera.mWaterLevel = 0.0f;
 

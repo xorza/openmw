@@ -501,7 +501,7 @@ PuffLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit, Co
 
     // **The sun's share thrown forward, which is one angle for the whole ray.** A directional source
     // holds its angle to a straight ray, so the phase function is one evaluation for every sprite on
-    // it — the same argument `fogSourcesAlong` makes, and the reason a shape this costly is
+    // it — the same argument `fogVolumeAlong` makes, and the reason a shape this costly is
     // affordable at all.
     const float thrownForward = smokeThrow(direction);
 

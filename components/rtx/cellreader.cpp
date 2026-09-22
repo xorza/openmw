@@ -15,10 +15,10 @@
 #include <components/misc/resourcehelpers.hpp>
 #include <components/sceneutil/lightcommon.hpp>
 
+#include "cellworld.hpp"
 #include "contract.hpp"
 #include "error.hpp"
 #include "lightbuilder.hpp"
-#include "residency.hpp"
 
 namespace Rtx
 {
@@ -168,7 +168,7 @@ namespace Rtx
 
             // A model this cannot read is a reference left out and named, and never a cell
             // left out: a settled walk waits for every cell of the ring, and one that never came
-            // would hold it for ever. `Error` and no wider: the walk is what throws it, for a
+            // would hold it for ever. `InputError` and no wider: the walk is what throws it, for a
             // file that describes a mesh this renderer cannot take, and the loader answers a file
             // it cannot read with the error marker rather than a throw. Anything else is the
             // reader failing, which the monitor reports.
@@ -177,7 +177,7 @@ namespace Rtx
             {
                 read = readModel(model);
             }
-            catch (const Error& e)
+            catch (const InputError& e)
             {
                 Log(Debug::Warning) << "Ray tracing could not read " << model << " for " << ref.mRefId << ": "
                                     << e.what();

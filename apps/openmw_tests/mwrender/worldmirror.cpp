@@ -17,8 +17,8 @@
 #include <components/resource/imagemanager.hpp>
 #include <components/resource/niffilemanager.hpp>
 #include <components/resource/scenemanager.hpp>
+#include <components/rtx/cellworld.hpp>
 #include <components/rtx/extractionstats.hpp>
-#include <components/rtx/residency.hpp>
 #include <components/vfs/manager.hpp>
 
 #include "apps/components_tests/rtx/extractor/fixture.hpp"

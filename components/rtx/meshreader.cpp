@@ -204,7 +204,7 @@ namespace Rtx
         {
             const std::span<const osg::Vec3f> base = morphBase(*read.mMorph);
             if (base.size() != arrays.mPositions.size())
-                throw Error("a morphed face of " + std::to_string(arrays.mPositions.size())
+                throw InputError("a morphed face of " + std::to_string(arrays.mPositions.size())
                     + " vertices whose base target has " + std::to_string(base.size()));
 
             arrays.mPositions = base;

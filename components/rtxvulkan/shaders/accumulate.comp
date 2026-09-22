@@ -29,16 +29,16 @@ layout(local_size_x = ACCUMULATE_WORKGROUP, local_size_y = ACCUMULATE_WORKGROUP)
 
 /// The bounce this frame traced, one sample a pixel, exactly as the trace left it. No format,
 /// because the run decides the channel's width — `gbuffer.h` says which run gets which.
-layout(set = 0, binding = 0) uniform readonly image2D indirect;
+layout(set = 0, binding = ACCUMULATE_BIND_INDIRECT) uniform readonly image2D indirect;
 
 /// Where each surface stood on the previous frame's screen, less where it stands on this one.
-layout(set = 0, binding = 1, GBUFFER_MOTION) uniform readonly image2D motion;
+layout(set = 0, binding = ACCUMULATE_BIND_MOTION, GBUFFER_MOTION) uniform readonly image2D motion;
 
 /// The shading normal in `xyz`. A ray that hit nothing left a zero normal, which no surface matches.
-layout(set = 0, binding = 2, GBUFFER_GUIDE) uniform readonly image2D guide;
+layout(set = 0, binding = ACCUMULATE_BIND_GUIDE, GBUFFER_GUIDE) uniform readonly image2D guide;
 
 /// Clip depth in `r` and the distance from the eye in `g`. This reads the second, in world units.
-layout(set = 0, binding = 3, GBUFFER_DEPTH) uniform readonly image2D depth;
+layout(set = 0, binding = ACCUMULATE_BIND_DEPTH, GBUFFER_DEPTH) uniform readonly image2D depth;
 
 /// Last frame's mean in `rgb`.
 ///
@@ -46,11 +46,11 @@ layout(set = 0, binding = 3, GBUFFER_DEPTH) uniform readonly image2D depth;
 /// pixel carries forward is the filtered light rather than the single sample it blended, so the
 /// history it draws on is as quiet as the picture the frame showed. How many frames are in it is
 /// the fourth channel of `historyMoments`.
-layout(set = 0, binding = 4, ACCUMULATE_COLOUR) uniform readonly image2D historyColour;
+layout(set = 0, binding = ACCUMULATE_BIND_HISTORY_COLOUR, ACCUMULATE_COLOUR) uniform readonly image2D historyColour;
 
 /// The surface last frame's mean belongs to: its normal in `xyz` and its distance from the eye in
 /// `w`. Zero normal where nothing was accumulated.
-layout(set = 0, binding = 5, ACCUMULATE_SURFACE) uniform readonly image2D historySurface;
+layout(set = 0, binding = ACCUMULATE_BIND_HISTORY_SURFACE, ACCUMULATE_SURFACE) uniform readonly image2D historySurface;
 
 /// The first and second moments of that mean's luminance in `rg`, in `b` the variance the cascade
 /// weighs a tap by, and in `a` how many frames the mean holds.
@@ -60,16 +60,16 @@ layout(set = 0, binding = 5, ACCUMULATE_SURFACE) uniform readonly image2D histor
 /// certain" — the opposite of the truth, and it would leave the noise precisely where it is. What a
 /// pixel with no history has is no idea how noisy it is, and the honest value for that is the
 /// largest one, not the smallest.
-layout(set = 0, binding = 6, ACCUMULATE_MOMENTS) uniform readonly image2D historyMoments;
+layout(set = 0, binding = ACCUMULATE_BIND_HISTORY_MOMENTS, ACCUMULATE_MOMENTS) uniform readonly image2D historyMoments;
 
-layout(set = 0, binding = 7, ACCUMULATE_SURFACE) uniform writeonly image2D surfaceOut;
-layout(set = 0, binding = 8, ACCUMULATE_MOMENTS) uniform writeonly image2D momentsOut;
+layout(set = 0, binding = ACCUMULATE_BIND_SURFACE_OUT, ACCUMULATE_SURFACE) uniform writeonly image2D surfaceOut;
+layout(set = 0, binding = ACCUMULATE_BIND_MOMENTS_OUT, ACCUMULATE_MOMENTS) uniform writeonly image2D momentsOut;
 
 /// This frame's bounce blended with the history, which is what the cascade reads.
 ///
 /// **The cascade's channel and not the trace's**, so `CHANNEL_INDIRECT` keeps what the trace put
 /// there for the whole of the frame. `AccumulatePass::record` says what that separation is worth.
-layout(set = 0, binding = 9, ATROUS_CHANNEL) uniform writeonly image2D blendedOut;
+layout(set = 0, binding = ACCUMULATE_BIND_BLENDED_OUT, ATROUS_CHANNEL) uniform writeonly image2D blendedOut;
 
 layout(push_constant, scalar) uniform Push
 {

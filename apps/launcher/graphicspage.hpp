@@ -34,6 +34,7 @@ namespace Launcher
 
     private:
         QVector<QStringList> mResolutionsPerScreen;
+        int mLoadedDistantLandCells = 0;
 
         static QStringList getAvailableResolutions(int screen);
         static QRect getMaximumResolution();

@@ -8,8 +8,10 @@
 #include <components/rtx/upscale.hpp>
 #include <components/settings/values.hpp>
 
+#include <QCoreApplication>
 #include <QMessageBox>
 #include <QScreen>
+#include <QtGlobal>
 
 #ifdef MAC_OS_X_VERSION_MIN_REQUIRED
 #undef MAC_OS_X_VERSION_MIN_REQUIRED
@@ -23,7 +25,34 @@
 #include <cmath>
 #include <cstddef>
 #include <optional>
+#include <span>
 #include <string_view>
+
+namespace
+{
+    // In the context the .ui's own strings are translated in, which is where these came from
+    constexpr std::array<Rtx::MenuLabel, Rtx::sUpscaleMenu.size()> sUpscaleLabels{ {
+        { "ultraperformance", QT_TRANSLATE_NOOP("GraphicsPage", "Ultra Performance") },
+        { "performance", QT_TRANSLATE_NOOP("GraphicsPage", "Performance") },
+        { "balanced", QT_TRANSLATE_NOOP("GraphicsPage", "Balanced") },
+        { "quality", QT_TRANSLATE_NOOP("GraphicsPage", "Quality") },
+        { "dlaa", QT_TRANSLATE_NOOP("GraphicsPage", "DLAA") },
+    } };
+    static_assert(Rtx::followsMenu(sUpscaleLabels, Rtx::sUpscaleMenu));
+
+    constexpr std::array<Rtx::MenuLabel, Rtx::sLatencyMenu.size()> sLatencyLabels{ {
+        { "off", QT_TRANSLATE_NOOP("GraphicsPage", "Off") },
+        { "on", QT_TRANSLATE_NOOP("GraphicsPage", "On") },
+        { "boost", QT_TRANSLATE_NOOP("GraphicsPage", "On + Boost") },
+    } };
+    static_assert(Rtx::followsMenu(sLatencyLabels, Rtx::sLatencyMenu));
+
+    void addMenuItems(QComboBox* box, std::span<const Rtx::MenuLabel> labels)
+    {
+        for (const Rtx::MenuLabel& label : labels)
+            box->addItem(QCoreApplication::translate("GraphicsPage", label.mLabel));
+    }
+}
 
 Launcher::GraphicsPage::GraphicsPage(QWidget* parent)
     : QWidget(parent)
@@ -35,6 +64,11 @@ Launcher::GraphicsPage::GraphicsPage(QWidget* parent)
     QRect res = getMaximumResolution();
     customWidthSpinBox->setMaximum(res.width());
     customHeightSpinBox->setMaximum(res.height());
+
+    addMenuItems(rayTracingUpscaleComboBox, sUpscaleLabels);
+    addMenuItems(rayTracingReflexComboBox, sLatencyLabels);
+    rayTracingDistantLandSpinBox->setRange(static_cast<int>(Settings::RTXCategory::sMinDistantLandCellsInMenu),
+        static_cast<int>(Settings::RTXCategory::sMaxDistantLandCells));
 
     connect(windowModeComboBox, qOverload<int>(&QComboBox::currentIndexChanged), this,
         &GraphicsPage::slotFullScreenChanged);
@@ -109,7 +143,10 @@ bool Launcher::GraphicsPage::loadSettings()
     const std::optional<std::size_t> pacing = Rtx::menuIndex(Rtx::sLatencyMenu, Settings::rtx().mReflex.get());
     rayTracingReflexComboBox->setCurrentIndex(pacing ? static_cast<int>(*pacing) : -1);
 
+    // The box holds whole cells from the menu's fewest, so it shows nought or 4.5 as another value:
+    // saveSettings writes the reach only when the player moved it
     rayTracingDistantLandSpinBox->setValue(static_cast<int>(std::lround(Settings::rtx().mDistantLandCells)));
+    mLoadedDistantLandCells = rayTracingDistantLandSpinBox->value();
 
     // The settings exist in every build; the controls are shown disabled with the tooltip saying why
     if (!Settings::sRayTracingBuilt)
@@ -181,7 +218,8 @@ void Launcher::GraphicsPage::saveSettings()
         if (const std::optional<std::string_view> chosen
             = Rtx::menuName(Rtx::sLatencyMenu, static_cast<std::size_t>(pacingIndex)))
             Settings::rtx().mReflex.set(std::string(*chosen));
-    Settings::rtx().mDistantLandCells.set(static_cast<float>(rayTracingDistantLandSpinBox->value()));
+    if (rayTracingDistantLandSpinBox->value() != mLoadedDistantLandCells)
+        Settings::rtx().mDistantLandCells.set(static_cast<float>(rayTracingDistantLandSpinBox->value()));
 
     int cWidth = 0;
     int cHeight = 0;

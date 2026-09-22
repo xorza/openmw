@@ -45,7 +45,7 @@ namespace Rtx
         const Image& mMotion;
 
         /// Where what the water reflects stood on the previous frame's screen — see
-        /// `GBuffer::getReflectionMotion`.
+        /// `GBuffer::get(Channel::ReflectionMotion)`.
         const Image& mReflectionMotion;
 
         /// Where inside its pixel this frame sampled, in render pixels — the same offset the trace
@@ -75,7 +75,7 @@ namespace Rtx
 
         /// What to trace at to produce `output` under `mode`, which must not be `Off`: the
         /// library's answer and not a ratio applied here, because a frame traced at anything else
-        /// is a frame it will refuse. Throws `Error` where it will not answer.
+        /// is a frame it will refuse. Throws `Unsupported` where it will not answer.
         virtual VkExtent2D renderSizeFor(VkExtent2D output, Upscale mode) const = 0;
 
         /// Builds the feature for one pair of extents and the image it writes, releasing the last:

@@ -240,31 +240,6 @@
           <property name="toolTip">
            <string>How hard DLSS Ray Reconstruction works. It denoises and antialiases the traced frame whichever mode is chosen, and every mode but DLAA also traces fewer pixels than it shows.</string>
           </property>
-          <item>
-           <property name="text">
-            <string>Ultra Performance</string>
-           </property>
-          </item>
-          <item>
-           <property name="text">
-            <string>Performance</string>
-           </property>
-          </item>
-          <item>
-           <property name="text">
-            <string>Balanced</string>
-           </property>
-          </item>
-          <item>
-           <property name="text">
-            <string>Quality</string>
-           </property>
-          </item>
-          <item>
-           <property name="text">
-            <string>DLAA</string>
-           </property>
-          </item>
          </widget>
         </item>
         <item row="9" column="0">
@@ -279,21 +254,6 @@
           <property name="toolTip">
            <string>How the driver paces the frame. On holds the game before each frame's input is read, so the input is sampled as late as it will still reach the screen on time. Boost holds the card at its top clock as well, at a power cost. Off leaves the driver's pacing as a frame limiter.</string>
           </property>
-          <item>
-           <property name="text">
-            <string>Off</string>
-           </property>
-          </item>
-          <item>
-           <property name="text">
-            <string>On</string>
-           </property>
-          </item>
-          <item>
-           <property name="text">
-            <string>On + Boost</string>
-           </property>
-          </item>
          </widget>
         </item>
         <item row="10" column="0">
@@ -310,12 +270,6 @@
           </property>
           <property name="suffix">
            <string> cells</string>
-          </property>
-          <property name="minimum">
-           <number>4</number>
-          </property>
-          <property name="maximum">
-           <number>10</number>
           </property>
          </widget>
         </item>

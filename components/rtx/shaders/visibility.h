@@ -137,11 +137,18 @@ namespace Rtx::Shaders
         /// looking at.
         float mNear;
 
-        /// How far a ray travels before whatever it was looking for counts as not being there.
-        ///
-        /// The world's own size, near enough: a primary ray that reaches this has left it, and so
-        /// has the sun's shadow ray, which is the same question asked from the other end.
+        /// How far the camera's own ray travels, and what the depth buffer encodes against: the
+        /// clip. The world's own size for the world's camera, where a primary ray that reaches it
+        /// has left the world; a picture's framing for a picture, which clips at the depth range it
+        /// frames.
         float mFar;
+
+        /// How far every other ray travels before whatever it was looking for counts as not being
+        /// there: the sun's and the moons' shadow rays, the ambient ray, a bounce, a reflection.
+        /// `Rtx::sFarPlane` for every camera, the world's own size, because what lights a point is
+        /// the world around it and not how near a picture of it clips — a map tile that clipped
+        /// its shadow rays at the depth range it frames lit the ground under every roof past it.
+        float mReach;
 
         /// Non-zero to write the albedo straight out, with no shading over it. What a test asserting
         /// "this pixel is that texel" needs, and what makes a texture problem visible as itself.
@@ -246,9 +253,9 @@ namespace Rtx::Shaders
         /// What the sky lights with over and above those two, and is not drawn with.
         ///
         /// **The one place where what the sky sends and what the sky shows are different things.**
-        /// `Rtx::skyFill` carries the whole of why: Morrowind states a night's light as an ambient
-        /// on every surface, which is an order above the colour it draws its night sky, and a
-        /// renderer that lights the ground by tracing that sky is short by the difference.
+        /// `Rtx::Skylight::mFill` carries the whole of why: Morrowind states a night's light as an
+        /// ambient on every surface, which is an order above the colour it draws its night sky, and
+        /// a renderer that lights the ground by tracing that sky is short by the difference.
         vec3 mSkyFill;
 
         /// Where the water's surface is, or negative infinity where the cell holds none.
@@ -273,9 +280,9 @@ namespace Rtx::Shaders
         ///
         /// **The precipitation's own alpha where its kind rings the surface, and nought where it
         /// does not** — which is the number the rasterizer hands its water as `rainIntensity`, and
-        /// `Weather::Precipitation::ripplesEnabled` is what says whether a kind rings: rain does and
-        /// snow settles, off the ini's own `Rain Ripples` and `Snow Ripples`. `rainSlope` is what
-        /// reads it.
+        /// `MWRender::Precipitation::getRainRipplesEnabled` is what says whether a kind rings: rain
+        /// does and snow settles, off the ini's own `Rain Ripples` and `Snow Ripples`. `rainSlope`
+        /// is what reads it.
         float mRainOnWater;
 
         /// Which way the wind drives the sea, unit, in the world's XY.
@@ -535,8 +542,8 @@ namespace Rtx::Shaders
 
     // Pinned for the reason `scene.h` gives: the side that writes these bytes and the side that
     // reads them are different compilers.
-    static_assert(offsetof(VisibilityConstants, mTables) == 1160, "GpuTables must land eight-aligned and last");
-    static_assert(sizeof(VisibilityConstants) == 1312, "VisibilityConstants must be scalar-packed on every side");
+    static_assert(offsetof(VisibilityConstants, mTables) == 1168, "GpuTables must land eight-aligned and last");
+    static_assert(sizeof(VisibilityConstants) == 1320, "VisibilityConstants must be scalar-packed on every side");
 #endif
 
 #ifdef RTX_HOST

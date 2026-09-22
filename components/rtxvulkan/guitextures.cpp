@@ -65,8 +65,8 @@ namespace Rtx
 
         const VkDeviceSize bytes = VkDeviceSize{ region.mWidth } * region.mHeight * 4;
 
-        // Before the lend is on the books, because a run that does not fit submits what is already
-        // recorded and waits for it — and nothing may be lent across that.
+        // Before the lend is on the books, because a run that does not fit hands what is already
+        // recorded over to the next submit — and nothing may be lent across that.
         mLentAt = reserve(bytes);
 
         mLentSlot = slot;
@@ -121,10 +121,14 @@ namespace Rtx
         // that same submit — so the bytes outlive this frame's copies and whatever the interface's
         // draw two frames back is still reading. A wait here idled the queue on every overflow,
         // and the layers still reported the arena it then destroyed as read by a pending copy.
+        //
+        // **Grown to the frame's writes so far and not to this one alone**, so a frame that writes
+        // as much again lands in one arena: grown to the region, an arena a frame overflows with
+        // two regions was replaced on every frame that wrote them.
         handOver();
         mDevice.getGraveyard().replace(arena,
             Buffer::hostWritten(
-                mDevice, std::max(bytes, arena.getSize()), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, "gui staging"));
+                mDevice, std::max(at + bytes, arena.getSize()), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, "gui staging"));
 
         mStagingUsed = bytes;
         return 0;

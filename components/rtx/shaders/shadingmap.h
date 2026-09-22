@@ -14,6 +14,20 @@ namespace Rtx::Shaders
 {
 #endif
 
+    /// Where `shadingsum.comp` binds what it reads and writes in set 0, and how many there are. The
+    /// shader's layout and the pass's own layout and writes are numbered by these and by nothing
+    /// else, so the two cannot drift apart.
+    const uint SHADING_SUM_BIND_SOURCE = 0;
+    const uint SHADING_SUM_BIND_SUMS = 1;
+    const uint SHADING_SUM_BINDINGS = 2;
+
+    /// Where `shadingmap.comp` binds what it reads and writes in set 0, and how many there are. The
+    /// shader's layout and the pass's own layout and writes are numbered by these and by nothing
+    /// else, so the two cannot drift apart.
+    const uint SHADING_MAP_BIND_SUMS = 0;
+    const uint SHADING_MAP_BIND_MAP = 1;
+    const uint SHADING_MAP_BINDINGS = 2;
+
     /// How many times the grid is box blurred, three by three and wrapping, before it is
     /// normalised: three passes are a close enough Gaussian for anything this coarse, and a
     /// correction with an edge in it would put that edge into the frame. Wrapping because

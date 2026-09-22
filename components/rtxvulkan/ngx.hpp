@@ -9,7 +9,7 @@
 #include <nvsdk_ngx_defs_dlssd.h>
 #include <nvsdk_ngx_vk.h>
 
-#include <components/rtx/error.hpp>
+#include <components/rtx/contract.hpp>
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/upscale.hpp>
 
@@ -32,7 +32,6 @@ namespace Rtx
     /// The quality level an upscale setting is, as NGX numbers them. `Off` is refused rather than
     /// answered, because grouping it with `Performance` once made a contradiction into the
     /// fastest, softest mode this renderer has, on the path a frame budget is measured against.
-    /// Thrown rather than asserted because the feature is built once, on every machine.
     inline NVSDK_NGX_PerfQuality_Value ngxQualityOf(Upscale upscale)
     {
         switch (upscale)
@@ -51,7 +50,7 @@ namespace Rtx
                 break;
         }
 
-        throw Error("Ray Reconstruction was asked to build for an upscale mode that is the absence of one");
+        broken("Ray Reconstruction was asked to build for an upscale mode that is the absence of one");
     }
 
     /// The network a preset selects, as NGX numbers them — Ray Reconstruction's own enum in
@@ -92,6 +91,6 @@ namespace Rtx
                 break;
         }
 
-        throw Error("Ray Reconstruction was asked for the preset of an upscale mode that is the absence of one");
+        broken("Ray Reconstruction was asked for the preset of an upscale mode that is the absence of one");
     }
 }

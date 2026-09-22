@@ -101,7 +101,8 @@ namespace Rtx::Shaders
         /// shader mixes unconditionally rather than testing for a transition.
         float mBlend;
 
-        /// The scroll along `v`, in texture widths. `Sky::SkyRoll` advances it.
+        /// The scroll along `v`, in texture widths. `SkyReader` advances it, off the clouds' own
+        /// clock.
         float mScroll;
 
         /// Which way each of the two sheets is driven, as a unit bearing in the ground plane.
@@ -134,8 +135,8 @@ namespace Rtx::Shaders
     /// One of them, as a ray that reached nothing finds it.
     ///
     /// **The same thing a moon is**, and drawn the same way: a direction, an angular size, and a
-    /// sheet laid across the face. `Sky::nightPatches` says where the six are and how big, measured
-    /// off the mesh the rasterizer hangs them on.
+    /// sheet laid across the face. `describePatches` (`skybuilder.hpp`) says where the six are and
+    /// how big, measured off the mesh the rasterizer hangs them on.
     struct SkyPatch
     {
         vec3 mDirection;

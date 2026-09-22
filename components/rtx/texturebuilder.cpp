@@ -72,7 +72,7 @@ namespace Rtx
     {
         const TextureFormat format = readFormat(image);
         if (!isUploadable(format))
-            throw Error("texture \"" + image.getFileName() + "\" is " + std::string(nameOf(format)) + " ("
+            throw InputError("texture \"" + image.getFileName() + "\" is " + std::string(nameOf(format)) + " ("
                 + std::to_string(image.getPixelFormat()) + "), which is not one this renderer uploads");
 
         const auto width = static_cast<std::uint32_t>(image.s());
@@ -175,7 +175,7 @@ namespace Rtx
                     // nothing in the game needs this and why the rain does.
                     described->mCompleteChain = MipChain::wantedFor(*described);
                 }
-                catch (const Error&)
+                catch (const InputError&)
                 {
                     described.reset();
                 }

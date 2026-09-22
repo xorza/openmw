@@ -115,7 +115,7 @@ vec3 triangleDeformation(GpuMesh mesh, uvec3 corner, vec3 weight)
 /// The vertex colour interpolated across the triangle a hit landed on, in linear light.
 ///
 /// **White where the mesh brought none, because that is what the table holds.** A colour is a
-/// factor and not a reading: `MeshTable::writeAttributes` fills an absent one with ones, so this
+/// factor and not a reading: `MeshTable::writeVertices` fills an absent one with ones, so this
 /// answers neutrally and nothing past it has a case to test.
 ///
 /// **Interpolated in light, and not between two stored bytes.** The host decodes each vertex once

@@ -58,7 +58,7 @@ namespace Rtx::Shaders
         ///
         /// **Nought under a parallel projection, and that is not a missing answer.** A parallel
         /// ray's cone never widens; its footprint is one pixel of the box for the whole of its
-        /// length, which is what `pixelExtent` reads off `mRight` instead.
+        /// length, which is what `coneAt` reads off `mRight` instead.
         float mSpreadAngle;
 
         /// Non-zero for a parallel projection rather than a pinhole one.

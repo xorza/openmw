@@ -19,6 +19,19 @@ namespace Rtx
 
             return bounds;
         }
+
+        /// A run of `runs` holding `brought`, with `values` reaching it.
+        template <class T>
+        Run put(RunAllocator& runs, BlockedValues<T>& values, std::span<const T> brought)
+        {
+            assert(!brought.empty() && "a run of nothing is not a run");
+
+            const Run run = runs.allocate(static_cast<std::uint32_t>(brought.size()));
+            values.reach(runs.getEnd());
+            std::copy(brought.begin(), brought.end(), values.in(run).begin());
+
+            return run;
+        }
     }
 
     void MeshTable::checkFits(const MeshArrays& arrays)
@@ -27,7 +40,7 @@ namespace Rtx
         const std::span<const std::uint32_t> indices = arrays.mIndices;
 
         if (positions.size() > sVertexBlock || indices.size() > sIndexBlock)
-            throw Error("a mesh of " + std::to_string(positions.size()) + " vertices and "
+            throw InputError("a mesh of " + std::to_string(positions.size()) + " vertices and "
                 + std::to_string(indices.size()) + " indices is past the " + std::to_string(sVertexBlock) + " and "
                 + std::to_string(sIndexBlock) + " one block of the shared buffers holds");
     }
@@ -57,9 +70,10 @@ namespace Rtx
 
         ++mRevision;
 
-        const Run vertices = mPositions.allocate(positions);
-        const Run elements = mIndices.allocate(indices);
-        const Run second = arrays.mSecondTexCoords.empty() ? Run{} : mSecondTexCoords.allocate(arrays.mSecondTexCoords);
+        const Run vertices = mVertexRuns.allocate(static_cast<std::uint32_t>(positions.size()));
+        const Run elements = put(mIndexRuns, mIndices, indices);
+        const Run second
+            = arrays.mSecondTexCoords.empty() ? Run{} : put(mSecondRuns, mSecondTexCoords, arrays.mSecondTexCoords);
 
         MeshRange range{
             .mVertices = vertices,
@@ -74,7 +88,7 @@ namespace Rtx
 
         deformers.stand(range);
 
-        writeAttributes(range, arrays);
+        writeVertices(range, arrays);
 
         const Index index = mRows.take(range);
         note(index, SlotNews::Arrived);
@@ -91,27 +105,29 @@ namespace Rtx
         mChanges.note(slot, what);
     }
 
-    void MeshTable::writeAttributes(const MeshRange& range, const MeshArrays& arrays)
+    void MeshTable::writeVertices(const MeshRange& range, const MeshArrays& arrays)
     {
-        // As long as the positions and no longer. All four arrays are indexed by one vertex
-        // id, and the blocks decide where a run may go rather than how much room is held — so
-        // rounding up to a whole block would upload the tail of the last one as well.
-        const std::size_t reach = getPositions().size();
-        mNormals.resize(reach);
-        mTexCoords.resize(reach);
-        mColours.resize(reach);
+        // As far as the runs reach and no further. All four are indexed by one vertex id, and the
+        // blocks decide where a run may go rather than how much is uploaded — so reaching a whole
+        // block would upload the tail of the last one as well.
+        const std::uint32_t reach = mVertexRuns.getEnd();
+        mPositions.reach(reach);
+        mNormals.reach(reach);
+        mTexCoords.reach(reach);
+        mColours.reach(reach);
 
         // Filled where the mesh brought none, or a reused slot lights a surface by its last
         // tenant's normals. A zero normal says "use the triangle's plane" and a white colour says
         // "no tint", because one is read and the other is multiplied.
         const auto fill = [&](auto& into, const auto& brought, const auto& nothing) {
-            const auto at = into.begin() + range.mVertices.mOffset;
+            const auto at = into.in(range.mVertices).begin();
             if (brought.empty())
                 std::fill_n(at, range.mVertices.mCount, nothing);
             else
                 std::copy(brought.begin(), brought.end(), at);
         };
 
+        fill(mPositions, arrays.mPositions, osg::Vec3f());
         fill(mNormals, arrays.mNormals, osg::Vec3f());
         fill(mTexCoords, arrays.mTexCoords, osg::Vec2f());
         fill(mColours, arrays.mColours, osg::Vec3f(1.0f, 1.0f, 1.0f));
@@ -135,18 +151,18 @@ namespace Rtx
     std::span<const osg::Vec3f> MeshTable::getMeshPositions(Index mesh) const
     {
         const MeshRange& range = mRows.at(mesh);
-        return range.mVertices.in(getPositions());
+        return mPositions.in(range.mVertices);
     }
 
     std::span<const std::uint32_t> MeshTable::getMeshIndices(Index mesh) const
     {
         const MeshRange& range = mRows.at(mesh);
-        return range.mIndices.in(getIndices());
+        return mIndices.in(range.mIndices);
     }
 
     std::uint32_t MeshTable::getTriangleCount() const
     {
-        return static_cast<std::uint32_t>(getIndices().size() / 3);
+        return mIndices.size() / 3;
     }
 
     std::size_t MeshTable::sweep(DeformerTable& deformers)
@@ -156,10 +172,10 @@ namespace Rtx
             // above it names a bottom-level acceleration structure that would otherwise be built
             // again. The allocators merge the room with whatever it touches, so a cell leaves as
             // the one hole it came as.
-            mPositions.release(range.mVertices);
-            mIndices.release(range.mIndices);
+            mVertexRuns.release(range.mVertices);
+            mIndexRuns.release(range.mIndices);
             if (range.mSecondTexCoords.mCount > 0)
-                mSecondTexCoords.release(range.mSecondTexCoords);
+                mSecondRuns.release(range.mSecondTexCoords);
             deformers.release(range);
 
             range.mVertices.mCount = 0;
@@ -185,9 +201,12 @@ namespace Rtx
 
     std::size_t MeshTable::getGeometryBytes() const
     {
-        return getPositions().size() * sizeof(osg::Vec3f) + mNormals.size() * sizeof(osg::Vec3f)
-            + mTexCoords.size() * sizeof(osg::Vec2f) + getSecondTexCoords().size() * sizeof(osg::Vec2f)
-            + mColours.size() * sizeof(osg::Vec3f) + getIndices().size() * sizeof(std::uint32_t);
+        return std::size_t{ mPositions.size() } * sizeof(osg::Vec3f)
+            + std::size_t{ mNormals.size() } * sizeof(osg::Vec3f)
+            + std::size_t{ mTexCoords.size() } * sizeof(osg::Vec2f)
+            + std::size_t{ mSecondTexCoords.size() } * sizeof(osg::Vec2f)
+            + std::size_t{ mColours.size() } * sizeof(osg::Vec3f)
+            + std::size_t{ mIndices.size() } * sizeof(std::uint32_t);
     }
 
     void MeshTable::clearArrivals()

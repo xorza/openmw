@@ -132,10 +132,10 @@ namespace Rtx
 
     /// Writes the frame's world half into the constants it is traced with, and answers what to hold
     /// the frame's measured exposure back by — `Skylight::mExposureBias`, carried. The camera's
-    /// half is `makeCamera*`'s and is left alone. The order is the whole of what this is for: the
-    /// stars before the sky's budget, the budget before the air, and both before the deck. One
-    /// call and not twenty assignments per host, or a field added to one host is forgotten in the
-    /// other. `drift` is stepped here by this reading's clock and wind, because the heading it
-    /// blows along is the deck's, which is settled here and nowhere else.
+    /// half is the builders' (`makeCameraFromView`) and is left alone. The order is the whole of
+    /// what this is for: the stars before the sky's budget, the budget before the air, and both
+    /// before the deck. One call and not twenty assignments per host, or a field added to one host
+    /// is forgotten in the other. `drift` is stepped here by this reading's clock and wind, because
+    /// the heading it blows along is the deck's, which is settled here and nowhere else.
     float describeWorld(const WorldReading& reading, FogDrift& drift, Shaders::VisibilityConstants& constants);
 }

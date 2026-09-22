@@ -526,7 +526,7 @@ namespace MyGUIPlatform
 
     std::unique_ptr<MyGUI::ITexture> RenderManager::shareTexture(SceneUtil::PaintedTexture& texture)
     {
-        // The same route: the texture uploads its own rectangles when it is applied
+        // The same route: the texture sends its image when it is applied, as any texture does
         return std::make_unique<OSGTexture>(&texture);
     }
 

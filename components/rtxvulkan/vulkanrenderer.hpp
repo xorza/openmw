@@ -23,6 +23,8 @@
 #include <components/rtx/wavespectrum.hpp>
 #include <components/sdlutil/vsyncmode.hpp>
 
+#include "accumulatepass.hpp"
+#include "atrouspass.hpp"
 #include "buffer.hpp"
 #include "commands.hpp"
 #include "compositepass.hpp"
@@ -61,8 +63,8 @@ namespace Rtx
     class VulkanRenderer final : public Renderer
     {
     public:
-        /// Throws `Unsupported` where this machine cannot run it and `Error` where it should have.
-        /// `createVulkanRenderer` is how a host makes one.
+        /// Throws `Unsupported` where this machine cannot run it and `DeviceError` where the device
+        /// failed. `createVulkanRenderer` is how a host makes one.
         explicit VulkanRenderer(const RendererOptions& options);
         ~VulkanRenderer() override;
 
@@ -92,6 +94,7 @@ namespace Rtx
         /// renderer is paced by whoever calls it.
         bool pacesFrames() const override;
         void setPacing(const Pacing& pacing) override;
+        void skipFrame() override;
         void awaitFrame() override;
         void endSimulation(bool flash) override;
         std::optional<LatencyReport> describeLatency() const override;
@@ -101,7 +104,7 @@ namespace Rtx
         std::uint64_t getFrameCount() const override;
         std::optional<FrameResult> finishFrame() override;
         std::optional<FrameResult> collectFrame() override;
-        bool presentFrame() override;
+        void presentFrame() override;
 
         SceneSlot addViewScene() override;
         void dropViewScene(SceneSlot scene) override;
@@ -141,6 +144,10 @@ namespace Rtx
         void takeValidationErrors(std::vector<std::string>& errors);
 
     private:
+        /// The passes both chains trace with, which every member it names is declared ahead of
+        /// the chains to be built for.
+        TracePasses describeTracePasses() const;
+
         /// Widens a channel stored as bytes or as halves on the way out.
         void readImage(const Image& image, std::vector<float>& values);
 
@@ -284,6 +291,11 @@ namespace Rtx
         SpriteBinPass mSpriteBin;
         SpriteShadePass mSpriteShade;
 
+        /// The denoiser's two passes, one pipeline each for both chains: each chain keeps the
+        /// history and the scratch its own camera needs.
+        AccumulatePass mAccumulate;
+        AtrousPass mFilter;
+
         /// What the frame is traced into, at the render extent — which is the output extent
         /// wherever nothing upscales.
         TraceChain mFrame;
@@ -377,9 +389,10 @@ namespace Rtx
         /// until something asks for a picture, and grown with `mView`.
         Image mViewTarget;
 
-        /// Null where nothing asked for a window. Last, so it is destroyed first: its command
-        /// buffers, out of the device's pool, still hold recordings that blit out of `mTarget`, and destroying
-        /// that image while a recording names it is `VUID-vkDestroyImage-image-01000`.
+        /// Null where nothing asked for a window. After `mTargets`, so it is destroyed before them:
+        /// its command buffers, out of the device's pool, still hold recordings that blit out of
+        /// their images, and destroying an image while a recording names it is
+        /// `VUID-vkDestroyImage-image-01000`.
         std::unique_ptr<Presenter> mPresenter;
 
         /// Raised by `startUpscaler` the first time a mode wants one and null otherwise. It

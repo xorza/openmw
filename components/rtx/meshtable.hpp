@@ -3,7 +3,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
-#include <vector>
 
 #include <osg/BoundingBox>
 #include <osg/Vec2f>
@@ -50,12 +49,12 @@ namespace Rtx
         /// mesh gives its runs back to `deformers`, which every mesh here stood on.
         std::size_t sweep(DeformerTable& deformers);
 
-        std::span<const osg::Vec3f> getPositions() const { return mPositions.getAll(); }
-        std::span<const osg::Vec3f> getNormals() const { return mNormals; }
-        std::span<const osg::Vec2f> getTexCoords() const { return mTexCoords; }
-        std::span<const osg::Vec2f> getSecondTexCoords() const { return mSecondTexCoords.getAll(); }
-        std::span<const osg::Vec3f> getColours() const { return mColours; }
-        std::span<const std::uint32_t> getIndices() const { return mIndices.getAll(); }
+        const BlockedValues<osg::Vec3f>& getPositions() const { return mPositions; }
+        const BlockedValues<osg::Vec3f>& getNormals() const { return mNormals; }
+        const BlockedValues<osg::Vec2f>& getTexCoords() const { return mTexCoords; }
+        const BlockedValues<osg::Vec2f>& getSecondTexCoords() const { return mSecondTexCoords; }
+        const BlockedValues<osg::Vec3f>& getColours() const { return mColours; }
+        const BlockedValues<std::uint32_t>& getIndices() const { return mIndices; }
 
         std::span<const osg::Vec3f> getMeshPositions(Index mesh) const;
         std::span<const std::uint32_t> getMeshIndices(Index mesh) const;
@@ -77,30 +76,34 @@ namespace Rtx
         void clearArrivals();
 
     private:
-        /// Makes the attribute buffers as long as the positions are and writes `range`'s run of
-        /// each. Fills one the mesh did not bring with what stands for nothing there, because a
+        /// Makes the four vertex buffers as long as the vertex runs reach and writes `range`'s run
+        /// of each. Fills one the mesh did not bring with what stands for nothing there, because a
         /// reused slot still holds its last tenant's.
-        void writeAttributes(const MeshRange& range, const MeshArrays& arrays);
+        void writeVertices(const MeshRange& range, const MeshArrays& arrays);
 
         /// Records `slot` as having arrived or gone, and grows the list to reach it.
         void note(Index slot, SlotNews what);
 
         /// Where a mesh's vertices and its indices live — runs and not slots, because the geometry
-        /// behind a row is as long as the model. One buffer holds the run and the three parallel
-        /// attribute arrays follow it (`writeAttributes`).
-        RunBuffer<osg::Vec3f> mPositions{ sVertexBlock };
-        RunBuffer<std::uint32_t> mIndices{ sIndexBlock };
+        /// behind a row is as long as the model. One vertex run names the same elements of the
+        /// four vertex buffers (`writeVertices`); the second texture coordinates are in runs of
+        /// their own — `MeshRange::mSecondTexCoords`. In the device's blocks, which is what lets
+        /// the host's buffers grow without moving either.
+        RunAllocator mVertexRuns{ sVertexBlock };
+        RunAllocator mIndexRuns{ sIndexBlock };
+        RunAllocator mSecondRuns{ sVertexBlock };
 
-        /// The second texture coordinates, in runs of their own — `MeshRange::mSecondTexCoords`.
-        RunBuffer<osg::Vec2f> mSecondTexCoords{ sVertexBlock };
-
-        std::vector<osg::Vec3f> mNormals;
-        std::vector<osg::Vec2f> mTexCoords;
+        BlockedValues<osg::Vec3f> mPositions{ sVertexBlock };
+        BlockedValues<osg::Vec3f> mNormals{ sVertexBlock };
+        BlockedValues<osg::Vec2f> mTexCoords{ sVertexBlock };
 
         /// The per-vertex colour, in linear light. White where a mesh brought none, so that a
         /// hit multiplies by it whatever the content said and no shader branches on whether there
         /// is one. `MeshArrays::mColours` says why it is linear here.
-        std::vector<osg::Vec3f> mColours;
+        BlockedValues<osg::Vec3f> mColours{ sVertexBlock };
+
+        BlockedValues<std::uint32_t> mIndices{ sIndexBlock };
+        BlockedValues<osg::Vec2f> mSecondTexCoords{ sVertexBlock };
 
         /// Which meshes were posed this frame. Emptied with the placement rather than with the
         /// arrivals: a pose is a fact about the frame and an arrival is a fact about the scene.

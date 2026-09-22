@@ -6,8 +6,8 @@
 
 #include <osg/Vec2i>
 
+#include "cellworld.hpp"
 #include "monitor.hpp"
-#include "residency.hpp"
 #include "worker.hpp"
 
 namespace Rtx

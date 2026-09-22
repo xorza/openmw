@@ -201,7 +201,7 @@ itself. There is no viewer, no cull and no draw traversal, because rays go every
 | `SkyReader`       | `skyreader.hpp`     | `SkyState` and `WorldState` into an `Rtx::WorldReading`; holds the sky's sheets in the scene   |
 | `RippleEmitters`  | `rippleemitters.hpp`| who disturbs the water this frame, by the rasterizer's own rule                               |
 | `DebugWalk`       | `debugwalk.hpp`     | the debug modes' geometry under `Mask_Debug` into flat line lists                             |
-| `ViewQueue`       | `viewqueue.hpp`     | the pictures inside the interface, and the ones asked for since the last frame                |
+| `ViewQueue`       | `viewqueue.hpp`     | the pictures inside the interface and the map's overlay, and the views asked for since the last frame |
 | `TracedView`      | `tracedview.hpp`    | `OffscreenView` and `SubjectView` as the ray tracer makes them                                |
 | `TracedGround`, `TracedTerrain` | `tracedground.hpp`, `tracedterrain.hpp` | a `Terrain::World` with no chunks, and the ring; a height grid per cell for the intersector only |
 | `TracedOverlay`   | `tracedoverlay.hpp` | the world map overlay, composited in main memory                                              |
@@ -217,8 +217,11 @@ one. `RtxRun` answers per frame: which sample to take, how many frames are summe
 walk twice, whether to keep the picture, and it receives every `FrameReport`; once a second it
 says what the window's title carries after the rate, which the harness answers with the
 weather, the one crossing in while one is, and the hour, and a played session with nothing.
-`profileFromSettings` and `knobsFromSettings` in `rtxrenderer.cpp` are the only places the
-settings registry is read for the renderer. The core reads no settings.
+`RtxSettingValues::fromRegistry` (`rtxsettings.hpp`) is where the ray tracer's own settings are
+read, and `RtxSettings::derive` is what they mean — the one derivation, which the harness fills
+from its command line as well. The renderer reads the engine's own besides: the vertical sync and
+groundcover where it is made, `reflex flash` at each frame's click, and `Settings::models()` for
+the sky's meshes (`SkyReader`). The core reads no settings.
 
 **The phase state machine.** `RtxRenderer::Phase` is asserted at every entry point through
 `Rtx::Stepped`:
@@ -316,9 +319,10 @@ to a texture.
 `SlotPool`, so a freed slot is reused before the table grows. A texture rests in
 `SHADER_READ_ONLY_OPTIMAL` between calls. Making and writing a texture are recorded into a
 batch handed to the command pool, to go ahead of whatever submits next: ordered before every
-reader and never waited for, except `finish` at a resize, at shutdown, or where a staging arena
-fills. There are `sFrameSlots + 1` staging arenas, each grown to the largest region ever
-written, so a video frame allocates nothing. `writeWith` lends a texture to device commands (a
+reader and never waited for, except `finish` at a resize and at shutdown. There are
+`sFrameSlots + 1` staging arenas. An arena a frame overflows is buried and replaced by one as
+large as that frame's writes so far, so each grows to the most one frame wrote into it, and a
+frame that writes as much again, a video's every frame, allocates nothing. `writeWith` lends a texture to device commands (a
 traced picture); `readBackWith` and `takeCopy` carry a copy back to the host on the same
 submit as the trace that wrote it.
 
@@ -351,7 +355,8 @@ slot. They are never a framebuffer and never in main memory unless somebody asks
 - `redraw()` queues the view. The host draws the queue in the next frame's `Views` phase,
   after the world was placed and before it was traced: every subject picture, and up to three
   world pictures per frame (a cell crossing asks for a row of three tiles, a load for nine).
-- `TracedView::draw()`: a subject is posed with the renderer's own frame stamp, walked by the
+- `TracedView::draw(moment)`: a subject is posed at the `PoseMoment` the queue hands every view
+  it draws — the renderer's own frame stamp — walked by the
   view's own `SceneExtractor` into its own `SceneDesc`, and handed over into its own
   `ViewScene` slot; then `Rtx::OffscreenTrace::traceInto(slot, keepCopy)` →
   `GuiRenderer::traceGuiTexture`.
@@ -365,8 +370,9 @@ slot. They are never a framebuffer and never in main memory unless somebody asks
 - `keepCopy()` asks for a read-back. `getCopy()` answers null until the trace that leaves the
   copy has landed, two frames on; a black image would be "a picture of nothing" and the global
   map would mark the cell done.
-- `TracedOverlay` (`tracedoverlay.hpp`) is the world map overlay: `paintTile` keeps the paint
-  pending; `finish()`, once a frame after the frame behind was collected, composites the
+- `TracedOverlay` (`tracedoverlay.hpp`) is the world map overlay, adopted into the `ViewQueue`
+  as a view is: `paintTile` keeps the paint pending; `finish()`, from
+  `ViewQueue::finishOverlays` once a frame after the frame behind was collected, composites the
   arrived tiles into its image through the land alpha and tells its `PaintedTexture` which
   rectangle changed. The GUI shows it through a `PaintedMirror`. `getImage()` is what the save
   writes.
@@ -389,10 +395,15 @@ The in-game settings window has a ray tracing group (`RayTracing*` widgets in
 `files/data/mygui/openmw_settings_window.layout`, `SettingsWindow` in `mwgui/settingswindow.cpp`):
 the enable button with a restart hint, the upscale combo box, the Reflex combo box, the
 distant land slider, and an "unavailable" hint where `Settings::sRayTracingBuilt` is false. The
-launcher's graphics page has the same four controls. The combo boxes list `Rtx::sUpscaleMenu`
-and `Rtx::sLatencyMenu` in order, so a mode added to either's `NamedEnum` reaches both menus;
-`Rtx::menuName` and `Rtx::menuIndex` (`menu.hpp`) translate between a position and a spelling.
-`off` is not offered for the upscaler, because Ray Reconstruction is the denoiser. The upscale
+launcher's graphics page has the same four controls. `Rtx::sUpscaleMenu` and `Rtx::sLatencyMenu`
+are the one order and the one spelling of both combo boxes. Each page fills its boxes in code
+from a table of its own labels, and `Rtx::followsMenu` (`menu.hpp`) holds that table to the
+core's order at compile time: a mode added to either `NamedEnum` without a label on each page
+stops the build. `Rtx::menuName` and `Rtx::menuIndex` translate between a position and a spelling.
+The slider's and the spin box's range come from `Settings::RTXCategory`'s
+`sMinDistantLandCellsInMenu` and `sMaxDistantLandCells`, and the launcher writes the reach only
+when the player moved it. `off` is not offered for the upscaler, because Ray Reconstruction is
+the denoiser. The upscale
 mode, the Reflex mode and the reach take effect at once through `processChangedSettings`; the
 rest at the next start. The strings are `OMWEngine:RayTracing*` — with the Reflex box's off and
 on the vsync box's own `Interface:Off` and `Interface:On`, so one page spells a toggle one way
@@ -459,7 +470,7 @@ textures arrived; `release(meshes, materials)` is the only way a scene loses geo
 
 ### 7.3 `Rtx::SceneExtractor`
 
-Files: `sceneextractor.hpp`, `mirroridentity.hpp`, `walk.hpp`. Mirrors an OSG subtree into a
+Files: `sceneextractor.hpp`, `mirroridentity.hpp`, `mirrorpass.hpp`. Mirrors an OSG subtree into a
 `SceneDesc`. The identity maps live across calls, so a crate met again resolves to the mesh
 already uploaded. That is what makes the mirror incremental.
 
@@ -482,7 +493,7 @@ already uploaded. That is what makes the mirror incremental.
 ### 7.4 The cell ring
 
 Files: `cellring.hpp`, `cellsupply.hpp`, `cellreader.hpp`, `cellplacer.hpp`, `held.hpp`,
-`prepared.hpp`, `residency.hpp`, `cellgrid.hpp`, `compositequeue.hpp`. Rays go everywhere, so
+`prepared.hpp`, `cellworld.hpp`, `sceneadopter.hpp`, `cellgrid.hpp`, `compositequeue.hpp`. Rays go everywhere, so
 the world exists past the loaded cells. The ring stands those cells itself: their ground off
 the land records, their statics as instances of their templates, and their lamps.
 
@@ -539,7 +550,7 @@ each texture arrives; the host's versions are held to them by a test.
 
 Lights: `Light` is the device's row; `lightbuilder.hpp` makes one from a graph `LightSource`,
 a `LIGH` record, or a `Glow` (one lamp per magic effect); `LightGrid` bins lamps into a
-world-space grid. Water: `WaveSpectrum` and `WaveCascade` are the sea's tiles;
+world-space grid. Water: `SeaState` and `WaveCascade` are the sea's tiles;
 `RippleImpulse` is what pressed the water this frame.
 
 ### 7.8 Profiles and reconstruction
@@ -557,7 +568,8 @@ spellings for each enum, read by the parser, the report and the menus.
 
 Infrastructure worth knowing: `Stepped` (a step of a fixed order, asserted), `OwnedBy` and
 `Worker` (a thread and who owns what), `Monitor`, `Spares` (pools that lend stable addresses),
-`Error` and `Unsupported` (this code broke a contract, against this machine cannot),
+`InputError`, `Unsupported` and `DeviceError` (what a file or a setting supplied cannot be
+used, this machine cannot, the device failed; a broken contract is `Rtx::contract`),
 `FrameSpend` and `Timing` (what a frame spent on the host, by phase).
 
 ---
@@ -569,7 +581,7 @@ makes one through `createVulkanRenderer(options)`, which names no Vulkan type. D
 order is construction order, and everything below the device is built on it.
 
 **The device.** `Instance`, `PhysicalDevice::select` (refuses a device missing anything in
-`Requirements`), `Device` (queue, command pool, `Timeline`, `Graveyard`, object names),
+`DeviceFeatures`, each a `RequiredFeature`), `Device` (queue, command pool, `Timeline`, `Graveyard`, object names),
 `Validation` (a sink a test reads), `MemoryAllocator` (VMA), `PipelineCache` (a file in the
 cache directory, for the played game only). `Timeline` is the one clock: every submit signals a
 value, every wait is the device's, and the clock is never read off the device on the frame
@@ -595,11 +607,12 @@ buffers for two slots, so a report's picture is not torn.
 renderer holds two: `mFrame` at the render extent, and `mView` grown to the largest picture
 inside the interface. A chain owns the `GBuffer` (eleven channels: direct, indirect, albedo,
 specular, guide, motion, depth, reflection motion, stars shown, puffs, puffs depth), the
-`FogVolume`, one `SpriteBin` per slot, the `AccumulatePass` and the `AtrousPass`. The passes
-are shared and held by the renderer: `VisibilityPass` (the five ray tracing shaders and the
-fog dispatch, one pipeline per `VisibilityVariant`), `CompositePass`, the sprite passes,
-`WavePass`, `RipplePass`, `SkinPass`, the three texture passes, `GroundCompositePass`,
-`DigestPass`, `StressPass`.
+`FogVolume`, one `SpriteBin` per slot, the accumulator's `AccumulateHistory` and the filter's
+scratch image. The passes are shared and held by the renderer: `VisibilityPass` (the five ray
+tracing shaders and the fog dispatch, one pipeline per `VisibilityVariant`), `CompositePass`,
+the sprite passes, `AccumulatePass`, `AtrousPass`, `WavePass`, `RipplePass`, `SkinPass`, the
+three texture passes, `GroundCompositePass`, `DigestPass`, `StressPass`. A chain is handed the
+ones it traces with as one `TracePasses`.
 
 **`DisplayChain`** (`displaychain.hpp`): after the trace and the upscaler: the puffs over the
 picture, `BloomPass`, `ExposurePass`, `SunGlarePass`, `TonePass`, `LinePass`. One chain for the
@@ -629,7 +642,7 @@ runtime is raised on the first mode that wants one and outlives a mode being tur
 | shader                                                  | role                                                                |
 |---------------------------------------------------------|---------------------------------------------------------------------|
 | `visibility.rgen`                                       | one ray per pixel; composes the path: water, air, layers, channels   |
-| `visibilitysurface.rchit`, `visibilityterrain.rchit`, `visibilitywater.rchit` | the hit shaders, one per `MaterialKind`, picked by traversal through the shader-table offset |
+| `visibilityhit.rchit` | the hit shader, compiled once per `MaterialKind` and picked by traversal through the shader-table offset |
 | `visibility.rahit`, `visibility.rmiss`                  | the cutout test; the sky                                             |
 | `fogdepth.rgen`, `fogscatter.rgen`, `fogintegrate.comp` | the air, per column of pixels                                        |
 | `spriteshelter.rgen`, `spritecomposite.rgen`, `sprite*.comp` | drops under a roof zeroed; the puffs over the picture; the bin and the shade |
@@ -682,8 +695,8 @@ graph TD
         Rtx --> Played
         Rtx --> Cam
         Views -.-> TV
-        Rtx -.-> Overlay
-        TG -.-> Rtx
+        Views -.-> Overlay
+        TG -.-> Mirror
     end
 
     subgraph core ["components/rtx"]
@@ -739,8 +752,9 @@ Lifetimes that matter:
 - `WorldMirror::mContent` is declared before `mRing`, because the ring's thread reads it.
   `Worker` is the last member of what owns it.
 - A `TracedView` is owned by the map or the preview; `ViewQueue::forget` keeps the queue
-  sound when one goes. `TracedOverlay` is owned by `GlobalMap` and tells the renderer when it
-  goes.
+  sound when one goes. `TracedOverlay` is owned by `GlobalMap` and leaves the queue the same
+  way. `TracedGround` sends what the game says of a reference to the mirror, and the ring asserts
+  its own turn for it.
 
 ---
 
@@ -887,7 +901,7 @@ Lua worker; `RenderingManager::renderFrame` → `RtxRenderer::renderFrame(frame)
 | c    | Placing | `TracedOverlay::finish()`: the map tiles whose copies came back are painted                                                |            |
 | d    | Placing | `handOver`: `WorldMirror::hand` → `SceneUploader::hand` (11.4)                                                            | `Place` = `Bake` + `Textures` + `Upload` |
 | e    | Views   | `drawViews()`: every subject picture and up to three world pictures (section 6.5)                                          | `Views`    |
-| f    | Tracing | `describeTrace`: `makeCameraFromView(view, fov, renderW, renderH, near 1, far 200000)`, the arms' camera, `rayMaskOf(viewMask)`, the sample index from the run or the frame number, delight from the profile. A view with no basis is refused once |  |
+| f    | Tracing | `describeTrace`: `makeCameraFromView(view, fov, renderW, renderH, near 1, far 200000)`, the arms' camera, `rayMaskOf(viewMask)`, the sample index from the run or the frame number, delight from the profile. A view with no basis is refused, said once, and the frame its placements opened is closed with no trace (`Rtx::Renderer::skipFrame`) |  |
 | g    | Tracing | `trace`: `SkyReader::read` → `WorldReading`; `describeWorld` → the exposure bias; `FrameOptions::forFrame`; `DebugWalk::walk`; `Renderer::renderFrame(constants, options)` | `Trace` |
 | h    | Run     | the report is closed and handed to `RtxRun::frame`; the window title once a second                                        |            |
 
@@ -1016,13 +1030,22 @@ and the frame rethrows it.
   names its owner. `CellRing::standsAsHeld` after every walk.
 - `SceneExtractor::Phase`: no walk inside a walk, no retire inside a walk.
 - `FrameState` per ring slot; at most two frames in flight; the timeline is never read off the
-  device on the frame path.
+  device on the frame path. No world frame is open at `endSimulation`: a placement the host did
+  not trace is closed with `skipFrame`.
+- `DescriptorWrites` in binding order, and every compute pass numbers its bindings by the names
+  its shared header declares (`TONE_BIND_*` and the rest).
+- `CellRing`'s own turn at a reference change: nothing the game says of a reference lands between
+  `follow` and the end of `collect`.
 - Every hold and every slot is counted: a hold given back twice and a slot freed twice are
   named where they happen.
 
-Data the world might supply is never an assert: an unreadable texture is drawn grey and
-counted, a mesh longer than a block throws `Rtx::Error`, a missing device feature throws
-`Rtx::Unsupported`.
+Data the world might supply is never an assert, and never the end of a frame: an unreadable
+texture is drawn grey and counted; a mesh longer than a block, or a skin that names a vertex its
+mesh has not got, throws `Rtx::InputError`, which the walk catches per drawable and the reader
+thread per model, and the drawable is refused once and counted (`ExtractionStats::mRefused`); a
+texture past the array's capacity is refused by `TextureTable` and drawn neutral. A missing device
+feature throws `Rtx::Unsupported`, and a device that fails throws `Rtx::DeviceError`, which ends the
+game with its message.
 
 ---
 

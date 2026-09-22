@@ -13,6 +13,18 @@ namespace Rtx::Shaders
 {
 #endif
 
+    /// Where `tone.comp` binds what it reads and writes in set 0, and how many there are. The
+    /// shader's layout and the pass's own layout and writes are numbered by these and by nothing
+    /// else, so the two cannot drift apart.
+    const uint TONE_BIND_COLOUR = 0;
+    const uint TONE_BIND_TARGET = 1;
+    const uint TONE_BIND_STARS_SHOWN = 2;
+    const uint TONE_BIND_EXPOSURE = 3;
+    const uint TONE_BIND_BLOOM = 4;
+    const uint TONE_BIND_SUN_GLARE = 5;
+    const uint TONE_BIND_PUFFS_DEPTH = 6;
+    const uint TONE_BINDINGS = 7;
+
     /// Threads along each edge of the tone pass's workgroup.
     const uint TONE_WORKGROUP = 8;
 
@@ -59,12 +71,12 @@ namespace Rtx::Shaders
 
         /// How much of the bloom pyramid is left in the picture, and one texel of its finest level.
         ///
-        /// **The lens is applied here because everything before this pass is the trace's own frame.**
-        /// A veil written back over the radiance image would be a measurement nobody could hand
-        /// compute, and would make `FrameImage::Composite` mean one thing with an upscaler in the
-        /// frame and another without one. `BloomPass` builds the pyramid and this spreads its finest
-        /// level over the picture — which also saves the full-resolution pass a separate blend would
-        /// cost.
+        /// **The lens is applied here because everything before this pass is the trace's own
+        /// frame.** A veil written back over the radiance image would be a measurement nobody could
+        /// hand compute, and would make the composite (`Renderer::readComposite`) mean one thing
+        /// with an upscaler in the frame and another without one. `BloomPass` builds the pyramid
+        /// and this spreads its finest level over the picture — which also saves the
+        /// full-resolution pass a separate blend would cost.
         ///
         /// Nought is no lens, which is what a doll and a map tile are drawn with: the pyramid is the
         /// frame's and neither of those is a frame. The shader samples nothing at all where this is

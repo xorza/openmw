@@ -8,6 +8,7 @@
 
 #include <components/rtx/shaders/bloom.h>
 #include <components/rtx/shaders/look.h>
+#include <components/rtx/shaders/tone.h>
 
 #include "dispatch.hpp"
 #include "image.hpp"
@@ -20,14 +21,14 @@ namespace Rtx
         /// The frame in, the picture out, what the star field is drawn through, the one float the
         /// curve scales by, the bloom pyramid the lens is spread from, and the one float the glare
         /// fader is laid on by. All pushed.
-        constexpr std::array<VkDescriptorSetLayoutBinding, 7> sBindings{
-            computeBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
-            computeBinding(1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
-            computeBinding(2, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
-            computeBinding(3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            computeBinding(4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER),
-            computeBinding(5, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
-            computeBinding(6, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
+        constexpr std::array<VkDescriptorSetLayoutBinding, Shaders::TONE_BINDINGS> sBindings{
+            computeBinding(Shaders::TONE_BIND_COLOUR, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
+            computeBinding(Shaders::TONE_BIND_TARGET, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
+            computeBinding(Shaders::TONE_BIND_STARS_SHOWN, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
+            computeBinding(Shaders::TONE_BIND_EXPOSURE, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            computeBinding(Shaders::TONE_BIND_BLOOM, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER),
+            computeBinding(Shaders::TONE_BIND_SUN_GLARE, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+            computeBinding(Shaders::TONE_BIND_PUFFS_DEPTH, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
         };
     }
 
@@ -62,14 +63,15 @@ namespace Rtx
         constants.mBloomTexel
             = osg::Vec2f(1.0f / static_cast<float>(spread.getWidth()), 1.0f / static_cast<float>(spread.getHeight()));
 
-        DescriptorWrites<7> writes;
-        writes.image(0, colour.describeStorage());
-        writes.image(1, target.describeStorage());
-        writes.image(2, starsShown.describeStorage());
-        writes.buffer(3, exposure.describe());
-        writes.image(4, spread.describeSampled(mSampler.get()), VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-        writes.buffer(5, sunGlare.describe());
-        writes.image(6, puffsDepth.describeStorage());
+        DescriptorWrites<Shaders::TONE_BINDINGS> writes;
+        writes.image(Shaders::TONE_BIND_COLOUR, colour.describeStorage());
+        writes.image(Shaders::TONE_BIND_TARGET, target.describeStorage());
+        writes.image(Shaders::TONE_BIND_STARS_SHOWN, starsShown.describeStorage());
+        writes.buffer(Shaders::TONE_BIND_EXPOSURE, exposure.describe());
+        writes.image(Shaders::TONE_BIND_BLOOM, spread.describeSampled(mSampler.get()),
+            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+        writes.buffer(Shaders::TONE_BIND_SUN_GLARE, sunGlare.describe());
+        writes.image(Shaders::TONE_BIND_PUFFS_DEPTH, puffsDepth.describeStorage());
 
         // The scene's textures before the launch and beside set zero, which the two are
         // independent of: a pushed set and a bound one only have to be in place by the dispatch.

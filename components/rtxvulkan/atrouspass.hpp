@@ -25,10 +25,10 @@ namespace Rtx
     public:
         AtrousPass(const Device& device, const std::filesystem::path& shaderDirectory);
 
-        /// Makes room for a frame this size, if the last one was not. Before the first frame. The
-        /// levels ping-pong, so a filtered frame needs a second channel to land in. The caller
-        /// waited for anything still reading the old one.
-        void resize(std::uint32_t width, std::uint32_t height);
+        /// The other half of the ping-pong for a frame this size: the levels alternate, so a
+        /// filtered frame needs a second channel to land in, the format of the one it takes turns
+        /// with. A chain's, like the history, because the pass is shared and the image is not.
+        static Image makeScratch(const Device& device, std::uint32_t width, std::uint32_t height);
 
         /// Runs every level and returns the channel the result ended up in, because the levels
         /// alternate and a copy back would be bandwidth spent on tidiness.
@@ -40,17 +40,13 @@ namespace Rtx
         /// @param moments the estimator's own variance, which turns a difference in brightness into
         ///        an edge or into noise. A pixel with no history carries one, which filters widely.
         /// @param history what the first level writes and the accumulator finds as its mean next
-        ///        frame. `AccumulatePass::getHistory` says why the feedback belongs here.
+        ///        frame. `AccumulateHistory::getHistory` says why the feedback belongs here.
+        /// @param scratch `makeScratch`'s, at least the camera's extent.
         /// @param camera the one the frame was traced with; the edge tests rebuild its rays.
         const Image& record(VkCommandBuffer commands, const GBuffer& buffer, const Image& blended, const Image& moments,
-            const Image& history, const Shaders::Camera& camera) const;
+            const Image& history, const Image& scratch, const Shaders::Camera& camera) const;
 
     private:
-        const Device& mDevice;
         ComputePipeline mPipeline;
-
-        /// The other half of the ping-pong, the size of a frame and the format of the channel it
-        /// takes turns with. Empty until `resize`.
-        Image mScratch;
     };
 }

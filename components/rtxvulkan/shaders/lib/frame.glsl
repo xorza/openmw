@@ -47,11 +47,11 @@ float waterOver(vec3 position)
 /// Whether a ray that found nothing was under the surface looking down, which is water and not sky.
 ///
 /// **The plane has absolute sides**, so below it there is water whether or not this renderer was
-/// handed a bed far enough out to stop the ray. Read as sky instead, everything past the edge of the
-/// loaded terrain came back at the sky's own horizon colour — which is what `skyGradient` clamps to
-/// under the horizontal — through `mFar` of water rather than through the whole of it, and that drew
-/// the terrain's boundary across the sea as a row of dark panels. `waterRay` answers the same
-/// question the same way for a reflection and for a refraction.
+/// handed a bed far enough out to stop the ray. Read as sky instead, everything past the edge of
+/// the loaded terrain came back at the sky's own horizon colour — which is what `skyGradient`
+/// clamps to under the horizontal — through a ray's length of water rather than through the whole
+/// of it, and that drew the terrain's boundary across the sea as a row of dark panels. `waterRay`
+/// answers the same question the same way for a reflection and for a refraction.
 ///
 /// **Asked by the miss shader and again by the launch**, which are the two that need it: one to
 /// draw no sky and one to measure the column the pixel is seen through. It is a plane test and a

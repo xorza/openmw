@@ -421,7 +421,8 @@ namespace Rtx
         /// one sleep between two presents.
         virtual void awaitFrame() = 0;
 
-        /// The game's work for the frame is done and the renderer's begins.
+        /// The game's work for the frame is done and the renderer's begins. No frame of the world
+        /// is open here: the host closed the last one it placed with `renderFrame` or `skipFrame`.
         ///
         /// @param flash whether this frame carries the analyser's flash: the driver draws a square
         ///        the frame a click landed in, for a latency analyser to time against the click.
@@ -436,8 +437,15 @@ namespace Rtx
         /// what it came to. At most two frames are in flight.
         virtual Reconstruction renderFrame(const Shaders::VisibilityConstants& camera, const FrameOptions& options) = 0;
 
-        /// How many frames `renderFrame` has drawn, which is the number the next one carries in
-        /// `FrameResult::mFrame`.
+        /// Closes the frame this frame's placements of the world opened, with no trace: where a
+        /// placement is not followed by `renderFrame`, because the host refused the camera. Without
+        /// it the frame stays open into the host's next, and every placement after takes one more
+        /// command buffer. The frame is submitted and numbered and comes back with no report.
+        /// Nothing where no placement opened a frame.
+        virtual void skipFrame() = 0;
+
+        /// How many frames were closed, by `renderFrame` or by `skipFrame`, which is the number the
+        /// next one carries in `FrameResult::mFrame`.
         virtual std::uint64_t getFrameCount() const = 0;
 
         /// What the oldest unreported frame came to, waiting for it where it is still in flight, or
@@ -453,9 +461,10 @@ namespace Rtx
         /// next placement is submitted — a gap a device-bound frame pays in full.
         virtual std::optional<FrameResult> collectFrame() = 0;
 
-        /// Shows the frame `renderFrame` just produced. False means the surface stopped matching
-        /// the window and the caller should `resize` and carry on. No window is an assert.
-        virtual bool presentFrame() = 0;
+        /// Shows the frame `renderFrame` just produced. A surface that stopped matching the window
+        /// is remade by the next `resize`, which the host calls every frame; no answer comes back
+        /// here, because the renderer keeps that fact itself. No window is an assert.
+        virtual void presentFrame() = 0;
 
         /// Multi-line report: the device and what it can trace with.
         virtual std::string describeDevice() const = 0;

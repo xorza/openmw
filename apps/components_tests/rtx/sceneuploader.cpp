@@ -246,7 +246,7 @@ namespace Rtx
         /// frame of the drag — the placements thrown away and refilled — and nothing about it
         /// arrives or goes, so the second hand and every one after it is a placement. Rebuilding it
         /// each time is an acceleration structure and a texture array made from nothing sixty times
-        /// a second, which is what `setViewScene` used to be.
+        /// a second.
         TEST(RtxSceneUploaderTest, aPictureIsHandedOverTheSameWayACellIsAndNeitherDisturbsTheOther)
         {
             VFS::Manager vfs;

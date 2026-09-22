@@ -22,18 +22,16 @@
 #include <boost/program_options/variables_map.hpp>
 #include <osg/Vec3f>
 
+#include <apps/openmw/mwrender/rtx/rtxsettings.hpp>
 #include <components/debug/debugging.hpp>
 #include <components/debug/debuglog.hpp>
 #include <components/files/configurationmanager.hpp>
 #include <components/platform/platform.hpp>
 #include <components/platform/process.hpp>
-#include <components/rtx/cellgrid.hpp>
 #include <components/rtx/error.hpp>
 #include <components/rtx/pacing.hpp>
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/renderer.hpp>
-#include <components/rtx/residency.hpp>
-#include <components/rtx/upscale.hpp>
 #include <components/rtxbench/benchrecord.hpp>
 #include <components/rtxbench/benchrun.hpp>
 #include <components/rtxbench/benchspec.hpp>
@@ -133,7 +131,7 @@ namespace RtxTool
             return variables["validation"].defaulted() ? Rtx::ValidationOptions{} : validationFrom(variables);
         }
 
-        /// What `--hour` named, or nothing where it was left at its default. `placeFrom` is the rule
+        /// What `--hour` named, or nothing where it was left at its default. `stopFor` is the rule
         /// this feeds.
         std::optional<float> hourGiven(const bpo::variables_map& variables)
         {
@@ -201,36 +199,37 @@ namespace RtxTool
             framed.mWindow.mHeight = size.mHeight;
             framed.mWindow.mFieldOfView = variables["fov"].as<float>();
             framed.mWindow.mVerticalSync = watched ? Settings::video().mVsyncMode.get() : SDLUtil::VSyncMode::Disabled;
-            framed.mWindow.mLatency = given("reflex")
-                ? Rtx::sLatencyModeNames.require(variables["reflex"].as<std::string>(), "a Reflex mode")
-                : watched ? Rtx::sLatencyModeNames.require(Settings::rtx().mReflex.get(), "a Reflex mode")
-                          : Rtx::LatencyMode::Off;
             framed.mDay = variables["day"].as<int>();
 
-            // **The two knobs the settings define, and the harness restates nowhere.** Given on the
-            // line, the line's; a window's, the player's; a measured run's, the file's default.
-            const float distantCells = given("distant-cells") ? variables["distant-cells"].as<float>()
-                : watched                                     ? Settings::rtx().mDistantLandCells.get()
-                          : std::stof(shippedDefault(command.mConfig, "RTX", "distant land cells"));
-            const bool distantStatics = given("distant-statics") ? variables["distant-statics"].as<bool>()
-                : watched                                        ? Settings::terrain().mObjectPaging.get()
-                          : shippedDefault(command.mConfig, "Terrain", "object paging") == "true";
+            const auto spelled
+                = [&](const char* name) -> std::string_view { return variables[name].as<std::string>(); };
 
-            // The size rule's constant is the player's own, since no option names it, and the
-            // viewing distance only decides where the cells say nought.
-            framed.mMirror = Rtx::MirrorKnobs{
-                .mReach = Rtx::distantLandReach(distantCells, Settings::camera().mViewingDistance),
-                .mDistantStatics = distantStatics,
-                .mMinSize = Settings::terrain().mObjectPagingMinSize,
-            };
+            // **The settings the ray tracer reads, from the harness's own sources and through the
+            // game's one derivation.** Given on the line, the line's; a window's, the player's; a
+            // measured run's, the file's default — but for the upscaler, whose default for a run is
+            // the harness's own (`sUpscaleByDefault`), and the Reflex mode, off for the reason
+            // `RunSetup::mLatency` gives. The size rule's constant is the player's own, since no
+            // option names it, and the viewing distance only decides where the cells say nought.
+            const MWRender::RtxSettings derived = MWRender::RtxSettings::derive(MWRender::RtxSettingValues{
+                .mUpscale = typed("upscale") ? spelled("upscale") : Settings::rtx().mUpscale.get(),
+                .mPreset = typed("preset") ? spelled("preset") : Settings::rtx().mPreset.get(),
+                .mReflex = given("reflex") ? spelled("reflex")
+                    : watched              ? Settings::rtx().mReflex.get()
+                                           : Rtx::sLatencyModeNames.name(Rtx::LatencyMode::Off),
+                .mDistantLandCells = given("distant-cells") ? variables["distant-cells"].as<float>()
+                    : watched                               ? Settings::rtx().mDistantLandCells.get()
+                              : std::stof(shippedDefault(command.mConfig, "RTX", "distant land cells")),
+                .mViewingDistance = Settings::camera().mViewingDistance,
+                .mObjectPaging = given("distant-statics") ? variables["distant-statics"].as<bool>()
+                    : watched                             ? Settings::terrain().mObjectPaging.get()
+                              : shippedDefault(command.mConfig, "Terrain", "object paging") == "true",
+                .mObjectPagingMinSize = Settings::terrain().mObjectPagingMinSize,
+            });
+            framed.mLatency = derived.mLatency;
+            framed.mMirror = derived.mMirror;
 
             Rtx::RenderProfile& profile = framed.mProfile;
-            profile.mUpscaling.mMode = Rtx::sUpscaleNames.require(
-                typed("upscale") ? variables["upscale"].as<std::string>() : Settings::rtx().mUpscale.get(),
-                "an upscale mode");
-            profile.mUpscaling.mPreset = Rtx::sPresetNames.require(
-                typed("preset") ? variables["preset"].as<std::string>() : Settings::rtx().mPreset.get(),
-                "a Ray Reconstruction preset");
+            profile.mUpscaling = derived.mUpscaling;
             profile.mDelight = variables["delight"].as<float>();
             profile.mReconstruction.mFilter = variables["filter"].as<bool>();
             profile.mShowAlbedo = variables["albedo"].as<bool>();
@@ -348,6 +347,7 @@ namespace RtxTool
             request.mStops = std::move(stops);
             request.mSetup.mProfile = framed.mProfile;
             request.mSetup.mMirror = framed.mMirror;
+            request.mSetup.mLatency = framed.mLatency;
             request.mSetup.mValidation = validation;
             request.mHud = variables["hud"].as<bool>();
             request.mVanity = variables["vanity"].as<bool>();
@@ -383,16 +383,15 @@ namespace RtxTool
         /// window it is presented in.
         ///
         /// **These are settings and not a second command line**, because both binaries have to
-        /// reach one engine configured one way. What the *trace* and the *mirror* are configured
-        /// by travels in the `RunSetup` the renderer is made with — `Framed::mSetup` — and never
-        /// through the registry, which is the player's.
+        /// reach one engine configured one way. What the *trace* and the *mirror* are configured by
+        /// travels in the `RunSetup` the renderer is made with — `SessionRequest::mSetup` — and
+        /// never through the registry, which is the player's.
         void applyHostedSettings(const WindowRequest& window)
         {
             Settings::video().mResolutionX.set(static_cast<int>(window.mWidth));
             Settings::video().mResolutionY.set(static_cast<int>(window.mHeight));
             Settings::video().mWindowMode.set(Settings::WindowMode::Windowed);
             Settings::video().mVsyncMode.set(window.mVerticalSync);
-            Settings::rtx().mReflex.set(std::string(Rtx::sLatencyModeNames.name(window.mLatency)));
             Settings::camera().mFieldOfView.set(window.mFieldOfView);
 
             // **Physics on the frame's own thread, so a run is the same run twice.** A physics

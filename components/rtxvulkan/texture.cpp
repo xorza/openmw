@@ -7,7 +7,6 @@
 #include <vector>
 
 #include <components/rtx/contract.hpp>
-#include <components/rtx/error.hpp>
 #include <components/rtx/mipchain.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/shaders/ground.h>
@@ -138,7 +137,7 @@ namespace Rtx
 
         // A format nothing above named: a new one that forgets a case lands here rather than
         // creating an image with a format nobody chose.
-        throw Error("a texture format this renderer does not upload");
+        broken("a texture format this renderer does not upload");
     }
 
     Texture::Texture(const Device& device, Batch& batch, const TexturePasses& passes, const VkSampler sampler,
@@ -296,10 +295,9 @@ namespace Rtx
                   Shaders::NO_TEXTURE_ALBEDO.x(), Shaders::NO_TEXTURE_ALBEDO.y(), Shaders::NO_TEXTURE_ALBEDO.z(), 1.0f))
         , mSets(device, sBindings, layout.get(), sFrameSlots, VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT_EXT)
     {
-        // The last slot is the neutral texel's and the scene may not reach it.
-        if (slots > Shaders::TEXTURE_NEUTRAL)
-            throw Error("a scene with " + std::to_string(slots) + " textures is past the "
-                + std::to_string(Shaders::TEXTURE_NEUTRAL) + " this array holds beside its neutral texel");
+        // The last slot is the neutral texel's. `TextureTable` refuses a slot past it, so a scene
+        // that reaches it is a table that broke that rule.
+        contract(slots <= Shaders::TEXTURE_NEUTRAL, "a scene with more textures than its table may hand out");
 
         // The neutral texel's count, and nought for every slot nothing stands, which no material
         // names. Owed to every copy and every set from the start, the way an arrival is: written by
@@ -321,9 +319,7 @@ namespace Rtx
 
     void TextureArray::reserveSlot(std::uint32_t slot)
     {
-        if (slot >= Shaders::TEXTURE_NEUTRAL)
-            throw Error("a scene wanting texture slot " + std::to_string(slot) + " is past the "
-                + std::to_string(Shaders::TEXTURE_NEUTRAL) + " this array holds beside its neutral texel");
+        contract(slot < Shaders::TEXTURE_NEUTRAL, "a texture slot past what its table may hand out");
 
         // Grown to reach it rather than one at a time: arrivals come in whatever order the scene's
         // free list handed the slots out, so the highest is not always the last.

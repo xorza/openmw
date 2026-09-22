@@ -41,7 +41,7 @@ namespace Rtx
 
         /// Whether Ray Reconstruction can run on `device`, without leaving a runtime behind: where
         /// one is already up this asks it, and where none is, it stands one up for the length of
-        /// the call. Throws `Error` where the runtime will not come up at all.
+        /// the call. Throws `Unsupported` where the runtime will not come up at all.
         static DlssSupport probe(const Device& device, VkInstance instance);
 
         /// Starts the runtime. Throws where one is already up, on any device: there is one per
@@ -62,7 +62,7 @@ namespace Rtx
 
         /// What to render at to produce `output` under `upscale`, which must not be `Off` — DLSS's
         /// answer and not a ratio applied here, because a frame traced at anything else is a frame
-        /// it will refuse. Throws `Error` where DLSS will not answer.
+        /// it will refuse. Throws `Unsupported` where DLSS will not answer.
         VkExtent2D getRenderSize(VkExtent2D output, Upscale upscale) const;
 
         /// The device NGX was brought up on, which is the one a feature is built for.

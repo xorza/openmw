@@ -14,9 +14,9 @@ namespace Rtx
     namespace
     {
         /// The source in, one level of the bake out.
-        constexpr std::array<VkDescriptorSetLayoutBinding, 2> sBindings{
-            computeBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER),
-            computeBinding(1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
+        constexpr std::array<VkDescriptorSetLayoutBinding, Shaders::SPRITE_LIGHT_BINDINGS> sBindings{
+            computeBinding(Shaders::SPRITE_LIGHT_BIND_SOURCE, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER),
+            computeBinding(Shaders::SPRITE_LIGHT_BIND_BAKE, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
         };
 
         /// The shader's own workgroup.
@@ -38,10 +38,11 @@ namespace Rtx
 
         for (std::uint32_t level = 0; level < bake.getMipLevels(); ++level)
         {
-            DescriptorWrites<2> writes;
-            writes.image(0, source.describeSampled(sampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL),
+            DescriptorWrites<Shaders::SPRITE_LIGHT_BINDINGS> writes;
+            writes.image(Shaders::SPRITE_LIGHT_BIND_SOURCE,
+                source.describeSampled(sampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL),
                 VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-            writes.image(1, bake.describeStorage(level));
+            writes.image(Shaders::SPRITE_LIGHT_BIND_BAKE, bake.describeStorage(level));
 
             const Shaders::SpriteLightConstants constants{
                 .mLevel = level,

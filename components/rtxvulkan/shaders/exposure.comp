@@ -11,12 +11,12 @@
 
 layout(local_size_x = EXPOSURE_BINS) in;
 
-layout(set = 0, binding = 0, scalar) buffer Histogram
+layout(set = 0, binding = EXPOSURE_BIND_HISTOGRAM, scalar) buffer Histogram
 {
     uint bins[];
 };
 
-layout(set = 0, binding = 1, scalar) buffer Exposure
+layout(set = 0, binding = EXPOSURE_BIND_EXPOSURE, scalar) buffer Exposure
 {
     float exposure;
 };

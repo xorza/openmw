@@ -22,6 +22,7 @@
 
 #include "geometry.hpp"
 #include "harness.hpp"
+#include "testcamera.hpp"
 
 namespace Rtx
 {
@@ -32,7 +33,7 @@ namespace Rtx
 
         Shaders::VisibilityConstants ahead()
         {
-            return makeCamera(osg::Vec3f(), osg::Vec3f(0.0f, 100.0f, 0.0f), 60.0f, sSize, sSize, 100000.0f);
+            return Testing::makeCamera(osg::Vec3f(), osg::Vec3f(0.0f, 100.0f, 0.0f), 60.0f, sSize, sSize, 100000.0f);
         }
 
         /// Two frames in flight, and what each of them read.

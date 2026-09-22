@@ -6,7 +6,6 @@
 #include <filesystem>
 #include <memory>
 #include <optional>
-#include <string_view>
 #include <vector>
 
 #include <osg/Matrixd>
@@ -18,6 +17,7 @@
 #include <components/esm3/refnum.hpp>
 #include <components/rtx/frameimage.hpp>
 #include <components/rtx/frameworld.hpp>
+#include <components/rtx/pacing.hpp>
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/shaders/visibility.h>
 #include <components/rtx/stepped.hpp>
@@ -76,13 +76,7 @@ namespace MyGUIRtx
 
 namespace MWRender
 {
-    class TracedOverlay;
     class TracedView;
-    struct PoseMoment;
-
-    /// A camera's cull mask as the trace reads it: which `Rtx::InstanceClass`es its rays meet, and
-    /// whether it draws the sprites. The one translation, so both renderers read one mask.
-    std::uint32_t rayMaskOf(osg::Node::NodeMask cullMask);
 
     /// The picture as rays find it: a window, a mirror of the scene graph, and a trace. It names a
     /// graphics API in one line — the constructor calls `Rtx::createVulkanRenderer` — and initialises
@@ -138,8 +132,11 @@ namespace MWRender
         void applyWorldShown() override {}
 
         /// The driver's sleep where the driver paces, and the seam's limiter where it does not,
-        /// asked every frame. What the sleep cost is the frame's `Sleep` row.
-        std::chrono::steady_clock::duration awaitFrame() override;
+        /// asked every frame. What either held is the frame's `Sleep` row.
+        bool holdFrame() override;
+
+        /// The limit, as the interval the driver's sleep holds two presents apart.
+        void applyFrameRateLimit() override;
 
         void advance(double simulationTime) override;
         void eventTraversal() override;
@@ -186,41 +183,25 @@ namespace MWRender
         /// camera carrying no callback is left alone.
         static void updateEye(osg::Camera& camera, osgUtil::UpdateVisitor& visitor);
 
-        /// The backend a view traces into: what a traced view, drawn on a later frame than the one
-        /// that asked, needs back from the renderer that made it, with `getViews` and
-        /// `describePose`.
+        /// The backend the frames and the pictures are traced into, for the harness's own reads.
         Rtx::Renderer& getBackend() { return *mRenderer; }
 
         /// `WorldMirror::collectStanding`, for the harness's check that no static stands twice.
         void collectStanding(std::vector<ESM::RefNum>& into) const { mMirror.collectStanding(into); }
 
-        /// The pictures inside the interface this renderer holds, for a view to join and leave and
-        /// for the harness to find the game's own map tile in.
+        /// The pictures inside the interface this renderer holds, for the harness to find the
+        /// game's own map tile in.
         ViewQueue& getViews() { return mViews; }
-
-        /// What the game says of one reference, from `TracedGround`: a script's toggle, a moved or
-        /// animated object the distance must never stand, and a new game that forgets both. Here
-        /// and not on the mirror directly, because they land between frames and the phase says so.
-        void setReferenceEnabled(ESM::RefNum refnum, bool enabled);
-        void blacklistReference(ESM::RefNum refnum);
-        void forgetReferences();
 
         /// `Rtx::Renderer::getProfile`: the knobs the frames are traced under now — what the
         /// backend was made with, and then whatever a setting moved. The one copy, which the
         /// frame path reads as a stop that writes a picture by the same rules does.
         const Rtx::RenderProfile& getProfile() const { return mRenderer->getProfile(); }
 
-        /// The moment a subject is posed at, for a view drawn inside this frame's window.
-        PoseMoment describePose();
-
         /// Draws the pictures asked for since the last frame — `ViewQueue::draw` with this
         /// renderer's budget of world views — and answers how long that took. From the frame's
         /// own `Views` phase, and from the run's hook.
         double drawViews();
-
-        /// The overlay that exists, or null: told by `TracedOverlay` as it comes and goes, so the
-        /// frame can finish its paints once the pictures they wait for have come back.
-        void setMapOverlay(TracedOverlay* overlay) { mMapOverlay = overlay; }
 
     private:
         /// Builds everything from the setup, which is spent here. Delegated to, so `mRun` can bind
@@ -256,9 +237,12 @@ namespace MWRender
             Gui,
         };
 
-        /// How hard the upscaler between the trace and the picture works, as `RTX / upscale`
-        /// names it.
-        void setUpscale(std::string_view name);
+        /// How hard the upscaler between the trace and the picture works, which a machine that
+        /// cannot reach the mode refuses.
+        void setUpscale(Rtx::Upscale upscale);
+
+        /// The Reflex mode the run chose or the menu moved, with the seam's limit as its interval.
+        Rtx::Pacing getPacing() const;
 
         /// Traces the world the walk has just mirrored: the frame behind finished, the scene handed
         /// over, the deferred views drawn, the camera aimed, the frame traced and the report closed.
@@ -313,13 +297,7 @@ namespace MWRender
 
         Rtx::Stepped<Attachment> mAttachment{ Attachment::Detached };
 
-        /// Whether the world has been handed to the backend at least once.
-        bool mHasScene = false;
-
         ViewQueue mViews;
-
-        /// Borrowed: the map window owns it, through `GlobalMap`, and says when it goes.
-        TracedOverlay* mMapOverlay = nullptr;
 
         /// How many pictures of the world one frame draws; the rest wait for the next. Three,
         /// because a cell crossing asks for a row of three map tiles and a fresh load for nine: the
@@ -405,10 +383,9 @@ namespace MWRender
         /// once is the whole of it.
         bool mComplained = false;
 
-        /// What the last `awaitFrame` cost in the driver's sleep, for the frame's `Sleep` row, and
-        /// when it returned, for the interval the next one answers. Nothing before the first.
-        double mSleptMs = 0.0;
-        std::optional<std::chrono::steady_clock::time_point> mOpened;
+        /// How the driver paces the frame, as the run set it and the menu moved it. The interval
+        /// beside it is the seam's (`getFrameRateLimit`), so each half has one source.
+        Rtx::LatencyMode mLatency;
 
         /// The left button as `takeClick` last saw it.
         bool mLeftButtonDown = false;

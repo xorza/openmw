@@ -1,14 +1,12 @@
 #pragma once
 
-#include <array>
-#include <cstddef>
-#include <cstdint>
 #include <filesystem>
 
 #include <vulkan/vulkan_core.h>
 
 #include <components/rtx/shaders/camera.h>
 
+#include "accumulatehistory.hpp"
 #include "computepipeline.hpp"
 #include "image.hpp"
 
@@ -27,13 +25,9 @@ namespace Rtx
     public:
         AccumulatePass(const Device& device, const std::filesystem::path& shaderDirectory);
 
-        /// Makes room for a frame this size, if the last one was not. A resize is a reset. The
-        /// caller has waited for anything still reading the old images.
-        void resize(std::uint32_t width, std::uint32_t height);
-
-        /// Blends the buffer's indirect channel with the history, and leaves this frame's moments
-        /// and its blend (`getBlended`) where the cascade can read them — into an image of this
-        /// pass's own, or `Channel::Indirect` would mean two different things.
+        /// Blends the buffer's indirect channel with `history`, and leaves this frame's moments and
+        /// its blend (`AccumulateHistory::getBlended`) where the cascade can read them — into an
+        /// image of the history's own, or `Channel::Indirect` would mean two different things.
         ///
         /// @param far the frame's far plane, which this turns into a storage scale rather than
         ///        writing a depth against. `AccumulateConstants::mDistanceScale` says why it is a
@@ -41,37 +35,10 @@ namespace Rtx
         /// @param reset true where there is no history worth carrying — the first frame, a resize, a
         ///        door walked through. The same signal Ray Reconstruction is handed.
         /// @return the moments image the cascade weighs its taps by.
-        const Image& record(
-            VkCommandBuffer commands, const GBuffer& buffer, const Shaders::Camera& camera, float far, bool reset);
-
-        /// This frame's bounce blended with the history, which is what the cascade filters. One
-        /// image and not a pair, because nothing reads it after the frame that wrote it: the
-        /// cascade consumes it immediately and the history the next frame needs is `mColour`.
-        const Image& getBlended() const;
-
-        /// Where the cascade's first level writes the mean this pass will read next frame — SVGF's
-        /// feedback, so what carries forward is the filtered light. Only valid after `record`.
-        const Image& getHistory() const;
+        const Image& record(VkCommandBuffer commands, AccumulateHistory& history, const GBuffer& buffer,
+            const Shaders::Camera& camera, float far, bool reset) const;
 
     private:
-        const Device& mDevice;
         ComputePipeline mPipeline;
-
-        /// Two of each, because this frame reads what the last one wrote: the mean, written by the
-        /// cascade; the surface it belongs to, for the reprojection; and the two moments of its
-        /// luminance, where the variance and the frame count sit. Empty until `resize`.
-        std::array<Image, 2> mColour;
-        std::array<Image, 2> mSurface;
-        std::array<Image, 2> mMoments;
-
-        /// Where the blend goes, in the cascade's format because the cascade both reads and
-        /// overwrites it. Empty until `resize`.
-        Image mBlended;
-
-        /// Which half of each pair this frame writes. Flipped by `record`.
-        std::size_t mCurrent = 0;
-
-        /// Set by `resize`, so the first frame after one does not read an image nothing has written.
-        bool mFresh = true;
     };
 }

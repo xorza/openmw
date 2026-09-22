@@ -11,10 +11,10 @@
 #include "extractionstats.hpp"
 #include "meshreader.hpp"
 #include "mirroridentity.hpp"
+#include "mirrorpass.hpp"
 #include "runs.hpp"
 #include "scenedesc.hpp"
 #include "shaders/skinning.h"
-#include "walk.hpp"
 
 namespace osg
 {

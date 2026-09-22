@@ -50,6 +50,7 @@ if (OPENMW_RTX)
         mwrender/readworld.cpp
         mwrender/renderer.cpp
         mwrender/rtxrenderer.cpp
+        mwrender/rtxsettings.cpp
         mwrender/tracedterrain.cpp
         mwrender/waterstate.cpp
         mwrender/worldmirror.cpp

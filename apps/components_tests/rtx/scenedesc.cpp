@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <optional>
 #include <span>
+#include <string>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -25,11 +26,13 @@
 #include <components/rtx/meshtable.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
+#include <components/rtx/shaders/scene.h>
 #include <components/rtx/shaders/skinning.h>
 #include <components/rtx/shapefold.hpp>
 #include <components/rtx/sprite.hpp>
 #include <components/rtx/spritelight.hpp>
 #include <components/rtx/surface.hpp>
+#include <components/rtx/texturetable.hpp>
 #include <components/vfs/pathutil.hpp>
 
 #include "geometry.hpp"
@@ -180,6 +183,39 @@ namespace Rtx
             EXPECT_EQ(scene.textures().getRows().size(), 2u);
         }
 
+        /// **A table with every slot standing refuses the next texture, and takes it once a slot
+        /// goes.** The array holds `sCapacity` beside its neutral texel, and a world past that is
+        /// content drawn neutral rather than a frame that stops. A texture already standing takes
+        /// no slot and is still answered, and a bake is refused as a file is.
+        TEST(RtxSceneDescTest, aFullTextureTableRefusesTheNextTextureAndCountsIt)
+        {
+            SceneDesc scene;
+            TextureTable& textures = scene.textures();
+
+            std::vector<VFS::Path::Normalized> names;
+            names.reserve(TextureTable::sCapacity + 1);
+            for (std::size_t at = 0; at <= TextureTable::sCapacity; ++at)
+                names.emplace_back("textures/tx_" + std::to_string(at) + ".dds");
+
+            for (std::size_t at = 0; at < TextureTable::sCapacity; ++at)
+                ASSERT_EQ(textures.add(names[at]), at);
+
+            EXPECT_EQ(textures.add(names.back()), sNoIndex);
+            EXPECT_EQ(textures.addBaked("chunk/1"), sNoIndex);
+            EXPECT_EQ(textures.getRefused(), 2u);
+            EXPECT_EQ(textures.add(names[7]), 7u) << "a texture that stands takes no slot";
+
+            textures.hold(7);
+            textures.drop(7);
+            EXPECT_EQ(textures.add(names.back()), 7u) << "the slot given back is the next arrival's";
+            EXPECT_EQ(textures.getRefused(), 2u);
+
+            // The neutral texel a refused ground layer names is no slot of the table's.
+            textures.hold(Shaders::TEXTURE_NEUTRAL);
+            textures.drop(Shaders::TEXTURE_NEUTRAL);
+            EXPECT_EQ(textures.getLiveCount(), TextureTable::sCapacity);
+        }
+
         /// **Which slot a thing lands in cannot depend on the order the dead left in.**
         /// `Rtx::Identity` hashes by address, so a sweep gives slots back in whatever order the
         /// allocator left its map in — and a table that answered with the last one freed then handed
@@ -228,7 +264,7 @@ namespace Rtx
 
             // 8 positions, 8 normals and 8 colours at 12 bytes, 8 texture coordinates at 8, and 12
             // indices at 4. The mesh brought neither normal, coordinate nor colour and the buffers
-            // hold one apiece regardless — `MeshTable::writeAttributes` says why.
+            // hold one apiece regardless — `MeshTable::writeVertices` says why.
             EXPECT_EQ(scene.meshes().getGeometryBytes(), 8u * 12u + 8u * 12u + 8u * 8u + 8u * 12u + 12u * 4u);
         }
 
@@ -1893,7 +1929,7 @@ namespace Rtx
             const std::array<std::uint32_t, 3> triangle{ 0, 1, 2 };
 
             SceneDesc scene;
-            EXPECT_THROW(scene.addMesh(MeshArrays{ .mPositions = tooMany, .mIndices = triangle }), Error);
+            EXPECT_THROW(scene.addMesh(MeshArrays{ .mPositions = tooMany, .mIndices = triangle }), InputError);
 
             // And exactly a block is not too many, so the refusal is a boundary and not a ban.
             EXPECT_NO_THROW(scene.addMesh(
@@ -1909,20 +1945,20 @@ namespace Rtx
             EXPECT_THROW(
                 scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices }, {},
                     RigSpec{ .mRuns = shortRuns, .mInfluences = influences, .mBones = 1 }),
-                Error)
+                InputError)
                 << "a rig of three vertices on a quad";
 
             const std::vector<std::uint32_t> longRuns(tooMany.size(), 1u);
             EXPECT_THROW(scene.addMesh(MeshArrays{ .mPositions = tooMany, .mIndices = triangle }, {},
                              RigSpec{ .mRuns = longRuns, .mInfluences = influences, .mBones = 1 }),
-                Error)
+                InputError)
                 << "a rig the length of a mesh past a block";
 
             const std::array<osg::Vec3f, 6> shortOffsets{};
             EXPECT_THROW(
                 scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices }, {},
                     MorphSpec{ .mOffsets = shortOffsets, .mTargets = 2 }),
-                Error)
+                InputError)
                 << "two targets of three vertices on a quad";
 
             EXPECT_EQ(scene.deformers().getDeformers().size(), deformers) << "a refused mesh left a deformer behind";

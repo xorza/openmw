@@ -13,6 +13,7 @@
 #include <osg/Matrix>
 #include <osg/Matrixf>
 
+#include <components/debug/debuglog.hpp>
 #include <components/sceneutil/morphgeometry.hpp>
 #include <components/sceneutil/riggeometry.hpp>
 #include <components/sceneutil/skeleton.hpp>
@@ -65,6 +66,14 @@ namespace Rtx
         if (const auto known = mMeshes.find(&drawable); known != mMeshes.end())
         {
             const Index mesh = known->second.mIndex;
+
+            // Refused once, and never read again: the file has not changed since.
+            if (mesh == sNoIndex)
+            {
+                mMeshes.stamp(known);
+                return sNoIndex;
+            }
+
             const MeshRange& range = mScene.meshes().getRows()[mesh];
 
             // Nothing else in the map is re-read: the whole point of it is that a crate met again is
@@ -99,10 +108,28 @@ namespace Rtx
             mMeshes.abandon(known);
         }
 
+        // **What a content file says is refused here, per drawable, and the frame goes on.** Every
+        // check that can throw runs before a row is made (`SceneDesc::addMesh`), so a refusal
+        // leaves the scene as it was. The refusal is kept under the drawable, stamped as the walk
+        // meets it, so a file the renderer cannot take is read once and logged once for as long as
+        // it stands rather than once a frame.
         MeshReading reading;
-        if (!mReader.read(read, reading))
+        Index mesh = sNoIndex;
+        try
         {
-            ++stats.mSkippedEmpty;
+            if (!mReader.read(read, reading))
+            {
+                ++stats.mSkippedEmpty;
+                return sNoIndex;
+            }
+
+            mesh = addMesh(read, reading);
+        }
+        catch (const InputError& refused)
+        {
+            Log(Debug::Warning) << "Ray tracing skipped \"" << drawable.getName() << "\": " << refused.what();
+            mMeshes.add(&drawable, Known{ .mIndex = sNoIndex });
+            ++stats.mRefused;
             return sNoIndex;
         }
 
@@ -114,7 +141,6 @@ namespace Rtx
         if (reading.mShape.mSheet)
             ++stats.mSheets;
 
-        const Index mesh = addMesh(read, reading);
         mMeshes.add(&drawable, Known{ .mIndex = mesh });
         ++stats.mMeshesAdded;
 
@@ -319,7 +345,7 @@ namespace Rtx
         for (const auto& [weights, group] : skin->mInfluences)
         {
             if (weights.size() > Shaders::RUN_COUNT_MASK)
-                throw Error("a vertex skinned by " + std::to_string(weights.size()) + " bones, past the "
+                throw InputError("a vertex skinned by " + std::to_string(weights.size()) + " bones, past the "
                     + std::to_string(Shaders::RUN_COUNT_MASK) + " a run word holds");
 
             const auto first = static_cast<std::uint32_t>(mInfluenceScratch.size());
@@ -333,7 +359,7 @@ namespace Rtx
             for (const unsigned short vertex : group)
             {
                 if (vertex >= vertices)
-                    throw Error("a skin naming vertex " + std::to_string(vertex) + " of a mesh with "
+                    throw InputError("a skin naming vertex " + std::to_string(vertex) + " of a mesh with "
                         + std::to_string(vertices));
 
                 mRunScratch[vertex] = run;

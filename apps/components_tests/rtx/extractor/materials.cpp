@@ -614,7 +614,13 @@ namespace Rtx::Testing
                 std::vector<Rtx::InstanceRecord> records;
                 Rtx::makeInstanceRecords(scene, records);
                 EXPECT_EQ(records.size(), 1u);
-                EXPECT_TRUE(records.front().mCutout) << "a fade is not a hole, and the mask still has some";
+                // A fade is not a hole: traversal still stops for the placement, as a cutout where
+                // it is whole and as a translucent surface where it is not, and `candidateStops`
+                // reads the mask's holes off the material either way. One of the two and not both,
+                // because a translucent row is never counted as a cutout (`PlacedTraversal`).
+                EXPECT_TRUE(records.front().mCutout || records.front().mTranslucent)
+                    << "a fade let traversal commit the mask's holes";
+                EXPECT_NE(records.front().mCutout, records.front().mTranslucent);
 
                 return scene.placements().getRows().front().mInstance.mOpacity;
             };

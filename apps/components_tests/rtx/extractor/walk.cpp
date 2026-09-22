@@ -46,6 +46,34 @@ namespace Rtx::Testing
             EXPECT_EQ(mScene.meshes().getTriangleCount(), 4u);
         }
 
+        /// **What a content file describes and this renderer cannot take is refused per drawable,
+        /// once, and the walk goes on.** The quad beside the refused mesh stands. The refusal is
+        /// counted on the walk that made it, and the walk after reads the drawable no more: a
+        /// second read would count a second refusal.
+        TEST_F(RtxSceneExtractorTest, aMeshPastOneBlockIsRefusedOnceAndTheWalkGoesOn)
+        {
+            osg::ref_ptr<osg::Group> root = new osg::Group;
+            root->addChild(makePastOneBlock());
+            root->addChild(makeQuad());
+
+            const ExtractionStats first = walk(*root);
+            EXPECT_EQ(first.mRefused, 1u);
+            EXPECT_EQ(first.mMeshesAdded, 1u);
+            EXPECT_EQ(first.mInstances, 1u);
+            mExtractor.retire();
+
+            const ExtractionStats second = walk(*root);
+            EXPECT_EQ(second.mRefused, 0u) << "a refused drawable is read once";
+            EXPECT_EQ(second.mMeshesAdded, 0u);
+            EXPECT_EQ(second.mMeshesReused, 1u);
+            EXPECT_EQ(second.mInstances, 1u);
+            mExtractor.retire();
+
+            EXPECT_EQ(mScene.meshes().getLiveCount(), 1u)
+                << "the refusal names no row, and the sweep keeps none for it";
+            EXPECT_TRUE(mScene.isConsistent());
+        }
+
         /// A flipbook shows one frame at a time, and this walk is what advances it.
         ///
         /// **`NifOsg` builds an `osg::Sequence` for every `NiFltAnimationNode`** — Morrowind's fires,

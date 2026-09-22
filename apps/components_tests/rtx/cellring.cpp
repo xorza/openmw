@@ -37,12 +37,12 @@
 #include <components/misc/constants.hpp>
 #include <components/rtx/cellreader.hpp>
 #include <components/rtx/cellring.hpp>
+#include <components/rtx/cellworld.hpp>
 #include <components/rtx/extractionstats.hpp>
 #include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/material.hpp>
 #include <components/rtx/mesh.hpp>
 #include <components/rtx/prepared.hpp>
-#include <components/rtx/residency.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneextractor.hpp>
 #include <components/sceneutil/lightcommon.hpp>

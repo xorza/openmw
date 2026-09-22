@@ -15,6 +15,7 @@
 #include <utility>
 
 #include <components/files/conversion.hpp>
+#include <components/rtx/contract.hpp>
 #include <components/rtx/error.hpp>
 #include <components/rtx/renderer.hpp>
 
@@ -140,8 +141,7 @@ namespace Rtx
 
     void FrameHashes::write(const std::filesystem::path& file) const
     {
-        if (const std::size_t unpictured = countUnpictured(); unpictured > 0)
-            throw Error(std::to_string(unpictured) + " frames were noted and never pictured; the ring was not drained");
+        contract(countUnpictured() == 0, "frames were noted and never pictured; the ring was not drained");
 
         std::ofstream out(file);
         out << headerLine() << '\n';
@@ -161,17 +161,17 @@ namespace Rtx
         // **Thrown and not reported**: a reference that did not get written and a command that
         // still succeeded is the next run comparing against whatever was at that path before.
         if (!out)
-            throw Error("could not write " + Files::pathToUnicodeString(file));
+            throw InputError("could not write " + Files::pathToUnicodeString(file));
     }
 
     FrameHashes FrameHashes::read(const std::filesystem::path& file)
     {
         std::ifstream in(file);
         if (!in)
-            throw Error("could not read " + Files::pathToUnicodeString(file));
+            throw InputError("could not read " + Files::pathToUnicodeString(file));
 
         const auto fail = [&](const std::string& line) {
-            return Error("cannot read " + Files::pathToUnicodeString(file) + ": " + line);
+            return InputError("cannot read " + Files::pathToUnicodeString(file) + ": " + line);
         };
 
         std::string line;

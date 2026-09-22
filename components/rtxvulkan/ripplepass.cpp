@@ -9,6 +9,7 @@
 #include <osg/Vec2f>
 #include <osg/Vec2i>
 
+#include <components/rtx/shaders/ripple.h>
 #include <components/rtx/wavecascade.hpp>
 
 #include "barriers.hpp"
@@ -24,15 +25,15 @@ namespace Rtx
     namespace
     {
         /// The field a step reads, the one it writes, and the impulses it presses.
-        constexpr std::array<VkDescriptorSetLayoutBinding, 3> sStepBindings{
-            computeBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
-            computeBinding(1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
-            computeBinding(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
+        constexpr std::array<VkDescriptorSetLayoutBinding, Shaders::RIPPLE_STEP_BINDINGS> sStepBindings{
+            computeBinding(Shaders::RIPPLE_STEP_BIND_BEFORE, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
+            computeBinding(Shaders::RIPPLE_STEP_BIND_AFTER, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
+            computeBinding(Shaders::RIPPLE_STEP_BIND_IMPULSES, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER),
         };
 
         /// The field in, and the two tiles out.
-        constexpr std::array<VkDescriptorSetLayoutBinding, 3> sComposeBindings
-            = computeBindings<3>(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+        constexpr std::array<VkDescriptorSetLayoutBinding, Shaders::RIPPLE_COMPOSE_BINDINGS> sComposeBindings
+            = computeBindings<Shaders::RIPPLE_COMPOSE_BINDINGS>(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
 
         constexpr VkFormat sFieldFormat = VK_FORMAT_R32G32_SFLOAT;
 
@@ -171,10 +172,10 @@ namespace Rtx
         const Image& after = mFields[1 - mLatest];
         mLatest = 1 - mLatest;
 
-        DescriptorWrites<3> steps;
-        steps.image(0, before.describeStorage());
-        steps.image(1, after.describeStorage());
-        steps.buffer(2, impulseBuffer.describe());
+        DescriptorWrites<Shaders::RIPPLE_STEP_BINDINGS> steps;
+        steps.image(Shaders::RIPPLE_STEP_BIND_BEFORE, before.describeStorage());
+        steps.image(Shaders::RIPPLE_STEP_BIND_AFTER, after.describeStorage());
+        steps.buffer(Shaders::RIPPLE_STEP_BIND_IMPULSES, impulseBuffer.describe());
 
         const Shaders::RippleStepConstants stepped{
             .mShift = shift,
@@ -195,10 +196,10 @@ namespace Rtx
             opened.add(image->describeTransition(Use::sUndefined, Use::sComputeWrite));
         opened.flush();
 
-        DescriptorWrites<3> composes;
-        composes.image(0, after.describeStorage());
-        composes.image(1, mSurface.describeStorage());
-        composes.image(2, mCurvature.describeStorage());
+        DescriptorWrites<Shaders::RIPPLE_COMPOSE_BINDINGS> composes;
+        composes.image(Shaders::RIPPLE_COMPOSE_BIND_FIELD, after.describeStorage());
+        composes.image(Shaders::RIPPLE_COMPOSE_BIND_SURFACE, mSurface.describeStorage());
+        composes.image(Shaders::RIPPLE_COMPOSE_BIND_CURVATURE, mCurvature.describeStorage());
 
         // Bound and pushed by hand: the compose is told nothing, and `dispatch` pushes a block.
         bind(commands, mComposePipeline);

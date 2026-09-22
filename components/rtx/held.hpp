@@ -15,8 +15,8 @@
 #include <components/esm3/refnum.hpp>
 
 #include "prepared.hpp"
-#include "residency.hpp"
 #include "runs.hpp"
+#include "sceneadopter.hpp"
 #include "scratch.hpp"
 #include "slots.hpp"
 

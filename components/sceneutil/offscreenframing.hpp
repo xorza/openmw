@@ -35,9 +35,9 @@ namespace SceneUtil
 
     /// How an offscreen picture is projected, and the near and far it is clipped at.
     ///
-    /// **One pair, because the spec a caller fills in and the trace that reads it each had their
-    /// own.** The trace's was `mPerspective` beside four floats, three of which meant nothing in
-    /// the case the flag did not name.
+    /// **One pair, which the spec a caller fills in and the trace that reads it share**: a
+    /// projection holds only the numbers its own kind means, so no field means nothing in the
+    /// other case.
     struct Framing
     {
         std::variant<Perspective, Orthographic> mProjection;

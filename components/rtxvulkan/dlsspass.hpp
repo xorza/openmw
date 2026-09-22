@@ -20,8 +20,8 @@ namespace Rtx
     class DlssPass
     {
     public:
-        /// Builds Ray Reconstruction to take `render` and produce `output`. Throws `Error` where NGX
-        /// will not build it.
+        /// Builds Ray Reconstruction to take `render` and produce `output`. Throws `Unsupported`
+        /// where NGX will not build it.
         ///
         /// @param commands must be recording, and submitted and waited on before the first
         ///        evaluation: NGX uploads the network's weights here.
@@ -33,8 +33,8 @@ namespace Rtx
         DlssPass& operator=(const DlssPass&) = delete;
 
         /// Records one upscale into `output`, at the output extent. Every image must be in
-        /// `VK_IMAGE_LAYOUT_GENERAL` and hold this frame. Throws `Error` where NGX refuses the
-        /// evaluation.
+        /// `VK_IMAGE_LAYOUT_GENERAL` and hold this frame. Throws `DeviceError` where NGX refuses
+        /// the evaluation.
         void record(VkCommandBuffer commands, const UpscaleInputs& inputs, const Image& output) const;
 
     private:

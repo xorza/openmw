@@ -7,6 +7,7 @@
 #include <components/rtx/slot.hpp>
 
 #include "../geometry.hpp"
+#include "../testcamera.hpp"
 #include "fixture.hpp"
 
 #include <algorithm>
@@ -44,7 +45,7 @@ namespace Rtx::Testing
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
                 .mMesh = scene.addMesh(MeshArrays{ .mPositions = sheetAt(4000.0f, 0.0f), .mIndices = sQuadIndices }) });
 
-            Shaders::VisibilityConstants camera = makeCamera(
+            Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -1.0f, 300.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
             camera.mSkyHorizon = osg::Vec3f(0.20f, 0.15f, 0.60f);
             camera.mSkyZenith = osg::Vec3f(0.80f, 0.65f, 0.15f);
@@ -101,8 +102,8 @@ namespace Rtx::Testing
         /// the same unbiased estimator, averaged. One sample against that is the error a denoiser
         /// exists to reduce, and the ratio of the two is the only honest way to say it worked.
         ///
-        /// **The bound sits between the two weightings on purpose.** Measured here on
-        /// `Channel::Radiance`: one sample is 0.0420 off the reference and the plane weight brings
+        /// **The bound sits between the two weightings on purpose.** Measured here on the composite
+        /// (`readRadiance`): one sample is 0.0420 off the reference and the plane weight brings
         /// that to 0.0020, against 0.0061 for a plain depth weight — twenty times better against
         /// seven. Every number is repeatable, because frame zero and a sixty-four frame average are
         /// both deterministic, so a tenth is a bound this passes with room and a depth test cannot
@@ -119,7 +120,7 @@ namespace Rtx::Testing
             // A degree and a half above the floor: the horizon sits near the top of the frame and
             // the ground runs from a few hundred units away to eight thousand, so the distance
             // between vertical neighbours changes by more than a pixel footprint nearly everywhere.
-            Shaders::VisibilityConstants camera = makeCamera(
+            Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -8000.0f, 200.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
             camera.mSkyHorizon = osg::Vec3f(0.20f, 0.15f, 0.60f);
             camera.mSkyZenith = osg::Vec3f(0.80f, 0.65f, 0.15f);
@@ -272,7 +273,7 @@ namespace Rtx::Testing
 
             // The floor fills the bottom of the frame and the wall the top, with the crease running
             // straight across the middle of it.
-            Shaders::VisibilityConstants camera = makeCamera(
+            Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -1200.0f, 900.0f), osg::Vec3f(0.0f, 0.0f, 250.0f), 60.0f, size, size, 100000.0f);
             camera.mSkyHorizon = osg::Vec3f(0.20f, 0.15f, 0.60f);
             camera.mSkyZenith = osg::Vec3f(0.80f, 0.65f, 0.15f);
@@ -337,7 +338,7 @@ namespace Rtx::Testing
         {
             constexpr std::uint32_t size = 32;
 
-            Shaders::VisibilityConstants bright = makeCamera(
+            Shaders::VisibilityConstants bright = Testing::makeCamera(
                 osg::Vec3f(0.0f, 0.0f, 200.0f), osg::Vec3f(0.0f, 1000.0f, 200.0f), 60.0f, size, size, 100000.0f);
             bright.mSkyHorizon = osg::Vec3f(0.8f, 0.8f, 0.8f);
             bright.mSkyZenith = bright.mSkyHorizon;
@@ -419,7 +420,7 @@ namespace Rtx::Testing
                 .mMesh
                 = scene.addMesh(MeshArrays{ .mPositions = sheetAt(40000.0f, 0.0f), .mIndices = sQuadIndices }) });
 
-            Shaders::VisibilityConstants camera = makeCamera(
+            Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -8000.0f, 200.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
             camera.mSkyHorizon = osg::Vec3f(0.20f, 0.15f, 0.60f);
             camera.mSkyZenith = osg::Vec3f(0.80f, 0.65f, 0.15f);
@@ -490,11 +491,12 @@ namespace Rtx::Testing
         /// to remove.
         ///
         /// So this is the other case, and it is the one Morrowind's geometry actually is: a surface
-        /// whose neighbours disagree. The sheet is cut into a grid of coplanar cells whose *shading*
-        /// normals alternate by forty degrees, which is far outside what `mNormalPower` lets a tap
-        /// carry — so the plane test passes everywhere, the normal test rejects nearly every
-        /// neighbour, and the cascade is left with little more than the centre pixel. Nothing about
-        /// the accumulator changes: a still camera reprojects every pixel onto itself.
+        /// whose neighbours disagree. The sheet is cut into a grid of coplanar cells whose
+        /// *shading* normals alternate by forty degrees, which is far outside what
+        /// `ATROUS_NORMAL_POWER` lets a tap carry — so the plane test passes everywhere, the normal
+        /// test rejects nearly every neighbour, and the cascade is left with little more than the
+        /// centre pixel. Nothing about the accumulator changes: a still camera reprojects every
+        /// pixel onto itself.
         ///
         /// The alternating tilt is not a trick to defeat the filter. It is what a bumpy surface is,
         /// and the reason the two neighbours may not be averaged is that they are genuinely lit
@@ -538,7 +540,7 @@ namespace Rtx::Testing
                 .mMesh
                 = scene.addMesh(MeshArrays{ .mPositions = positions, .mNormals = normals, .mIndices = indices }) });
 
-            Shaders::VisibilityConstants camera = makeCamera(
+            Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -2600.0f, 2600.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
 
             // A sky that changes a great deal between the two tilts, so that two neighbouring cells
@@ -596,13 +598,14 @@ namespace Rtx::Testing
             }
             const double alone = std::sqrt(pooled);
 
-            // Measured on this box through `Channel::Radiance`, over ten starts of the sampler's
-            // stream: the cascade alone leaves 0.00475 to 0.00486 pooled over sixteen frames, and the
-            // same sixteen accumulated leave 0.00268 to 0.00285 — the history removes two fifths of
-            // the error the filter cannot reach, and the ratio runs from 0.556 to 0.590 with a spread
-            // of 0.011 about 0.573. Deterministic to the last digit for one stream, and a different
-            // stream is what any change to the sampler or the scene hands this test, so the bound
-            // below sits seven spreads above the mean rather than one.
+            // Measured on this box through the composite (`readRadiance`), over ten starts of the
+            // sampler's stream: the cascade alone leaves 0.00475 to 0.00486 pooled over sixteen
+            // frames, and the same sixteen accumulated leave 0.00268 to 0.00285 — the history
+            // removes two fifths of the error the filter cannot reach, and the ratio runs from
+            // 0.556 to 0.590 with a spread of 0.011 about 0.573. Deterministic to the last digit
+            // for one stream, and a different stream is what any change to the sampler or the scene
+            // hands this test, so the bound below sits seven spreads above the mean rather than
+            // one.
             //
             EXPECT_GT(alone, 0.003) << "the cascade alone leaves enough error here for the question to mean something: "
                                     << alone;

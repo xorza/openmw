@@ -70,7 +70,7 @@ namespace Rtx
             std::string worst = "[";
             for (std::size_t at = 0; at < arrivals.mWorstCount; ++at)
                 worst += std::format(R"({}{{"frameMs": {:.2f}, "arrivedMeshes": {}}})", at == 0 ? "" : ", ",
-                    arrivals.mWorst[at].mFrameMs, arrivals.mWorst[at].mArrivedMeshes);
+                    arrivals.mWorst[at].getFrameMs(), arrivals.mWorst[at].mArrivedMeshes);
             worst += ']';
 
             return std::format(R"({{"frames": {}, "meshes": {}, "worstMs": {:.2f}, "meanMs": {:.2f}, "worst": {}}})",
@@ -98,7 +98,7 @@ namespace Rtx
             for (std::size_t at = 0; at < shown; ++at)
                 described += std::format(" {} {:.1f}", sTimings.name(spends[at]), frame.mSpend.at(spends[at]));
 
-            return std::format("{:.1f} ms ({} meshes:{})", frame.mFrameMs, frame.mArrivedMeshes, described);
+            return std::format("{:.1f} ms ({} meshes:{})", frame.getFrameMs(), frame.mArrivedMeshes, described);
         }
 
         std::string asJson(const Crossings& crossings)
@@ -124,8 +124,9 @@ namespace Rtx
         }
     }
 
-    void Arrivals::add(const double frameMs, const std::uint32_t arrivedMeshes, const FrameSpend& spend)
+    void Arrivals::add(const std::uint32_t arrivedMeshes, const FrameSpend& spend)
     {
+        const double frameMs = spend.at(Timing::Frame);
         if (arrivedMeshes > 0)
         {
             ++mFrames;
@@ -136,14 +137,14 @@ namespace Rtx
 
         // Kept longest first, so the shortest kept is the one a longer frame pushes out.
         std::size_t at = mWorstCount;
-        while (at > 0 && mWorst[at - 1].mFrameMs < frameMs)
+        while (at > 0 && mWorst[at - 1].getFrameMs() < frameMs)
             --at;
         if (at >= sKept)
             return;
 
         for (std::size_t behind = std::min(mWorstCount, sKept - 1); behind > at; --behind)
             mWorst[behind] = mWorst[behind - 1];
-        mWorst[at] = WorstFrame{ .mFrameMs = frameMs, .mArrivedMeshes = arrivedMeshes, .mSpend = spend };
+        mWorst[at] = WorstFrame{ .mArrivedMeshes = arrivedMeshes, .mSpend = spend };
         mWorstCount = std::min(mWorstCount + 1, sKept);
     }
 

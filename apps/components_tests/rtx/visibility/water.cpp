@@ -12,6 +12,7 @@
 #include <components/rtx/wavespectrum.hpp>
 
 #include "../geometry.hpp"
+#include "../testcamera.hpp"
 #include "fixture.hpp"
 
 #include <algorithm>
@@ -142,7 +143,7 @@ namespace Rtx::Testing
             const SceneDesc scene = makeFlooded(400.0f, depth);
 
             const auto look = [&](float zenith) {
-                Shaders::VisibilityConstants camera = makeCamera(
+                Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(0.0f, -1.0f, 400.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
                 litThroughWater(camera, zenith);
 
@@ -210,7 +211,7 @@ namespace Rtx::Testing
 
             // A sun well off the vertical, so a tilted surface refracts and reflects visibly
             // different light rather than the same overhead sun.
-            Shaders::VisibilityConstants camera = makeCamera(
+            Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -1.0f, 400.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
             litThroughWater(camera, osg::DegreesToRadians(45.0f));
 
@@ -280,7 +281,7 @@ namespace Rtx::Testing
 
             // No sun and a black sky, so the ambient is the only light and the two per cent that
             // reflects off the surface reflects nothing.
-            Shaders::VisibilityConstants camera = makeCamera(
+            Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -1.0f, 400.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
             camera.mAmbient = osg::Vec3f(1.0f, 1.0f, 1.0f);
 
@@ -331,7 +332,7 @@ namespace Rtx::Testing
             // A fifth of a degree off the vertical, which `makeCamera` insists on and which changes
             // the path by a part in ten thousand.
             const auto look = [&](float from) {
-                Shaders::VisibilityConstants camera = makeCamera(
+                Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(0.0f, -0.05f, from), osg::Vec3f(0.0f, 0.0f, from - 10.0f), 60.0f, size, size, 10000.0f);
                 litThroughWater(camera);
 
@@ -385,7 +386,7 @@ namespace Rtx::Testing
             // No sun and a black sky, so the ambient is the only light and the answer is the two
             // exponentials. The bed is untextured, which is an albedo of a half.
             const auto look = [&](float eye) {
-                Shaders::VisibilityConstants camera = makeCamera(
+                Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(0.0f, -0.05f, -eye), osg::Vec3f(0.0f, 0.0f, -eye - 10.0f), 60.0f, size, size, 10000.0f);
                 camera.mAmbient = osg::Vec3f(1.0f, 1.0f, 1.0f);
                 camera.mAmbientFromSky = 1.0f;
@@ -447,7 +448,7 @@ namespace Rtx::Testing
 
             // A far plane short enough that blue would carry half the sky through it, so a test
             // passing this cannot be one the extinction happened to swallow.
-            Shaders::VisibilityConstants camera = makeCamera(
+            Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -0.05f, -eye), osg::Vec3f(0.0f, 0.0f, -eye - 10.0f), 60.0f, size, size, 2000.0f);
             camera.mAmbient = osg::Vec3f(1.0f, 1.0f, 1.0f);
             camera.mSkyHorizon = osg::Vec3f(1.0f, 1.0f, 1.0f);
@@ -644,7 +645,7 @@ namespace Rtx::Testing
             const auto lookUp = [&](float from) {
                 // A fifth of a degree off the vertical, which `makeCamera` insists on and which
                 // leaves the ray well inside Snell's window.
-                Shaders::VisibilityConstants camera = makeCamera(
+                Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(0.0f, -0.05f, from), osg::Vec3f(0.0f, 0.0f, from + 10.0f), 60.0f, size, size, 10000.0f);
 
                 camera.mWaterLevel = 0.0f;
@@ -687,7 +688,7 @@ namespace Rtx::Testing
             const SceneDesc scene = makeFlooded(4000.0f, 2000.0f);
 
             const auto along = [&](float sign) {
-                Shaders::VisibilityConstants camera = makeCamera(osg::Vec3f(0.0f, 0.0f, -1000.0f),
+                Shaders::VisibilityConstants camera = Testing::makeCamera(osg::Vec3f(0.0f, 0.0f, -1000.0f),
                     osg::Vec3f(0.0f, sign * 1000.0f, -1000.0f), 60.0f, size, size, 100000.0f);
 
                 camera.mWaterLevel = 0.0f;
@@ -758,7 +759,7 @@ namespace Rtx::Testing
             // Straight down but for the third of a degree `makeCamera` insists on — it refuses a
             // view along the world's up axis, where roll has no answer — so the way out is the
             // vertical column to a part in seventy thousand and the bed is met square on.
-            Shaders::VisibilityConstants camera = makeCamera(
+            Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -1.0f, above - depth), osg::Vec3f(0.0f, 0.0f, -depth), 60.0f, size, size, 10000.0f);
             camera.mSkyHorizon = osg::Vec3f(sky, sky, sky);
             camera.mSkyZenith = camera.mSkyHorizon;
@@ -810,7 +811,7 @@ namespace Rtx::Testing
                 .mMaterial = scene.addMaterial(Material{ .mTwoSided = true }) });
 
             const auto look = [&](float across) {
-                Shaders::VisibilityConstants camera = makeCamera(
+                Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(across, -1.0f, 100.0f), osg::Vec3f(across, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
 
                 // The plane the water geometry lies in, which the mirrored reprojection reflects
@@ -857,7 +858,7 @@ namespace Rtx::Testing
             // camera turns — writing nought there says the mirrored horizon is nailed to the screen.
             const SceneDesc bare = makeOpenWater(4000.0f);
             const auto turn = [&](float sideways) {
-                Shaders::VisibilityConstants camera = makeCamera(
+                Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(0.0f, -1.0f, 100.0f), osg::Vec3f(sideways, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
                 camera.mWaterLevel = 0.0f;
                 return camera;

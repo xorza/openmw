@@ -4,6 +4,7 @@
 #include <cassert>
 
 #include <components/rtx/frameimage.hpp>
+#include <components/rtx/shaders/composite.h>
 
 #include "dispatch.hpp"
 #include "gbuffer.hpp"
@@ -14,8 +15,8 @@ namespace Rtx
     namespace
     {
         /// Three channels in, the running sum, and the frame out — all storage images, all pushed.
-        constexpr std::array<VkDescriptorSetLayoutBinding, 5> sBindings
-            = computeBindings<5>(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+        constexpr std::array<VkDescriptorSetLayoutBinding, Shaders::COMPOSITE_BINDINGS> sBindings
+            = computeBindings<Shaders::COMPOSITE_BINDINGS>(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
     }
 
     CompositePass::CompositePass(const Device& device, const std::filesystem::path& shaderDirectory)
@@ -41,12 +42,12 @@ namespace Rtx
         // last one.
         const Image& bound = sum != nullptr ? *sum : mNoSum;
 
-        DescriptorWrites<5> writes;
-        writes.image(0, buffer.get(Channel::Direct).describeStorage());
-        writes.image(1, indirect.describeStorage());
-        writes.image(2, buffer.get(Channel::Albedo).describeStorage());
-        writes.image(3, bound.describeStorage());
-        writes.image(4, colour.describeStorage());
+        DescriptorWrites<Shaders::COMPOSITE_BINDINGS> writes;
+        writes.image(Shaders::COMPOSITE_BIND_DIRECT, buffer.get(Channel::Direct).describeStorage());
+        writes.image(Shaders::COMPOSITE_BIND_INDIRECT, indirect.describeStorage());
+        writes.image(Shaders::COMPOSITE_BIND_ALBEDO, buffer.get(Channel::Albedo).describeStorage());
+        writes.image(Shaders::COMPOSITE_BIND_SUM, bound.describeStorage());
+        writes.image(Shaders::COMPOSITE_BIND_COLOUR, colour.describeStorage());
 
         dispatch(commands, mPipeline, writes.get(), constants,
             groupsFor(constants.mWidth, Shaders::COMPOSITE_WORKGROUP),

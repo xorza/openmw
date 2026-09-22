@@ -41,7 +41,7 @@ namespace Rtx
         {
             const float value = setting(moon, field);
             if (!(value > 0.0f))
-                throw Error("Moons_" + std::string(nameOf(moon)) + "_" + std::string(field)
+                throw InputError("Moons_" + std::string(nameOf(moon)) + "_" + std::string(field)
                     + " is nought: the moons were asked for before the settings that describe them were read");
 
             return value;

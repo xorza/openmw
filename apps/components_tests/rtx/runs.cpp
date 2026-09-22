@@ -1,5 +1,8 @@
+#include <algorithm>
 #include <array>
 #include <cstdint>
+#include <span>
+#include <vector>
 
 #include <gtest/gtest.h>
 
@@ -274,6 +277,54 @@ namespace Rtx
 
             for (const float value : again.in(buffer.getAll()))
                 EXPECT_EQ(value, 0.0f);
+        }
+
+        /// **A buffer in blocks grows without moving what it holds, and reads as the flat buffer.**
+        /// Blocks of four, hand-counted: a run of three at nought, then a run of three that cannot
+        /// fit the one element left of the first block and lands at four. The first run's elements
+        /// stay where they were written across the growth, the hole at three is nought as a
+        /// vector's growth left it, and each block hands over its reached part in order.
+        TEST(RtxBlockedValuesTest, aGrowthMovesNothingAndTheElementsAreTheFlatBuffers)
+        {
+            BlockedValues<std::uint32_t> values(4);
+            RunAllocator runs(4);
+
+            const Rtx::Run first = runs.allocate(3);
+            ASSERT_EQ(first, (Rtx::Run{ 0, 3 }));
+            values.reach(runs.getEnd());
+            const std::array<std::uint32_t, 3> written{ 10, 11, 12 };
+            std::copy(written.begin(), written.end(), values.in(first).begin());
+            const std::uint32_t* const held = values.in(first).data();
+
+            const Rtx::Run second = runs.allocate(3);
+            ASSERT_EQ(second, (Rtx::Run{ 4, 3 })) << "a run straddled the block";
+            values.reach(runs.getEnd());
+            const std::array<std::uint32_t, 3> more{ 20, 21, 22 };
+            std::copy(more.begin(), more.end(), values.in(second).begin());
+
+            EXPECT_EQ(values.in(first).data(), held) << "the growth moved the block";
+            ASSERT_EQ(values.size(), 7u) << "as far as the runs reach and no further";
+
+            std::vector<std::uint32_t> flat;
+            for (std::uint32_t at = 0; at < values.size(); ++at)
+                flat.push_back(values[at]);
+            EXPECT_EQ(flat, (std::vector<std::uint32_t>{ 10, 11, 12, 0, 20, 21, 22 }));
+
+            std::vector<std::vector<std::uint32_t>> blocks;
+            values.forEachBlock(
+                [&](const std::span<const std::uint32_t> block) { blocks.emplace_back(block.begin(), block.end()); });
+            EXPECT_EQ(blocks, (std::vector<std::vector<std::uint32_t>>{ { 10, 11, 12, 0 }, { 20, 21, 22 } }));
+
+            values.reach(5);
+            EXPECT_EQ(values.size(), 7u) << "a reach short of the end shrank the buffer";
+            EXPECT_TRUE(values.in(Rtx::Run{}).empty());
+
+            // Across two whole blocks at once: every element reached is nought.
+            values.reach(13);
+            ASSERT_EQ(values.size(), 13u);
+            for (std::uint32_t at = 7; at < 13; ++at)
+                EXPECT_EQ(values[at], 0u) << at;
+            EXPECT_EQ(values.in(first).data(), held);
         }
     }
 }

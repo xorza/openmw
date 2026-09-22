@@ -38,6 +38,7 @@ namespace SceneUtil
         {
             osg::ref_ptr<osg::Image> image = picture();
             osg::ref_ptr<PaintedTexture> texture = new PaintedTexture(image);
+            const unsigned int unpainted = image->getModifiedCount();
 
             EXPECT_TRUE(texture->since(0).mRegion.empty()) << "nothing painted yet";
             EXPECT_EQ(texture->since(0).mPaints, 0u);
@@ -46,6 +47,12 @@ namespace SceneUtil
             const ImageRegion second{ 10, 4, 3, 3 };
             texture->paint(first);
             texture->paint(second);
+
+            // The rasterizer's own reader: no callback of its own, and the image dirtied once a
+            // paint, so the texture sends the whole of it on its next apply as upstream sends the
+            // fog.
+            EXPECT_EQ(texture->getSubloadCallback(), nullptr);
+            EXPECT_EQ(image->getModifiedCount(), unpainted + 2);
 
             const Painted fromStart = texture->since(0);
             EXPECT_EQ(fromStart.mRegion, first.joined(second));
@@ -56,6 +63,7 @@ namespace SceneUtil
 
             texture->paint(ImageRegion{});
             EXPECT_EQ(texture->since(2).mPaints, 2u) << "an empty paint is no paint";
+            EXPECT_EQ(image->getModifiedCount(), unpainted + 2) << "and dirties nothing";
         }
 
         /// A reader that fell further behind than the texture remembers is handed the whole

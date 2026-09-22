@@ -167,6 +167,6 @@ namespace Rtx
 
         const NVSDK_NGX_Result ran = NGX_VULKAN_EVALUATE_DLSSD_EXT(commands, mHandle, mParameters, &evaluate);
         if (NVSDK_NGX_FAILED(ran))
-            throw Error("Ray Reconstruction would not run: " + describeNgxResult(ran));
+            throw DeviceError("Ray Reconstruction would not run: " + describeNgxResult(ran));
     }
 }

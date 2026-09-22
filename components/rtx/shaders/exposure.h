@@ -13,6 +13,20 @@ namespace Rtx::Shaders
 {
 #endif
 
+    /// Where `histogram.comp` binds what it reads and writes in set 0, and how many there are. The
+    /// shader's layout and the pass's own layout and writes are numbered by these and by nothing
+    /// else, so the two cannot drift apart.
+    const uint HISTOGRAM_BIND_SOURCE = 0;
+    const uint HISTOGRAM_BIND_BINS = 1;
+    const uint HISTOGRAM_BINDINGS = 2;
+
+    /// Where `exposure.comp` binds what it reads and writes in set 0, and how many there are. The
+    /// shader's layout and the pass's own layout and writes are numbered by these and by nothing
+    /// else, so the two cannot drift apart.
+    const uint EXPOSURE_BIND_HISTOGRAM = 0;
+    const uint EXPOSURE_BIND_EXPOSURE = 1;
+    const uint EXPOSURE_BINDINGS = 2;
+
     /// Bins in the log-luminance histogram.
     ///
     /// **A histogram and not a running mean, because of what an interior looks like**: a handful of

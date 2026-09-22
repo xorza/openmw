@@ -74,7 +74,8 @@ namespace MWRender
 
     /// What the harness installs before the engine starts, where the harness started this process:
     /// everything a run decides once, as data, and the run itself for what it answers per frame.
-    /// Carried through `RendererSpec`, so who owns it is readable off the signature. A played
+    /// Handed to `RtxRenderer`'s constructor beside the `RendererSpec`, as a pointer the harness
+    /// keeps, so who owns it is readable off the signature. A played
     /// session installs none, and `RtxRenderer` makes one from `[RTX]` and the played answers.
     struct RtxSetup
     {

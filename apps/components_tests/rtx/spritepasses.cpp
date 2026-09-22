@@ -28,6 +28,7 @@
 
 #include "allocations.hpp"
 #include "harness.hpp"
+#include "testcamera.hpp"
 
 namespace Rtx
 {
@@ -41,7 +42,7 @@ namespace Rtx
 
         Shaders::VisibilityConstants lookingAlongX()
         {
-            return makeCamera(
+            return Testing::makeCamera(
                 osg::Vec3f(0.0f, 0.0f, 0.0f), osg::Vec3f(1.0f, 0.0f, 0.0f), 60.0f, sWidth, sHeight, 10000.0f);
         }
 
@@ -515,7 +516,7 @@ namespace Rtx
             ASSERT_GT(layer.mSprites.size(), 6 * Shaders::SPRITE_RUNS_LANES)
                 << "the fixture stopped being many strides";
 
-            Shaders::VisibilityConstants constants = makeCamera(
+            Shaders::VisibilityConstants constants = Testing::makeCamera(
                 osg::Vec3f(0.0f, 0.0f, 0.0f), osg::Vec3f(1.0f, 0.0f, 0.0f), 60.0f, width, height, 10000.0f);
             constants.mCamera.mJitter = osg::Vec2f(-0.3f, 0.45f);
 
@@ -579,7 +580,7 @@ namespace Rtx
                         osg::Vec3f(x, y, static_cast<float>(puff) * 6.0f - 30.0f), column < 3 ? 25.0f : 8.0f);
             }
 
-            const Shaders::VisibilityConstants constants = makeCamera(
+            const Shaders::VisibilityConstants constants = Testing::makeCamera(
                 osg::Vec3f(0.0f, 0.0f, 0.0f), osg::Vec3f(1.0f, 0.0f, 0.0f), 60.0f, width, height, 10000.0f);
 
             // Sixty puffs in every tile is most of the list, at any tile size the frame may have.

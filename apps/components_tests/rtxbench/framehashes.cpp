@@ -288,7 +288,9 @@ namespace Rtx
             FrameHashes half;
             half.note("somewhere", 1, 7, partsOf(100));
             const std::filesystem::path file = TestingOpenMW::outputFilePath("hashes-half.csv");
-            EXPECT_THROW(half.write(file), Error) << "a row with no picture was written";
+#ifndef NDEBUG
+            EXPECT_DEATH(half.write(file), "frames were noted and never pictured");
+#endif
             std::filesystem::remove(file);
         }
 
@@ -313,7 +315,7 @@ namespace Rtx
             out << header << '\n' << second << '\n' << first << '\n';
             out.close();
 
-            EXPECT_THROW(FrameHashes::read(file), Error) << "frame 2 before frame 1 of one view";
+            EXPECT_THROW(FrameHashes::read(file), InputError) << "frame 2 before frame 1 of one view";
             std::filesystem::remove(file);
         }
 
@@ -327,7 +329,7 @@ namespace Rtx
                 out << "somewhere,1," << std::string(32, 'a') << ',' << std::string(32, 'b') << '\n';
             }
 
-            EXPECT_THROW(FrameHashes::read(file), Error);
+            EXPECT_THROW(FrameHashes::read(file), InputError);
             std::filesystem::remove(file);
         }
     }

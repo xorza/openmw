@@ -26,6 +26,7 @@
 #include <components/vfs/pathutil.hpp>
 
 #include "../geometry.hpp"
+#include "../testcamera.hpp"
 #include "../testtexture.hpp"
 #include "fixture.hpp"
 
@@ -41,7 +42,7 @@ namespace Rtx::Testing
         Shaders::VisibilityConstants underTheEdge(const osg::Vec3f& eye, std::uint32_t size, float edge)
         {
             Shaders::VisibilityConstants camera
-                = makeCamera(eye, osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 200000.0f);
+                = Testing::makeCamera(eye, osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 200000.0f);
 
             camera.mSkyHorizon = osg::Vec3f(sFoggySky, sFoggySky, sFoggySky);
             camera.mSkyZenith = camera.mSkyHorizon;
@@ -57,8 +58,8 @@ namespace Rtx::Testing
 
             // Facing straight up, so the centre pixel looks at the zenith and the frame's edge looks
             // sixty degrees off it. Nothing is placed, so every ray misses.
-            Shaders::VisibilityConstants camera
-                = makeCamera(osg::Vec3f(0.0f, 0.0f, 0.0f), osg::Vec3f(0.0f, 1.0f, 0.0f), 60.0f, size, size, 10000.0f);
+            Shaders::VisibilityConstants camera = Testing::makeCamera(
+                osg::Vec3f(0.0f, 0.0f, 0.0f), osg::Vec3f(0.0f, 1.0f, 0.0f), 60.0f, size, size, 10000.0f);
             camera.mSkyHorizon = osg::Vec3f(1.0f, 0.0f, 0.0f);
             camera.mSkyZenith = osg::Vec3f(0.0f, 0.0f, 1.0f);
             camera.mAmbientFromSky = 1.0f;
@@ -100,7 +101,7 @@ namespace Rtx::Testing
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
                 .mMesh = scene.addMesh(MeshArrays{ .mPositions = sheetAt(4000.0f, 0.0f), .mIndices = sQuadIndices }) });
 
-            Shaders::VisibilityConstants camera = makeCamera(
+            Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -1.0f, 300.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
 
             // Nothing else lights the floor, so what arrives is the moon's alone.
@@ -166,7 +167,7 @@ namespace Rtx::Testing
                 = scene.addMesh(MeshArrays{ .mPositions = sheetAt(4000.0f, -2000.0f), .mIndices = sQuadIndices }) });
 
             // Forty-five degrees up along `+y`, which keeps the camera off its own pole.
-            Shaders::VisibilityConstants camera = makeCamera(
+            Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, 0.0f, 0.0f), osg::Vec3f(0.0f, 1000.0f, 1000.0f), 60.0f, size, size, 100000.0f);
 
             camera.mSkyHorizon = osg::Vec3f();
@@ -232,7 +233,7 @@ namespace Rtx::Testing
             constexpr std::array<std::uint8_t, 4> solid{ 255, 255, 255, 255 };
             const std::array<TextureData, 1> sheet{ describeTexel(solid) };
 
-            Shaders::VisibilityConstants camera = makeCamera(
+            Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -1.0f, 300.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
 
             // Nothing else lights the floor, so what arrives is the sun's alone.
@@ -294,7 +295,7 @@ namespace Rtx::Testing
             const std::array<TextureData, 1> sheet{ describeTexel(white) };
 
             // Forty-five degrees up, which puts every ray on the deck and none of them on its pole.
-            Shaders::VisibilityConstants camera = makeCamera(
+            Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, 0.0f, 0.0f), osg::Vec3f(0.0f, 1000.0f, 1000.0f), 60.0f, size, size, 100000.0f);
 
             camera.mSkyHorizon = osg::Vec3f();
@@ -353,7 +354,7 @@ namespace Rtx::Testing
             constexpr std::array<std::uint8_t, 4> white{ 255, 255, 255, 255 };
             const std::array<TextureData, 1> sheet{ describeTexel(white) };
 
-            Shaders::VisibilityConstants camera = makeCamera(
+            Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -2000.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
 
             camera.mSkyHorizon = osg::Vec3f();
@@ -450,7 +451,7 @@ namespace Rtx::Testing
                     scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
                         .mMesh = scene.addMesh(MeshArrays{ .mPositions = wallAt(500.0f), .mIndices = sQuadIndices }) });
 
-                Shaders::VisibilityConstants camera = makeCamera(
+                Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(0.0f, -2000.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
                 camera.mSkyHorizon = osg::Vec3f();
                 camera.mSkyZenith = osg::Vec3f();
@@ -602,7 +603,7 @@ namespace Rtx::Testing
             constexpr std::uint32_t size = 48;
 
             const auto sky = [&](float edge, std::vector<float>& values) {
-                Shaders::VisibilityConstants camera = makeCamera(
+                Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(0.0f, -50000.0f, 0.0f), osg::Vec3f(0.0f, -60000.0f, 0.0f), 90.0f, size, size, 200000.0f);
 
                 camera.mSkyHorizon = osg::Vec3f(0.10f, 0.20f, 0.40f);

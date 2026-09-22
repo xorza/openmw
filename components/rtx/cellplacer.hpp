@@ -8,10 +8,10 @@
 
 #include <components/esm3/refnum.hpp>
 
+#include "cellworld.hpp"
 #include "extractionstats.hpp"
 #include "held.hpp"
 #include "material.hpp"
-#include "residency.hpp"
 
 namespace Rtx
 {

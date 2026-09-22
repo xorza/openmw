@@ -270,16 +270,19 @@ namespace Rtx
 
     void CellRing::setReferenceEnabled(const ESM::RefNum refnum, const bool enabled)
     {
+        mTurn.expect(Turn::Collected);
         mPlacer.setReferenceEnabled(refnum, enabled, std::span<HeldCell>(mCells.begin(), mCells.end()));
     }
 
     void CellRing::blacklistReference(const ESM::RefNum refnum)
     {
+        mTurn.expect(Turn::Collected);
         mPlacer.blacklistReference(refnum, std::span<HeldCell>(mCells.begin(), mCells.end()));
     }
 
     void CellRing::forgetReferences()
     {
+        mTurn.expect(Turn::Collected);
         mPlacer.forgetReferences(std::span<HeldCell>(mCells.begin(), mCells.end()));
     }
 

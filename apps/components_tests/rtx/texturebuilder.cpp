@@ -137,7 +137,7 @@ namespace Rtx
         TEST(RtxTextureBuilderTest, aFormatWithNoAlphaChannelIsRefusedAndSaysWhich)
         {
             std::vector<Rtx::MipLevel> levels;
-            EXPECT_THROW(describeImage(*makeBlock(GL_RGB), levels), Rtx::Error);
+            EXPECT_THROW(describeImage(*makeBlock(GL_RGB), levels), Rtx::InputError);
         }
 
         /// Describing an arrival a second time reaches the heap not at all.
