@@ -84,5 +84,8 @@ namespace MWRender
         osg::Vec3f mGlareColour;
         float mGlareMax;
         float mGlareAngleMax;
+
+        /// How big the configuration draws each moon, read with the rest of the fallbacks.
+        Rtx::MoonSizes mMoonSizes;
     };
 }

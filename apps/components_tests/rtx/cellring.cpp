@@ -43,6 +43,8 @@
 #include <components/rtx/material.hpp>
 #include <components/rtx/mesh.hpp>
 #include <components/rtx/prepared.hpp>
+#include <components/rtx/refusals.hpp>
+#include <components/rtx/result.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneextractor.hpp>
 #include <components/sceneutil/lightcommon.hpp>
@@ -106,12 +108,13 @@ namespace Rtx::Testing
             /// Whether a walk of a cell throws, which is a reader that fails on its own thread.
             bool mThrows = false;
 
-            /// The records the lamps name: `lit` burns where it stands, `unlit` is off by default
-            /// and `flame` flickers.
+            /// The records the lamps name: `lit` burns where it stands, `unlit` is off by default,
+            /// `flame` flickers and `dark` takes light away.
             std::map<std::string, SceneUtil::LightCommon> mRecords{
                 { "lit", describeLamp(0) },
                 { "unlit", describeLamp(ESM::Light::OffDefault) },
                 { "flame", describeLamp(ESM::Light::Flicker) },
+                { "dark", describeLamp(ESM::Light::Negative) },
             };
 
             void collect(float, const osg::Vec2i& startCell, ESM::RefId, Terrain::RefKinds kinds,
@@ -169,10 +172,15 @@ namespace Rtx::Testing
                     return mTree;
                 if (path.value() == "meshes/fern.nif")
                     return mFern;
+                if (path.value() == "meshes/broken.nif")
+                {
+                    ++mBrokenAsked;
+                    return mBroken;
+                }
                 return nullptr;
             }
 
-            osg::ref_ptr<const osg::Image> getImage(const VFS::Path::NormalizedView path) override
+            Result<osg::ref_ptr<const osg::Image>, std::string> getImage(const VFS::Path::NormalizedView path) override
             {
                 return mImages.get(path);
             }
@@ -191,6 +199,15 @@ namespace Rtx::Testing
 
             osg::ref_ptr<osg::Group> mTree = makeSheet(300.0f);
             osg::ref_ptr<osg::Group> mFern = makeSheet(20.0f);
+
+            /// A template whose triangles name a vertex it does not have, and how often it was
+            /// asked for.
+            osg::ref_ptr<osg::Group> mBroken = [] {
+                osg::ref_ptr<osg::Group> root = new osg::Group;
+                root->addChild(makeIndexPastItsVertices());
+                return root;
+            }();
+            std::uint32_t mBrokenAsked = 0;
 
         private:
             osg::ref_ptr<osg::Group> makeSheet(float extent) const
@@ -551,7 +568,7 @@ namespace Rtx::Testing
 
             // The light the walk builds from the graph's own node, to the bit: one rule, in
             // `makeLight`, phased by the reference number.
-            const std::optional<Light> built = makeLight(mStorage.mRecords.at("flame"), far, 0.0, 7);
+            const std::optional<Light> built = makeLight(mStorage.mRecords.at("flame"), far, 0.0, 7).value();
             ASSERT_TRUE(built.has_value());
             EXPECT_EQ(stood.mIntensity, built->mIntensity);
             EXPECT_EQ(stood.mReach, built->mReach);
@@ -563,8 +580,8 @@ namespace Rtx::Testing
             walk(mWalked++);
             ASSERT_EQ(mScene.lights().size(), std::size_t{ 1 });
             EXPECT_NE(mScene.lights().front().mIntensity, stood.mIntensity) << "a flame that stood still";
-            EXPECT_EQ(
-                mScene.lights().front().mIntensity, makeLight(mStorage.mRecords.at("flame"), far, 1.0, 7)->mIntensity);
+            EXPECT_EQ(mScene.lights().front().mIntensity,
+                makeLight(mStorage.mRecords.at("flame"), far, 1.0, 7).value()->mIntensity);
 
             // The grid grows over the lamp's cell, and the game's graph is what carries it now.
             around(osg::Vec4i(-1, -1, 5, 2));
@@ -575,6 +592,50 @@ namespace Rtx::Testing
             around(osg::Vec4i(-1, -1, 2, 2));
             walk(mWalked++);
             EXPECT_EQ(mScene.lights().size(), std::size_t{ 1 });
+        }
+
+        /// **What the reader cannot take is refused where its cell is adopted**, on the frame's
+        /// thread, which is the one that reports: a model its walk refused, and a lamp that takes
+        /// light away. The model is walked once however many references name it, and what else the
+        /// cell holds stands. A land texture that does not read is not the reader's to refuse: its
+        /// layer stands, and the texture table stands it in and refuses it as it does any texture.
+        TEST_F(RtxCellRingTest, whatTheReaderCannotTakeIsRefusedWhereItsCellIsAdopted)
+        {
+            mContent.mImages.lose("textures/rock.dds");
+
+            const osg::Vec3f inCell(3.5f * sCellSize, 1.5f * sCellSize, 0.0f);
+            mStorage.mPlaced = {
+                Placed{ .mCell = osg::Vec2i(3, 1),
+                    .mModel = "broken.nif",
+                    .mRefNum = ESM::RefNum{ 1, 0 },
+                    .mPosition = inCell },
+                Placed{ .mCell = osg::Vec2i(3, 1),
+                    .mModel = "broken.nif",
+                    .mRefNum = ESM::RefNum{ 2, 0 },
+                    .mPosition = inCell },
+                Placed{ .mCell = osg::Vec2i(3, 1),
+                    .mModel = "tree.nif",
+                    .mRefNum = ESM::RefNum{ 3, 0 },
+                    .mPosition = inCell },
+            };
+            mStorage.mLit = {
+                Lit{
+                    .mCell = osg::Vec2i(3, 1), .mRecord = "dark", .mRefNum = ESM::RefNum{ 4, 0 }, .mPosition = inCell },
+                Lit{ .mCell = osg::Vec2i(3, 1), .mRecord = "lit", .mRefNum = ESM::RefNum{ 5, 0 }, .mPosition = inCell },
+            };
+            start();
+
+            const ExtractionStats filled = fill();
+            EXPECT_EQ(mScene.refusals().count(Refused::Model), 1u);
+            EXPECT_EQ(mScene.refusals().count(Refused::Lamp), 1u);
+            EXPECT_EQ(mContent.mBrokenAsked, 1u) << "a refused model walked again for its second reference";
+
+            EXPECT_EQ(filled.mDistantStatics, 1u) << "the tree beside the broken models stands";
+            ASSERT_EQ(mScene.lights().size(), std::size_t{ 1 }) << "and the lamp beside the dark one burns";
+            EXPECT_EQ(mScene.lights().front().mPosition, inCell);
+
+            EXPECT_NE(mScene.textures().findFile(VFS::Path::Normalized("textures/rock.dds")), sNoIndex)
+                << "a layer whose image does not read was dropped rather than stood in for";
         }
 
         /// The paging's size rule, per reference: a radius under the threshold at the eye's distance
@@ -875,7 +936,10 @@ namespace Rtx::Testing
         {
         public:
             osg::ref_ptr<const osg::Node> getTemplate(VFS::Path::NormalizedView) override { return mFace; }
-            osg::ref_ptr<const osg::Image> getImage(VFS::Path::NormalizedView) override { return nullptr; }
+            Result<osg::ref_ptr<const osg::Image>, std::string> getImage(VFS::Path::NormalizedView) override
+            {
+                return Err{ "no image reads from the file" };
+            }
 
             osg::ref_ptr<osg::Group> mFace = [] {
                 osg::ref_ptr<osg::Geometry> source = new osg::Geometry;

@@ -9,10 +9,10 @@
 #include <osg/Math>
 #include <osg/Quat>
 
-#include <components/fallback/fallback.hpp>
 #include <components/vfs/pathutil.hpp>
 
-#include "error.hpp"
+#include "refusals.hpp"
+#include "result.hpp"
 #include "scenedesc.hpp"
 #include "shaders/colour.h"
 #include "shaders/look.h"
@@ -30,23 +30,6 @@ namespace Rtx
             return moon == Moon::Masser ? "Masser" : "Secunda";
         }
 
-        float setting(Moon moon, std::string_view field)
-        {
-            return Fallback::Map::getFloat("Moons_" + std::string(nameOf(moon)) + "_" + std::string(field));
-        }
-
-        /// The same, refusing a reading of nought: `Fallback::Map` answers an allowed key nobody
-        /// planted with a silent zero, and both readings below are held for the life of the process.
-        float requireSetting(Moon moon, std::string_view field)
-        {
-            const float value = setting(moon, field);
-            if (!(value > 0.0f))
-                throw InputError("Moons_" + std::string(nameOf(moon)) + "_" + std::string(field)
-                    + " is nought: the moons were asked for before the settings that describe them were read");
-
-            return value;
-        }
-
         /// The mean opaque texel of `tx_masser_full.dds` and `tx_secunda_full.dds`, linear —
         /// measured off the shipped portraits rather than chosen: one red, one grey, and the ratio
         /// between them is what tells the two moons apart at a glance.
@@ -57,24 +40,16 @@ namespace Rtx
         /// is the albedo of exactly one moon rather than of an average of two.
         const float sMasserLuma = sMasserFace * Shaders::LUMINANCE_WEIGHTS;
 
-        /// Half the angle a moon of this size subtends, out of the geometry the game's own renderer
-        /// builds: `Moons_<name>_Size / 125 * 450` scales a quad of half-extent 0.5, a thousand
-        /// units away.
-        float subtendedBy(Moon moon)
+        /// How wide `size` draws `moon`. `Fallback::Map` answers a key the configuration leaves out,
+        /// and one that does not parse, with nought, and the game draws a quad of no extent for
+        /// that; an error for a size below nought, or one that is not finite.
+        Result<float, std::string> radiusOf(Moon moon, float size)
         {
-            const float halfWidth = 0.5f * 450.0f * requireSetting(moon, "Size") / 125.0f;
-            return std::atan(halfWidth / 1000.0f);
-        }
+            if (!(size >= 0.0f) || !std::isfinite(size))
+                return Err{ "Moons_" + std::string(nameOf(moon)) + "_Size is " + std::to_string(size)
+                    + ", which is no size" };
 
-        /// The same, worked out once, because both moons are placed every frame and `setting`
-        /// builds two strings to look a key up with — an allocation on the frame path, for a pair
-        /// of numbers that are fixed for the run.
-        float angularRadiusOf(Moon moon)
-        {
-            static const float sMasser = subtendedBy(Moon::Masser);
-            static const float sSecunda = subtendedBy(Moon::Secunda);
-
-            return moon == Moon::Masser ? sMasser : sSecunda;
+            return moonAngularRadius(size);
         }
 
         /// This moon's colour, on a scale where Masser's luminance is one: Secunda's portrait
@@ -85,12 +60,12 @@ namespace Rtx
             return (moon == Moon::Masser ? sMasserFace : sSecundaFace) / sMasserLuma;
         }
 
-        /// What a full moon of this size delivers to a surface facing it, before its own tint: a
-        /// disc of geometric albedo `p` and half-angle `t` under irradiance `E` delivers
+        /// What a full moon of `angularRadius` delivers to a surface facing it, before its own tint:
+        /// a disc of geometric albedo `p` and half-angle `t` under irradiance `E` delivers
         /// `E * p * sin(t)^2`. Taken from the angle rather than from the `Size` setting behind it.
-        float deliveredBy(Moon moon)
+        float deliveredBy(float angularRadius)
         {
-            const float sine = std::sin(angularRadiusOf(moon));
+            const float sine = std::sin(angularRadius);
 
             return Shaders::DAYLIGHT * Shaders::MOON_ALBEDO * sine * sine;
         }
@@ -110,15 +85,27 @@ namespace Rtx
         }
     }
 
-    MoonFaces addMoonFaces(SceneDesc& scene)
+    MoonFaces addMoonFaces(SceneDesc& scene, const MoonSizes& sizes)
     {
         constexpr VFS::Path::NormalizedView masser("textures/tx_masser_full.dds");
         constexpr VFS::Path::NormalizedView secunda("textures/tx_secunda_full.dds");
 
+        // A moon of a size that is no size is refused and not drawn.
+        const auto drawnWidth = [&](Moon moon, float size) {
+            const Result<float, std::string> radius = radiusOf(moon, size);
+            if (radius.isOk())
+                return radius.value();
+
+            scene.refusals().refuse(Refused::Moon, nameOf(moon), radius.error());
+            return 0.0f;
+        };
+
         // Clamped: a portrait is one image edge to edge, and a repeating tap at its limb would
         // blend the far edge's paint into the disc's antialiasing.
         const MoonFaces faces{ .mMasser = scene.textures().add(masser, TextureWrap::Clamp),
-            .mSecunda = scene.textures().add(secunda, TextureWrap::Clamp) };
+            .mSecunda = scene.textures().add(secunda, TextureWrap::Clamp),
+            .mMasserRadius = drawnWidth(Moon::Masser, sizes.mMasser),
+            .mSecundaRadius = drawnWidth(Moon::Secunda, sizes.mSecunda) };
         scene.textures().hold(faces.mMasser);
         scene.textures().hold(faces.mSecunda);
         return faces;
@@ -146,14 +133,20 @@ namespace Rtx
         };
     }
 
-    float moonAngularRadius(Moon moon)
+    float moonAngularRadius(float size)
     {
-        return angularRadiusOf(moon);
+        if (!(size > 0.0f) || !std::isfinite(size))
+            return 0.0f;
+
+        const float halfWidth = 0.5f * 450.0f * size / 125.0f;
+        return std::atan(halfWidth / 1000.0f);
     }
 
-    MoonPlacement placeMoon(
-        Moon moon, float alongArcDegrees, float axisOffsetDegrees, Sky::MoonPhase phase, float alpha)
+    MoonPlacement placeMoon(const MoonFaces& faces, Moon moon, float alongArcDegrees, float axisOffsetDegrees,
+        Sky::MoonPhase phase, float alpha)
     {
+        const float angularRadius = faces.radiusOf(moon);
+
         // `Moon::setState`'s own two rotations (`apps/openmw/mwrender/skyutil.cpp:900`): the arc
         // tips the moon up from the horizon about +X, and the axis offset swings that whole arc
         // about the zenith so the two moons rise in different places and their paths cross.
@@ -172,7 +165,7 @@ namespace Rtx
             .mDirection = arc * swing * osg::Vec3f(0.0f, 1.0f, 0.0f),
             .mRight = attitude * osg::Vec3f(1.0f, 0.0f, 0.0f),
             .mUp = attitude * osg::Vec3f(0.0f, 1.0f, 0.0f),
-            .mAngularRadius = angularRadiusOf(moon),
+            .mAngularRadius = angularRadius,
 
             // Eight painted phases are eight steps of a half turn each way, counted from full — so
             // the index is the angle, and the sign of its sine is the limb the light is on.
@@ -181,7 +174,9 @@ namespace Rtx
             // Nought until it is on its arc, which the engine states by leaving the angle there
             // until a moon rises and returning it there once it sets. Without this a moon that is
             // down sits on the horizon all night, because nothing else in the placement says so.
-            .mAlpha = alongArcDegrees > 0.0f ? alpha : 0.0f,
+            // Nought too for a moon of no size, whose disc the sky would measure by a limb of zero.
+            .mAlpha = alongArcDegrees > 0.0f && angularRadius > 0.0f ? alpha : 0.0f,
+            .mFace = faces.of(moon),
 
             // The file's own mean, unscaled. `Shaders::MOON_RADIANCE` is what takes a
             // moon's texels to radiance, and it multiplies this where no portrait is loaded and the
@@ -198,7 +193,8 @@ namespace Rtx
         // because this arc runs through the zenith.
         placement.mThroughAir = airTransmittance(placement.mDirection.z());
 
-        const osg::Vec3f lit = tintOf(moon) * (deliveredBy(moon) * phaseLaw(placement.mPhaseAngle) * placement.mAlpha);
+        const osg::Vec3f lit
+            = tintOf(moon) * (deliveredBy(angularRadius) * phaseLaw(placement.mPhaseAngle) * placement.mAlpha);
         placement.mIrradiance = osg::componentMultiply(lit, placement.mThroughAir);
 
         return placement;

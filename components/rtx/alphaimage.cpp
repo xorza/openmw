@@ -4,14 +4,13 @@
 #include <array>
 #include <cstddef>
 #include <span>
+#include <string>
 #include <vector>
 
 #include <osg/Image>
 
-#include <components/debug/debuglog.hpp>
-
 #include "colour.hpp"
-#include "error.hpp"
+#include "result.hpp"
 #include "texturebuilder.hpp"
 
 namespace Rtx
@@ -191,22 +190,14 @@ namespace Rtx
         std::vector<MipLevel>& levels = scratch.mLevels;
         levels.clear();
 
-        TextureData described;
-        try
-        {
-            described = describeImage(image, levels);
-        }
-        catch (const InputError& what)
-        {
-            // A format nothing in the game produces, which is a mod's business rather than a broken
-            // contract. The caller gets the answer that changes nothing about how the surface is
-            // traced.
-            Log(Debug::Warning) << "cannot read the alpha of \"" << image.getFileName() << "\": " << what.what();
+        // An image this cannot describe is the same image whose arrival in the texture table
+        // refuses it by name. What comes back here is the answer that changes nothing about how
+        // the surface is traced.
+        const Result<TextureData, std::string> read = describeImage(image, levels);
+        if (!read.isOk())
             return true;
-        }
 
-        if (levels.empty() || levels.front().mWidth == 0 || levels.front().mHeight == 0)
-            return true;
+        const TextureData& described = read.value();
 
         // The one level that can answer, and only as far as the first solid texel: every coarser
         // level is an average of the one above it, and a mask's average stops reaching solid a

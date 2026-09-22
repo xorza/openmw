@@ -6,6 +6,7 @@
 #include <cstdint>
 
 #include <osg/BoundingBox>
+#include <osg/Vec3d>
 
 #include "lightbuilder.hpp"
 
@@ -22,7 +23,7 @@ namespace
     /// tile a point in the Guild of Mages weighed twenty-one lamps for the one or two that reached
     /// it, and at a quarter tile it weighs twelve; at an eighth the entries grow eightfold for one
     /// lamp fewer. An exterior overruns the cell budget at this size and doubles back to a tile.
-    constexpr float sFirstCell = 256.0f;
+    constexpr double sFirstCell = 256.0;
 
     /// The cells a sphere of `reach` about `centre` touches, as a half-open box of cell coordinates.
     struct CellBox
@@ -52,6 +53,8 @@ namespace
                     visit(cellAt(x, y, z, size));
     }
 
+    /// In double, as the bounds are: a lamp's numbers are finite, and in float the distance from
+    /// one placed near the end of the range to the grid's origin is not.
     CellBox boxAround(
         const osg::Vec3f& centre, float reach, const osg::Vec3f& origin, float inverseCell, const osg::Vec3ui& size)
     {
@@ -60,12 +63,13 @@ namespace
         {
             // Clamped rather than rejected: a lamp standing outside the grid still reaches into it,
             // and a cell inside it has to know.
-            const float low = (centre[axis] - reach - origin[axis]) * inverseCell;
-            const float high = (centre[axis] + reach - origin[axis]) * inverseCell;
+            const double from = double{ centre[axis] } - double{ origin[axis] };
+            const double low = (from - double{ reach }) * double{ inverseCell };
+            const double high = (from + double{ reach }) * double{ inverseCell };
 
-            const auto span = static_cast<float>(size[axis]);
-            box.mLow[axis] = static_cast<std::uint32_t>(std::clamp(std::floor(low), 0.0f, span));
-            box.mHigh[axis] = static_cast<std::uint32_t>(std::clamp(std::floor(high) + 1.0f, 0.0f, span));
+            const auto span = static_cast<double>(size[axis]);
+            box.mLow[axis] = static_cast<std::uint32_t>(std::clamp(std::floor(low), 0.0, span));
+            box.mHigh[axis] = static_cast<std::uint32_t>(std::clamp(std::floor(high) + 1.0, 0.0, span));
         }
         return box;
     }
@@ -101,23 +105,31 @@ namespace Rtx
         for (const Light& light : lights)
             mBinnedOn.emplace_back(light.mPosition, light.mReach);
 
-        osg::BoundingBoxf bounds;
+        // In double, because the lamps' numbers are finite and their difference in float is not: a
+        // lamp placed near the end of the range, which a corrupted record reads as easily as NaN,
+        // puts the extent past the largest float.
+        osg::BoundingBoxd bounds;
         for (const Light& light : lights)
         {
-            const osg::Vec3f reach(light.mReach, light.mReach, light.mReach);
-            bounds.expandBy(osg::BoundingBoxf(light.mPosition - reach, light.mPosition + reach));
+            const osg::Vec3d reach(light.mReach, light.mReach, light.mReach);
+            const osg::Vec3d centre(light.mPosition);
+            bounds.expandBy(osg::BoundingBoxd(centre - reach, centre + reach));
         }
 
-        mOrigin = bounds.valid() ? bounds._min : osg::Vec3f();
-        const osg::Vec3f extent = bounds.valid() ? bounds._max - bounds._min : osg::Vec3f();
+        mOrigin = bounds.valid() ? osg::Vec3f(bounds._min) : osg::Vec3f();
+        const osg::Vec3d extent = bounds.valid() ? bounds._max - bounds._min : osg::Vec3d();
 
-        // The cell doubles until the grid fits both budgets. It ends because every axis falls to
-        // a single cell once the cell outgrows the extent, which is one entry per lamp.
-        for (float cell = sFirstCell;; cell *= 2.0f)
+        // The cell doubles until the grid fits both budgets, or until it is a single cell: past
+        // that, doubling drops no entry, and more lamps than the entry budget still have to be
+        // listed. An axis is capped one past the cell budget before it is cast, because a far lamp
+        // gives it more cells than a `uint32_t` holds, and one past fails the test whatever the
+        // others hold.
+        for (double cell = sFirstCell;; cell *= 2.0)
         {
-            mInverseCell = 1.0f / cell;
+            mInverseCell = static_cast<float>(1.0 / cell);
             for (int axis = 0; axis < 3; ++axis)
-                mSize[axis] = static_cast<std::uint32_t>(std::max(std::ceil(extent[axis] / cell), 1.0f));
+                mSize[axis] = static_cast<std::uint32_t>(
+                    std::clamp(std::ceil(extent[axis] / cell), 1.0, static_cast<double>(sMaxCells + 1)));
 
             const std::size_t cells = std::size_t{ mSize.x() } * mSize.y() * mSize.z();
             if (cells > sMaxCells)
@@ -127,7 +139,7 @@ namespace Rtx
             for (const Light& light : lights)
                 entries += boxAround(light.mPosition, light.mReach, mOrigin, mInverseCell, mSize).getCount();
 
-            if (entries <= sMaxEntries)
+            if (entries <= sMaxEntries || cells == 1)
                 break;
         }
 

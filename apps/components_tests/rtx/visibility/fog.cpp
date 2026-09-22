@@ -1287,7 +1287,7 @@ namespace Rtx::Testing
                 osg::Vec3f towards(0.0f, 1.0f, 0.5f);
                 towards.normalize();
                 moon.mSource
-                    = Shaders::moonSource(towards, osg::Vec3f(0.0f, 0.0f, irradiance), moonAngularRadius(Moon::Masser));
+                    = Shaders::moonSource(towards, osg::Vec3f(0.0f, 0.0f, irradiance), moonAngularRadius(94.0f));
                 moon.mAlpha = 0.0f;
                 moon.mFace = Shaders::NO_TEXTURE;
                 camera.mMoons[0] = moon;

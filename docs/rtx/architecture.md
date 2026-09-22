@@ -568,8 +568,10 @@ spellings for each enum, read by the parser, the report and the menus.
 
 Infrastructure worth knowing: `Stepped` (a step of a fixed order, asserted), `OwnedBy` and
 `Worker` (a thread and who owns what), `Monitor`, `Spares` (pools that lend stable addresses),
-`InputError`, `Unsupported` and `DeviceError` (what a file or a setting supplied cannot be
-used, this machine cannot, the device failed; a broken contract is `Rtx::contract`),
+`InputError`, `Unsupported` and `DeviceError` (what the configuration or the installation
+supplied cannot be run with, this machine cannot, the device failed; a broken contract is
+`Rtx::contract`), `Result` and `Refusals` (how a reader of content answers, and where what it
+refused is recorded),
 `FrameSpend` and `Timing` (what a frame spent on the host, by phase).
 
 ---
@@ -1039,13 +1041,21 @@ and the frame rethrows it.
 - Every hold and every slot is counted: a hold given back twice and a slot freed twice are
   named where they happen.
 
-Data the world might supply is never an assert, and never the end of a frame: an unreadable
-texture is drawn grey and counted; a mesh longer than a block, or a skin that names a vertex its
-mesh has not got, throws `Rtx::InputError`, which the walk catches per drawable and the reader
-thread per model, and the drawable is refused once and counted (`ExtractionStats::mRefused`); a
-texture past the array's capacity is refused by `TextureTable` and drawn neutral. A missing device
-feature throws `Rtx::Unsupported`, and a device that fails throws `Rtx::DeviceError`, which ends the
-game with its message.
+Data the world might supply is never an assert, and never the end of a frame. Content the game
+uses and this renderer cannot is a refusal, and every refusal goes one way. Every reader of content
+answers with a `Rtx::Result` whose error says why — a mesh's arrays, a texture's format, a sky mesh
+the archives do not hold — and nothing on the content path throws. Whatever decides what becomes of
+the content reports the refusal to `Rtx::Refusals`, owned by `SceneDesc`, with the kind and the
+name; what cannot reach the scene holds `Rtx::Refusal`s and hands them over: the reader thread with
+the cell, `SceneTextures` with its descriptions. A texture — a ground layer's included — is drawn as
+a stand-in, and everything else is left out: a mesh, a model the cell ring reads, a sky layer, a
+moon, a lamp, an emitter or some of its sprites. Each distinct refusal is named once in the log in
+one shape and counted by kind. The tables assert what the readers check (`MeshTable::checkFits`,
+`SceneDesc::checkPoses`). Content that draws nothing in the game — a lamp of no radius, an empty
+geometry, a moon of size nought — draws nothing here and is no refusal. What the configuration or
+the installation supplied and this renderer cannot run with throws `Rtx::InputError` and ends the
+run; a missing device feature throws `Rtx::Unsupported`, and a device that fails throws
+`Rtx::DeviceError`, which ends the game with its message.
 
 ---
 

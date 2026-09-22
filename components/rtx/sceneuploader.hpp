@@ -43,9 +43,6 @@ namespace Rtx
         /// How many textures had to be described, which is zero on a `Placed`.
         std::size_t mDescribed = 0;
 
-        /// How many of those could not be read and got the stand-in. See `SceneTextures`.
-        std::uint32_t mUnreadable = 0;
-
         /// How many texture slots the scene gave back, whose images the renderer was told to drop.
         /// Not zero on a `Placed`: leaving a region is a frame where nothing arrives.
         std::size_t mDropped = 0;

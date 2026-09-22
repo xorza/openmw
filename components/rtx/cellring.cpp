@@ -9,6 +9,9 @@
 
 #include "cellgrid.hpp"
 #include "extractionstats.hpp"
+#include "prepared.hpp"
+#include "refusals.hpp"
+#include "scenedesc.hpp"
 
 namespace Rtx
 {
@@ -38,7 +41,8 @@ namespace Rtx
     }
 
     CellRing::CellRing(SceneDesc& scene)
-        : mPlacer(scene)
+        : mScene(scene)
+        , mPlacer(scene)
     {
     }
 
@@ -224,6 +228,8 @@ namespace Rtx
         held.mStatics = cell.mStatics;
 
         mPlacer.adoptGround(cell, held, mAround, stats);
+
+        mScene.refusals().refuse(cell.mRefusals);
 
         for (PreparedModel* model : cell.mModels)
         {

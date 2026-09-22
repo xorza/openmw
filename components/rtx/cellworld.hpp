@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+
 #include <osg/Image>
 #include <osg/Node>
 #include <osg/Vec3f>
@@ -8,6 +10,8 @@
 
 #include <components/esm/refid.hpp>
 #include <components/vfs/pathutil.hpp>
+
+#include "result.hpp"
 
 namespace Terrain
 {
@@ -31,9 +35,9 @@ namespace Rtx
         /// thread, which is what the game's loader promises of its own.
         virtual osg::ref_ptr<const osg::Node> getTemplate(VFS::Path::NormalizedView path) = 0;
 
-        /// The image at `path`, or null where nothing could be read there. Safe from any thread,
-        /// as the template is.
-        virtual osg::ref_ptr<const osg::Image> getImage(VFS::Path::NormalizedView path) = 0;
+        /// The image at `path`, or why none reads there — `Rtx::openImage`'s answer. Safe from any
+        /// thread, as the template is.
+        virtual Result<osg::ref_ptr<const osg::Image>, std::string> getImage(VFS::Path::NormalizedView path) = 0;
     };
 
     /// Where the world's cells are read from: the content, and which worldspace of it — exactly

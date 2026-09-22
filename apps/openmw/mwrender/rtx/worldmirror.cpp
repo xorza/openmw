@@ -5,6 +5,7 @@
 #include <exception>
 #include <memory>
 #include <span>
+#include <string>
 
 #include <osg/Geometry>
 #include <osg/Image>
@@ -26,6 +27,7 @@
 #include <components/rtx/frameworld.hpp>
 #include <components/rtx/mesh.hpp>
 #include <components/rtx/renderer.hpp>
+#include <components/rtx/result.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/slot.hpp>
 #include <components/rtx/texturebuilder.hpp>
@@ -59,7 +61,7 @@ namespace MWRender
                 return mScenes.getTemplate(path, false);
             }
 
-            osg::ref_ptr<const osg::Image> getImage(VFS::Path::NormalizedView path) override
+            Rtx::Result<osg::ref_ptr<const osg::Image>, std::string> getImage(VFS::Path::NormalizedView path) override
             {
                 return Rtx::openImage(*mScenes.getImageManager(), path);
             }

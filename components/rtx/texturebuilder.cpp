@@ -15,37 +15,45 @@
 #include <osg/Image>
 #include <osg/ref_ptr>
 
-#include <components/debug/debuglog.hpp>
 #include <components/resource/imagemanager.hpp>
 #include <components/vfs/pathutil.hpp>
 
 #include "compositequeue.hpp"
-#include "error.hpp"
 #include "mipchain.hpp"
+#include "refusals.hpp"
 #include "scenedesc.hpp"
 #include "spritelight.hpp"
 #include "texels.hpp"
+#include "texturetable.hpp"
 
 namespace Rtx
 {
-    osg::ref_ptr<const osg::Image> openImage(Resource::ImageManager& images, const VFS::Path::NormalizedView path)
+    Result<osg::ref_ptr<const osg::Image>, std::string> openImage(
+        Resource::ImageManager& images, const VFS::Path::NormalizedView path)
     {
+        osg::ref_ptr<const osg::Image> image;
         try
         {
-            return images.getImage(path);
+            image = images.getImage(path);
         }
-        catch (const std::exception&)
+        catch (const std::exception& failed)
         {
-            return nullptr;
+            return Err{ std::string(failed.what()) };
         }
+
+        // The manager answers a file it cannot read with its warning image, having logged why:
+        // an image, and not the one the file holds.
+        if (image == nullptr || image == images.getWarningImage())
+            return Err{ "no image reads from the file" };
+
+        return image;
     }
 
     namespace
     {
         /// What a texture that could not be read is drawn as: mid grey and not magenta, because a
-        /// live graph's unreadable textures are mostly things that were never files, and
-        /// `getUnreadable` already reports them. One opaque BC1 block with both endpoints the same
-        /// grey.
+        /// live graph's unreadable textures are mostly things that were never files, and the refusal
+        /// already names each. One opaque BC1 block with both endpoints the same grey.
         TextureData standIn(std::vector<MipLevel>& levels)
         {
             // 0x8410 is RGB565 for (16, 16, 16) out of (31, 63, 31) — a touch above half, which is
@@ -68,19 +76,34 @@ namespace Rtx
         }
     }
 
-    TextureData describeImage(const osg::Image& image, std::vector<MipLevel>& levels)
+    Result<void, std::string> checkUploadable(const osg::Image& image)
     {
         const TextureFormat format = readFormat(image);
         if (!isUploadable(format))
-            throw InputError("texture \"" + image.getFileName() + "\" is " + std::string(nameOf(format)) + " ("
-                + std::to_string(image.getPixelFormat()) + "), which is not one this renderer uploads");
+            return Err{ "its format is " + std::string(nameOf(format)) + " (" + std::to_string(image.getPixelFormat())
+                + "), which this renderer does not upload" };
 
+        if (!image.valid() || image.s() < 0 || image.t() < 0)
+            return Err{ "it is " + std::to_string(image.s()) + " by " + std::to_string(image.t())
+                + " texels, which no device holds" };
+
+        return {};
+    }
+
+    Result<TextureData, std::string> describeImage(const osg::Image& image, std::vector<MipLevel>& levels)
+    {
+        if (const Result<void, std::string> uploadable = checkUploadable(image); !uploadable.isOk())
+            return Err{ uploadable.error() };
+
+        const TextureFormat format = readFormat(image);
         const auto width = static_cast<std::uint32_t>(image.s());
         const auto height = static_cast<std::uint32_t>(image.t());
 
+        // As many as the file carries, and no more than reach a single texel: a header may count
+        // levels past the last one, and a device takes no image with more levels than its size has.
         const std::size_t first = levels.size();
-        const unsigned int count = image.getNumMipmapLevels();
-        for (unsigned int level = 0; level < count; ++level)
+        const std::uint32_t count = std::min(image.getNumMipmapLevels(), levelsTo1x1(width, height));
+        for (std::uint32_t level = 0; level < count; ++level)
             levels.push_back(MipLevel{
                 .mOffset = image.getMipmapOffset(level),
                 .mWidth = std::max(width >> level, 1u),
@@ -113,7 +136,7 @@ namespace Rtx
         mLevels.clear();
         mDescriptions.clear();
         mKept.clear();
-        mUnreadable = 0;
+        mRefusals.clear();
 
         mKept.reserve(slots.size());
 
@@ -127,25 +150,20 @@ namespace Rtx
                 continue;
 
             // A slot this renderer made rather than opened has no file to be asked for, and the
-            // entry still has to exist because the description below is built from it. A composite
-            // the queue has not finished is passed over the same way.
-
-            osg::ref_ptr<const osg::Image> image;
-            Index bakedFrom = sNoIndex;
+            // entry still has to exist because the description below is built from it.
+            Kept kept{ .mSlot = slot };
 
             const TextureRow& row = scene.textures().getRows()[slot];
             if (row.mKind == TextureKind::File)
-                image = openImage(images, row.mPath);
+                kept.mImage = openImage(images, row.mPath);
             else if (const std::optional<VFS::Path::Normalized> source = SpriteLightMap::sourceOf(row.mBaked))
             {
                 // Made on the device from the sprite texture's own slot, which the emitter holds
                 // beside this one: a bake carries no bytes and is shaped like its source there.
-                // A source the table no longer holds is a bake of nothing, and it gets the stand-in
-                // below like a file that could not be read.
-                bakedFrom = scene.textures().findFile(*source);
+                kept.mBakedFrom = scene.textures().findFile(*source);
             }
 
-            mKept.push_back(Kept{ .mSlot = slot, .mBakedFrom = bakedFrom, .mImage = std::move(image) });
+            mKept.push_back(std::move(kept));
         }
 
         // Reserved before anything points into it, and that is what makes the spans safe. Every
@@ -154,7 +172,8 @@ namespace Rtx
         // last arrival is usually large enough already, and then this asks for nothing.
         std::size_t levels = 0;
         for (const Kept& kept : mKept)
-            levels += kept.mImage != nullptr ? kept.mImage->getNumMipmapLevels() : 1u;
+            levels += kept.mImage.isOk() && kept.mImage.value() != nullptr ? kept.mImage.value()->getNumMipmapLevels()
+                                                                           : 1u;
         mLevels.reserve(levels);
 
         // What the assertion below is taken against: the reserve and the fill agree by argument
@@ -164,61 +183,77 @@ namespace Rtx
         mDescriptions.reserve(mKept.size());
         for (const Kept& kept : mKept)
         {
-            std::optional<TextureData> described;
-            if (kept.mImage != nullptr)
-            {
-                try
-                {
-                    described = describeImage(*kept.mImage, mLevels);
+            const TextureRow& row = scene.textures().getRows()[kept.mSlot];
 
-                    // What the file did not carry, the device makes. `MipChain` says why almost
-                    // nothing in the game needs this and why the rain does.
-                    described->mCompleteChain = MipChain::wantedFor(*described);
-                }
-                catch (const InputError&)
-                {
-                    described.reset();
-                }
-            }
-            else if (kept.mBakedFrom != sNoIndex)
+            const Result<TextureData, std::string> described = describeKept(kept, composites);
+            TextureData data;
+            if (described.isOk())
+                data = described.value();
+            else
             {
-                described = TextureData{
-                    .mSource = TextureSource::SpriteBake,
-                    .mFrom = kept.mBakedFrom,
-                    .mFormat = TextureFormat::Rgba8Unorm,
-                };
-            }
-            else if (const Index chunk = composites != nullptr ? composites->find(kept.mSlot) : sNoIndex;
-                     chunk != sNoIndex)
-            {
-                // Flattened on the device in the placement after this arrival, from the chunk's
-                // own stack: the description carries the chunk and no bytes.
-                described = TextureData{
-                    .mSource = TextureSource::GroundComposite,
-                    .mFrom = chunk,
-                    .mFormat = TextureFormat::Rgba8Srgb,
-                };
+                // Whichever of the two named the slot.
+                mRefusals.push_back(Refusal{ .mKind = Refused::Texture,
+                    .mName = std::string(row.mKind == TextureKind::File ? row.mPath.value() : row.mBaked),
+                    .mWhy = described.error() });
+                data = standIn(mLevels);
             }
 
-            if (!described.has_value())
-            {
-                ++mUnreadable;
-
-                // Named rather than tallied, because a count says a texture is grey and nothing
-                // about which one. Whichever of the two named the slot, or a composite that could
-                // not be flattened reports itself as a file with no name.
-                const TextureRow& row = scene.textures().getRows()[kept.mSlot];
-                Log(Debug::Warning) << "Texture \"" << (row.mKind == TextureKind::File ? row.mPath.value() : row.mBaked)
-                                    << "\" could not be read; drawing the stand-in";
-
-                described = standIn(mLevels);
-            }
-
-            described->mSlot = kept.mSlot;
-            described->mWrap = scene.textures().getRows()[kept.mSlot].mWrap;
-            mDescriptions.push_back(*described);
+            data.mSlot = kept.mSlot;
+            data.mWrap = row.mWrap;
+            mDescriptions.push_back(data);
         }
 
         assert(mLevels.capacity() == reserved && "the level table grew while descriptions spanned it");
+
+        // The array's own limit, met where a texture was added rather than here, and reported with
+        // the rest of what an arrival stood in for: one refusal for all of them, because what they
+        // share is the limit.
+        if (scene.textures().getRefused() > 0)
+            mRefusals.push_back(Refusal{ .mKind = Refused::Texture,
+                .mWhy = "past the " + std::to_string(TextureTable::sCapacity) + " textures the array holds" });
+    }
+
+    Result<TextureData, std::string> SceneTextures::describeKept(const Kept& kept, const CompositeQueue* composites)
+    {
+        if (!kept.mImage.isOk())
+            return Err{ kept.mImage.error() };
+
+        if (const osg::Image* image = kept.mImage.value().get())
+        {
+            const Result<TextureData, std::string> read = describeImage(*image, mLevels);
+            if (!read.isOk())
+                return read;
+
+            // What the file did not carry, the device makes. `MipChain` says why almost nothing in
+            // the game needs this and why the rain does.
+            TextureData described = read.value();
+            described.mCompleteChain = MipChain::wantedFor(described);
+            return described;
+        }
+
+        if (kept.mBakedFrom.has_value())
+        {
+            // A source the table no longer holds is a bake of nothing.
+            if (*kept.mBakedFrom == sNoIndex)
+                return Err{ "the texture it bakes is no longer held" };
+
+            return TextureData{
+                .mSource = TextureSource::SpriteBake,
+                .mFrom = *kept.mBakedFrom,
+                .mFormat = TextureFormat::Rgba8Unorm,
+            };
+        }
+
+        // Flattened on the device in the placement after this arrival, from the chunk's own stack:
+        // the description carries the chunk and no bytes.
+        const Index chunk = composites != nullptr ? composites->find(kept.mSlot) : sNoIndex;
+        if (chunk == sNoIndex)
+            return Err{ "no ground was queued to flatten into it" };
+
+        return TextureData{
+            .mSource = TextureSource::GroundComposite,
+            .mFrom = chunk,
+            .mFormat = TextureFormat::Rgba8Srgb,
+        };
     }
 }

@@ -172,6 +172,9 @@ namespace Rtx
         /// dies with its reader, so this runs before the supply is pointed anywhere else.
         void forget();
 
+        /// Where what the reader refused is reported, on the frame's thread.
+        SceneDesc& mScene;
+
         /// The cells themselves, read on a thread of its own.
         CellSupply mSupply;
 

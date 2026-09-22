@@ -23,6 +23,7 @@
 #include "material.hpp"
 #include "materialresolver.hpp"
 #include "meshreader.hpp"
+#include "refusals.hpp"
 #include "runs.hpp"
 #include "scratch.hpp"
 #include "shapefold.hpp"
@@ -35,12 +36,13 @@ namespace Rtx
     /// never reads it: `CellReader::giveBack` says why a hold is a cell's and not the frame's.
     struct PreparedTexture : Lent
     {
-        /// The image itself, which is what the frame's describe looks a texture up by: the loader's
-        /// cache hands the same object to the template and to whoever asks for the path.
+        /// The image itself, held so the loader's cache hands the same object to the frame's
+        /// describe, or null where the file does not read.
         osg::ref_ptr<const osg::Image> mImage;
 
-        /// The image's file, normalised, which is what the scene names a texture by. Kept here so
-        /// that a frame adopting a layer names its texture without building the path again.
+        /// The file, normalised, which is what the reader files it under and the scene names a
+        /// texture by. Kept here so that a frame adopting a layer names its texture without
+        /// building the path again.
         VFS::Path::Normalized mPath;
 
         /// Makes room for the next image.
@@ -50,8 +52,12 @@ namespace Rtx
     /// One ground texture a cell's land names, and the weights that place it.
     struct PreparedLayer
     {
-        /// The tiling ground texture, opened on the thread. What its reading is looked up by.
+        /// The tiling ground texture, opened on the thread, or null where it does not read — a
+        /// layer the texture table stands in for.
         osg::ref_ptr<const osg::Image> mImage;
+
+        /// The path the land names it by, which its reading is filed under.
+        VFS::Path::Normalized mPath;
 
         /// The reader's description of it, lent for as long as the cell is held.
         PreparedTexture* mTexture = nullptr;
@@ -156,6 +162,10 @@ namespace Rtx
         std::vector<osg::Vec3f> mColours;
         std::vector<std::uint32_t> mIndices;
 
+        /// Why its walk refused the template, or empty. A refused model holds no part and is filed
+        /// under its path like any other, so the next reference to it is not walked again.
+        std::string mRefused;
+
         /// What one of its parts comes to, as the frame adopts it. The spans are into this model's
         /// own storage, and live for as long as it is lent.
         MeshReading readingOf(const PreparedPart& part) const
@@ -179,7 +189,7 @@ namespace Rtx
         {
             reuseKeeping(*this, &PreparedModel::mPath, &PreparedModel::mParts, &PreparedModel::mPositions,
                 &PreparedModel::mNormals, &PreparedModel::mTexCoords, &PreparedModel::mSecondTexCoords,
-                &PreparedModel::mColours, &PreparedModel::mIndices);
+                &PreparedModel::mColours, &PreparedModel::mIndices, &PreparedModel::mRefused);
         }
     };
 
@@ -235,10 +245,14 @@ namespace Rtx
         /// were read — `CellRing` says why the ring stands lamps at all.
         std::vector<PreparedLight> mLights;
 
+        /// The models and the lamps of the cell this renderer cannot take, which only the frame's
+        /// thread reports.
+        std::vector<Refusal> mRefusals;
+
         void reuse()
         {
-            reuseKeeping(
-                *this, &PreparedCell::mGround, &PreparedCell::mModels, &PreparedCell::mRefs, &PreparedCell::mLights);
+            reuseKeeping(*this, &PreparedCell::mGround, &PreparedCell::mModels, &PreparedCell::mRefs,
+                &PreparedCell::mLights, &PreparedCell::mRefusals);
         }
     };
 }

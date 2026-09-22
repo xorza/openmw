@@ -20,6 +20,8 @@
 #include <components/rtx/error.hpp>
 #include <components/rtx/material.hpp>
 #include <components/rtx/mesh.hpp>
+#include <components/rtx/refusals.hpp>
+#include <components/rtx/result.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/spritelight.hpp>
@@ -56,9 +58,9 @@ namespace Rtx
         {
             std::vector<Rtx::MipLevel> levels;
 
-            EXPECT_EQ(describeImage(*makeBlock(GL_COMPRESSED_RGB_S3TC_DXT1_EXT), levels).mFormat,
+            EXPECT_EQ(describeImage(*makeBlock(GL_COMPRESSED_RGB_S3TC_DXT1_EXT), levels).value().mFormat,
                 Rtx::TextureFormat::Bc1RgbaSrgb);
-            EXPECT_EQ(describeImage(*makeBlock(GL_COMPRESSED_RGBA_S3TC_DXT1_EXT), levels).mFormat,
+            EXPECT_EQ(describeImage(*makeBlock(GL_COMPRESSED_RGBA_S3TC_DXT1_EXT), levels).value().mFormat,
                 Rtx::TextureFormat::Bc1RgbaSrgb);
         }
 
@@ -68,9 +70,9 @@ namespace Rtx
         {
             std::vector<Rtx::MipLevel> levels;
 
-            EXPECT_EQ(describeImage(*makeBlock(GL_COMPRESSED_RGBA_S3TC_DXT3_EXT), levels).mFormat,
+            EXPECT_EQ(describeImage(*makeBlock(GL_COMPRESSED_RGBA_S3TC_DXT3_EXT), levels).value().mFormat,
                 Rtx::TextureFormat::Bc2Srgb);
-            EXPECT_EQ(describeImage(*makeBlock(GL_COMPRESSED_RGBA_S3TC_DXT5_EXT), levels).mFormat,
+            EXPECT_EQ(describeImage(*makeBlock(GL_COMPRESSED_RGBA_S3TC_DXT5_EXT), levels).value().mFormat,
                 Rtx::TextureFormat::Bc3Srgb);
         }
 
@@ -89,8 +91,8 @@ namespace Rtx
             std::vector<Rtx::MipLevel> levels;
             levels.reserve(first->getNumMipmapLevels() + second->getNumMipmapLevels());
 
-            const Rtx::TextureData a = describeImage(*first, levels);
-            const Rtx::TextureData b = describeImage(*second, levels);
+            const Rtx::TextureData a = describeImage(*first, levels).value();
+            const Rtx::TextureData b = describeImage(*second, levels).value();
 
             // A 4x4 block allocated without a chain is one level, so the table holds exactly two and
             // the second description begins where the first ends.
@@ -119,8 +121,8 @@ namespace Rtx
         {
             std::vector<Rtx::MipLevel> levels;
 
-            EXPECT_EQ(describeImage(*makeBlock(GL_RGBA), levels).mFormat, Rtx::TextureFormat::Rgba8Srgb);
-            EXPECT_EQ(describeImage(*makeBlock(GL_BGRA), levels).mFormat, Rtx::TextureFormat::Bgra8Srgb);
+            EXPECT_EQ(describeImage(*makeBlock(GL_RGBA), levels).value().mFormat, Rtx::TextureFormat::Rgba8Srgb);
+            EXPECT_EQ(describeImage(*makeBlock(GL_BGRA), levels).value().mFormat, Rtx::TextureFormat::Bgra8Srgb);
 
             // **Display-encoded, which every content format is.** The one uncompressed format that
             // is not exists for tests asserting an exact texel, and a cloud texture read through it
@@ -129,15 +131,53 @@ namespace Rtx
             EXPECT_TRUE(Rtx::isSrgb(Rtx::TextureFormat::Bgra8Srgb));
         }
 
-        /// A format this still cannot upload fails by name rather than uploading noise.
+        /// A format this still cannot upload fails by name rather than uploading noise, and so does
+        /// an image of no size, which no device takes.
         ///
         /// Three-channel spellings are refused deliberately: uploading one would need the fourth
         /// channel written in, which means owning a buffer, and nothing this game ships stores an
         /// opaque texture without one.
-        TEST(RtxTextureBuilderTest, aFormatWithNoAlphaChannelIsRefusedAndSaysWhich)
+        TEST(RtxTextureBuilderTest, aFormatWithNoAlphaChannelOrAnImageOfNoSizeIsRefusedAndSaysWhich)
         {
             std::vector<Rtx::MipLevel> levels;
-            EXPECT_THROW(describeImage(*makeBlock(GL_RGB), levels), Rtx::InputError);
+            const Result<Rtx::TextureData, std::string> rgb = describeImage(*makeBlock(GL_RGB), levels);
+            ASSERT_FALSE(rgb.isOk());
+            EXPECT_EQ(rgb.error(), "its format is RGB8 (6407), which this renderer does not upload");
+
+            // A format that uploads, so what is refused is the size alone.
+            osg::ref_ptr<osg::Image> empty = new osg::Image;
+            empty->setFileName("textures/tx_empty.dds");
+            empty->setImage(0, 4, 1, GL_RGBA, GL_RGBA, GL_UNSIGNED_BYTE, nullptr, osg::Image::NO_DELETE);
+            const Result<Rtx::TextureData, std::string> unsized = describeImage(*empty, levels);
+            ASSERT_FALSE(unsized.isOk()) << "an image of no size was described";
+            EXPECT_EQ(unsized.error(), "it is 0 by 4 texels, which no device holds");
+            EXPECT_TRUE(levels.empty()) << "a refusal adds no level";
+        }
+
+        /// A header counting levels past the single texel is cut at it, because a device takes no
+        /// image with more levels than its size has. A 4x4 has three — 4, 2 and 1 across — and in
+        /// RGBA they are 64, 16 and 4 bytes, at offsets 0, 64 and 80. The file counts two more.
+        TEST(RtxTextureBuilderTest, aHeaderCountingLevelsPastOneTexelIsCutAtIt)
+        {
+            constexpr std::size_t sBytes = 64 + 16 + 4 + 4 + 4;
+
+            osg::ref_ptr<osg::Image> image = new osg::Image;
+            image->setFileName("textures/tx_deep.dds");
+            image->setImage(
+                4, 4, 1, GL_RGBA, GL_RGBA, GL_UNSIGNED_BYTE, new unsigned char[sBytes], osg::Image::USE_NEW_DELETE);
+            image->setMipmapLevels(osg::Image::MipmapDataType{ 64, 80, 84, 88 });
+            ASSERT_EQ(image->getNumMipmapLevels(), 5u) << "the header's count, which is what this is about";
+
+            std::vector<Rtx::MipLevel> levels;
+            const Rtx::TextureData described = describeImage(*image, levels).value();
+
+            ASSERT_EQ(described.mLevels.size(), 3u);
+            EXPECT_EQ(described.mLevels[0].mOffset, 0u);
+            EXPECT_EQ(described.mLevels[1].mOffset, 64u);
+            EXPECT_EQ(described.mLevels[2].mOffset, 80u);
+            EXPECT_EQ(described.mLevels[1].mWidth, 2u);
+            EXPECT_EQ(described.mLevels[2].mWidth, 1u);
+            EXPECT_EQ(described.mLevels[2].mHeight, 1u);
         }
 
         /// Describing an arrival a second time reaches the heap not at all.
@@ -167,7 +207,7 @@ namespace Rtx
 
             SceneTextures described;
             described.describeAll(scene, images);
-            ASSERT_EQ(described.getUnreadable(), 0u) << "the image did not come back from the cache";
+            ASSERT_TRUE(described.getRefusals().empty()) << "the image did not come back from the cache";
             ASSERT_EQ(described.getDescriptions().size(), std::size_t{ 1 });
 
             // Four texels across and one level in the file, which is the level described: the rest
@@ -181,7 +221,7 @@ namespace Rtx
             EXPECT_EQ(spent, 0u) << "a second description reached the heap " << spent << " times";
 
             // And it answered, rather than reaching the heap not at all by doing nothing.
-            EXPECT_EQ(described.getUnreadable(), 0u);
+            EXPECT_TRUE(described.getRefusals().empty());
             ASSERT_EQ(described.getDescriptions().size(), std::size_t{ 1 });
         }
 
@@ -226,7 +266,9 @@ namespace Rtx
                 ASSERT_EQ(described.getDescriptions().size(), std::size_t{ 1 }) << which;
                 EXPECT_EQ(described.getDescriptions()[0].mSlot, staying.mTexture) << which;
                 EXPECT_EQ(described.getDescriptions()[0].mName, "unreadable") << which;
-                EXPECT_EQ(described.getUnreadable(), 1u) << which;
+                ASSERT_EQ(described.getRefusals().size(), 1u) << which;
+                EXPECT_EQ(described.getRefusals()[0].mKind, Refused::Texture) << which;
+                EXPECT_EQ(described.getRefusals()[0].mWhy, "no image reads from the file") << which;
             };
 
             const std::array<Rtx::Index, 2> both{ going.mTexture, staying.mTexture };
@@ -262,7 +304,8 @@ namespace Rtx
             EXPECT_EQ(described.getDescriptions()[0].mName, "unreadable");
             EXPECT_EQ(described.getDescriptions()[0].mSource, Rtx::TextureSource::StandIn);
             EXPECT_EQ(described.getDescriptions()[0].mFrom, Rtx::sNoIndex);
-            EXPECT_EQ(described.getUnreadable(), 1u);
+            ASSERT_EQ(described.getRefusals().size(), 1u);
+            EXPECT_EQ(described.getRefusals()[0].mWhy, "the texture it bakes is no longer held");
 
             // The emitter holds the source under a wrap of its own beside the bake; the bake finds
             // it whichever wrap that was, and is then a bake and not a texture.
@@ -275,7 +318,7 @@ namespace Rtx
             EXPECT_TRUE(described.getDescriptions()[0].mBytes.empty()) << "a bake carries no bytes";
             EXPECT_TRUE(described.getDescriptions()[0].mLevels.empty()) << "a bake is shaped like its source";
             EXPECT_TRUE(described.getDescriptions()[0].hasNeutralShading());
-            EXPECT_EQ(described.getUnreadable(), 0u);
+            EXPECT_TRUE(described.getRefusals().empty());
         }
 
         /// A chunk's flattened ground is a slot the queue gave out: the description carries the
@@ -313,7 +356,7 @@ namespace Rtx
             EXPECT_TRUE(described.getDescriptions()[0].mBytes.empty()) << "a composite carries no bytes";
             EXPECT_TRUE(described.getDescriptions()[0].mLevels.empty()) << "a composite is shaped by the pass";
             EXPECT_TRUE(described.getDescriptions()[0].hasNeutralShading());
-            EXPECT_EQ(described.getUnreadable(), 0u);
+            EXPECT_TRUE(described.getRefusals().empty());
 
             queue.releaseFinished();
             described.describe(scene, images, std::span(&composite, 1), &queue);
@@ -321,7 +364,8 @@ namespace Rtx
             EXPECT_EQ(described.getDescriptions()[0].mSource, Rtx::TextureSource::StandIn);
             EXPECT_EQ(described.getDescriptions()[0].mFrom, Rtx::sNoIndex);
             EXPECT_EQ(described.getDescriptions()[0].mName, "unreadable");
-            EXPECT_EQ(described.getUnreadable(), 1u);
+            ASSERT_EQ(described.getRefusals().size(), 1u);
+            EXPECT_EQ(described.getRefusals()[0].mWhy, "no ground was queued to flatten into it");
         }
 
         /// A file that carried one level is described as that level and nothing more: the chain is

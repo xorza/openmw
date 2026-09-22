@@ -69,18 +69,33 @@ namespace Rtx
     };
 
     /// The two painted faces, in a scene's texture table, held rather than named by a material:
-    /// the disc is drawn by a ray that reached nothing, so the sweep would take the slot back.
+    /// the disc is drawn by a ray that reached nothing, so the sweep would take the slot back. And
+    /// how wide each is drawn, which is fixed for the run and read with them.
     struct MoonFaces
     {
         Index mMasser = sNoIndex;
         Index mSecunda = sNoIndex;
 
+        /// `moonAngularRadius` of each moon's `Moons_<name>_Size`, in radians.
+        float mMasserRadius = 0.0f;
+        float mSecundaRadius = 0.0f;
+
         Index of(Moon moon) const { return moon == Moon::Masser ? mMasser : mSecunda; }
+        float radiusOf(Moon moon) const { return moon == Moon::Masser ? mMasserRadius : mSecundaRadius; }
+    };
+
+    /// Each moon's `Moons_<name>_Size`, as the configuration states it, which the host passes in.
+    struct MoonSizes
+    {
+        float mMasser = 0.0f;
+        float mSecunda = 0.0f;
     };
 
     /// Adds `tx_masser_full.dds` and `tx_secunda_full.dds` to `scene` and holds them there until
-    /// `dropMoonFaces`. A moon drawn from the mean of its portrait is a coloured circle.
-    MoonFaces addMoonFaces(SceneDesc& scene);
+    /// `dropMoonFaces`, and how wide `sizes` draws each moon. A moon drawn from the mean of its
+    /// portrait is a coloured circle. A moon of size nought is not drawn, as the game draws none;
+    /// one whose size is below nought or not finite is refused to `scene`.
+    MoonFaces addMoonFaces(SceneDesc& scene, const MoonSizes& sizes);
 
     /// Gives both holds back, so a scene the world has left holds nothing of its moons.
     void dropMoonFaces(SceneDesc& scene, const MoonFaces& faces);
@@ -89,21 +104,24 @@ namespace Rtx
     /// angles are known — where its face points, how wide it is, which way its terminator falls —
     /// is one answer and lives here.
     ///
+    /// @param faces which portrait the moon wears and how wide it is. A moon of no width is not
+    ///        drawn.
     /// @param alongArc degrees travelled from the horizon it rose at, zero to 180.
     /// @param axisOffset degrees the whole arc is swung about the zenith.
     /// @param phase which of the eight painted phases, counted from full.
     /// @param alpha the daylight fade, with the weather's `Glare_View` on it —
     ///        `Sky::MoonState::mDaylightFade`. Whether the moon is up at all is `alongArc`.
-    MoonPlacement placeMoon(Moon moon, float alongArc, float axisOffset, Sky::MoonPhase phase, float alpha);
+    MoonPlacement placeMoon(
+        const MoonFaces& faces, Moon moon, float alongArc, float axisOffset, Sky::MoonPhase phase, float alpha);
 
     /// A placement as the shader takes it — one conversion, so a moon read off the weather system
     /// and one worked out from a date reach the shader the same way.
     Shaders::MoonDisc describeMoon(const MoonPlacement& placement);
 
-    /// The angular radius a placement gives that moon, in radians, out of the renderer the game
-    /// already has: `Moons_<name>_Size` is scaled by 450/125 onto a quad of half-extent 0.5 a
+    /// The angular radius of a moon of `Moons_<name>_Size` `size`, in radians, out of the renderer
+    /// the game already has: the size is scaled by 450/125 onto a quad of half-extent 0.5 a
     /// thousand units off (`apps/openmw/mwrender/skyutil.cpp`), so the disc is `atan(1.8 * size /
     /// 1000)`. Masser's 94 comes to 9.6 degrees and Secunda's 40 to 4.1 — thirty-five times the
-    /// sun.
-    float moonAngularRadius(Moon moon);
+    /// sun. Nought for a size that is not a finite number above nought.
+    float moonAngularRadius(float size);
 }

@@ -92,7 +92,6 @@ namespace Rtx::Testing
                 = FormatCount{ .mMet = from + 15, .mMipped = from + 16 };
             stats.mUnskinned = from + 17;
             stats.mGroundCells = from + 18;
-            stats.mSpritelessEmitters = from + 19;
             stats.mWornBeyondKept = from + 21;
             stats.mRestood = from + 22;
             return stats;
@@ -124,7 +123,6 @@ namespace Rtx::Testing
             EXPECT_EQ(sum.mLights, 128u);
             EXPECT_EQ(sum.mUnskinned, 134u);
             EXPECT_EQ(sum.mGroundCells, 136u);
-            EXPECT_EQ(sum.mSpritelessEmitters, 138u);
             EXPECT_EQ(sum.mWornBeyondKept, 142u);
             EXPECT_EQ(sum.mRestood, 144u);
 

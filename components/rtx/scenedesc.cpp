@@ -10,8 +10,6 @@
 
 #include <osg/Vec3f>
 
-#include "error.hpp"
-
 namespace Rtx
 {
     namespace
@@ -31,17 +29,19 @@ namespace Rtx
         return mMeshes.add(mDeformers, arrays, shape, deform, deformer);
     }
 
-    void SceneDesc::checkPoses(const Index posed, const MeshArrays& arrays)
+    Result<void, std::string> SceneDesc::checkPoses(const Index posed, const MeshArrays& arrays)
     {
         if (posed != arrays.mPositions.size())
-            throw InputError("a deforming mesh of " + std::to_string(arrays.mPositions.size())
-                + " vertices on a rig or morph of " + std::to_string(posed));
+            return Err{ "it has " + std::to_string(arrays.mPositions.size()) + " vertices on a rig or morph of "
+                + std::to_string(posed) };
+
+        return {};
     }
 
     DeformedMesh SceneDesc::addMesh(const MeshArrays& arrays, const FoldedShape shape, const RigSpec& rig)
     {
-        checkPoses(rig.getVertexCount(), arrays);
-        MeshTable::checkFits(arrays);
+        assert(checkPoses(rig.getVertexCount(), arrays).isOk() && "a rig that does not pose its mesh");
+        assert(MeshTable::checkFits(arrays).isOk() && "a mesh past a block");
 
         const Index deformer = mDeformers.addRig(rig);
         return DeformedMesh{
@@ -52,8 +52,8 @@ namespace Rtx
 
     DeformedMesh SceneDesc::addMesh(const MeshArrays& arrays, const FoldedShape shape, const MorphSpec& morph)
     {
-        checkPoses(morph.getVertexCount(), arrays);
-        MeshTable::checkFits(arrays);
+        assert(checkPoses(morph.getVertexCount(), arrays).isOk() && "targets that do not pose their mesh");
+        assert(MeshTable::checkFits(arrays).isOk() && "a mesh past a block");
 
         const Index deformer = mDeformers.addMorph(morph);
         return DeformedMesh{

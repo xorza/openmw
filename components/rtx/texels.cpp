@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <string>
 #include <vector>
 
 #include <osg/GL>
@@ -15,12 +16,12 @@
 #include <osgDB/ReadFile>
 #include <osgDB/WriteFile>
 
-#include <components/debug/debuglog.hpp>
 #include <components/files/conversion.hpp>
 
 #include "alphaimage.hpp"
 #include "colour.hpp"
 #include "error.hpp"
+#include "result.hpp"
 #include "texturebuilder.hpp"
 
 namespace Rtx
@@ -74,27 +75,18 @@ namespace Rtx
         std::vector<MipLevel>& levels = scratch.mLevels;
         levels.clear();
 
-        TextureData described;
-        try
-        {
-            described = describeImage(image, levels);
-        }
-        catch (const InputError& what)
-        {
-            // A format nothing in the game produces, which is a mod's business rather than a broken
-            // contract — the caller gets nothing and carries on without whatever this was worth.
-            Log(Debug::Warning) << "cannot average \"" << image.getFileName() << "\": " << what.what();
+        // An image this cannot describe is the same image whose arrival in the texture table
+        // refuses it by name. The caller gets nothing and carries on without whatever this was
+        // worth.
+        const Result<TextureData, std::string> read = describeImage(image, levels);
+        if (!read.isOk())
             return MeanTexel();
-        }
 
-        if (levels.empty())
-            return MeanTexel();
+        TextureData described = read.value();
 
         // The finest level alone. A mip chain is the same picture at lower rates, so every level
         // holds the same mean to within its own filtering, and the coarse ones cost nothing to skip.
         const MipLevel& level = levels.front();
-        if (level.mWidth == 0 || level.mHeight == 0)
-            return MeanTexel();
 
         // Never empty here, because it is empty only for a description carrying no texels — so
         // the alpha is read rather than defaulted, which is the difference between a star sheet

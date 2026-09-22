@@ -2,7 +2,9 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <span>
+#include <string>
 #include <vector>
 
 #include <osg/Image>
@@ -10,6 +12,8 @@
 
 #include <components/vfs/pathutil.hpp>
 
+#include "refusals.hpp"
+#include "result.hpp"
 #include "runs.hpp"
 #include "texturedata.hpp"
 
@@ -23,17 +27,23 @@ namespace Rtx
     class CompositeQueue;
     class SceneDesc;
 
+    /// Whether this renderer uploads `image` as it stands, and why not where it does not: a format
+    /// Morrowind does not produce, or an image of no size or no texels. The name is left to
+    /// whoever reports it.
+    Result<void, std::string> checkUploadable(const osg::Image& image);
+
     /// Describes one image for a backend's uploader without copying a byte of it. Levels are
     /// appended to `levels`, and the returned description spans the ones it added, so `levels`
     /// must not grow again while the description is alive. The levels are the file's own; a
-    /// backend completes a chain the file did not carry, on the device. Throws for a format
-    /// Morrowind does not produce.
-    TextureData describeImage(const osg::Image& image, std::vector<MipLevel>& levels);
+    /// backend completes a chain the file did not carry, on the device. An error, adding no level,
+    /// where `checkUploadable` answers one.
+    Result<TextureData, std::string> describeImage(const osg::Image& image, std::vector<MipLevel>& levels);
 
-    /// The image at `path`, or null where nothing could be read there — null and not an exception,
-    /// because a live scene graph names textures that were never files and a renderer that fell
-    /// over on one would fall over on a cell.
-    osg::ref_ptr<const osg::Image> openImage(Resource::ImageManager& images, VFS::Path::NormalizedView path);
+    /// The image at `path`, or why nothing reads there — an error and not an exception, because a
+    /// live scene graph names textures that were never files and a renderer that fell over on one
+    /// would fall over on a cell. Never null.
+    Result<osg::ref_ptr<const osg::Image>, std::string> openImage(
+        Resource::ImageManager& images, VFS::Path::NormalizedView path);
 
     /// Every live texture a scene names, described, and the storage those descriptions point into.
     /// Each description carries the slot it belongs to and there is not one per slot: a slot the
@@ -52,9 +62,12 @@ namespace Rtx
         SceneTextures& operator=(SceneTextures&&) = delete;
 
         /// Resolves and describes every texture `scene` still names, in table order, for a backend
-        /// building an array from nothing. The free slots are not among them.
+        /// building an array from nothing. The free slots are not among them. A texture that cannot
+        /// be described is described as the stand-in and refused, and so is the array running out
+        /// of room.
         /// @param composites which slots are chunks' flattened ground, or null for a caller that
-        ///        flattens none. A terrain slot the queue did not give out is passed over.
+        ///        flattens none. A terrain slot the queue did not give out is described as the
+        ///        stand-in and refused.
         void describeAll(
             const SceneDesc& scene, Resource::ImageManager& images, const CompositeQueue* composites = nullptr);
 
@@ -67,10 +80,9 @@ namespace Rtx
         /// What the last `describe` found, each carrying the slot it goes to in `TextureData::mSlot`.
         std::span<const TextureData> getDescriptions() const { return mDescriptions; }
 
-        /// How many named a file that could not be read, each logged with its path. Not zero in the
-        /// game: a live scene graph holds textures that were never files, and those have no
-        /// business bringing the renderer down.
-        std::uint32_t getUnreadable() const { return mUnreadable; }
+        /// What the last `describe` refused, for whoever owns the scene to report: the scene is
+        /// read here, because a read-only caller describes it too.
+        std::span<const Refusal> getRefusals() const { return mRefusals; }
 
     private:
         /// One slot `describe` decided to describe, and what resolving it found.
@@ -78,15 +90,16 @@ namespace Rtx
         {
             Index mSlot = sNoIndex;
 
-            /// The slot of the sprite texture this slot's bake is made from on the device, or
-            /// `sNoIndex` where the slot is no bake, or a bake whose source the table no longer
-            /// holds.
-            Index mBakedFrom = sNoIndex;
+            /// For a bake, the slot of the sprite texture it is made from on the device, or
+            /// `sNoIndex` where the table no longer holds that. Nothing for a slot that is no bake.
+            std::optional<Index> mBakedFrom;
 
-            /// The file's image, or null where the slot names no file or nothing could be read
-            /// there.
-            osg::ref_ptr<const osg::Image> mImage;
+            /// The file's image, or why none reads. Null for a slot that names no file.
+            Result<osg::ref_ptr<const osg::Image>, std::string> mImage = osg::ref_ptr<const osg::Image>();
         };
+
+        /// What `kept` is described as, or why it gets the stand-in.
+        Result<TextureData, std::string> describeKept(const Kept& kept, const CompositeQueue* composites);
 
         // Refilled by every `describe` and never freed, so each settles at the busiest arrival so
         // far — which is where the room to grow one is least.
@@ -105,6 +118,6 @@ namespace Rtx
         /// built, because a rebuild is a fifth of a second and none of it should be this.
         std::vector<Index> mEverything;
 
-        std::uint32_t mUnreadable = 0;
+        std::vector<Refusal> mRefusals;
     };
 }

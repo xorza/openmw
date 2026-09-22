@@ -13,6 +13,7 @@
 #include <components/resource/imagemanager.hpp>
 #include <components/rtx/material.hpp>
 #include <components/rtx/mesh.hpp>
+#include <components/rtx/refusals.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneuploader.hpp>
@@ -47,7 +48,8 @@ namespace Rtx
                 Rtx::SceneUploader::Handing{ .mSlot = Rtx::SceneSlot::world(), .mScene = scene, .mImages = images });
             EXPECT_EQ(built.mKind, SceneUpload::Kind::Rebuilt);
             EXPECT_EQ(built.mDescribed, std::size_t{ 2 });
-            EXPECT_EQ(built.mUnreadable, 2u) << "a path that names nothing is described as the stand-in";
+            EXPECT_EQ(scene.refusals().count(Refused::Texture), 2u)
+                << "a path that names nothing is described as the stand-in, and refused";
             EXPECT_EQ(renderer.mRebuilt, 1u);
             EXPECT_EQ(renderer.mTextures, 2u);
 

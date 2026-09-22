@@ -3,7 +3,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
+#include <limits>
 #include <optional>
+#include <string_view>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -17,6 +19,7 @@
 #include <components/esm3/loadligh.hpp>
 #include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/material.hpp>
+#include <components/rtx/result.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/sprite.hpp>
 #include <components/rtx/surface.hpp>
@@ -35,6 +38,23 @@ namespace Rtx
     {
         /// A `LIGH` record reduced the way the engine reduces one, which is what every rule about a
         /// light reads. The flags are `ESM::Light`'s, because that is what the file carries.
+        /// The three things a light's numbers come to: a lamp, nothing where the game casts none
+        /// either, or a refusal of a light the game casts and this renderer cannot.
+        bool isLamp(const Result<std::optional<Light>, std::string_view>& made)
+        {
+            return made.isOk() && made.value().has_value();
+        }
+
+        bool isNothing(const Result<std::optional<Light>, std::string_view>& made)
+        {
+            return made.isOk() && !made.value().has_value();
+        }
+
+        bool isRefused(const Result<std::optional<Light>, std::string_view>& made)
+        {
+            return !made.isOk();
+        }
+
         SceneUtil::LightCommon describe(std::int32_t radius, std::uint32_t colour, std::int32_t flags)
         {
             ESM::Light record;
@@ -253,7 +273,8 @@ namespace Rtx
             // about how bright the content meant them; the ball is three quarters of a body, 96
             // units, stood on the ground at the glow's place and so centred 96 up, and the ball is
             // the clearance too; the reach is four radii.
-            const std::optional<Light> fill = makeFill(osg::Vec3f(1.0f, 1.0f, 1.0f), 440.0f, osg::Vec3f(1, 2, 3));
+            const std::optional<Light> fill
+                = makeFill(osg::Vec3f(1.0f, 1.0f, 1.0f), 440.0f, osg::Vec3f(1, 2, 3)).value();
             ASSERT_TRUE(fill.has_value());
             EXPECT_EQ(fill->mPosition, osg::Vec3f(1, 2, 99));
             EXPECT_NEAR(fill->mIntensity.x(), 152053.0f, 1.0f);
@@ -262,13 +283,13 @@ namespace Rtx
             EXPECT_FLOAT_EQ(fill->mReach, 1760.0f);
             EXPECT_EQ(fill->mFill, 1u);
 
-            const std::optional<Light> lamp = makeLight(osg::Vec3f(1.0f, 1.0f, 1.0f), 440.0f, osg::Vec3f());
+            const std::optional<Light> lamp = makeLight(osg::Vec3f(1.0f, 1.0f, 1.0f), 440.0f, osg::Vec3f()).value();
             ASSERT_TRUE(lamp.has_value());
             EXPECT_EQ(lamp->mFill, 0u);
             EXPECT_EQ(lamp->mIntensity, fill->mIntensity);
 
-            EXPECT_FALSE(makeFill(osg::Vec3f(1.0f, 1.0f, 1.0f), 0.0f, osg::Vec3f()).has_value()) << "no size";
-            EXPECT_FALSE(makeFill(osg::Vec3f(-1.0f, 1.0f, 1.0f), 440.0f, osg::Vec3f()).has_value()) << "negative";
+            EXPECT_TRUE(isNothing(makeFill(osg::Vec3f(1.0f, 1.0f, 1.0f), 0.0f, osg::Vec3f()))) << "no size";
+            EXPECT_TRUE(isRefused(makeFill(osg::Vec3f(-1.0f, 1.0f, 1.0f), 440.0f, osg::Vec3f()))) << "negative";
         }
 
         /// The animation reaches the diffuse and stops there.
@@ -351,9 +372,10 @@ namespace Rtx
                                 record, ~0u, /*isExterior=*/true, osg::Vec4f(0, 0, 0, 1));
 
                             const std::optional<Rtx::Light> fromRecord
-                                = makeLight(record, osg::Vec3f(1, 2, 3), seconds, graph->getId());
-                            const std::optional<Rtx::Light> fromGraph = makeLight(
-                                lightColour(*graph, seconds), graph->getSourceRadius(), osg::Vec3f(1, 2, 3));
+                                = makeLight(record, osg::Vec3f(1, 2, 3), seconds, graph->getId()).value();
+                            const std::optional<Rtx::Light> fromGraph
+                                = makeLight(lightColour(*graph, seconds), graph->getSourceRadius(), osg::Vec3f(1, 2, 3))
+                                      .value();
 
                             ASSERT_TRUE(fromRecord.has_value() && fromGraph.has_value())
                                 << "packed " << packed << " flags " << flags;
@@ -385,7 +407,7 @@ namespace Rtx
         TEST(RtxLightBuilderTest, intensityScalesWithTheRecordedRadiusAndReachIsStretchedPastIt)
         {
             const std::optional<Rtx::Light> light
-                = makeLight(describe(100, 0x00FFFFFF, 0), osg::Vec3f(1, 2, 3), 0.0, 1);
+                = makeLight(describe(100, 0x00FFFFFF, 0), osg::Vec3f(1, 2, 3), 0.0, 1).value();
 
             ASSERT_TRUE(light.has_value());
             EXPECT_EQ(light->mPosition, osg::Vec3f(1, 2, 3));
@@ -406,7 +428,8 @@ namespace Rtx
             // Doubling the radius quadruples the brightness, doubles the flame and rather less than
             // doubles the reach: 200 * 200 * 0.25 * pi = 31415.9, 200 / 16 = 12.5, and
             // 200 * 2 + 128 = 528.
-            const std::optional<Rtx::Light> larger = makeLight(describe(200, 0x00FFFFFF, 0), osg::Vec3f(), 0.0, 1);
+            const std::optional<Rtx::Light> larger
+                = makeLight(describe(200, 0x00FFFFFF, 0), osg::Vec3f(), 0.0, 1).value();
             ASSERT_TRUE(larger.has_value());
             EXPECT_NEAR(larger->mIntensity.x(), 31415.9f, 0.1f);
             EXPECT_FLOAT_EQ(larger->mReach, 528.0f);
@@ -431,27 +454,26 @@ namespace Rtx
         TEST(RtxLightBuilderTest, anUnlitRecordCastsNothingAndACarryableOneBurnsWhereItLies)
         {
             EXPECT_FALSE(castsWherePlaced(describe(100, 0x00FFFFFF, ESM::Light::OffDefault)));
-            EXPECT_FALSE(
-                makeLight(describe(100, 0x00FFFFFF, ESM::Light::OffDefault), osg::Vec3f(), 0.0, 1).has_value());
+            EXPECT_TRUE(isNothing(makeLight(describe(100, 0x00FFFFFF, ESM::Light::OffDefault), osg::Vec3f(), 0.0, 1)));
 
-            EXPECT_FALSE(makeLight(describe(100, 0x00FFFFFF, ESM::Light::Negative), osg::Vec3f(), 0.0, 1).has_value());
+            EXPECT_TRUE(isRefused(makeLight(describe(100, 0x00FFFFFF, ESM::Light::Negative), osg::Vec3f(), 0.0, 1)));
 
             // The flags that say what a light is or how it animates leave it burning.
             for (const std::int32_t flag :
                 { ESM::Light::Carry, ESM::Light::Dynamic, ESM::Light::Flicker, ESM::Light::Fire, ESM::Light::Pulse })
             {
                 EXPECT_TRUE(castsWherePlaced(describe(100, 0x00FFFFFF, flag))) << "flag " << flag;
-                EXPECT_TRUE(makeLight(describe(100, 0x00FFFFFF, flag), osg::Vec3f(), 0.0, 1).has_value())
+                EXPECT_TRUE(isLamp(makeLight(describe(100, 0x00FFFFFF, flag), osg::Vec3f(), 0.0, 1)))
                     << "flag " << flag;
             }
 
             // A record of no radius is a lamp of sixteen, because that is the least the game
             // stands one at: `createLightSource` lifts every radius to it before the walk reads
             // one back, and the record route reads the same rule.
-            const std::optional<Rtx::Light> least = makeLight(describe(0, 0x00FFFFFF, 0), osg::Vec3f(), 0.0, 1);
+            const std::optional<Rtx::Light> least = makeLight(describe(0, 0x00FFFFFF, 0), osg::Vec3f(), 0.0, 1).value();
             ASSERT_TRUE(least.has_value());
             EXPECT_FLOAT_EQ(least->mSourceRadius, 1.0f);
-            EXPECT_FLOAT_EQ(makeLight(describe(-50, 0x00FFFFFF, 0), osg::Vec3f(), 0.0, 1)->mSourceRadius, 1.0f)
+            EXPECT_FLOAT_EQ(makeLight(describe(-50, 0x00FFFFFF, 0), osg::Vec3f(), 0.0, 1).value()->mSourceRadius, 1.0f)
                 << "and so is a record that names less than nothing";
         }
 
@@ -475,9 +497,9 @@ namespace Rtx
             const osg::Vec3f radiated = lightColour(*built, 0.0);
             ASSERT_LT(radiated.x(), 0.0f) << "the graph did not build a light that subtracts, so this proves nothing";
 
-            EXPECT_FALSE(makeLight(radiated, 100.0f, osg::Vec3f()).has_value()) << "the walk mirrored it anyway";
-            EXPECT_FALSE(makeLight(subtracting, osg::Vec3f(), 0.0, 1).has_value())
-                << "and the record it was built from";
+            EXPECT_TRUE(isRefused(makeLight(radiated, 100.0f, osg::Vec3f()))) << "the walk mirrored it anyway";
+            EXPECT_TRUE(isRefused(makeLight(subtracting, osg::Vec3f(), 0.0, 1))) << "and the record it was built from";
+            EXPECT_EQ(makeLight(subtracting, osg::Vec3f(), 0.0, 1).error(), "it takes light away, which a ray cannot");
 
             // The same record without the flag is an ordinary white lamp by both routes, so what the
             // two agree on is the flag and not the light.
@@ -485,8 +507,8 @@ namespace Rtx
             const osg::ref_ptr<SceneUtil::LightSource> lit
                 = SceneUtil::createLightSource(ordinary, Testing::sLightMask, /*isExterior=*/false);
 
-            EXPECT_TRUE(makeLight(lightColour(*lit, 0.0), 100.0f, osg::Vec3f()).has_value());
-            EXPECT_TRUE(makeLight(ordinary, osg::Vec3f(), 0.0, 1).has_value());
+            EXPECT_TRUE(isLamp(makeLight(lightColour(*lit, 0.0), 100.0f, osg::Vec3f())));
+            EXPECT_TRUE(isLamp(makeLight(ordinary, osg::Vec3f(), 0.0, 1)));
 
             // **A black record subtracts nothing, so the flag on it decides nothing either.** Both
             // routes place a lamp that radiates zero, which is what they already did for a black
@@ -495,8 +517,58 @@ namespace Rtx
             const osg::ref_ptr<SceneUtil::LightSource> dark
                 = SceneUtil::createLightSource(unlit, Testing::sLightMask, /*isExterior=*/false);
 
-            EXPECT_TRUE(makeLight(lightColour(*dark, 0.0), 100.0f, osg::Vec3f()).has_value());
-            EXPECT_TRUE(makeLight(unlit, osg::Vec3f(), 0.0, 1).has_value());
+            EXPECT_TRUE(isLamp(makeLight(lightColour(*dark, 0.0), 100.0f, osg::Vec3f())));
+            EXPECT_TRUE(isLamp(makeLight(unlit, osg::Vec3f(), 0.0, 1)));
+        }
+
+        /// A lamp any number of which is not finite is refused by every route to one.
+        ///
+        /// **Each number came off a file or off a graph something else built**: a record's radius,
+        /// a node's place, a particle's colour. A lamp built of one that is not finite reaches the
+        /// light grid, which sizes itself around every lamp's reach and doubled its cell for ever,
+        /// and the shader, which would light everything near it to NaN. The same lamp with the
+        /// number finite is placed, so what is refused is the number. A radius of 1e20 is finite and
+        /// its square is not, which is why the lamp is asked and not only what it was made of.
+        TEST(RtxLightBuilderTest, aLampOfANumberThatIsNotFiniteIsRefusedByEveryRouteToOne)
+        {
+            constexpr float sNaN = std::numeric_limits<float>::quiet_NaN();
+            constexpr float sInfinity = std::numeric_limits<float>::infinity();
+            const osg::Vec3f white(1.0f, 1.0f, 1.0f);
+
+            ASSERT_TRUE(isLamp(makeLight(white, 100.0f, osg::Vec3f())));
+            ASSERT_TRUE(isLamp(makeFill(white, 100.0f, osg::Vec3f())));
+            EXPECT_TRUE(isNothing(makeLight(white, 0.0f, osg::Vec3f()))) << "no size is no light in the game either";
+            EXPECT_TRUE(isRefused(makeLight(white, 1.0e20f, osg::Vec3f()))) << "an intensity past the largest float";
+            EXPECT_EQ(makeLight(white, sNaN, osg::Vec3f()).error(), "a number it is made of is not finite");
+
+            for (const float bad : { sNaN, sInfinity, -sInfinity })
+            {
+                EXPECT_TRUE(isRefused(makeLight(white, bad, osg::Vec3f()))) << "a radius of " << bad;
+                EXPECT_TRUE(isRefused(makeLight(osg::Vec3f(1.0f, bad, 1.0f), 100.0f, osg::Vec3f())))
+                    << "a colour of " << bad;
+                EXPECT_TRUE(isRefused(makeLight(white, 100.0f, osg::Vec3f(0.0f, 0.0f, bad)))) << "a place of " << bad;
+                EXPECT_TRUE(isRefused(makeFill(white, 100.0f, osg::Vec3f(bad, 0.0f, 0.0f)))) << "a fill at " << bad;
+            }
+
+            // An effect's flames, one of them a colour the particle system left undefined.
+            SpriteEmitter flames{};
+            flames.mCentre = osg::Vec3f(100.0f, 0.0f, 10.0f);
+            flames.mReach = 8.0f;
+            flames.mCount = 1;
+            flames.mFlags = Shaders::EMITTER_ADDITIVE;
+
+            const std::vector<Sprite> burning{ Sprite{
+                .mPosition = osg::Vec3f(100.0f, 0.0f, 10.0f), .mRadius = 2.0f, .mColour = white, .mAlpha = 1.0f } };
+            std::vector<Sprite> undefined = burning;
+            undefined[0].mColour.y() = sNaN;
+
+            Glow lit;
+            lit.addSprites(flames, burning, white);
+            EXPECT_TRUE(isLamp(lit.makeLight()));
+
+            Glow poisoned;
+            poisoned.addSprites(flames, undefined, white);
+            EXPECT_TRUE(isRefused(poisoned.makeLight()));
         }
 
         /// An effect's glowing sheets are one fill lamp: what they radiate, summed, off a shell the
@@ -531,7 +603,7 @@ namespace Rtx
             Glow glow;
             glow.addSheet(sheet, quad, stood, 1.0f);
 
-            std::optional<Light> lamp = glow.makeLight();
+            std::optional<Light> lamp = glow.makeLight().value();
             ASSERT_TRUE(lamp.has_value());
             EXPECT_NEAR(lamp->mIntensity.x(), 2.0f * 628.32f, 1e-2f);
             EXPECT_NEAR(lamp->mIntensity.y(), 628.32f, 1e-2f);
@@ -545,10 +617,10 @@ namespace Rtx
             // The instance's fade weighs the sheet as the material's opacity does.
             Glow faded;
             faded.addSheet(sheet, quad, stood, 0.5f);
-            EXPECT_NEAR(faded.makeLight()->mIntensity.x(), 628.32f, 1e-2f);
+            EXPECT_NEAR(faded.makeLight().value()->mIntensity.x(), 628.32f, 1e-2f);
 
             glow.addSheet(sheet, quad, stood * osg::Matrixf::translate(0.0f, 0.0f, 20.0f), 1.0f);
-            lamp = glow.makeLight();
+            lamp = glow.makeLight().value();
             ASSERT_TRUE(lamp.has_value());
             EXPECT_NEAR(lamp->mIntensity.x(), 4.0f * 5654.9f, 1.0f);
             EXPECT_NEAR(lamp->mIntensity.y(), 2.0f * 5654.9f, 1.0f);
@@ -562,21 +634,21 @@ namespace Rtx
                 osg::Matrixf::translate(-0.5f, -0.5f, 0.0f) * osg::Matrixf::rotate(1.0, osg::Vec3f(0.0f, 0.0f, 1.0f))
                     * osg::Matrixf::translate(0.5f, 0.5f, 0.0f) * stood,
                 1.0f);
-            EXPECT_NEAR(turned.makeLight()->mSourceRadius, 5.0f, 1e-4f) << "a billboard turning grew the ball";
+            EXPECT_NEAR(turned.makeLight().value()->mSourceRadius, 5.0f, 1e-4f) << "a billboard turning grew the ball";
 
             Material whole = sheet;
             whole.mBlend = BlendKind::AddWhole;
             Glow unread;
             unread.addSheet(whole, quad, stood, 0.5f);
-            EXPECT_NEAR(unread.makeLight()->mIntensity.x(), 4.0f * 628.32f, 1e-2f)
+            EXPECT_NEAR(unread.makeLight().value()->mIntensity.x(), 4.0f * 628.32f, 1e-2f)
                 << "neither the opacity nor the fade";
 
             Material pane = sheet;
             pane.mBlend = BlendKind::Over;
             Glow none;
             none.addSheet(pane, quad, stood, 1.0f);
-            EXPECT_FALSE(none.makeLight().has_value()) << "a pane is no glow";
-            EXPECT_FALSE(Glow{}.makeLight().has_value()) << "an effect of no sheets";
+            EXPECT_TRUE(isNothing(none.makeLight())) << "a pane is no glow";
+            EXPECT_TRUE(isNothing(Glow{}.makeLight())) << "an effect of no sheets";
         }
 
         /// An effect's flames join the same lamp: each sprite's disc at the texture's mean under
@@ -625,7 +697,7 @@ namespace Rtx
             Glow glow;
             glow.addSprites(flames, sprites, mean);
 
-            std::optional<Light> lamp = glow.makeLight();
+            std::optional<Light> lamp = glow.makeLight().value();
             ASSERT_TRUE(lamp.has_value());
             EXPECT_NEAR(lamp->mIntensity.x(), 352.0f, 1e-3f);
             EXPECT_NEAR(lamp->mIntensity.y(), 104.0f, 1e-3f);
@@ -645,7 +717,7 @@ namespace Rtx
             glow.addSheet(sheet, osg::BoundingBoxf(osg::Vec3f(), osg::Vec3f(1.0f, 1.0f, 0.0f)),
                 osg::Matrixf::scale(10.0f, 10.0f, 10.0f) * osg::Matrixf::translate(100.0f, 0.0f, 0.0f), 1.0f);
 
-            lamp = glow.makeLight();
+            lamp = glow.makeLight().value();
             ASSERT_TRUE(lamp.has_value());
             EXPECT_NEAR(lamp->mIntensity.x(), 4.0f * (314.16f + 88.0f), 1e-1f);
             EXPECT_NEAR(lamp->mIntensity.y(), 4.0f * (157.08f + 26.0f), 1e-1f);
@@ -659,16 +731,16 @@ namespace Rtx
             smoke.mFlags = 0;
             Glow dark;
             dark.addSprites(smoke, sprites, mean);
-            EXPECT_FALSE(dark.makeLight().has_value()) << "smoke is no glow";
+            EXPECT_TRUE(isNothing(dark.makeLight())) << "smoke is no glow";
 
             SpriteEmitter spent = flames;
             spent.mCount = 0;
             Glow empty;
             empty.addSprites(spent, {}, mean);
-            EXPECT_FALSE(empty.makeLight().has_value()) << "an emitter with nothing alive";
+            EXPECT_TRUE(isNothing(empty.makeLight())) << "an emitter with nothing alive";
 
             glow.mLit = true;
-            EXPECT_FALSE(glow.makeLight().has_value()) << "the game's own light is the effect's";
+            EXPECT_TRUE(isNothing(glow.makeLight())) << "the game's own light is the effect's";
         }
     }
 }

@@ -62,13 +62,13 @@ namespace Rtx
         void fill(PreparedCell& prepared, const osg::Vec2i& cell, bool statics);
 
         /// The model at `path`, read whole where this holds none under that path. Null where
-        /// nothing stands for the path. Throws `InputError` where the template describes a mesh
-        /// this renderer cannot take, and holds nothing then.
+        /// nothing stands for the path. Refused, with no part and `PreparedModel::mRefused` saying
+        /// why, where the template describes a mesh this renderer cannot take.
         PreparedModel* readModel(VFS::Path::NormalizedView path);
 
-        /// The image's reading, made where this holds none, and one more holder counted on it.
-        /// Null where the image names no file, which is an image no slot is ever made for.
-        PreparedTexture* readTexture(const osg::Image& image);
+        /// The reading of `layer`'s texture, made where this holds none under its path, and one
+        /// more holder counted on it.
+        PreparedTexture& readTexture(const PreparedLayer& layer);
 
         const Terrain::ObjectStorage& mStorage;
         ContentSource& mContent;
@@ -88,23 +88,19 @@ namespace Rtx
         Spares<PreparedModel> mModels;
         Spares<PreparedTexture> mTextures;
 
-        /// What the two tables are ordered by, stated once each.
+        /// What the two tables are ordered by: the path each is filed under.
         struct PathOf
         {
             std::string_view operator()(const PreparedModel* held) const { return held->mPath; }
+            std::string_view operator()(const PreparedTexture* held) const { return held->mPath.value(); }
         };
 
-        struct ImageOf
-        {
-            const osg::Image* operator()(const PreparedTexture* held) const { return held->mImage.get(); }
-        };
-
-        /// Every model lent, sorted by path, and every image lent, sorted by address — searched
-        /// rather than keyed, because a lookup then costs no node and no string.
+        /// Every model and every ground texture lent, sorted by path — searched rather than keyed,
+        /// because a lookup then costs no node and no string. By path and not by image, because a
+        /// texture that does not read has no image and still stands, as the stand-in.
         boost::container::flat_set<PreparedModel*, KeyedLess<std::string_view, PathOf>, std::vector<PreparedModel*>>
-            mByPath;
-        boost::container::flat_set<PreparedTexture*, KeyedLess<const osg::Image*, ImageOf>,
-            std::vector<PreparedTexture*>>
-            mByImage;
+            mModelsByPath;
+        boost::container::flat_set<PreparedTexture*, KeyedLess<std::string_view, PathOf>, std::vector<PreparedTexture*>>
+            mTexturesByPath;
     };
 }

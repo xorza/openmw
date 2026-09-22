@@ -45,6 +45,7 @@
 #include <components/rtx/material.hpp>
 #include <components/rtx/mesh.hpp>
 #include <components/rtx/reconstruction.hpp>
+#include <components/rtx/refusals.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
@@ -233,10 +234,25 @@ namespace RtxTool
                         "  unskinned rigs:       {} met before an update found their skeleton\n"
                         "  empty geometry:       {}\n"
                         "  undescribed surfaces: {} drawn as a default material\n"
-                        "  spriteless emitters:  {} dropped whole\n"
                         "  sheets:               {} of the meshes, doubled for their backs\n",
-                stats.mSkippedUnknown, stats.mUnskinned, stats.mSkippedEmpty, stats.mUndescribedSurfaces,
-                stats.mSpritelessEmitters, sheets));
+                stats.mSkippedUnknown, stats.mUnskinned, stats.mSkippedEmpty, stats.mUndescribedSurfaces, sheets));
+
+        // Every refusal the scene was handed since it was made, by kind: what the log names one by
+        // one, counted where a run is compared.
+        const Rtx::Refusals& refused = scene.refusals();
+        into.mRecord.note(std::format(
+            "\nrefused\n"
+            "  meshes:               {}\n"
+            "  models:               {}\n"
+            "  textures:             {} drawn as a stand-in\n"
+            "  sky layers:           {}\n"
+            "  moons:                {}\n"
+            "  lamps:                {}\n"
+            "  emitters:             {} dropped whole\n"
+            "  emitters' sprites:    {}\n",
+            refused.count(Rtx::Refused::Mesh), refused.count(Rtx::Refused::Model), refused.count(Rtx::Refused::Texture),
+            refused.count(Rtx::Refused::SkyLayer), refused.count(Rtx::Refused::Moon), refused.count(Rtx::Refused::Lamp),
+            refused.count(Rtx::Refused::Emitter), refused.count(Rtx::Refused::Sprites)));
 
         if (into.mReport.mWalked.mAgain.has_value())
         {
@@ -452,11 +468,11 @@ namespace RtxTool
             }
 
             case Rtx::Check::SurfacesDescribed:
-                // **The emitters are reported and not asserted**, for the reason
-                // `ExtractionStats::mSpritelessEmitters` gives: every world carries one of the
-                // rasterizer's that the traced path answers for itself.
-                found = std::format("{} surfaces undescribed, {} emitters spriteless", stats.mUndescribedSurfaces,
-                    stats.mSpritelessEmitters);
+                // **The emitters are reported and not asserted**: a refused emitter is content the
+                // log names, and every world carries one of the rasterizer's that the traced path
+                // answers for itself.
+                found = std::format("{} surfaces undescribed, {} emitters refused", stats.mUndescribedSurfaces,
+                    scene.refusals().count(Rtx::Refused::Emitter));
                 return stats.mUndescribedSurfaces == 0;
 
             case Rtx::Check::LightsPlaced:
@@ -555,9 +571,11 @@ namespace RtxTool
             }
 
             case Rtx::Check::TexturesReadable:
-                found = std::format("{} of {} textures could not be read", report.mUnreadableTextures,
-                    scene.textures().getRows().size());
-                return report.mUnreadableTextures == 0;
+            {
+                const std::uint32_t refused = scene.refusals().count(Rtx::Refused::Texture);
+                found = std::format("{} of {} textures refused", refused, scene.textures().getRows().size());
+                return refused == 0;
+            }
 
             case Rtx::Check::CrossingsAppend:
             {

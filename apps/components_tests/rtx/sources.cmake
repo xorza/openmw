@@ -46,6 +46,7 @@ set(RTX_TEST_FILES
     rtx/parallel.cpp
     rtx/physicaldevice.cpp
     rtx/reconstruction.cpp
+    rtx/refusals.cpp
     rtx/requirements.cpp
     rtx/result.cpp
     rtx/runs.cpp

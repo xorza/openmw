@@ -111,7 +111,7 @@ namespace Rtx::Testing
 
             Shaders::MoonDisc overhead{};
             overhead.mSource = Shaders::moonSource(
-                osg::Vec3f(0.0f, 0.0f, 1.0f), osg::Vec3f(2.0f, 2.0f, 2.0f), moonAngularRadius(Moon::Masser));
+                osg::Vec3f(0.0f, 0.0f, 1.0f), osg::Vec3f(2.0f, 2.0f, 2.0f), moonAngularRadius(94.0f));
             overhead.mRight = osg::Vec3f(1.0f, 0.0f, 0.0f);
             overhead.mUp = osg::Vec3f(0.0f, 1.0f, 0.0f);
             overhead.mColour = osg::Vec3f(1.0f, 1.0f, 1.0f);

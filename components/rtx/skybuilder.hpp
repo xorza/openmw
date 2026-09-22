@@ -84,9 +84,10 @@ namespace Rtx
     };
 
     /// Reads all of it, loading the textures into `scene` and holding them there for the life of
-    /// the scene. A texture the archives do not hold is left out rather than reserved: the shipped
-    /// fallbacks name Solstheim's two skies without Bloodmoon, and the unreadable stand-in is an
-    /// opaque grey, which over a cloud deck is the entire sky.
+    /// the scene. A file this cannot take is refused to `scene` and its layer left out: content
+    /// short of a file is content the game still runs, and the shipped fallbacks name Solstheim's
+    /// two skies without Bloodmoon. A deck's sheet is left out rather than stood in for, because
+    /// the stand-in is an opaque grey, which over a cloud deck is the entire sky.
     SkyContent addSkyContent(SceneDesc& scene, Resource::SceneManager& scenes, const SkyMeshes& meshes);
 
     /// Gives back every hold `addSkyContent` took — each weather's deck and the night sky's

@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <optional>
 #include <span>
+#include <string_view>
 
 #include <osg/Matrixf>
 #include <osg/Vec3f>
@@ -15,6 +16,7 @@
 #include "lightbuilder.hpp"
 #include "mesh.hpp"
 #include "prepared.hpp"
+#include "result.hpp"
 #include "runs.hpp"
 #include "scenedesc.hpp"
 #include "shaders/scene.h"
@@ -346,12 +348,13 @@ namespace Rtx
         std::uint32_t lit = 0;
         for (const PreparedLight& lamp : cell.mLights)
         {
-            const std::optional<Light> light = makeLight(
+            const Result<std::optional<Light>, std::string_view> light = makeLight(
                 lamp.mRecord, lamp.mPosition, around.mSimulationTime, static_cast<int>(lamp.mRefNum.mIndex));
-            if (!light.has_value())
+            assert(light.isOk() && "a lamp the reader carried that the frame refuses");
+            if (!light.value().has_value())
                 continue;
 
-            mScene.addLight(*light);
+            mScene.addLight(*light.value());
             ++lit;
         }
 

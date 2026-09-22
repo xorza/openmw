@@ -862,13 +862,7 @@ namespace MWRender
             Log(Debug::Info) << "Ray tracing built " << mMirror.getScene().meshes().getRows().size() << " meshes into "
                              << mWalked.mFound.mInstances << " instances with " << mWalked.mFound.mLights << " lights, "
                              << mWalked.mFound.mDeformed << " of them deforming, and skipped "
-                             << mWalked.mFound.mSkippedUnknown << " it cannot read";
-
-        mUnreadable += handed.mUnreadable;
-
-        if (handed.mUnreadable > 0)
-            Log(Debug::Warning) << "Ray tracing could not read " << handed.mUnreadable << " of " << handed.mDescribed
-                                << " textures and drew them grey — a live graph holds textures that were never files";
+                             << mWalked.mFound.mSkippedUnknown << " it has no reader for";
     }
 
     std::optional<Rtx::Shaders::VisibilityConstants> RtxRenderer::describeTrace(
@@ -978,7 +972,6 @@ namespace MWRender
         {
             report.mSpend.at(Rtx::Timing::Frame) = *since;
             report.mWalked = mWalked;
-            report.mUnreadableTextures = mUnreadable;
             report.mLatency = mRenderer->describeLatency();
 
             // Every traced frame, whether or not the device has answered for one yet: the run

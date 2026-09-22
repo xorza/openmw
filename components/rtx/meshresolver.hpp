@@ -2,6 +2,8 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
+#include <string_view>
 #include <vector>
 
 #include <osg/Referenced>
@@ -12,6 +14,7 @@
 #include "meshreader.hpp"
 #include "mirroridentity.hpp"
 #include "mirrorpass.hpp"
+#include "result.hpp"
 #include "runs.hpp"
 #include "scenedesc.hpp"
 #include "shaders/skinning.h"
@@ -108,19 +111,22 @@ namespace Rtx
         /// Adds the mesh a drawable the mirror is meeting afresh was read as: standing, on a
         /// deformer the mirror holds that fits it, or with a deformer of its own — both rows in one
         /// call of the scene's, and the identity entry added or moved only once they exist. An
-        /// entry reached before the rows named nothing while the read could still throw. Throws
-        /// where the drawable's skin or targets do not pose exactly its vertices, because a
-        /// vertex count comes out of a content file.
-        Index addMesh(const DrawableRead& read, const MeshReading& reading);
+        /// error, adding nothing, where the mesh is past a block or its skin or targets do not pose
+        /// exactly its vertices, because a vertex count comes out of a content file.
+        Result<Index, std::string> addMesh(const DrawableRead& read, const MeshReading& reading);
+
+        /// Refuses `drawable` to the scene for `why`, and keeps the refusal under it so it is read
+        /// no more. Answers the index a refused drawable resolves to, which is none.
+        Index refuse(const osg::Drawable& drawable, std::string_view why);
 
         /// Says the walk met what `holdDeformer` found, for a slot the fit test has kept, so a
         /// deformer is kept for as long as a mesh stands on it.
         void stampDeformer(const Held& held);
 
         /// Reads a skin into the scratch as the scene takes it: the groups flattened into a run
-        /// per vertex. Throws where the skin names a vertex the mesh has not got. The spec spans
-        /// the scratch, good until the next read.
-        RigSpec readRig(const SceneUtil::RigGeometry& rig);
+        /// per vertex. An error where the skin names a vertex the mesh has not got, or a vertex
+        /// more bones than a run holds. The spec spans the scratch, good until the next read.
+        Result<RigSpec, std::string> readRig(const SceneUtil::RigGeometry& rig);
 
         /// The same for a morph's targets, laid end to end.
         MorphSpec readMorph(const SceneUtil::MorphGeometry& morph);

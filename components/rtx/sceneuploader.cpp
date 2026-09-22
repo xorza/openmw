@@ -99,12 +99,12 @@ namespace Rtx
                 mTextures.describeAll(tables, images, composites);
             else
                 mTextures.describe(tables, images, tables.textures().getArrived(), composites);
+            scene.refusals().refuse(mTextures.getRefusals());
 
             const std::chrono::steady_clock::time_point described = std::chrono::steady_clock::now();
             timed.at(Timing::Textures) = since(gathered, described);
 
             done.mDescribed = mTextures.getDescriptions().size();
-            done.mUnreadable = mTextures.getUnreadable();
             done.mArrivedMeshes = static_cast<std::uint32_t>(
                 mine ? tables.meshes().getArrived().size() : tables.meshes().getLiveCount());
 

@@ -4,8 +4,6 @@
 #include <cassert>
 #include <string>
 
-#include "error.hpp"
-
 namespace Rtx
 {
     namespace
@@ -34,21 +32,23 @@ namespace Rtx
         }
     }
 
-    void MeshTable::checkFits(const MeshArrays& arrays)
+    Result<void, std::string> MeshTable::checkFits(const MeshArrays& arrays)
     {
         const std::span<const osg::Vec3f> positions = arrays.mPositions;
         const std::span<const std::uint32_t> indices = arrays.mIndices;
 
         if (positions.size() > sVertexBlock || indices.size() > sIndexBlock)
-            throw InputError("a mesh of " + std::to_string(positions.size()) + " vertices and "
-                + std::to_string(indices.size()) + " indices is past the " + std::to_string(sVertexBlock) + " and "
-                + std::to_string(sIndexBlock) + " one block of the shared buffers holds");
+            return Err{ "its " + std::to_string(positions.size()) + " vertices and " + std::to_string(indices.size())
+                + " indices are past the " + std::to_string(sVertexBlock) + " and " + std::to_string(sIndexBlock)
+                + " one block of the shared buffers holds" };
+
+        return {};
     }
 
     Index MeshTable::add(
         DeformerTable& deformers, const MeshArrays& arrays, FoldedShape shape, Deform deform, Index deformer)
     {
-        checkFits(arrays);
+        assert(checkFits(arrays).isOk() && "a mesh past a block, which its reader was to refuse");
 
         const std::span<const osg::Vec3f> positions = arrays.mPositions;
         const std::span<const std::uint32_t> indices = arrays.mIndices;

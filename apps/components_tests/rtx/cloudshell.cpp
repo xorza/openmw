@@ -1,7 +1,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
-#include <string_view>
+#include <string>
 
 #include <gtest/gtest.h>
 
@@ -20,7 +20,7 @@
 #include <components/resource/niffilemanager.hpp>
 #include <components/resource/scenemanager.hpp>
 #include <components/rtx/cloudshell.hpp>
-#include <components/rtx/error.hpp>
+#include <components/rtx/result.hpp>
 #include <components/rtx/shaders/look.h>
 #include <components/vfs/manager.hpp>
 #include <components/vfs/pathutil.hpp>
@@ -291,9 +291,10 @@ namespace Rtx
             EXPECT_EQ(readCloudShell(*flat).mTiles, osg::Vec2f());
         }
 
-        /// A mesh the archives do not hold is a gap in the content, and it is named rather than
-        /// drawn as no deck: a sky with no clouds in it reads as a renderer that forgot them.
-        TEST(RtxCloudShellTest, aCloudMeshTheArchivesDoNotHoldIsRefusedByName)
+        /// A mesh the archives do not hold is a gap in the content, and it is refused rather than
+        /// read as no deck: a sky with no clouds in it reads as a renderer that forgot them. The
+        /// reason is the reader's and the name the caller's, which `addSkyContent` supplies.
+        TEST(RtxCloudShellTest, aCloudMeshTheArchivesDoNotHoldIsRefused)
         {
             VFS::Manager vfs;
             Resource::ImageManager images(&vfs, 0);
@@ -301,16 +302,10 @@ namespace Rtx
             Resource::BgsmFileManager materials(&vfs, 0);
             Resource::SceneManager scenes(&vfs, &images, &nifs, &materials, 0);
 
-            try
-            {
-                readCloudShell(scenes, VFS::Path::NormalizedView("meshes/sky_clouds_01.nif"));
-                FAIL() << "a missing cloud mesh was read as no deck";
-            }
-            catch (const InputError& what)
-            {
-                EXPECT_NE(std::string_view(what.what()).find("meshes/sky_clouds_01.nif"), std::string_view::npos)
-                    << what.what();
-            }
+            const Result<CloudShell, std::string> shell
+                = readCloudShell(scenes, VFS::Path::NormalizedView("meshes/sky_clouds_01.nif"));
+            ASSERT_FALSE(shell.isOk()) << "a missing cloud mesh was read as no deck";
+            EXPECT_EQ(shell.error(), "the archives hold no such file");
         }
     }
 }

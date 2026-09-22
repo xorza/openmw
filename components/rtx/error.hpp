@@ -7,10 +7,12 @@ namespace Rtx
     // **Three failures and no common base**, so a catch of one never takes another. A contract this
     // code broke is none of them: it is an assert, or `Rtx::contract` where release must not go on.
 
-    /// What the world outside this code supplied, and this renderer cannot use: a content file, a
-    /// command line, a setting, a file system. Caught where the input enters, and there the input
-    /// is skipped, counted and logged once — a mesh a mod shipped past what one block holds is
-    /// the mod's business, and the frame goes on without it.
+    /// What the configuration or the installation supplied, and this renderer cannot run with: a
+    /// command line, a setting, a shader file, a file the harness reads. All or nothing, so it ends
+    /// the run where it is met, and the one menu that can take a mistyped setting back catches it.
+    /// Content is not this: a mesh a mod shipped past what one block holds is refused item by item
+    /// and the frame goes on, so a reader of content answers with a `Result` and the code that
+    /// decides what becomes of it reports the refusal (`Refusals`).
     class InputError : public std::runtime_error
     {
     public:

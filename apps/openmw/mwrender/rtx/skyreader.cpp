@@ -46,6 +46,8 @@ namespace MWRender
         , mGlareColour(glareFaderColour())
         , mGlareMax(Fallback::Map::getFloat("Weather_Sun_Glare_Fader_Max"))
         , mGlareAngleMax(osg::DegreesToRadians(Fallback::Map::getFloat("Weather_Sun_Glare_Fader_Angle_Max")))
+        , mMoonSizes{ .mMasser = Fallback::Map::getFloat("Moons_Masser_Size"),
+            .mSecunda = Fallback::Map::getFloat("Moons_Secunda_Size") }
     {
     }
 
@@ -60,7 +62,7 @@ namespace MWRender
 
     void SkyReader::attach(Rtx::SceneDesc& scene, Resource::SceneManager& scenes)
     {
-        mMoonFaces = Rtx::addMoonFaces(scene);
+        mMoonFaces = Rtx::addMoonFaces(scene, mMoonSizes);
         mSkyContent = Rtx::addSkyContent(scene, scenes, meshes());
     }
 
@@ -141,9 +143,8 @@ namespace MWRender
 
             // The glare is applied here, where the rasterizer applies it too
             // (`SkyManager::setWeather` calls `Moon::adjustTransparency` after the hand-over).
-            moons[moon] = Rtx::placeMoon(static_cast<Rtx::Moon>(moon), state.mRotationFromHorizon,
+            moons[moon] = Rtx::placeMoon(mMoonFaces, static_cast<Rtx::Moon>(moon), state.mRotationFromHorizon,
                 state.mRotationFromNorth, state.mPhase, state.mDaylightFade * weather.mGlareView);
-            moons[moon].mFace = mMoonFaces.of(static_cast<Rtx::Moon>(moon));
         }
 
         // Secunda alone, as `SkyManager::setMoonColour` paints it.

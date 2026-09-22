@@ -2,6 +2,7 @@
 
 #include <optional>
 #include <span>
+#include <string_view>
 
 #include <osg/BoundingBox>
 #include <osg/BoundingSphere>
@@ -11,6 +12,7 @@
 #include <components/sceneutil/lightcontroller.hpp>
 
 #include "light.hpp"
+#include "result.hpp"
 #include "sprite.hpp"
 
 namespace SceneUtil
@@ -31,8 +33,10 @@ namespace Rtx
     /// `SceneUtil::createLightSource` reads them, so the last flag set wins there and here.
     SceneUtil::LightController::LightType animationOf(const SceneUtil::LightCommon& record);
 
-    /// The light a `LIGH` reference casts at `simulationTime`, or nothing where it casts none:
-    /// `castsWherePlaced`, and a negative light, which is meaningless to a ray traced to an emitter.
+    /// The light a `LIGH` reference casts at `simulationTime`: a lamp; nothing where it casts none
+    /// (`castsWherePlaced`); or an error saying why, for a negative light, which is meaningless to
+    /// a ray traced to an emitter. Every lamp maker answers in those three ways, and the error is a
+    /// literal, so a refusal made every frame builds no string.
     ///
     /// **The light the walk builds from the `SceneUtil::LightSource` the game hangs on the same
     /// record, down to the last bit**, which is what lets the cell ring stand a lamp the game has
@@ -41,14 +45,15 @@ namespace Rtx
     /// and no ambient, because `SceneUtil::addLight` hands its source none. `id` is the reference
     /// number's low word for a light no node carries, where the graph's is the node's own — so a
     /// lamp's phase changes once, on the frame its cell loads and the graph's node takes over.
-    std::optional<Light> makeLight(
+    Result<std::optional<Light>, std::string_view> makeLight(
         const SceneUtil::LightCommon& record, const osg::Vec3f& position, double simulationTime, int id);
 
     /// The same light from a colour and a radius: one conversion, so a record read off the content
     /// files and a `SceneUtil::LightSource` read off the graph cannot disagree about how bright a
-    /// candle is. Nothing where a channel of `colour` is negative or `radius` is no size a light
-    /// can have.
-    std::optional<Light> makeLight(const osg::Vec3f& colour, float radius, const osg::Vec3f& position);
+    /// candle is. Nothing where `radius` is a number no bigger than nought, and an error where a
+    /// channel of `colour` is negative or a number the lamp is made of is not finite.
+    Result<std::optional<Light>, std::string_view> makeLight(
+        const osg::Vec3f& colour, float radius, const osg::Vec3f& position);
 
     /// Whether a light in the game's scene graph is a fill: it radiates in its ambient and in
     /// nothing else. The game builds exactly one such light, the Light spell's glow
@@ -65,8 +70,9 @@ namespace Rtx
     /// at the ball. Everything outside the ball is lit by a source a body wide and shadowed as
     /// softly as that, and the reach is longer than a lamp's, because the spell's whole purpose
     /// is the pool of light around its bearer. The intensity is a lamp's of `radius`, so far off
-    /// a fill is that lamp. Nothing where `colour` has a negative channel or `radius` is no size.
-    std::optional<Light> makeFill(const osg::Vec3f& colour, float radius, const osg::Vec3f& position);
+    /// a fill is that lamp. None where `makeLight` makes none, for the same reason.
+    Result<std::optional<Light>, std::string_view> makeFill(
+        const osg::Vec3f& colour, float radius, const osg::Vec3f& position);
 
     /// What a light in the game's scene graph radiates this frame, in the renderer's units: the
     /// diffuse and the ambient summed, because the content uses both, and decoded, from the
@@ -164,7 +170,7 @@ namespace Rtx
         /// not read off a record, so what a burst is worth against the lamps of the room is set by
         /// eye — `sGlowGain` and `sGlowReachScale` say how, and a burst is the one lamp in the game
         /// whose whole purpose is the room around it.
-        std::optional<Light> makeLight() const;
+        Result<std::optional<Light>, std::string_view> makeLight() const;
     };
 
 }

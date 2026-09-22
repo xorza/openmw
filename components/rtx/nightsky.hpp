@@ -1,11 +1,13 @@
 #pragma once
 
 #include <array>
+#include <string>
 
 #include <osg/Vec3f>
 
 #include <components/vfs/pathutil.hpp>
 
+#include "result.hpp"
 #include "runs.hpp"
 #include "shaders/sky.h"
 
@@ -58,15 +60,16 @@ namespace Rtx
         osg::Vec3f mGlow;
     };
 
-    /// Reads it, adding every texture it names to `scene` and holding them there. Throws
-    /// `InputError` naming the mesh where neither file exists: a gap in the content is a failure
-    /// and not a sky with no stars in it.
+    /// Reads it, adding every texture it names to `scene` and holding them there. An error where
+    /// neither file exists, having held nothing, saying why and leaving the name of `mesh` to
+    /// whoever reports it: a gap in the content is refused and not read as a sky with no stars in
+    /// it, and what the sky does without them is `addSkyContent`'s answer.
     ///
     /// @param mesh the star dome the configuration names.
     /// @param fallback the dome to read where the archives hold no `mesh`: Tribunal ships the
     ///        second one and Morrowind alone does not, and the rasterizer picks by the same test.
-    NightSky readNightSky(SceneDesc& scene, Resource::SceneManager& scenes, VFS::Path::NormalizedView mesh,
-        VFS::Path::NormalizedView fallback);
+    Result<NightSky, std::string> readNightSky(SceneDesc& scene, Resource::SceneManager& scenes,
+        VFS::Path::NormalizedView mesh, VFS::Path::NormalizedView fallback);
 
     /// Gives back every hold `readNightSky` took: the field's and each patch's.
     void dropNightSky(SceneDesc& scene, const NightSky& sky);

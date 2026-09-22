@@ -17,6 +17,8 @@
 #include <components/vfs/pathutil.hpp>
 
 #include "frameworld.hpp"
+#include "refusals.hpp"
+#include "result.hpp"
 #include "scenedesc.hpp"
 #include "shaders/colour.h"
 #include "shaders/look.h"
@@ -40,17 +42,6 @@ namespace Rtx
             return flat.length2() > 0.0f ? flat : osg::Vec2f(1.0f, 0.0f);
         }
 
-        /// What a sheet averages: the luminance of what it paints, and how much of the sky it hides.
-        /// Nothing where the file will not read or decode, which is the same answer a missing sheet
-        /// gives and lands in the same place: a weather with no deck to draw.
-        MeanTexel sheetMean(Resource::ImageManager& images, const VFS::Path::Normalized& path)
-        {
-            const osg::ref_ptr<const osg::Image> image = openImage(images, path);
-            if (image == nullptr)
-                return MeanTexel();
-
-            return meanTexel(*image);
-        }
     }
 
     std::uint32_t SkyContent::cloudsOf(std::uint32_t weather) const
@@ -92,7 +83,25 @@ namespace Rtx
             const VFS::Path::Normalized path
                 = Misc::ResourceHelpers::correctTexturePath(VFS::Path::toNormalized(sheet), vfs);
             if (!vfs.exists(path))
+            {
+                scene.refusals().refuse(Refused::SkyLayer, path.value(), "the archives hold no such file");
                 continue;
+            }
+
+            // Opened and asked here and not left to the upload, which would draw a sheet it cannot
+            // take as the opaque grey stand-in: over a deck, the whole sky.
+            const Result<osg::ref_ptr<const osg::Image>, std::string> image
+                = openImage(*scenes.getImageManager(), path);
+            if (!image.isOk())
+            {
+                scene.refusals().refuse(Refused::SkyLayer, path.value(), image.error());
+                continue;
+            }
+            if (const Result<void, std::string> uploadable = checkUploadable(*image.value()); !uploadable.isOk())
+            {
+                scene.refusals().refuse(Refused::SkyLayer, path.value(), uploadable.error());
+                continue;
+            }
 
             loaded.mClouds[weather] = scene.textures().add(path);
             scene.textures().hold(loaded.mClouds[weather]);
@@ -100,18 +109,26 @@ namespace Rtx
             // Read here and not on the frame that needs it. Averaging a 512-square sheet is a
             // quarter of a million texels, and there are six of them; the image is the one the
             // upload is about to take out of the same cache.
-            const MeanTexel painted = sheetMean(*scenes.getImageManager(), path);
+            const MeanTexel painted = meanTexel(*image.value());
             loaded.mCloudMean[weather] = painted.opaque() * Shaders::LUMINANCE_WEIGHTS;
             loaded.mCloudCover[weather] = painted.mAlpha;
         }
 
         // The shape the deck hangs on is the mesh's, both of its numbers: how high the layer is
         // in tiles of its own sheet, and how far it falls away over the ground it covers.
-        loaded.mShell = readCloudShell(scenes, meshes.mClouds);
+        if (const Result<CloudShell, std::string> shell = readCloudShell(scenes, meshes.mClouds); shell.isOk())
+            loaded.mShell = shell.value();
+        else
+            scene.refusals().refuse(Refused::SkyLayer, meshes.mClouds.value(), shell.error());
 
         // The night sky is the mesh's, every number of it: which sheet the field wears, how much
         // sky a tile of it covers, where it fades out, and where the six patches sit.
-        loaded.mNight = readNightSky(scene, scenes, meshes.mStars, meshes.mStarsFallback);
+        if (const Result<NightSky, std::string> night
+            = readNightSky(scene, scenes, meshes.mStars, meshes.mStarsFallback);
+            night.isOk())
+            loaded.mNight = night.value();
+        else
+            scene.refusals().refuse(Refused::SkyLayer, meshes.mStars.value(), night.error());
 
         return loaded;
     }

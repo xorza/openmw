@@ -1,9 +1,13 @@
 #pragma once
 
+#include <string>
+
 #include <osg/Vec2f>
 #include <osg/Vec3f>
 
 #include <components/vfs/pathutil.hpp>
+
+#include "result.hpp"
 
 namespace osg
 {
@@ -43,10 +47,11 @@ namespace Rtx
         osg::Vec3f mRings;
     };
 
-    /// Reads it off the cloud mesh the configuration names, which the host passes in. Throws
-    /// `InputError` naming the mesh where the file does not exist, as `readNightSky` does. A mesh
-    /// that is there and says nothing hangs no layer, which the overload below says.
-    CloudShell readCloudShell(Resource::SceneManager& scenes, VFS::Path::NormalizedView mesh);
+    /// Reads it off the cloud mesh the configuration names, which the host passes in. An error
+    /// where the file does not exist, as `readNightSky` answers, saying why and leaving the name to
+    /// whoever reports it. A mesh that is there and says nothing hangs no layer, which the overload
+    /// below says.
+    Result<CloudShell, std::string> readCloudShell(Resource::SceneManager& scenes, VFS::Path::NormalizedView mesh);
 
     /// The same reading, of a mesh already in hand.
     CloudShell readCloudShell(osg::Node& mesh);

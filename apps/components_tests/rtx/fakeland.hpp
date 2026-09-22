@@ -6,7 +6,9 @@
 #include <cstring>
 #include <functional>
 #include <map>
+#include <set>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -24,6 +26,7 @@
 #include <components/esm/refid.hpp>
 #include <components/esm3/loadland.hpp>
 #include <components/misc/constants.hpp>
+#include <components/rtx/result.hpp>
 #include <components/terrain/defs.hpp>
 #include <components/terrain/storage.hpp>
 #include <components/vfs/pathutil.hpp>
@@ -166,12 +169,16 @@ namespace Rtx::Testing
     };
 
     /// Images by path, one object per path however often it is asked for — which is how a loader's
-    /// cache answers, and what lets a reading made against one be found by the other.
+    /// cache answers, and what lets a reading made against one be found by the other. A path
+    /// `lose` named reads nothing, as a file the archives do not hold.
     class ImagesByPath
     {
     public:
-        osg::ref_ptr<const osg::Image> get(const VFS::Path::NormalizedView path)
+        Result<osg::ref_ptr<const osg::Image>, std::string> get(const VFS::Path::NormalizedView path)
         {
+            if (mLost.contains(path.value()))
+                return Err{ "no image reads from the file" };
+
             const auto found = mImages.find(path.value());
             if (found != mImages.end())
                 return found->second;
@@ -182,10 +189,13 @@ namespace Rtx::Testing
             std::fill_n(image->data(), image->getTotalSizeInBytes(), static_cast<unsigned char>(128));
 
             mImages.emplace(std::string(path.value()), image);
-            return image;
+            return osg::ref_ptr<const osg::Image>(image);
         }
+
+        void lose(std::string_view path) { mLost.emplace(path); }
 
     private:
         std::map<std::string, osg::ref_ptr<osg::Image>, std::less<>> mImages;
+        std::set<std::string, std::less<>> mLost;
     };
 }

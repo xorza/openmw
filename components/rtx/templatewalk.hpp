@@ -1,5 +1,6 @@
 #pragma once
 
+#include <string>
 #include <vector>
 
 #include <osg/Matrix>
@@ -10,6 +11,7 @@
 #include "meantexels.hpp"
 #include "meshreader.hpp"
 #include "nodekind.hpp"
+#include "result.hpp"
 #include "shading.hpp"
 
 namespace osg
@@ -35,11 +37,13 @@ namespace Rtx
         TemplateWalk();
 
         /// Walks `root` and appends one part to `into` for every drawable under it that holds a
-        /// triangle, with its arrays appended to the model's buffers.
+        /// triangle, with its arrays appended to the model's buffers. An error for the first
+        /// drawable this cannot take, saying why, which refuses the model whole; what `into` holds
+        /// then is its caller's to drop.
         ///
         /// @param mask which nodes the walk may descend into — the same `osg` traversal mask the
         ///        frame's walk carries, so the two reach the same drawables.
-        void read(const osg::Node& root, osg::Node::NodeMask mask, PreparedModel& into);
+        Result<void, std::string> read(const osg::Node& root, osg::Node::NodeMask mask, PreparedModel& into);
 
         void apply(osg::Node& node) override;
         void apply(osg::Transform& node) override;
@@ -73,5 +77,8 @@ namespace Rtx
         /// The state sets in force where the walk is standing, nearest last. Kept across walks and
         /// refilled, because a model is hundreds of drawables and the thread reads thousands.
         std::vector<Shading> mShading;
+
+        /// Why the first drawable this walk could not take was refused, or empty.
+        std::string mRefused;
     };
 }

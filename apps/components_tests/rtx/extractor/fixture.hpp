@@ -240,6 +240,15 @@ namespace Rtx::Testing
         return geometry;
     }
 
+    /// A quad whose second triangle names a fifth vertex it does not have: an index `NifOsg` hands
+    /// on from a file as the file wrote it, which only a content file hands over.
+    inline osg::ref_ptr<osg::Geometry> makeIndexPastItsVertices()
+    {
+        osg::ref_ptr<osg::Geometry> geometry = makeQuad();
+        geometry->setPrimitiveSet(0, makeTriangles({ 0, 1, 2, 0, 2, 4 }));
+        return geometry;
+    }
+
     /// A skeleton with one bone, and a rig bound rigidly to it.
     ///
     /// Every weight on one bone with an identity bind matrix makes the skinning arithmetic the

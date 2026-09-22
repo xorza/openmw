@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <span>
+#include <string>
 #include <vector>
 
 #include <osg/BoundingBox>
@@ -13,6 +14,8 @@
 #include "mesh.hpp"
 #include "meshtable.hpp"
 #include "placementtable.hpp"
+#include "refusals.hpp"
+#include "result.hpp"
 #include "ripple.hpp"
 #include "runs.hpp"
 #include "shaders/skinning.h"
@@ -32,8 +35,9 @@ namespace Rtx
     };
 
     /// Everything the renderer needs to know about a world, with no Vulkan and no scene graph in
-    /// it. It appends and it dedups paths, and nothing else: deciding that two drawables are the
-    /// same mesh belongs to whoever is reading the scene graph.
+    /// it, and what of the world it could not take. It appends and it dedups paths, and nothing
+    /// else: deciding that two drawables are the same mesh belongs to whoever is reading the scene
+    /// graph.
     class SceneDesc
     {
     public:
@@ -61,23 +65,28 @@ namespace Rtx
 
         /// Copies the vertex data into the shared buffers and returns the new mesh's index. Every
         /// attribute but `MeshArrays::mPositions` may be empty; when one is not it must match the
-        /// positions in length, and `MeshArrays::mIndices` must be a whole number of triangles
-        /// addressing only those vertices — asserted, as a contract on the caller. Throws where the
-        /// mesh is longer than a block, because a vertex count comes out of a content file. A mesh
-        /// that deforms names the rig or the morph that poses it, whose vertex count must be this
-        /// mesh's, and hands over its bind pose, which stays in the shared buffers for as long as
-        /// the mesh does.
+        /// positions in length, `MeshArrays::mIndices` must be a whole number of triangles
+        /// addressing only those vertices, and the mesh must fit a block (`MeshTable::checkFits`)
+        /// — asserted, as a contract on the caller, which reads the counts out of a content file
+        /// and refuses what does not hold. A mesh that deforms names the rig or the morph that
+        /// poses it, whose vertex count must be this mesh's, and hands over its bind pose, which
+        /// stays in the shared buffers for as long as the mesh does.
         Index addMesh(
             const MeshArrays& arrays, FoldedShape shape = {}, Deform deform = Deform::None, Index deformer = sNoIndex);
 
         /// `addMesh` for a mesh that brings the skin or the targets that pose it. The deformer row
         /// and the mesh row are made in one call with nothing between them, so a deformer no mesh
         /// stands on cannot exist — a row nothing would free, because a deformer goes with its
-        /// last mesh. Every check that can throw runs before either row is made: the spec must
-        /// pose exactly this mesh's vertices, and the mesh must fit a block. A second mesh on the
-        /// same skin names the deformer answered here through the overload above.
+        /// last mesh. The spec poses exactly this mesh's vertices (`checkPoses`) and the mesh fits a
+        /// block, both asserted. A second mesh on the same skin names the deformer answered here
+        /// through the overload above.
         DeformedMesh addMesh(const MeshArrays& arrays, FoldedShape shape, const RigSpec& rig);
         DeformedMesh addMesh(const MeshArrays& arrays, FoldedShape shape, const MorphSpec& morph);
+
+        /// Whether a deformer of `posed` vertices can pose `arrays`, and why not where they are
+        /// of another length. Both counts come out of a content file, so whoever reads them asks
+        /// this before `addMesh`, which asserts it.
+        static Result<void, std::string> checkPoses(Index posed, const MeshArrays& arrays);
 
         /// Poses one deforming mesh: its bone rows or its target weights as `packBones` or
         /// `packWeights` lays them, and the box the pose reaches — the whole of what the host says
@@ -178,6 +187,10 @@ namespace Rtx
         std::span<const Sprite> sprites() const { return mSprites; }
         std::span<const SpriteEmitter> emitters() const { return mEmitters; }
 
+        /// What of the content handed to this scene could not be used as it stands.
+        Refusals& refusals() { return mRefusals; }
+        const Refusals& refusals() const { return mRefusals; }
+
         /// What disturbed the water this frame, for the ripple field to press. A frame's list like
         /// the sprites', cleared with the placement: a wake is a fact about a frame and not about
         /// a cell.
@@ -242,10 +255,6 @@ namespace Rtx
         template <class Visit>
         void forEachPlacement(Visit&& visit) const;
 
-        /// Throws where a deformer of `posed` vertices is handed `arrays` of another length,
-        /// because both counts come out of a content file.
-        static void checkPoses(Index posed, const MeshArrays& arrays);
-
         std::uint64_t mIdentity;
 
         Stepped<Turn> mTurn{ Turn::Open };
@@ -266,5 +275,7 @@ namespace Rtx
         std::vector<Sprite> mSprites;
         std::vector<SpriteEmitter> mEmitters;
         std::vector<RippleImpulse> mRipples;
+
+        Refusals mRefusals;
     };
 }

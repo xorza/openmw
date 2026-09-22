@@ -17,6 +17,7 @@
 #include <osg/Vec3f>
 #include <osg/Vec4f>
 
+#include <components/resource/imagemanager.hpp>
 #include <components/rtx/deformertable.hpp>
 #include <components/rtx/error.hpp>
 #include <components/rtx/instancerecord.hpp>
@@ -24,6 +25,8 @@
 #include <components/rtx/material.hpp>
 #include <components/rtx/mesh.hpp>
 #include <components/rtx/meshtable.hpp>
+#include <components/rtx/refusals.hpp>
+#include <components/rtx/result.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/scene.h>
@@ -32,7 +35,9 @@
 #include <components/rtx/sprite.hpp>
 #include <components/rtx/spritelight.hpp>
 #include <components/rtx/surface.hpp>
+#include <components/rtx/texturebuilder.hpp>
 #include <components/rtx/texturetable.hpp>
+#include <components/vfs/manager.hpp>
 #include <components/vfs/pathutil.hpp>
 
 #include "geometry.hpp"
@@ -214,6 +219,17 @@ namespace Rtx
             textures.hold(Shaders::TEXTURE_NEUTRAL);
             textures.drop(Shaders::TEXTURE_NEUTRAL);
             EXPECT_EQ(textures.getLiveCount(), TextureTable::sCapacity);
+
+            // Refused where the textures are described, and once for all of them, because what they
+            // share is the limit: 4095 slots beside the neutral texel.
+            VFS::Manager vfs;
+            Resource::ImageManager images(&vfs, 0);
+            SceneTextures described;
+            described.describe(scene, images, {});
+            ASSERT_EQ(described.getRefusals().size(), 1u);
+            EXPECT_EQ(described.getRefusals()[0].mKind, Refused::Texture);
+            EXPECT_TRUE(described.getRefusals()[0].mName.empty());
+            EXPECT_EQ(described.getRefusals()[0].mWhy, "past the 4095 textures the array holds");
         }
 
         /// **Which slot a thing lands in cannot depend on the order the dead left in.**
@@ -1705,7 +1721,7 @@ namespace Rtx
         TEST(RtxSceneDescTest, aLightAddedAfterTheHandOverDies)
         {
             SceneDesc scene;
-            const std::optional<Light> light = makeLight(osg::Vec3f(1.0f, 1.0f, 1.0f), 10.0f, osg::Vec3f());
+            const std::optional<Light> light = makeLight(osg::Vec3f(1.0f, 1.0f, 1.0f), 10.0f, osg::Vec3f()).value();
             ASSERT_TRUE(light.has_value());
 
             scene.addLight(*light);
@@ -1920,50 +1936,38 @@ namespace Rtx
 
         /// A mesh longer than a block is refused by name rather than written across two of them.
         ///
-        /// **Not an assert, because a vertex count comes out of a content file.** A run that
-        /// straddled a block would be written across two device allocations that are not next to
-        /// each other, which is not a wrong picture but a wild write.
+        /// **Not an assert on the reader's side, because a vertex count comes out of a content
+        /// file.** A run that straddled a block would be written across two device allocations
+        /// that are not next to each other, which is not a wrong picture but a wild write. So the
+        /// scene says what it takes — `MeshTable::checkFits` and `SceneDesc::checkPoses` — and
+        /// whoever reads a mesh asks before `addMesh`, which asserts the same.
         TEST(RtxSceneDescTest, aMeshLongerThanABlockIsRefusedByName)
         {
             const std::vector<osg::Vec3f> tooMany(SceneDesc::sVertexBlock + 1);
             const std::array<std::uint32_t, 3> triangle{ 0, 1, 2 };
 
-            SceneDesc scene;
-            EXPECT_THROW(scene.addMesh(MeshArrays{ .mPositions = tooMany, .mIndices = triangle }), InputError);
+            const Result<void, std::string> pastABlock
+                = MeshTable::checkFits(MeshArrays{ .mPositions = tooMany, .mIndices = triangle });
+            ASSERT_FALSE(pastABlock.isOk());
+            EXPECT_EQ(pastABlock.error(),
+                "its " + std::to_string(SceneDesc::sVertexBlock + 1) + " vertices and 3 indices are past the "
+                    + std::to_string(SceneDesc::sVertexBlock) + " and " + std::to_string(SceneDesc::sIndexBlock)
+                    + " one block of the shared buffers holds");
 
             // And exactly a block is not too many, so the refusal is a boundary and not a ban.
-            EXPECT_NO_THROW(scene.addMesh(
-                MeshArrays{ .mPositions = std::span(tooMany).first(SceneDesc::sVertexBlock), .mIndices = triangle }));
+            const MeshArrays aBlock{ .mPositions = std::span(tooMany).first(SceneDesc::sVertexBlock),
+                .mIndices = triangle };
+            EXPECT_TRUE(MeshTable::checkFits(aBlock).isOk());
+            SceneDesc scene;
+            scene.addMesh(aBlock);
 
-            // **A refusal makes no row.** A deforming mesh brings its deformer, and both checks —
-            // the spec against the vertices and the mesh against the block — run before either row
-            // is made, so a rig that arrives with a mesh of the wrong length or a mesh past a block
-            // leaves no deformer nothing stands on: a row the table has no sweep for.
-            const std::size_t deformers = scene.deformers().getDeformers().size();
-            const std::array<std::uint32_t, 3> shortRuns{ 1u, 1u, 1u };
-            const std::array influences{ Shaders::GpuInfluence{ .mBone = 0, .mWeight = 1.0f } };
-            EXPECT_THROW(
-                scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices }, {},
-                    RigSpec{ .mRuns = shortRuns, .mInfluences = influences, .mBones = 1 }),
-                InputError)
-                << "a rig of three vertices on a quad";
-
-            const std::vector<std::uint32_t> longRuns(tooMany.size(), 1u);
-            EXPECT_THROW(scene.addMesh(MeshArrays{ .mPositions = tooMany, .mIndices = triangle }, {},
-                             RigSpec{ .mRuns = longRuns, .mInfluences = influences, .mBones = 1 }),
-                InputError)
-                << "a rig the length of a mesh past a block";
-
-            const std::array<osg::Vec3f, 6> shortOffsets{};
-            EXPECT_THROW(
-                scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices }, {},
-                    MorphSpec{ .mOffsets = shortOffsets, .mTargets = 2 }),
-                InputError)
-                << "two targets of three vertices on a quad";
-
-            EXPECT_EQ(scene.deformers().getDeformers().size(), deformers) << "a refused mesh left a deformer behind";
-            EXPECT_TRUE(scene.deformers().getRuns().empty());
-            EXPECT_TRUE(scene.deformers().getMorphOffsets().empty());
+            // A deforming mesh is asked the same of the deformer that poses it: a rig or a set of
+            // targets of another length than its mesh is refused by name, before any row is made.
+            const Result<void, std::string> shortRig
+                = SceneDesc::checkPoses(3, MeshArrays{ .mPositions = Testing::sUnitQuad });
+            ASSERT_FALSE(shortRig.isOk()) << "a rig of three vertices on a quad";
+            EXPECT_EQ(shortRig.error(), "it has 4 vertices on a rig or morph of 3");
+            EXPECT_TRUE(SceneDesc::checkPoses(4, MeshArrays{ .mPositions = Testing::sUnitQuad }).isOk());
         }
 
         /// A camera is placed from what stands in a region, and the sea is not among it.

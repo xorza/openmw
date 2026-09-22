@@ -17,7 +17,7 @@
 #include <components/resource/scenemanager.hpp>
 #include <components/vfs/manager.hpp>
 
-#include "error.hpp"
+#include "result.hpp"
 #include "shaders/look.h"
 
 namespace Rtx
@@ -238,11 +238,12 @@ namespace Rtx
         };
     }
 
-    CloudShell readCloudShell(Resource::SceneManager& scenes, VFS::Path::NormalizedView mesh)
+    Result<CloudShell, std::string> readCloudShell(Resource::SceneManager& scenes, VFS::Path::NormalizedView mesh)
     {
-        // A gap in the content is named rather than drawn around, as `readNightSky` names its.
+        // A gap in the content is refused rather than read as a mesh that hangs no layer, as
+        // `readNightSky` refuses its.
         if (!scenes.getVFS()->exists(mesh))
-            throw InputError("no cloud mesh at \"" + std::string(mesh.value()) + "\"");
+            return Err{ "the archives hold no such file" };
 
         return readCloudShell(const_cast<osg::Node&>(*scenes.getTemplate(mesh, false)));
     }

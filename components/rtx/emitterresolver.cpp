@@ -1,10 +1,12 @@
 #include "emitterresolver.hpp"
 
 #include <cassert>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <span>
+#include <string_view>
 
 #include <osg/Vec3f>
 #include <osg/Vec4f>
@@ -15,8 +17,11 @@
 
 #include "colour.hpp"
 #include "extractionstats.hpp"
+#include "finite.hpp"
 #include "lightbuilder.hpp"
 #include "meantexels.hpp"
+#include "refusals.hpp"
+#include "result.hpp"
 #include "scenedesc.hpp"
 #include "shading.hpp"
 #include "sprite.hpp"
@@ -41,17 +46,37 @@ namespace Rtx
 
             return axis * turn;
         }
+
+        /// The image `shading` draws a system's sprites with, described into `described`, or why
+        /// it names none this can draw: a system the game draws and this renderer leaves out.
+        Result<const osg::Image*, std::string_view> readSprite(
+            std::span<const Shading> shading, SurfaceDescription& described)
+        {
+            if (!describeSurface(shading, described))
+                return Err{ "nothing describes its surface" };
+
+            const osg::Image* sprite = described.getTextureUse(SurfaceMap::Diffuse).get();
+            if (sprite == nullptr)
+                return Err{ "its surface names no image to draw with" };
+
+            if (sprite->getFileName().empty())
+                return Err{ "its image was never a file" };
+
+            return sprite;
+        }
     }
 
-    void EmitterResolver::describeSprite(HeldSprite& held, const std::span<const Shading> shading)
+    void EmitterResolver::describeSprite(
+        const osgParticle::ParticleSystem& particles, HeldSprite& held, const std::span<const Shading> shading)
     {
         // One question, because a particle's whole silhouette is its texture's alpha and an emitter
         // this cannot name a sprite for draws nothing.
         SurfaceDescription described;
         const TextureUse& use = described.getTextureUse(SurfaceMap::Diffuse);
-        const osg::Image* sprite = describeSurface(shading, described) ? use.get() : nullptr;
-        if (sprite != nullptr && sprite->getFileName().empty())
-            sprite = nullptr;
+        const Result<const osg::Image*, std::string_view> read = readSprite(shading, described);
+        if (!read.isOk())
+            mScene.refusals().refuse(Refused::Emitter, particles.getName(), read.error());
+        const osg::Image* sprite = read.isOk() ? read.value() : nullptr;
 
         held.mBlend = described.mBlend;
         held.mVertexColour = described.mVertexColour;
@@ -73,6 +98,9 @@ namespace Rtx
 
         const VFS::Path::Normalized path(sprite->getFileName());
         held.mIndex = mScene.textures().add(path, use.mWrap);
+        if (held.mIndex == sNoIndex)
+            mScene.refusals().refuse(
+                Refused::Emitter, particles.getName(), "the texture array has no room for its image");
 
         // The bake is keyed on the file, so two emitters drawing with one texture share one
         // bake, and it is made when the texture is opened for upload — `SceneTextures`.
@@ -94,8 +122,6 @@ namespace Rtx
     void EmitterResolver::add(const osgParticle::ParticleSystem& particles, std::span<const Shading> shading,
         const osg::Matrixf& place, const std::optional<std::size_t> glow)
     {
-        ExtractionStats& stats = mPass.getStats();
-
         // Registered the first time the emitter is seen and not the first time it has a particle
         // alive, or a flame that lights up two hundred frames later would add a texture on a frame
         // that only re-places. In a map of its own, because a sprite's texture is on no material.
@@ -106,15 +132,13 @@ namespace Rtx
         // frame the reading is the one held. `Shading::mAnimatedThrough` is that scan resolved as
         // the chain is built, so no reader walks the links for it.
         if (arrived || animatedThrough(shading))
-            describeSprite(held, shading);
+            describeSprite(particles, held, shading);
 
         // No image, or an image the texture table had no room for: a slot the shader reads the
-        // sprite out of is what an emitter is drawn with, and it has none.
+        // sprite out of is what an emitter is drawn with, and it has none. `describeSprite` said
+        // which.
         if (held.mSprite == nullptr || held.mIndex == sNoIndex)
-        {
-            ++stats.mSpritelessEmitters;
             return;
-        }
 
         // Noted now and read when the walk is over. Whether this system has been integrated
         // this frame depends on where its `ParticleSystemUpdater` sits among its siblings — above
@@ -174,6 +198,63 @@ namespace Rtx
         osg::Vec3f angle;
         osg::Vec3f axis = orient(authored);
 
+        // What the content's controllers simulated, so a number that is not finite is data: the
+        // particle is refused and the emitter's bound measured over the rest. One that is finite
+        // and draws nothing — no size, no alpha, an axis folded flat — draws nothing in the game
+        // either.
+        const auto readParticle
+            = [&](const osgParticle::Particle& particle) -> Result<std::optional<Sprite>, std::string_view> {
+            const float radius = particle.getCurrentSize() * scale;
+            if (!std::isfinite(radius))
+                return Err{ "a particle's size is not a finite number" };
+            if (!(radius > 0.0f))
+                return std::nullopt;
+
+            // `getCurrentColor`'s alpha and `getCurrentAlpha` are two separate ramps and the
+            // rasterizer multiplies them; `ParticleColorAffector` forces the first to one, and
+            // multiplying both keeps that a fact about the data. Both are the vertex's, and the
+            // material's mode says whether the vertex is read at all — `HeldSprite::mVertexColour`.
+            // A blend that adds whole reads no alpha at all, so its sprite is all there whatever
+            // its ramps say — one file in the game, and its silhouette is still its texture's.
+            const bool tinted = held.mVertexColour == VertexColour::Tint;
+            const osg::Vec4f vertex = particle.getCurrentColor();
+            const osg::Vec3f colour = tinted ? decodeColour(vertex) : held.mDiffuseColour;
+            const float opacity = tinted ? vertex.a() * particle.getCurrentAlpha() : held.mOpacity;
+            const float alpha = held.mBlend == BlendKind::AddWhole ? 1.0f : opacity;
+            if (!std::isfinite(alpha) || !isFinite(colour))
+                return Err{ "a particle's colour is not a finite number" };
+            if (!(alpha > 0.0f))
+                return std::nullopt;
+
+            const osg::Vec3f stood = particle.getPosition() * place;
+            if (!isFinite(stood))
+                return Err{ "a particle's place is not a finite number" };
+
+            if (particle.getAngle() != angle)
+            {
+                angle = particle.getAngle();
+                axis = orient(leant(authored, angle));
+            }
+
+            const float along = axis.length2();
+            if (!std::isfinite(along))
+                return Err{ "a particle's axis is not a finite number" };
+            if (oriented && !(along > 0.0f))
+                return std::nullopt;
+
+            return Sprite{
+                .mPosition = stood,
+                .mRadius = radius,
+                .mAxis = axis,
+                .mColour = colour,
+                .mAlpha = alpha,
+            };
+        };
+
+        // The first reason a pass meets, reported once for the emitter: a refusal is named once
+        // however many particles share it.
+        std::string_view refused;
+
         mSpriteScratch.clear();
         const int alive = particles.numParticles();
         for (int at = 0; at < alive; ++at)
@@ -185,40 +266,18 @@ namespace Rtx
             if (!particle->isAlive())
                 continue;
 
-            const float radius = particle->getCurrentSize() * scale;
-            if (!(radius > 0.0f))
-                continue;
-
-            // `getCurrentColor`'s alpha and `getCurrentAlpha` are two separate ramps and the
-            // rasterizer multiplies them; `ParticleColorAffector` forces the first to one, and
-            // multiplying both keeps that a fact about the data. Both are the vertex's, and the
-            // material's mode says whether the vertex is read at all — `HeldSprite::mVertexColour`.
-            // A blend that adds whole reads no alpha at all, so its sprite is all there whatever
-            // its ramps say — one file in the game, and its silhouette is still its texture's.
-            const bool tinted = held.mVertexColour == VertexColour::Tint;
-            const osg::Vec4f vertex = particle->getCurrentColor();
-            const osg::Vec3f colour = tinted ? decodeColour(vertex) : held.mDiffuseColour;
-            const float opacity = tinted ? vertex.a() * particle->getCurrentAlpha() : held.mOpacity;
-            const float alpha = held.mBlend == BlendKind::AddWhole ? 1.0f : opacity;
-            if (!(alpha > 0.0f))
-                continue;
-
-            const osg::Vec3f stood = particle->getPosition() * place;
-
-            if (particle->getAngle() != angle)
+            const Result<std::optional<Sprite>, std::string_view> sprite = readParticle(*particle);
+            if (!sprite.isOk())
             {
-                angle = particle->getAngle();
-                axis = orient(leant(authored, angle));
+                if (refused.empty())
+                    refused = sprite.error();
             }
-
-            mSpriteScratch.push_back(Sprite{
-                .mPosition = stood,
-                .mRadius = radius,
-                .mAxis = axis,
-                .mColour = colour,
-                .mAlpha = alpha,
-            });
+            else if (sprite.value().has_value())
+                mSpriteScratch.push_back(*sprite.value());
         }
+
+        if (!refused.empty())
+            mScene.refusals().refuse(Refused::Sprites, particles.getName(), refused);
 
         if (mSpriteScratch.empty())
             return;

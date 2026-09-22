@@ -1,13 +1,16 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <span>
+#include <string>
 #include <vector>
 
 #include <osg/Vec3f>
 
 #include "mesh.hpp"
 #include "nodekind.hpp"
+#include "result.hpp"
 #include "shapefold.hpp"
 
 namespace osg
@@ -66,15 +69,17 @@ namespace Rtx
     class MeshReader
     {
     public:
-        /// Reads `read` into `into`. False where the drawable holds no triangle to read. Throws
-        /// where a morph's base is not the length of its source, which is a content file naming a
-        /// face this cannot pose.
-        bool read(const DrawableRead& read, MeshReading& into);
+        /// Reads `read` into `into`, answering whether the drawable held a triangle to read, and an
+        /// error for a face this cannot build, saying why: a morph's base that is not the length of
+        /// its source, a triangle naming a vertex the drawable does not have, an array of normals,
+        /// coordinates or colours of another length than the vertices, or an array of a type this
+        /// does not read.
+        Result<bool, std::string> read(const DrawableRead& read, MeshReading& into);
 
     private:
-        /// Collects `geometry`'s triangles into `mIndexScratch`, degenerate ones left out. False
-        /// where none is left.
-        bool collectTriangles(const osg::Geometry& geometry);
+        /// Collects `geometry`'s triangles into `mIndexScratch`, degenerate ones left out, and
+        /// answers whether any is left. An error where one names a vertex at or past `vertices`.
+        Result<bool, std::string> collectTriangles(const osg::Geometry& geometry, std::size_t vertices);
 
         ShapeFold mFold;
 

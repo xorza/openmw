@@ -73,9 +73,6 @@ namespace MWRender
 
         WalkReport mWalked;
 
-        /// How many textures the renderer has failed to read since it was built, and drew grey.
-        std::uint32_t mUnreadableTextures = 0;
-
         /// The driver's timings of the newest frame it finished, where the driver paces the
         /// window; nothing on a headless run and before the first frame finished.
         std::optional<Rtx::LatencyReport> mLatency;

@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <string>
 
 #include <osg/BoundingBox>
 #include <osg/Vec2f>
@@ -10,6 +11,7 @@
 
 #include "deformertable.hpp"
 #include "mesh.hpp"
+#include "result.hpp"
 #include "runs.hpp"
 #include "shaders/scene.h"
 #include "shapefold.hpp"
@@ -31,14 +33,15 @@ namespace Rtx
         static constexpr Index sVertexBlock = Shaders::VERTEX_BLOCK;
         static constexpr Index sIndexBlock = Shaders::INDEX_BLOCK;
 
-        /// Throws where `arrays` is longer than a block, because a vertex count comes out of a
-        /// content file. What `add` asks first, and what a caller that makes another row before
-        /// the mesh's asks before that row.
-        static void checkFits(const MeshArrays& arrays);
+        /// Whether `arrays` fits one block, and why not where it is longer: a run that straddled
+        /// two would be written across two allocations that are not next to each other. A vertex
+        /// count comes out of a content file, so whoever reads one asks this before `add`, which
+        /// asserts it.
+        static Result<void, std::string> checkFits(const MeshArrays& arrays);
 
-        /// Copies the vertex data into the shared buffers and returns the new mesh's index. Throws
-        /// as `checkFits` does. A deforming mesh is stood on `deformer` in `deformers`, which must
-        /// hold it.
+        /// Copies the vertex data into the shared buffers and returns the new mesh's index. The
+        /// mesh fits a block — `checkFits`. A deforming mesh is stood on `deformer` in
+        /// `deformers`, which must hold it.
         Index add(DeformerTable& deformers, const MeshArrays& arrays, FoldedShape shape, Deform deform, Index deformer);
 
         /// What a pose that changed does beside its rows: the reach, and the mesh named for the

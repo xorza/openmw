@@ -19,7 +19,7 @@
 #include <components/resource/scenemanager.hpp>
 #include <components/vfs/manager.hpp>
 
-#include "error.hpp"
+#include "result.hpp"
 #include "scenedesc.hpp"
 #include "shaders/look.h"
 #include "texels.hpp"
@@ -248,17 +248,17 @@ namespace Rtx
         constexpr float sTiledSpan = 1.5f;
     }
 
-    NightSky readNightSky(SceneDesc& scene, Resource::SceneManager& scenes, VFS::Path::NormalizedView mesh,
-        VFS::Path::NormalizedView fallback)
+    Result<NightSky, std::string> readNightSky(SceneDesc& scene, Resource::SceneManager& scenes,
+        VFS::Path::NormalizedView mesh, VFS::Path::NormalizedView fallback)
     {
         NightSky sky;
 
         const VFS::Path::NormalizedView chosen = scenes.getVFS()->exists(mesh) ? mesh : fallback;
 
-        // A gap in the content is named rather than drawn around: a night with no stars in it
-        // reads as a renderer that forgot them.
+        // A gap in the content is refused rather than read as a night with no stars in it, which
+        // reads as a renderer that forgot them. Before any hold, so a refusal leaves none behind.
         if (!scenes.getVFS()->exists(chosen))
-            throw InputError("no night sky mesh at \"" + std::string(chosen.value()) + "\"");
+            return Err{ "the archives hold neither it nor \"" + std::string(fallback.value()) + '"' };
 
         LayerReader read;
         const_cast<osg::Node&>(*scenes.getTemplate(chosen, false)).accept(read);

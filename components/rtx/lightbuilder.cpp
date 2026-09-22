@@ -15,6 +15,7 @@
 #include <components/sceneutil/lightmanager.hpp>
 
 #include "colour.hpp"
+#include "finite.hpp"
 #include "material.hpp"
 #include "mesh.hpp"
 #include "shaders/look.h"
@@ -158,6 +159,19 @@ namespace Rtx
             return sum / static_cast<float>(sFlameBands);
         }
 
+        /// The lamp, where every number in it is finite. What it was built from came off a file or
+        /// off a graph something else built, so a number that is not finite is data and the lamp is
+        /// refused: the grid sized around it would double its cell for ever, and the light would
+        /// shade every surface it reached to NaN.
+        Result<std::optional<Light>, std::string_view> finiteOnly(const Light& lamp)
+        {
+            if (!isFinite(lamp.mPosition) || !isFinite(lamp.mIntensity) || !std::isfinite(lamp.mReach)
+                || !std::isfinite(lamp.mSourceRadius) || !std::isfinite(lamp.mClearance))
+                return Err{ "a number it is made of is not finite" };
+
+            return lamp;
+        }
+
         /// A fill: a lamp whose flame is a ball `ball` wide at `position`, radiating `intensity` to
         /// `reach`. The ball is the source, so the shadow ray opens to the whole of it, and the
         /// ball is the clearance too, so the ray stops at the ball: nothing inside it casts a
@@ -177,21 +191,21 @@ namespace Rtx
         }
     }
 
-    std::optional<Light> makeLight(const osg::Vec3f& colour, float radius, const osg::Vec3f& position)
+    Result<std::optional<Light>, std::string_view> makeLight(
+        const osg::Vec3f& colour, float radius, const osg::Vec3f& position)
     {
-        // The radius comes off a file something else wrote, or off a graph something else built, so
-        // a nonsensical one is data rather than a broken contract: a light with no size lights
-        // nothing and is dropped.
-        if (!(radius > 0.0f))
+        // A light of no size lights nothing in the game either. One that is not a number at all
+        // goes on to be refused with the rest of what is not finite.
+        if (std::isfinite(radius) && radius <= 0.0f)
             return std::nullopt;
 
         // A light that subtracts is not one a ray can reach. It arrives here as a colour with a
         // negative channel, which is what `SceneUtil::createLightSource` builds out of a `Negative`
         // record and what the record overload builds to match.
         if (colour.x() < 0.0f || colour.y() < 0.0f || colour.z() < 0.0f)
-            return std::nullopt;
+            return Err{ "it takes light away, which a ray cannot" };
 
-        return Light{
+        return finiteOnly(Light{
             .mPosition = position,
             .mIntensity = colour * (radius * radius * sIntensity),
             .mReach = radius * sReachScale + sReachBonus,
@@ -200,18 +214,21 @@ namespace Rtx
             // lamp that casts no penumbra at all is the worse answer.
             .mSourceRadius = radius * sSourceFraction,
             .mClearance = radius * sFittingFraction,
-        };
+        });
     }
 
-    std::optional<Light> makeFill(const osg::Vec3f& colour, const float radius, const osg::Vec3f& position)
+    Result<std::optional<Light>, std::string_view> makeFill(
+        const osg::Vec3f& colour, const float radius, const osg::Vec3f& position)
     {
         // Lifted by its own radius, so the ball stands on the ground the game hung the glow at and
         // the bearer stands inside it rather than on top of it.
-        const std::optional<Light> lamp = makeLight(colour, radius, position + osg::Vec3f(0.0f, 0.0f, sFillBallRadius));
-        if (!lamp.has_value())
-            return std::nullopt;
+        const Result<std::optional<Light>, std::string_view> made
+            = makeLight(colour, radius, position + osg::Vec3f(0.0f, 0.0f, sFillBallRadius));
+        if (!made.isOk() || !made.value().has_value())
+            return made;
 
-        return fillOf(lamp->mPosition, lamp->mIntensity, sFillBallRadius, radius * sFillReachScale);
+        const Light& lamp = *made.value();
+        return finiteOnly(fillOf(lamp.mPosition, lamp.mIntensity, sFillBallRadius, radius * sFillReachScale));
     }
 
     bool isFill(const SceneUtil::LightSource& source)
@@ -285,9 +302,11 @@ namespace Rtx
         mBall.expandBy(osg::BoundingSpheref(emitter.mCentre, emitter.mReach));
     }
 
-    std::optional<Light> Glow::makeLight() const
+    Result<std::optional<Light>, std::string_view> Glow::makeLight() const
     {
-        if (mLit || !mBall.valid() || !(mBall.radius() > 0.0f))
+        // An effect of nothing, or of a point, glows nothing; a ball that is not a number is not
+        // `valid` either, and goes on to be refused with the rest of what is not finite.
+        if (mLit || mBall.radius() <= 0.0f)
             return std::nullopt;
 
         osg::Vec3f intensity = mDiscs * Shaders::PI;
@@ -299,7 +318,7 @@ namespace Rtx
 
         const float radius = mBall.radius();
 
-        return fillOf(mBall.center(), intensity * sGlowGain, radius, radius * sGlowReachScale);
+        return finiteOnly(fillOf(mBall.center(), intensity * sGlowGain, radius, radius * sGlowReachScale));
     }
 
     osg::Vec3f lightColour(const SceneUtil::LightSource& source, double simulationTime)
@@ -342,7 +361,7 @@ namespace Rtx
         return type;
     }
 
-    std::optional<Light> makeLight(
+    Result<std::optional<Light>, std::string_view> makeLight(
         const SceneUtil::LightCommon& record, const osg::Vec3f& position, const double simulationTime, const int id)
     {
         if (!castsWherePlaced(record))

@@ -3,29 +3,37 @@
 #include <cstdint>
 #include <initializer_list>
 #include <limits>
-#include <string_view>
+#include <memory>
+#include <string>
 
 #include <gtest/gtest.h>
 
+#include <osg/GL>
+#include <osg/Image>
 #include <osg/Vec2f>
 #include <osg/Vec3f>
+#include <osg/ref_ptr>
 
 #include <components/resource/bgsmfilemanager.hpp>
 #include <components/resource/imagemanager.hpp>
 #include <components/resource/niffilemanager.hpp>
 #include <components/resource/scenemanager.hpp>
 #include <components/rtx/cloudshell.hpp>
-#include <components/rtx/error.hpp>
 #include <components/rtx/moonbuilder.hpp>
 #include <components/rtx/nightsky.hpp>
+#include <components/rtx/refusals.hpp>
+#include <components/rtx/result.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/shaders/sky.h>
 #include <components/rtx/skybuilder.hpp>
 #include <components/rtx/skylight.hpp>
+#include <components/testing/util.hpp>
 #include <components/vfs/manager.hpp>
 #include <components/vfs/pathutil.hpp>
+
+#include "heldimages.hpp"
 
 namespace Rtx
 {
@@ -343,7 +351,8 @@ namespace Rtx
         {
             SceneDesc scene;
 
-            const Rtx::MoonFaces moons = Rtx::addMoonFaces(scene);
+            const Rtx::MoonFaces moons
+                = Rtx::addMoonFaces(scene, Rtx::MoonSizes{ .mMasser = 94.0f, .mSecunda = 40.0f });
             EXPECT_EQ(scene.textures().getHolds(moons.mMasser), 1u);
             EXPECT_EQ(scene.textures().getHolds(moons.mSecunda), 1u);
 
@@ -378,9 +387,47 @@ namespace Rtx
             EXPECT_TRUE(scene.isEmpty());
         }
 
+        /// **A deck's sheet this cannot upload is left out, and not drawn as the stand-in**, which
+        /// is an opaque grey and over a deck the whole sky. The seed names Clear's and Overcast's;
+        /// the archive holds Clear's as three channels, which no upload takes, and not Overcast's.
+        TEST(RtxSkyBuilderTest, aDeckSheetThisCannotUploadIsLeftOutRatherThanDrawnGrey)
+        {
+            const std::unique_ptr<VFS::Manager> vfs
+                = TestingOpenMW::createTestVFS({ { VFS::Path::NormalizedView("textures/tx_sky_clear.dds"), nullptr } });
+            Testing::HeldImages images(vfs.get(), 0);
+            Resource::NifFileManager nifs(vfs.get(), nullptr);
+            Resource::BgsmFileManager materials(vfs.get(), 0);
+            Resource::SceneManager scenes(vfs.get(), &images, &nifs, &materials, 0);
+
+            osg::ref_ptr<osg::Image> rgb = new osg::Image;
+            rgb->setFileName("textures/tx_sky_clear.dds");
+            rgb->allocateImage(4, 4, 1, GL_RGB, GL_UNSIGNED_BYTE);
+            images.hold(VFS::Path::NormalizedView("textures/tx_sky_clear.dds"), rgb);
+
+            SceneDesc scene;
+            const SkyContent content = addSkyContent(scene, scenes,
+                SkyMeshes{ .mClouds = VFS::Path::Normalized("meshes/sky_clouds_01.nif"),
+                    .mStars = VFS::Path::Normalized("meshes/sky_night_02.nif"),
+                    .mStarsFallback = VFS::Path::Normalized("meshes/sky_night_01.nif") });
+
+            EXPECT_EQ(content.cloudsOf(Shaders::WEATHER_CLEAR), Shaders::NO_TEXTURE) << "a grey sky";
+            EXPECT_EQ(content.cloudsOf(Shaders::WEATHER_OVERCAST), Shaders::NO_TEXTURE);
+            EXPECT_EQ(scene.textures().findFile(VFS::Path::NormalizedView("textures/tx_sky_clear.dds")), sNoIndex)
+                << "a slot the upload would stand in for";
+            EXPECT_EQ(scene.refusals().count(Refused::SkyLayer), 4u) << "both decks, the cloud cap and the star dome";
+
+            dropSkyContent(scene, content);
+            EXPECT_TRUE(scene.isEmpty());
+        }
+
         /// A star dome the archives hold neither spelling of is a gap in the content, named rather
         /// than read as a night with no stars in it. The message names the file that was tried last.
-        TEST(RtxSkyBuilderTest, aNightSkyMeshTheArchivesDoNotHoldIsRefusedByName)
+        ///
+        /// **Refused, and then the sky goes on without it.** Content short of a file is content the
+        /// game still runs, so what reads the whole sky refuses each file to the scene by name —
+        /// both meshes, and the decks' sheets — and hangs no layer, no deck and no stars, holding
+        /// nothing for them.
+        TEST(RtxSkyBuilderTest, aSkyMeshTheArchivesDoNotHoldIsNamedAndTheSkyGoesOnWithoutIt)
         {
             VFS::Manager vfs;
             Resource::ImageManager images(&vfs, 0);
@@ -389,17 +436,24 @@ namespace Rtx
             Resource::SceneManager scenes(&vfs, &images, &nifs, &materials, 0);
             SceneDesc scene;
 
-            try
-            {
-                readNightSky(scene, scenes, VFS::Path::NormalizedView("meshes/sky_night_02.nif"),
+            const Result<NightSky, std::string> night
+                = readNightSky(scene, scenes, VFS::Path::NormalizedView("meshes/sky_night_02.nif"),
                     VFS::Path::NormalizedView("meshes/sky_night_01.nif"));
-                FAIL() << "a missing star dome was read as no stars";
-            }
-            catch (const InputError& what)
-            {
-                EXPECT_NE(std::string_view(what.what()).find("meshes/sky_night_01.nif"), std::string_view::npos)
-                    << what.what();
-            }
+            ASSERT_FALSE(night.isOk()) << "a missing star dome was read as no stars";
+            EXPECT_EQ(night.error(), "the archives hold neither it nor \"meshes/sky_night_01.nif\"");
+
+            const SkyContent content = addSkyContent(scene, scenes,
+                SkyMeshes{ .mClouds = VFS::Path::Normalized("meshes/sky_clouds_01.nif"),
+                    .mStars = VFS::Path::Normalized("meshes/sky_night_02.nif"),
+                    .mStarsFallback = VFS::Path::Normalized("meshes/sky_night_01.nif") });
+
+            EXPECT_EQ(scene.refusals().count(Refused::SkyLayer), 4u)
+                << "the cloud cap, the star dome, and the Clear and Overcast decks the seed names";
+            EXPECT_EQ(content.mShell.mTiles, osg::Vec2f()) << "no layer to hang a deck on";
+            EXPECT_EQ(content.mNight.mField, sNoIndex) << "and no stars";
+            for (const NightSky::Patch& patch : content.mNight.mPatches)
+                EXPECT_EQ(patch.mTexture, sNoIndex);
+            EXPECT_TRUE(scene.isEmpty()) << "a hold taken for a sky that is not there";
         }
     }
 }

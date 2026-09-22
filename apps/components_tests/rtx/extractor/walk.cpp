@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <optional>
+#include <span>
 #include <utility>
 #include <vector>
 
@@ -26,6 +27,7 @@
 #include <components/rtx/camera.hpp>
 #include <components/rtx/mesh.hpp>
 #include <components/rtx/meshtable.hpp>
+#include <components/rtx/refusals.hpp>
 #include <components/rtx/sceneextractor.hpp>
 
 namespace Rtx::Testing
@@ -47,23 +49,26 @@ namespace Rtx::Testing
         }
 
         /// **What a content file describes and this renderer cannot take is refused per drawable,
-        /// once, and the walk goes on.** The quad beside the refused mesh stands. The refusal is
-        /// counted on the walk that made it, and the walk after reads the drawable no more: a
-        /// second read would count a second refusal.
-        TEST_F(RtxSceneExtractorTest, aMeshPastOneBlockIsRefusedOnceAndTheWalkGoesOn)
+        /// once, and the walk goes on.** The quad beside the refused mesh stands. Each is refused to
+        /// the scene once, however many walks meet it, and the walk after reads the drawable no
+        /// more. A mesh past one block is one such, and a triangle naming a vertex its drawable does
+        /// not have is another, which read on would have been a read past the positions and a
+        /// fault on the device.
+        TEST_F(RtxSceneExtractorTest, aMeshThisCannotBuildIsRefusedOnceAndTheWalkGoesOn)
         {
             osg::ref_ptr<osg::Group> root = new osg::Group;
             root->addChild(makePastOneBlock());
+            root->addChild(makeIndexPastItsVertices());
             root->addChild(makeQuad());
 
             const ExtractionStats first = walk(*root);
-            EXPECT_EQ(first.mRefused, 1u);
+            EXPECT_EQ(mScene.refusals().count(Refused::Mesh), 2u);
             EXPECT_EQ(first.mMeshesAdded, 1u);
             EXPECT_EQ(first.mInstances, 1u);
             mExtractor.retire();
 
             const ExtractionStats second = walk(*root);
-            EXPECT_EQ(second.mRefused, 0u) << "a refused drawable is read once";
+            EXPECT_EQ(mScene.refusals().count(Refused::Mesh), 2u) << "a refused drawable is refused once";
             EXPECT_EQ(second.mMeshesAdded, 0u);
             EXPECT_EQ(second.mMeshesReused, 1u);
             EXPECT_EQ(second.mInstances, 1u);
@@ -518,11 +523,11 @@ namespace Rtx::Testing
 
         /// **Texture coordinates are read off the array's own type byte**, which is what
         /// `asVec2Array` asks and what a `dynamic_cast` walks the class hierarchy to answer. The
-        /// two agree on a `Vec2Array` and on nothing else, so a three-component array is no texture
-        /// coordinate and the mesh arrives with none.
+        /// two agree on a `Vec2Array` and on nothing else, so a three-component array is not
+        /// coordinates this reads, and the mesh that brought them is refused rather than drawn as
+        /// if it brought none.
         ///
-        /// Hand-written: the second corner's V is a half, and a mesh that brought no coordinates
-        /// reads as the zero the table is filled with.
+        /// Hand-written: the second corner's V is a half.
         TEST_F(RtxSceneExtractorTest, textureCoordinatesAreReadOnlyWhereTheArrayIsAPairPerVertex)
         {
             osg::ref_ptr<osg::Vec2Array> pairs = new osg::Vec2Array;
@@ -533,23 +538,23 @@ namespace Rtx::Testing
             osg::ref_ptr<osg::Geometry> read = makeQuad();
             read->setTexCoordArray(0, pairs);
 
-            osg::ref_ptr<osg::Geometry> ignored = makeQuad();
-            ignored->setTexCoordArray(0,
+            osg::ref_ptr<osg::Geometry> refused = makeQuad();
+            refused->setTexCoordArray(0,
                 makePositions({ osg::Vec3f(0.0f, 0.0f, 0.0f), osg::Vec3f(1.0f, 0.5f, 0.0f),
                     osg::Vec3f(1.0f, 1.0f, 0.0f), osg::Vec3f(0.0f, 1.0f, 0.0f) }));
 
             osg::ref_ptr<osg::Group> root = new osg::Group;
             root->addChild(read);
-            root->addChild(ignored);
+            root->addChild(refused);
 
             mExtractor.extract(*root, osg::Matrixf::identity(), 1);
 
             const Rtx::MeshTable& meshes = mScene.meshes();
-            ASSERT_EQ(meshes.getRows().size(), 2u);
-            EXPECT_EQ(meshes.getRows()[0].mVertices.in(meshes.getTexCoords())[1], osg::Vec2f(1.0f, 0.5f))
-                << "a pair per vertex is read";
-            EXPECT_EQ(meshes.getRows()[1].mVertices.in(meshes.getTexCoords())[1], osg::Vec2f())
-                << "three components are no texture coordinate";
+            ASSERT_EQ(meshes.getRows().size(), 1u);
+            const std::span<const osg::Vec2f> coords = meshes.getRows()[0].mVertices.in(meshes.getTexCoords());
+            ASSERT_EQ(coords.size(), 4u);
+            EXPECT_EQ(coords[1], osg::Vec2f(1.0f, 0.5f)) << "a pair per vertex is read";
+            EXPECT_EQ(mScene.refusals().count(Refused::Mesh), 1u) << "three components are no texture coordinate";
         }
     }
 }

@@ -44,6 +44,7 @@ set(RTX_FILES
     error.hpp
     extractionstats.cpp
     extractionstats.hpp
+    finite.hpp
     fogbuilder.cpp
     fogbuilder.hpp
     framedigest.hpp
@@ -105,6 +106,8 @@ set(RTX_FILES
     poseupdate.hpp
     prepared.hpp
     reconstruction.hpp
+    refusals.cpp
+    refusals.hpp
     renderer.hpp
     ripple.hpp
     runs.cpp

@@ -28,6 +28,8 @@
 #include "meshreader.hpp"
 #include "mirroridentity.hpp"
 #include "nodekind.hpp"
+#include "refusals.hpp"
+#include "result.hpp"
 #include "runs.hpp"
 #include "worlddescent.hpp"
 
@@ -556,9 +558,12 @@ namespace Rtx
         // And the effects' lamps after the emitters, because a burst's flames are in them.
         for (const Glow& glow : mGlows)
         {
-            if (const std::optional<Light> made = glow.makeLight(); made.has_value())
+            const Result<std::optional<Light>, std::string_view> made = glow.makeLight();
+            if (!made.isOk())
+                mScene.refusals().refuse(Refused::Lamp, {}, made.error());
+            else if (made.value().has_value())
             {
-                mScene.addLight(*made);
+                mScene.addLight(*made.value());
                 ++stats.mLights;
             }
         }
@@ -652,9 +657,14 @@ namespace Rtx
         // The radius the content states, and not the cut-off the rasterizer widened it to: a
         // bolt's is its spell's area, which `ProjectileManager` writes there.
         const float radius = source.getSourceRadius();
-        const std::optional<Light> made
+        const Result<std::optional<Light>, std::string_view> made
             = isFill(source) ? makeFill(colour, radius, place.getTrans()) : makeLight(colour, radius, place.getTrans());
-        if (!made.has_value())
+        if (!made.isOk())
+        {
+            mScene.refusals().refuse(Refused::Lamp, source.getName(), made.error());
+            return;
+        }
+        if (!made.value().has_value())
             return;
 
         // A light the game hung on an effect is the effect's light — `Glow::mLit`. Whether the
@@ -663,7 +673,7 @@ namespace Rtx
         if (mGlow.has_value())
             mGlows[*mGlow].mLit = true;
 
-        mScene.addLight(*made);
+        mScene.addLight(*made.value());
         ++mPass.getStats().mLights;
     }
 

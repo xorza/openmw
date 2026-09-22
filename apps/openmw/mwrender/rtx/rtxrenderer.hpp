@@ -368,7 +368,6 @@ namespace MWRender
         /// What the last walk found, and what a second walk added. Kept because a report is written
         /// at the end of a stop and the walks are over by then.
         WalkReport mWalked;
-        std::uint32_t mUnreadable = 0;
 
         /// How far the air has been carried since the run began: the one world fact that is an
         /// integral over the frames rather than a reading of one, so it lives beside the clock.

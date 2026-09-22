@@ -95,7 +95,7 @@ namespace Rtx
             float mOpacity = 1.0f;
 
             /// The image the sprites are drawn with, or null for a system nothing described a
-            /// sprite for, which draws nothing and is counted. What a rewrite is told apart by,
+            /// sprite for, which draws nothing and is refused. What a rewrite is told apart by,
             /// and what the census names once per emitter.
             const osg::Image* mSprite = nullptr;
 
@@ -121,9 +121,11 @@ namespace Rtx
             std::optional<std::size_t> mGlow;
         };
 
-        /// Reads what a system draws with off its chain into `held`, taking the scene's slots for
-        /// an image it did not hold and giving back the ones for an image it no longer wears.
-        void describeSprite(HeldSprite& held, std::span<const Shading> shading);
+        /// Reads what `particles` draws with off its chain into `held`, taking the scene's slots for
+        /// an image it did not hold and giving back the ones for an image it no longer wears. A
+        /// system left with no sprite to draw is refused here, where that is decided.
+        void describeSprite(
+            const osgParticle::ParticleSystem& particles, HeldSprite& held, std::span<const Shading> shading);
 
         /// Gives back the slots `held` took, where it took any.
         void releaseSprite(const HeldSprite& held);

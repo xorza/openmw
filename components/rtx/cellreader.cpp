@@ -4,6 +4,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <string>
+#include <string_view>
 #include <vector>
 
 #include <osg/Matrixf>
@@ -11,14 +13,15 @@
 #include <osg/Vec3f>
 #include <osg/ref_ptr>
 
-#include <components/debug/debuglog.hpp>
 #include <components/misc/resourcehelpers.hpp>
 #include <components/sceneutil/lightcommon.hpp>
 
 #include "cellworld.hpp"
 #include "contract.hpp"
-#include "error.hpp"
 #include "lightbuilder.hpp"
+#include "prepared.hpp"
+#include "refusals.hpp"
+#include "result.hpp"
 
 namespace Rtx
 {
@@ -50,32 +53,29 @@ namespace Rtx
     {
     }
 
-    PreparedTexture* CellReader::readTexture(const osg::Image& image)
+    PreparedTexture& CellReader::readTexture(const PreparedLayer& layer)
     {
-        if (image.getFileName().empty())
-            return nullptr;
-
-        if (const auto known = mByImage.find(&image); known != mByImage.end())
+        if (const auto known = mTexturesByPath.find(layer.mPath.value()); known != mTexturesByPath.end())
         {
             mTextures.lend(**known);
-            return *known;
+            return **known;
         }
 
         PreparedTexture& texture = mTextures.take([&](PreparedTexture& into) {
-            into.mImage = &image;
-            into.mPath = VFS::Path::Normalized(image.getFileName());
+            into.mImage = layer.mImage;
+            into.mPath = layer.mPath;
         });
 
         mTextures.lend(texture);
-        [[maybe_unused]] const bool fresh = mByImage.insert(&texture).second;
-        assert(fresh && "an image filed twice");
+        [[maybe_unused]] const bool fresh = mTexturesByPath.insert(&texture).second;
+        assert(fresh && "a texture filed twice");
 
-        return &texture;
+        return texture;
     }
 
     PreparedModel* CellReader::readModel(const VFS::Path::NormalizedView path)
     {
-        if (const auto known = mByPath.find(path.value()); known != mByPath.end())
+        if (const auto known = mModelsByPath.find(path.value()); known != mModelsByPath.end())
             return *known;
 
         const osg::ref_ptr<const osg::Node> node = mContent.getTemplate(path);
@@ -90,11 +90,19 @@ namespace Rtx
             // load for every template the game hands out, so this is a read.
             into.mRadius = node->getBound().radius();
 
-            mWalk.read(*node, mMask, into);
+            // What the walk had read before it met what it cannot take goes, and the reason stays.
+            // The loader answers a file it cannot read with the error marker, which reads.
+            const Result<void, std::string> walked = mWalk.read(*node, mMask, into);
+            if (!walked.isOk())
+            {
+                into.reuse();
+                into.mPath.assign(path.value());
+                into.mRefused.assign(walked.error());
+            }
         });
 
-        [[maybe_unused]] const bool fresh = mByPath.insert(&model).second;
-        assert(fresh && "a path filed twice");
+        [[maybe_unused]] const bool fresh = mModelsByPath.insert(&model).second;
+        assert(fresh && "a model filed twice");
 
         return &model;
     }
@@ -113,13 +121,10 @@ namespace Rtx
 
         mGround.read(cell, prepared.mGround);
 
-        // Each layer's image counted once for the cell, so the reading stands until the frame gives
-        // the cell's hold on it back. A layer whose image names no file has nothing to describe
-        // and no slot to take, and goes.
-        std::erase_if(prepared.mGround.mLayers, [&](PreparedLayer& layer) {
-            layer.mTexture = readTexture(*layer.mImage);
-            return layer.mTexture == nullptr;
-        });
+        // Each layer's texture counted once for the cell, so the reading stands until the frame
+        // gives the cell's hold on it back.
+        for (PreparedLayer& layer : prepared.mGround.mLayers)
+            layer.mTexture = &readTexture(layer);
 
         // One cell at a time, which is the paging's near answer: containers page here as they do
         // in the active grid's own chunks, and the size rule is what thins them with distance. One
@@ -139,8 +144,15 @@ namespace Rtx
 
             mIsLampScratch[at] = 1;
 
-            // A record off by default casts nothing wherever it is placed, so it is not carried.
-            if (castsWherePlaced(*record))
+            // Made once here to be judged, and again every walk to be stood, because a flame is a
+            // function of the hour and whether a lamp is refused is not. A record off by default
+            // casts nothing wherever it is placed, so it is not carried.
+            const Result<std::optional<Light>, std::string_view> made
+                = makeLight(*record, ref.mPosition, 0.0, static_cast<int>(ref.mRefNum.mIndex));
+            if (!made.isOk())
+                prepared.mRefusals.push_back(Refusal{
+                    .mKind = Refused::Lamp, .mName = ref.mRefId.toDebugString(), .mWhy = std::string(made.error()) });
+            else if (made.value().has_value())
                 prepared.mLights.push_back(PreparedLight{
                     .mPosition = ref.mPosition,
                     .mRefNum = ref.mRefNum,
@@ -166,25 +178,21 @@ namespace Rtx
 
             model = Misc::ResourceHelpers::correctMeshPath(model);
 
-            // A model this cannot read is a reference left out and named, and never a cell
+            // A model this cannot read is a reference left out and refused, and never a cell
             // left out: a settled walk waits for every cell of the ring, and one that never came
-            // would hold it for ever. `InputError` and no wider: the walk is what throws it, for a
-            // file that describes a mesh this renderer cannot take, and the loader answers a file
-            // it cannot read with the error marker rather than a throw. Anything else is the
-            // reader failing, which the monitor reports.
-            PreparedModel* read = nullptr;
-            try
+            // would hold it for ever.
+            PreparedModel* read = readModel(model);
+            if (read == nullptr)
+                continue;
+
+            if (!read->mRefused.empty())
             {
-                read = readModel(model);
-            }
-            catch (const InputError& e)
-            {
-                Log(Debug::Warning) << "Ray tracing could not read " << model << " for " << ref.mRefId << ": "
-                                    << e.what();
+                prepared.mRefusals.push_back(
+                    Refusal{ .mKind = Refused::Model, .mName = read->mPath, .mWhy = read->mRefused });
                 continue;
             }
 
-            if (read == nullptr || read->mParts.empty())
+            if (read->mParts.empty())
                 continue;
 
             std::uint32_t index = 0;
@@ -222,9 +230,10 @@ namespace Rtx
         if (!mTextures.release(texture))
             return;
 
-        const auto filed = mByImage.find(texture.mImage.get());
-        contract(filed != mByImage.end(), "an image given back that was never filed");
-        mByImage.erase(filed);
+        // Erased under the path it is still filed under, before `reuse` clears it.
+        const auto filed = mTexturesByPath.find(texture.mPath.value());
+        contract(filed != mTexturesByPath.end(), "a texture given back that was never filed");
+        mTexturesByPath.erase(filed);
 
         texture.reuse();
         mTextures.give(texture);
@@ -236,9 +245,9 @@ namespace Rtx
             return;
 
         // Erased under the path it is still filed under, before `reuse` clears it.
-        const auto filed = mByPath.find(std::string_view(model.mPath));
-        contract(filed != mByPath.end(), "a model given back that was never filed");
-        mByPath.erase(filed);
+        const auto filed = mModelsByPath.find(std::string_view(model.mPath));
+        contract(filed != mModelsByPath.end(), "a model given back that was never filed");
+        mModelsByPath.erase(filed);
 
         model.reuse();
         mModels.give(model);

@@ -6,8 +6,6 @@
 #include <string>
 #include <utility>
 
-#include <components/debug/debuglog.hpp>
-
 #include "contract.hpp"
 
 namespace Rtx
@@ -17,11 +15,9 @@ namespace Rtx
         if (mRows.getLiveCount() < sCapacity)
             return true;
 
-        // Once and not per texture: past this point every new texture is refused alike.
-        if (mRefused++ == 0)
-            Log(Debug::Warning) << "Ray tracing holds " << sCapacity
-                                << " textures, the most its array takes, and draws every one past it neutral";
-
+        // Counted and not reported: a table does not reach the scene's `Refusals`, and
+        // `SceneTextures` reports the limit with the rest of what an arrival stood in for.
+        ++mRefused;
         return false;
     }
 

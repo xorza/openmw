@@ -1,6 +1,7 @@
 #include "groundreader.hpp"
 
 #include <cassert>
+#include <string>
 #include <utility>
 
 #include <osg/Array>
@@ -16,6 +17,7 @@
 
 #include "cellworld.hpp"
 #include "colour.hpp"
+#include "result.hpp"
 
 namespace Rtx
 {
@@ -155,12 +157,15 @@ namespace Rtx
 
         for (std::size_t index = 0; index < mLayerInfos.size(); ++index)
         {
-            osg::ref_ptr<const osg::Image> image = mContent.getImage(mLayerInfos[index].mDiffuseMap);
-            if (image == nullptr)
-                continue;
+            // A layer whose image does not read keeps its place and its path, and the texture table
+            // stands it in and refuses it as it does any texture: dropped, the ground under it would
+            // show another layer with nothing said.
+            const Result<osg::ref_ptr<const osg::Image>, std::string> image
+                = mContent.getImage(mLayerInfos[index].mDiffuseMap);
 
             PreparedLayer layer;
-            layer.mImage = std::move(image);
+            layer.mImage = image.isOk() ? image.value() : nullptr;
+            layer.mPath = std::move(mLayerInfos[index].mDiffuseMap);
             layer.mRow.mDiffuseTransform = diffuseTransform(mTileCount);
 
             if (!mBlendmaps.empty() && mBlendmaps[index] != nullptr)

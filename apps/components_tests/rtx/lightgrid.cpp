@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -95,12 +96,18 @@ namespace Rtx
             EXPECT_EQ(list[1], 2u);
         }
 
-        /// The cell doubles until the grid fits, and there are two budgets to fit.
+        /// The cell doubles until the grid fits, and there are two budgets to fit — or until the grid
+        /// is one cell, past which doubling drops no entry.
         ///
         /// **The second is not implied by the first.** Lamps spread across a world overrun the cell
         /// count while each of them is ordinary; a handful with enormous reaches overrun the entry
         /// count while the grid is still small, because each lands in every cell it touches.
-        TEST(RtxLightGridTest, theCellDoublesUntilBothBudgetsFit)
+        ///
+        /// **And every lamp a builder hands over ends it.** Its numbers are finite and nothing
+        /// else: a record can place one near the end of the float range, where the extent in float
+        /// is past the largest float, and a cell can hold more lamps than the entry budget. The
+        /// first cast an infinite count and the second doubled the cell for ever.
+        TEST(RtxLightGridTest, theCellDoublesUntilBothBudgetsFitOrTheGridIsOneCell)
         {
             // Seventy million units apart is 273,438 cells of 256 along x, 68,360 of 1024 and 34,180
             // of 2048, so the cell count alone forces three doublings.
@@ -124,6 +131,35 @@ namespace Rtx
             EXPECT_FLOAT_EQ(crowded.getInverseCell(), 1.0f / 2048.0f) << "the entry count, at a legal cell count";
             EXPECT_EQ(crowded.getSize(), osg::Vec3ui(20u, 20u, 20u));
             EXPECT_EQ(crowded.getList().getEntryCount(), 5u * 20u * 20u * 20u);
+
+            // Two lamps at x = -2^127 and 2^127, each reaching 2^123: every number a float, and the
+            // extent `2^128 + 2^124 = 17 * 2^124` along x is not, while y and z are 2^124. A cell of
+            // `2^(116 - m) * 256` is `17 * 2^m` by `2^m` by `2^m` cells, so the first inside 65,536
+            // is m = 3: 136 by 8 by 8, of side 2^121. The corner is (-17, -1, -1) * 2^123, so the
+            // near lamp spans x cells [0, 9) — its reach ends on the edge of the ninth, which a box
+            // counts — and the far one [128, 136), clamped at the grid's end, the eight rows of y
+            // and z each: 576 and 512 entries.
+            const float edge = std::ldexp(1.0f, 127);
+            const float far = std::ldexp(1.0f, 123);
+            const std::array farLights{ lampAt(-edge, far), lampAt(edge, far) };
+            const LightGrid ranged(farLights);
+
+            EXPECT_EQ(ranged.getOrigin(), osg::Vec3f(-17.0f * far, -far, -far));
+            EXPECT_EQ(ranged.getSize(), osg::Vec3ui(136u, 8u, 8u));
+            EXPECT_EQ(ranged.getInverseCell(), std::ldexp(1.0f, -121));
+            EXPECT_EQ(ranged.getList().getEntryCount(), 576u + 512u);
+            EXPECT_EQ(lampsIn(ranged, 0, 0, 0), std::vector<std::uint32_t>{ 0u });
+            EXPECT_EQ(lampsIn(ranged, 135, 7, 7), std::vector<std::uint32_t>{ 1u });
+            EXPECT_TRUE(lampsIn(ranged, 64, 4, 4).empty()) << "the air between them";
+
+            // One lamp past the entry budget, every one of them in the first cell of 256: one cell
+            // holding them all, which the shader walks as it walks any other.
+            const std::vector<Light> packed(262144 + 1, lampAt(0.0f, 1.0f));
+            const LightGrid full(packed);
+
+            EXPECT_EQ(full.getSize(), osg::Vec3ui(1u, 1u, 1u));
+            EXPECT_FLOAT_EQ(full.getInverseCell(), 1.0f / 256.0f) << "it stopped at the first cell and not after";
+            EXPECT_EQ(full.getList().getEntryCount(), packed.size());
         }
 
         /// Three reaches at once: one lamp inside a corner of the grid, one against its far edge and

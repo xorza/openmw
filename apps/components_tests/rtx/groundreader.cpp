@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <span>
+#include <string>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -24,6 +25,7 @@
 #include <components/rtx/cellworld.hpp>
 #include <components/rtx/groundreader.hpp>
 #include <components/rtx/prepared.hpp>
+#include <components/rtx/result.hpp>
 #include <components/terrain/buffercache.hpp>
 #include <components/terrain/defs.hpp>
 #include <components/vfs/pathutil.hpp>
@@ -39,7 +41,7 @@ namespace Rtx::Testing
         {
         public:
             osg::ref_ptr<const osg::Node> getTemplate(VFS::Path::NormalizedView) override { return nullptr; }
-            osg::ref_ptr<const osg::Image> getImage(const VFS::Path::NormalizedView path) override
+            Result<osg::ref_ptr<const osg::Image>, std::string> getImage(const VFS::Path::NormalizedView path) override
             {
                 return mImages.get(path);
             }
@@ -168,8 +170,19 @@ namespace Rtx::Testing
 
             ASSERT_EQ(ground.mLayers.size(), 1u);
             EXPECT_EQ(ground.mLayers[0].mImage->getFileName(), "textures/_land_default.dds");
+            EXPECT_EQ(ground.mLayers[0].mPath, "textures/_land_default.dds");
             EXPECT_EQ(ground.mLayers[0].mWeights.mCount, 0u) << "one ground type covers the cell";
             EXPECT_TRUE(ground.mWeights.empty());
+
+            // **A layer whose image does not read keeps its place and its path**, for the texture
+            // table to stand in and refuse as it does any texture: dropped, the ground under it
+            // would show another layer with nothing said.
+            images.mImages.lose("textures/_land_default.dds");
+            PreparedGround unread;
+            reader.read(osg::Vec2i(2, 0), unread);
+            ASSERT_EQ(unread.mLayers.size(), 1u);
+            EXPECT_EQ(unread.mLayers[0].mImage, nullptr);
+            EXPECT_EQ(unread.mLayers[0].mPath, "textures/_land_default.dds");
         }
 
         /// A land whose one cell blends two masks of two formats: the game's own, and one a mod

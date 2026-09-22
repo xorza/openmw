@@ -108,8 +108,8 @@ namespace Rtx
 
         void clearArrivals() { mChanges.clearArrivals(); }
 
-        // Read by the tests and by nothing else: a refusal is logged once, where it happens.
-        /// How many new textures were refused because `sCapacity` slots stood, ever.
+        /// How many new textures were refused because `sCapacity` slots stood, ever. Drawn neutral,
+        /// and reported by `SceneTextures`.
         std::uint32_t getRefused() const { return mRefused; }
 
     private:

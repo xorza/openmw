@@ -1,8 +1,12 @@
+#include <initializer_list>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
 
 #include <osg/Drawable>
+#include <osg/Geometry>
 #include <osg/Group>
 #include <osg/LOD>
 #include <osg/Material>
@@ -16,8 +20,9 @@
 #include <osg/Vec3f>
 #include <osg/ref_ptr>
 
-#include <components/rtx/error.hpp>
+#include <components/rtx/meshtable.hpp>
 #include <components/rtx/prepared.hpp>
+#include <components/rtx/result.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/surface.hpp>
 #include <components/rtx/templatewalk.hpp>
@@ -114,18 +119,35 @@ namespace Rtx::Testing
             EXPECT_EQ(frames->getValue(), 1);
         }
 
-        /// **A mesh past one block refuses its model on the reader's thread**, where the reader
-        /// leaves the model out of its cell. Left to the adoption, the same check threw inside the
-        /// frame's walk.
-        TEST(RtxTemplateWalkTest, aMeshPastOneBlockRefusesTheModelWhereItIsRead)
+        /// **A mesh this cannot build refuses its model on the reader's thread**, where the reader
+        /// leaves the model out of its cell. Left to the adoption, the same check refused inside
+        /// the frame's walk. A mesh past one block is one, and a triangle naming a vertex its
+        /// drawable does not have is another, and the walk says which. The walk after it is the
+        /// next model's, whole.
+        TEST(RtxTemplateWalkTest, aMeshThisCannotBuildRefusesTheModelWhereItIsRead)
         {
-            osg::ref_ptr<osg::Group> root = new osg::Group;
-            root->addChild(makeQuad());
-            root->addChild(makePastOneBlock());
+            const std::string pastABlock = "its " + std::to_string(MeshTable::sVertexBlock + 1)
+                + " vertices and 3 indices are past the " + std::to_string(MeshTable::sVertexBlock) + " and "
+                + std::to_string(MeshTable::sIndexBlock) + " one block of the shared buffers holds";
 
-            PreparedModel model;
             TemplateWalk walk;
-            EXPECT_THROW(walk.read(*root, ~0u, model), InputError);
+            for (const auto& [broken, why] : { std::pair{ makePastOneBlock(), pastABlock },
+                     std::pair{ makeIndexPastItsVertices(), std::string("its triangles name vertex 4 of 4") } })
+            {
+                osg::ref_ptr<osg::Group> root = new osg::Group;
+                root->addChild(makeQuad());
+                root->addChild(broken);
+
+                PreparedModel model;
+                const Result<void, std::string> refused = walk.read(*root, ~0u, model);
+                ASSERT_FALSE(refused.isOk());
+                EXPECT_EQ(refused.error(), why);
+
+                const osg::ref_ptr<osg::Geometry> quad = makeQuad();
+                PreparedModel next;
+                EXPECT_TRUE(walk.read(*quad, ~0u, next).isOk()) << "a refusal carried into the next model";
+                EXPECT_EQ(next.mParts.size(), 1u);
+            }
         }
     }
 }

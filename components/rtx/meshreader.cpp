@@ -1,9 +1,11 @@
 #include "meshreader.hpp"
 
+#include <algorithm>
 #include <cassert>
 #include <chrono>
 #include <cstddef>
 #include <string>
+#include <string_view>
 
 #include <osg/Array>
 #include <osg/Drawable>
@@ -14,7 +16,6 @@
 #include <components/sceneutil/riggeometry.hpp>
 
 #include "colour.hpp"
-#include "error.hpp"
 #include "framespend.hpp"
 
 namespace Rtx
@@ -25,11 +26,16 @@ namespace Rtx
         {
             std::vector<std::uint32_t>* mIndices = nullptr;
 
-            void operator()(unsigned int a, unsigned int b, unsigned int c) const
+            /// The largest index collected, which `NifOsg` hands on as the file wrote it: nothing
+            /// between the file and here holds a triangle to the vertices it has.
+            std::uint32_t mLargest = 0;
+
+            void operator()(unsigned int a, unsigned int b, unsigned int c)
             {
                 if (a == b || b == c || a == c)
                     return;
 
+                mLargest = std::max({ mLargest, a, b, c });
                 mIndices->push_back(a);
                 mIndices->push_back(b);
                 mIndices->push_back(c);
@@ -56,35 +62,58 @@ namespace Rtx
             return static_cast<const osg::Vec3Array*>(array);
         }
 
+        /// A geometry's `what` array of `named` elements, against its `vertices`: an array of another
+        /// length is one this cannot match to the vertices, and a guess at which belongs to which
+        /// is a wrong picture rather than a missing one.
+        Result<void, std::string> checkLength(std::string_view what, std::size_t named, std::size_t vertices)
+        {
+            if (named != vertices)
+                return Err{ "it has " + std::to_string(named) + ' ' + std::string(what) + " for "
+                    + std::to_string(vertices) + " vertices" };
+
+            return {};
+        }
+
         /// @param flat scratch for an overall normal spread across the vertices. Refilled here and
         ///        borrowed by the returned span, so it has to outlive the read.
-        VertexArrays readVertices(const osg::Geometry& geometry, std::vector<osg::Vec3f>& flat)
+        Result<VertexArrays, std::string> readVertices(const osg::Geometry& geometry, std::vector<osg::Vec3f>& flat)
         {
             VertexArrays arrays;
 
-            const osg::Vec3Array* positions = asVec3Array(geometry.getVertexArray());
-            if (positions == nullptr)
+            // No array is no geometry, which the game draws nothing for either; an array of a type
+            // this does not read is one it does.
+            const osg::Array* vertices = geometry.getVertexArray();
+            if (vertices == nullptr || vertices->getNumElements() == 0)
                 return arrays;
+
+            const osg::Vec3Array* positions = asVec3Array(vertices);
+            if (positions == nullptr)
+                return Err{ "its vertices are not three floats each" };
 
             arrays.mPositions = std::span(positions->asVector());
 
-            const osg::Vec3Array* normals = asVec3Array(geometry.getNormalArray());
-            if (normals == nullptr || normals->empty())
+            const osg::Array* named = geometry.getNormalArray();
+            if (named == nullptr || named->getNumElements() == 0)
                 return arrays;
 
-            if (normals->size() == positions->size())
-            {
-                arrays.mNormals = std::span(normals->asVector());
-                return arrays;
-            }
+            const osg::Vec3Array* normals = asVec3Array(named);
+            if (normals == nullptr)
+                return Err{ "its normals are not three floats each" };
 
             // One normal for the whole drawable is a normal: `SceneUtil::createWaterGeometry` binds
             // exactly this, and dropping it made the sea flat black and took the exposure with it.
-            if (normals->getBinding() != osg::Array::BIND_OVERALL)
+            if (normals->size() != positions->size() && normals->getBinding() == osg::Array::BIND_OVERALL)
+            {
+                flat.assign(positions->size(), normals->at(0));
+                arrays.mNormals = std::span(flat);
                 return arrays;
+            }
 
-            flat.assign(positions->size(), normals->at(0));
-            arrays.mNormals = std::span(flat);
+            if (const Result<void, std::string> matched = checkLength("normals", normals->size(), positions->size());
+                !matched.isOk())
+                return Err{ matched.error() };
+
+            arrays.mNormals = std::span(normals->asVector());
             return arrays;
         }
 
@@ -98,6 +127,26 @@ namespace Rtx
             return static_cast<const osg::Vec2Array*>(array);
         }
 
+        /// The coordinates bound at `unit`, or null where none are. An error where they are of a
+        /// type this does not read, or where they do not match the vertices — `checkLength`.
+        Result<const osg::Vec2Array*, std::string> readTexCoords(
+            const osg::Geometry& geometry, unsigned int unit, std::size_t vertices)
+        {
+            const osg::Array* named = geometry.getTexCoordArray(unit);
+            if (named == nullptr || named->getNumElements() == 0)
+                return nullptr;
+
+            const osg::Vec2Array* coords = asVec2Array(named);
+            if (coords == nullptr)
+                return Err{ "its texture coordinates are not two floats each" };
+
+            if (const Result<void, std::string> matched = checkLength("texture coordinates", coords->size(), vertices);
+                !matched.isOk())
+                return Err{ matched.error() };
+
+            return coords;
+        }
+
         /// A geometry's per-vertex colours, decoded into `scratch` and spanned from it. Empty where
         /// the geometry names none. Two array types, because `NifOsg` builds a `Vec4Array` from a
         /// `NiGeometryData` and a `Vec4ubArray` from a `BSTriShape`. An overall colour is spread
@@ -105,19 +154,22 @@ namespace Rtx
         /// read: three shapes in the whole of vanilla carry one below opaque, and reading it would
         /// put a fetch on every candidate of every shadow ray.
         ///
-        /// @param vertices how many the geometry holds. An array of another length is a content
-        ///        file this cannot match up, and it is left out.
-        std::span<const osg::Vec3f> readColours(
+        /// @param vertices how many the geometry holds, which an array that is not overall has to
+        ///        match — `checkLength`.
+        Result<std::span<const osg::Vec3f>, std::string> readColours(
             const osg::Geometry& geometry, const std::size_t vertices, std::vector<osg::Vec3f>& scratch)
         {
             const osg::Array* colours = geometry.getColorArray();
-            if (colours == nullptr)
-                return {};
+            if (colours == nullptr || colours->getNumElements() == 0)
+                return std::span<const osg::Vec3f>();
 
             const bool overall = colours->getBinding() == osg::Array::BIND_OVERALL;
-            const std::size_t named = colours->getNumElements();
-            if (named == 0 || (!overall && named != vertices))
-                return {};
+            if (!overall)
+            {
+                const Result<void, std::string> matched = checkLength("colours", colours->getNumElements(), vertices);
+                if (!matched.isOk())
+                    return Err{ matched.error() };
+            }
 
             const auto decodeAll = [&](const auto& array) {
                 if (overall)
@@ -141,10 +193,10 @@ namespace Rtx
                     decodeAll(static_cast<const osg::Vec4ubArray&>(*colours));
                     break;
                 default:
-                    return {};
+                    return Err{ "its colours are neither four floats nor four bytes each" };
             }
 
-            return std::span(scratch);
+            return std::span<const osg::Vec3f>(scratch);
         }
     }
 
@@ -181,7 +233,7 @@ namespace Rtx
         return std::span(base->asVector());
     }
 
-    bool MeshReader::collectTriangles(const osg::Geometry& geometry)
+    Result<bool, std::string> MeshReader::collectTriangles(const osg::Geometry& geometry, const std::size_t vertices)
     {
         mIndexScratch.clear();
 
@@ -189,14 +241,25 @@ namespace Rtx
         collector.mIndices = &mIndexScratch;
         geometry.accept(collector);
 
-        return !mIndexScratch.empty();
+        if (mIndexScratch.empty())
+            return false;
+
+        if (collector.mLargest >= vertices)
+            return Err{ "its triangles name vertex " + std::to_string(collector.mLargest) + " of "
+                + std::to_string(vertices) };
+
+        return true;
     }
 
-    bool MeshReader::read(const DrawableRead& read, MeshReading& into)
+    Result<bool, std::string> MeshReader::read(const DrawableRead& read, MeshReading& into)
     {
         const osg::Geometry& geometry = *read.mGeometry;
 
-        VertexArrays arrays = readVertices(geometry, mFlatNormalScratch);
+        const Result<VertexArrays, std::string> vertices = readVertices(geometry, mFlatNormalScratch);
+        if (!vertices.isOk())
+            return Err{ vertices.error() };
+
+        VertexArrays arrays = vertices.value();
 
         // A morph starts from its base target and not from the source's array, because that is
         // what `MorphGeometry::cull` starts from. The normals and everything else are the source's.
@@ -204,8 +267,8 @@ namespace Rtx
         {
             const std::span<const osg::Vec3f> base = morphBase(*read.mMorph);
             if (base.size() != arrays.mPositions.size())
-                throw InputError("a morphed face of " + std::to_string(arrays.mPositions.size())
-                    + " vertices whose base target has " + std::to_string(base.size()));
+                return Err{ "its base target has " + std::to_string(base.size()) + " vertices for "
+                    + std::to_string(arrays.mPositions.size()) };
 
             arrays.mPositions = base;
         }
@@ -213,28 +276,12 @@ namespace Rtx
         if (arrays.mPositions.empty())
             return false;
 
-        // Folded before the mesh is written, so the copy the content drew for a card's back never
-        // reaches a structure. Once per drawable and never for a pose: a rig moves the two copies
-        // together, so the pairs found in the bind pose are the pairs.
-        const std::chrono::steady_clock::time_point folding = std::chrono::steady_clock::now();
-        const bool collected = collectTriangles(geometry);
-        if (collected)
-            into.mShape = mFold.fold(arrays.mPositions, mIndexScratch);
-        into.mFoldMs = since(folding, std::chrono::steady_clock::now());
+        const std::size_t count = arrays.mPositions.size();
 
-        if (!collected)
-            return false;
-
-        into.mArrays.mPositions = arrays.mPositions;
-        into.mArrays.mNormals = arrays.mNormals;
-        into.mArrays.mIndices = mIndexScratch;
-
-        into.mArrays.mTexCoords = {};
-        into.mArrays.mSecondTexCoords = {};
-        into.mArrays.mUnitStreams = 0;
-        const osg::Vec2Array* texCoords = asVec2Array(geometry.getTexCoordArray(0));
-        if (texCoords != nullptr && texCoords->size() == arrays.mPositions.size())
-            into.mArrays.mTexCoords = std::span(texCoords->asVector());
+        // Every array asked before the fold, so a face this refuses costs no fold.
+        const Result<const osg::Vec2Array*, std::string> texCoords = readTexCoords(geometry, 0, count);
+        if (!texCoords.isOk())
+            return Err{ texCoords.error() };
 
         // **A second set is the first array bound at any unit that is not unit nought's**, and
         // the units that bind it are noted for the material to look up its dark map's stream by.
@@ -242,22 +289,50 @@ namespace Rtx
         // property names them, so a unit that reads another array than unit nought's is reading
         // the shape's second set. No vanilla shape carries a third.
         const osg::Vec2Array* second = nullptr;
+        std::uint32_t unitStreams = 0;
         for (unsigned int unit = 1; unit < geometry.getNumTexCoordArrays() && unit < 32; ++unit)
         {
-            const osg::Vec2Array* bound = asVec2Array(geometry.getTexCoordArray(unit));
-            if (bound == nullptr || bound == texCoords || bound->size() != arrays.mPositions.size())
+            const Result<const osg::Vec2Array*, std::string> bound = readTexCoords(geometry, unit, count);
+            if (!bound.isOk())
+                return Err{ bound.error() };
+            if (bound.value() == nullptr || bound.value() == texCoords.value())
                 continue;
             if (second == nullptr)
-                second = bound;
-            if (bound == second)
-                into.mArrays.mUnitStreams |= 1u << unit;
+                second = bound.value();
+            if (bound.value() == second)
+                unitStreams |= 1u << unit;
         }
-        if (second != nullptr)
-            into.mArrays.mSecondTexCoords = std::span(second->asVector());
 
         // The source geometry's colours even for a morph, whose positions came from its base
         // target: a morph moves vertices and does not repaint them.
-        into.mArrays.mColours = readColours(geometry, arrays.mPositions.size(), mColourScratch);
+        const Result<std::span<const osg::Vec3f>, std::string> colours = readColours(geometry, count, mColourScratch);
+        if (!colours.isOk())
+            return Err{ colours.error() };
+
+        // Folded before the mesh is written, so the copy the content drew for a card's back never
+        // reaches a structure. Once per drawable and never for a pose: a rig moves the two copies
+        // together, so the pairs found in the bind pose are the pairs.
+        const std::chrono::steady_clock::time_point folding = std::chrono::steady_clock::now();
+        const Result<bool, std::string> collected = collectTriangles(geometry, count);
+        if (!collected.isOk())
+            return Err{ collected.error() };
+        if (collected.value())
+            into.mShape = mFold.fold(arrays.mPositions, mIndexScratch);
+        into.mFoldMs = since(folding, std::chrono::steady_clock::now());
+
+        if (!collected.value())
+            return false;
+
+        into.mArrays = MeshArrays{
+            .mPositions = arrays.mPositions,
+            .mNormals = arrays.mNormals,
+            .mTexCoords
+            = texCoords.value() != nullptr ? std::span(texCoords.value()->asVector()) : std::span<const osg::Vec2f>(),
+            .mSecondTexCoords = second != nullptr ? std::span(second->asVector()) : std::span<const osg::Vec2f>(),
+            .mUnitStreams = unitStreams,
+            .mColours = colours.value(),
+            .mIndices = mIndexScratch,
+        };
 
         return true;
     }

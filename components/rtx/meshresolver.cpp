@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <span>
 #include <string>
+#include <string_view>
 
 #include <osg/Array>
 #include <osg/BoundingBox>
@@ -13,17 +14,17 @@
 #include <osg/Matrix>
 #include <osg/Matrixf>
 
-#include <components/debug/debuglog.hpp>
 #include <components/sceneutil/morphgeometry.hpp>
 #include <components/sceneutil/riggeometry.hpp>
 #include <components/sceneutil/skeleton.hpp>
 
 #include "contract.hpp"
 #include "deformertable.hpp"
-#include "error.hpp"
 #include "extractionstats.hpp"
 #include "instancerecord.hpp"
 #include "mesh.hpp"
+#include "refusals.hpp"
+#include "result.hpp"
 #include "scenedesc.hpp"
 
 namespace Rtx
@@ -109,29 +110,25 @@ namespace Rtx
         }
 
         // **What a content file says is refused here, per drawable, and the frame goes on.** Every
-        // check that can throw runs before a row is made (`SceneDesc::addMesh`), so a refusal
-        // leaves the scene as it was. The refusal is kept under the drawable, stamped as the walk
-        // meets it, so a file the renderer cannot take is read once and logged once for as long as
-        // it stands rather than once a frame.
+        // check runs before a row is made, so a refusal leaves the scene as it was. The refusal is
+        // kept under the drawable, stamped as the walk meets it, so a file the renderer cannot
+        // take is read once for as long as it stands rather than once a frame.
         MeshReading reading;
-        Index mesh = sNoIndex;
-        try
-        {
-            if (!mReader.read(read, reading))
-            {
-                ++stats.mSkippedEmpty;
-                return sNoIndex;
-            }
+        const Result<bool, std::string> readMesh = mReader.read(read, reading);
+        if (!readMesh.isOk())
+            return refuse(drawable, readMesh.error());
 
-            mesh = addMesh(read, reading);
-        }
-        catch (const InputError& refused)
+        if (!readMesh.value())
         {
-            Log(Debug::Warning) << "Ray tracing skipped \"" << drawable.getName() << "\": " << refused.what();
-            mMeshes.add(&drawable, Known{ .mIndex = sNoIndex });
-            ++stats.mRefused;
+            ++stats.mSkippedEmpty;
             return sNoIndex;
         }
+
+        const Result<Index, std::string> added = addMesh(read, reading);
+        if (!added.isOk())
+            return refuse(drawable, added.error());
+
+        const Index mesh = added.value();
 
         stats.mFoldMs += reading.mFoldMs;
 
@@ -211,8 +208,18 @@ namespace Rtx
         mMeshes.drop(known);
     }
 
-    Index MeshResolver::addMesh(const DrawableRead& read, const MeshReading& reading)
+    Index MeshResolver::refuse(const osg::Drawable& drawable, std::string_view why)
     {
+        mScene.refusals().refuse(Refused::Mesh, drawable.getName(), why);
+        mMeshes.add(&drawable, Known{ .mIndex = sNoIndex });
+        return sNoIndex;
+    }
+
+    Result<Index, std::string> MeshResolver::addMesh(const DrawableRead& read, const MeshReading& reading)
+    {
+        if (const Result<void, std::string> fits = MeshTable::checkFits(reading.mArrays); !fits.isOk())
+            return Err{ fits.error() };
+
         if (read.mDeform == Deform::None)
             return mScene.addMesh(reading.mArrays, reading.mShape, Deform::None, sNoIndex);
 
@@ -234,9 +241,29 @@ namespace Rtx
         // mesh of another length; the deformer it named stays for the meshes still on it and goes
         // with the last of them. A set of targets grown or shrunk under the same base is a new set
         // for the same reason.
-        const DeformedMesh added = read.mDeform == Deform::Rig
-            ? mScene.addMesh(reading.mArrays, reading.mShape, readRig(*read.mRig))
-            : mScene.addMesh(reading.mArrays, reading.mShape, readMorph(*read.mMorph));
+        DeformedMesh added;
+        if (read.mDeform == Deform::Rig)
+        {
+            const Result<RigSpec, std::string> rig = readRig(*read.mRig);
+            if (!rig.isOk())
+                return Err{ rig.error() };
+
+            const Result<void, std::string> posed
+                = SceneDesc::checkPoses(rig.value().getVertexCount(), reading.mArrays);
+            if (!posed.isOk())
+                return Err{ posed.error() };
+
+            added = mScene.addMesh(reading.mArrays, reading.mShape, rig.value());
+        }
+        else
+        {
+            const MorphSpec morph = readMorph(*read.mMorph);
+            const Result<void, std::string> posed = SceneDesc::checkPoses(morph.getVertexCount(), reading.mArrays);
+            if (!posed.isOk())
+                return Err{ posed.error() };
+
+            added = mScene.addMesh(reading.mArrays, reading.mShape, morph);
+        }
 
         if (held.mEntry != mDeformers.end())
         {
@@ -328,7 +355,7 @@ namespace Rtx
         ++stats.mDeformed;
     }
 
-    RigSpec MeshResolver::readRig(const SceneUtil::RigGeometry& rig)
+    Result<RigSpec, std::string> MeshResolver::readRig(const SceneUtil::RigGeometry& rig)
     {
         const SceneUtil::RigGeometry::InfluenceData* skin = rig.getInfluenceData();
         assert(skin != nullptr);
@@ -345,8 +372,8 @@ namespace Rtx
         for (const auto& [weights, group] : skin->mInfluences)
         {
             if (weights.size() > Shaders::RUN_COUNT_MASK)
-                throw InputError("a vertex skinned by " + std::to_string(weights.size()) + " bones, past the "
-                    + std::to_string(Shaders::RUN_COUNT_MASK) + " a run word holds");
+                return Err{ "a vertex of it is skinned by " + std::to_string(weights.size()) + " bones, past the "
+                    + std::to_string(Shaders::RUN_COUNT_MASK) + " a run word holds" };
 
             const auto first = static_cast<std::uint32_t>(mInfluenceScratch.size());
             for (const auto& [bone, weight] : weights)
@@ -359,8 +386,7 @@ namespace Rtx
             for (const unsigned short vertex : group)
             {
                 if (vertex >= vertices)
-                    throw InputError("a skin naming vertex " + std::to_string(vertex) + " of a mesh with "
-                        + std::to_string(vertices));
+                    return Err{ "its skin names vertex " + std::to_string(vertex) + " of " + std::to_string(vertices) };
 
                 mRunScratch[vertex] = run;
             }

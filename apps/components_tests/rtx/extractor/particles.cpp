@@ -1,6 +1,8 @@
 #include "fixture.hpp"
 
 #include <algorithm>
+#include <cmath>
+#include <limits>
 #include <vector>
 
 #include <osg/Math>
@@ -20,6 +22,7 @@
 #include <osgParticle/RadialShooter>
 #include <osgParticle/range>
 
+#include <components/rtx/refusals.hpp>
 #include <components/rtx/sprite.hpp>
 #include <components/rtx/spritelight.hpp>
 #include <components/rtx/texturetable.hpp>
@@ -151,10 +154,21 @@ namespace Rtx::Testing
             emit(*rain.mParticles, osg::Vec3f(), 3.0f, white);
             emit(*rain.mParticles, osg::Vec3f(), 3.0f, white)->setAngle(osg::Vec3f(osg::PIf / 6.0f, 0.0f, 0.0f));
 
+            // A drop leant by an angle that is no number, as a wind speed the configuration left
+            // undefined gives the shooter, and one the simulation put nowhere. Neither hangs
+            // anywhere, and the emitter is measured over the two that do.
+            constexpr float sNaN = std::numeric_limits<float>::quiet_NaN();
+            emit(*rain.mParticles, osg::Vec3f(), 3.0f, white)->setAngle(osg::Vec3f(sNaN, 0.0f, 0.0f));
+            emit(*rain.mParticles, osg::Vec3f(sNaN, 0.0f, 0.0f), 3.0f, white);
+
             walk(*rain.mRoot);
 
             ASSERT_EQ(mScene.emitters().size(), 1u);
             ASSERT_EQ(mScene.sprites().size(), 2u);
+            EXPECT_EQ(mScene.emitters().front().mCentre, osg::Vec3f());
+            EXPECT_TRUE(std::isfinite(mScene.emitters().front().mReach));
+            EXPECT_EQ(mScene.refusals().count(Refused::Sprites), 1u)
+                << "one refusal for the emitter, however many of its particles";
 
             // The width is the across axis's own length, and neither the turn nor the scale reaches
             // it — which is why it is the emitter's and is read once.
@@ -259,6 +273,11 @@ namespace Rtx::Testing
             SceneExtractor bareExtractor(bareScene);
             EXPECT_EQ(bareExtractor.extract(*bare, osg::Matrixf::identity(), 0).mEmitters, 0u);
             EXPECT_TRUE(bareScene.textures().getRows().empty());
+
+            // The first is no refusal, because a particle that died draws nothing in the game
+            // either; the second is one, because the game draws a system with no texture.
+            EXPECT_EQ(mScene.refusals().count(Refused::Emitter), 0u);
+            EXPECT_EQ(bareScene.refusals().count(Refused::Emitter), 1u);
         }
 
         /// An emitter's sprite is on no material, so the sweep has to speak for it itself.
