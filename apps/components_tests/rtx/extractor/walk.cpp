@@ -32,28 +32,6 @@ namespace Rtx::Testing
 {
     namespace
     {
-        /// Says what the loader answers about a hidden node, and puts back what the binary had.
-        ///
-        /// **Process-global, and `SceneExtractor` reads it when it is built**, so a test that left
-        /// its own answer behind would move the default of every extractor built after it.
-        class ConfiguredLoader
-        {
-        public:
-            explicit ConfiguredLoader(unsigned int hiddenNodeMask)
-                : mHeld(NifOsg::Loader::getHiddenNodeMask())
-            {
-                NifOsg::Loader::setHiddenNodeMask(hiddenNodeMask);
-            }
-
-            ~ConfiguredLoader() { NifOsg::Loader::setHiddenNodeMask(mHeld); }
-
-            ConfiguredLoader(const ConfiguredLoader&) = delete;
-            ConfiguredLoader& operator=(const ConfiguredLoader&) = delete;
-
-        private:
-            unsigned int mHeld;
-        };
-
         TEST_F(RtxSceneExtractorTest, twoDrawablesBecomeTwoMeshesAndTwoInstances)
         {
             osg::ref_ptr<osg::Group> root = new osg::Group;
@@ -116,24 +94,23 @@ namespace Rtx::Testing
                 << "and a second later the clock has moved on to the other";
         }
 
-        /// A walk leaves out whatever the loader was told a hidden node carries.
+        /// A walk leaves out a subtree the mask it was given excludes, and reaches every node until
+        /// it is given one.
         ///
-        /// **The bit is asked of the loader that stamps it**, rather than named a second time here
-        /// where the two could disagree — the same question `Terrain::ObjectPaging` asks to decide
-        /// what distant land may copy. A host that answered nothing walks with a mask of all ones
-        /// and reaches nodes the content said are not there.
+        /// **The owner states the mask and this component never derives it.** The bit a hidden node
+        /// carries is the engine's own — `MWRender::Mask_UpdateVisitor` — which this side cannot
+        /// name, and a default that asked `NifOsg::Loader` for it answered with whatever the loader
+        /// has been told by the moment the extractor is built. In the game it has been told
+        /// nothing: the renderer is built before the rendering manager that tells it, so every node
+        /// a `NifOsg::VisController` hides is walked, placed and traced.
         ///
-        /// The same graph twice under two answers, because a mask taken from the wrong place still
-        /// skips a node whose own mask is zero. The marked node here carries a real bit, so only a
-        /// walk that took the loader's answer can tell the two runs apart.
-        TEST_F(RtxSceneExtractorTest, aWalkLeavesOutWhatTheLoaderSaysAHiddenNodeCarries)
+        /// The marked node carries a real bit rather than none, so only a walk that honours the
+        /// mask it was handed can tell the three runs apart.
+        TEST_F(RtxSceneExtractorTest, aWalkLeavesOutWhatTheMaskItWasGivenExcludes)
         {
             constexpr osg::Node::NodeMask marked = 1u << 3;
-            constexpr osg::Node::NodeMask elsewhere = 1u << 4;
 
-            const auto instancesWhenHiddenIs = [](unsigned int hiddenNodeMask) {
-                const ConfiguredLoader told(hiddenNodeMask);
-
+            const auto instancesUnder = [](std::optional<osg::Node::NodeMask> mask) {
                 osg::ref_ptr<osg::Group> quiet = new osg::Group;
                 quiet->setNodeMask(marked);
                 quiet->addChild(makeQuad());
@@ -144,11 +121,15 @@ namespace Rtx::Testing
 
                 Rtx::SceneDesc scene;
                 SceneExtractor extractor(scene);
+                if (mask.has_value())
+                    extractor.setTraversalMask(*mask);
+
                 return extractor.extract(*root, osg::Matrixf::identity(), 0).mInstances;
             };
 
-            EXPECT_EQ(instancesWhenHiddenIs(marked), 1u) << "the marked subtree is not in the picture";
-            EXPECT_EQ(instancesWhenHiddenIs(elsewhere), 2u) << "and it is, where the loader named another bit";
+            EXPECT_EQ(instancesUnder(~marked), 1u) << "the marked subtree is not in the picture";
+            EXPECT_EQ(instancesUnder(~0u), 2u) << "and it is, under a mask that excludes nothing";
+            EXPECT_EQ(instancesUnder(std::nullopt), 2u) << "which is what an extractor nobody told walks with";
         }
 
         /// The same geometry under two parents is one mesh and two placements. Getting this wrong is

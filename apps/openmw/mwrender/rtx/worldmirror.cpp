@@ -75,8 +75,18 @@ namespace MWRender
         /// `Mask_ParticleSystem`. Which subtree is walked is answered by where the walk starts.
         /// The ground is the ring's: what `TracedTerrain` stands under `Mask_Terrain` is the
         /// intersector's, and walked it would place every loaded cell's ground a second time.
-        constexpr osg::Node::NodeMask sWorldTraversal
-            = ~static_cast<osg::Node::NodeMask>(Mask_Sky | Mask_Sun | Mask_SimpleWater | Mask_Terrain);
+        ///
+        /// **`Mask_UpdateVisitor` is what the content hides with, and it is named here rather than
+        /// asked of `NifOsg::Loader`.** The loader is told that bit by `RenderingManager`, and this
+        /// renderer is built before there is a rendering manager to tell it, so a mask that reads
+        /// the loader's answer subtracts nought: every node a `NifOsg::VisController` hides is
+        /// traced anyway, and the Heart of Lorkhan stands wearing the whole of its destruction at
+        /// the frame that sequence opens on. The bit is the engine's own decision and a constant,
+        /// so it is stated as one and no order can reach it — which is what
+        /// `MWRender::ObjectPaging` does with the same bit for the same reason.
+        /// `WorldMirror::mirror` checks the loader against it.
+        constexpr osg::Node::NodeMask sWorldTraversal = ~static_cast<osg::Node::NodeMask>(
+            Mask_Sky | Mask_Sun | Mask_SimpleWater | Mask_Terrain | Mask_UpdateVisitor);
 
         /// What each walk this renderer makes over the one extractor is anchored at. Four roots the
         /// walk cannot tell apart by structure, so each is named; the world's is nought, which is
@@ -89,22 +99,14 @@ namespace MWRender
             Effect = 3,
         };
 
-        /// What a walk of a loaded model may see: the world's mask without the player bit, which is
-        /// stamped on nothing a content file holds. The cell ring is given this and never the
-        /// world's, because a mask that moves makes `Rtx::CellRing::forget` read the ring from
-        /// nothing, and the player bit moves while the camera settles.
-        osg::Node::NodeMask templateTraversal()
-        {
-            return sWorldTraversal & ~NifOsg::Loader::getHiddenNodeMask();
-        }
-
-        /// What the world walk may see. `WorldMirror::setShowsPlayer` says why the player is a
+        /// What the world walk may see: `sWorldTraversal` without the player bit, which is stamped
+        /// on nothing a content file holds. `WorldMirror::setShowsPlayer` says why the player is a
         /// question.
-        osg::Node::NodeMask worldTraversal(const bool showsPlayer)
+        constexpr osg::Node::NodeMask worldTraversal(const bool showsPlayer)
         {
             const osg::Node::NodeMask player = showsPlayer ? 0 : static_cast<osg::Node::NodeMask>(Mask_Player);
 
-            return templateTraversal() & ~player;
+            return sWorldTraversal & ~player;
         }
     }
 
@@ -198,6 +200,14 @@ namespace MWRender
     Rtx::ExtractionStats WorldMirror::mirror(
         const SceneFrame& frame, const osg::Matrixd& view, const std::size_t frameNumber)
     {
+        // **Whatever the loader hides with has to be inside what this mask excludes.**
+        // `sWorldTraversal` names that bit rather than asking, because the loader is told it by
+        // `RenderingManager` and this renderer is built first — so the two are checked against each
+        // other here instead, where a walk is about to use the mask. A loader nobody has told yet
+        // hides with nothing and passes: what this catches is the engine moving the bit.
+        assert((NifOsg::Loader::getHiddenNodeMask() & ~static_cast<unsigned int>(Mask_UpdateVisitor)) == 0
+            && "the loader hides with a bit the walk's mask does not exclude");
+
         // The world's clock and not this renderer's, or the controllers would run while the game
         // was paused; the emitters by the gap between frames, which the extractor clamps, because
         // they integrate it rather than read the hour.
@@ -239,7 +249,10 @@ namespace MWRender
                 .mGround = frame.mTerrain.getStorage(),
                 .mContent = mContent.get(),
                 .mWorldspace = frame.mTerrain.getWorldspace(),
-                .mMask = templateTraversal(),
+                // The world's mask and never the walk's own: a mask that moves makes
+                // `Rtx::CellRing::forget` read the ring from nothing, and the player bit moves
+                // while the camera settles.
+                .mMask = sWorldTraversal,
             },
             .mEye = eye,
             .mReach = mReach,

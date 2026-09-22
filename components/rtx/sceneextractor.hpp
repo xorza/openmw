@@ -72,7 +72,13 @@ namespace Rtx
 
         /// Which nodes the walks may descend into, as an `osg` traversal mask: what keeps the
         /// mirror out of subtrees the ray tracer answers for itself, such as the sky's mask,
-        /// without knowing what a sky is. Everything the content did not hide, by default.
+        /// without knowing what a sky is, and out of what the content hides.
+        ///
+        /// **Every node, until an owner states less.** The bit a hidden node carries is the
+        /// engine's own and this component cannot name it, so a default that subtracted it had to
+        /// ask `NifOsg::Loader` at the moment the extractor was built — an answer that depends on
+        /// whether anything has told the loader yet, and in the game nothing has. A default that is
+        /// plainly everything is wrong where it shows rather than wrong where it does not.
         void setTraversalMask(osg::Node::NodeMask mask) { mTraversalMask = mask; }
         osg::Node::NodeMask getTraversalMask() const { return mTraversalMask; }
 

@@ -866,10 +866,11 @@ namespace Rtx::Shaders
 
         /// How much of the surface is there, or one for a surface that is all there.
         ///
-        /// **The mode does not survive the trip here either.** `Material::isTranslucent` is what
-        /// decides, and it settles on the host for the same reason the cutoff does: a leaf card and
-        /// a pane of glass carry the same alpha mode, and only the material's own alpha separates
-        /// them. A surface that is all there stores a one that nothing has to branch on.
+        /// **The mode does not survive the trip here either.** `Material::isBlended` settles it on
+        /// the host, for the same reason the cutoff is settled there: a surface the content asked a
+        /// blend of stores the alpha that blend weighs by, and every other surface stores a one
+        /// that nothing has to branch on. What the number means is the blend's — coverage where the
+        /// surface covers, strength where it adds.
         ///
         /// Multiplied by the texture's alpha at the candidate, which is what a blend does: a stained
         /// pane's texture says where the lead is and this says how much glass there is.

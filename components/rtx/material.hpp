@@ -194,6 +194,11 @@ namespace Rtx
         /// `additiveAlong` on a mask of its own and met by no other ray.
         bool isAdditive() const { return additiveSurface(mAlphaMode, mBlend); }
 
+        /// Whether `mOpacity` is a number the trace reads at all: what the content asked a blend to
+        /// weigh by, which is coverage where the surface covers and strength where it adds. An
+        /// opaque or cutout surface is all there, and what its alpha holds is not a coverage.
+        bool isBlended() const { return mAlphaMode == AlphaMode::Blend; }
+
         /// `translucentSurface` of this material. The two answers want opposite things from
         /// traversal — a mask averaged and tested is right for the leaf, light attenuated as it
         /// passes is right for the pane and turns the leaf to gauze. Not the opposite of

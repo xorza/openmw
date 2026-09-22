@@ -2,6 +2,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -928,13 +929,21 @@ namespace Rtx::Testing
             EXPECT_EQ(albedoUnder(2, 1, 0), (std::array<int, 3>{ 137, 137, 137 }));
         }
 
-        /// A surface that adds is met by no ray that shades and adds at the picture's own extent.
+        /// A surface that adds is met by no ray that shades, adds at the picture's own extent, and
+        /// adds by its own alpha.
         ///
-        /// **Two questions of one scene.** The trace's own frame must not change when an additive
+        /// **Three questions of one scene.** The trace's own frame must not change when an additive
         /// quad is held in front of the wall — no shading ray meets it, so the wall behind is lit
-        /// and hit exactly as before — and the shown picture must be brighter where the quad is and
-        /// unchanged where it is not, because the composite gathered it there and nowhere else.
-        TEST_F(RtxVisibilityTest, anAdditiveSurfaceAddsToThePictureAndIsMetByNothingThatShades)
+        /// and hit exactly as before — the shown picture must be brighter where the quad is and
+        /// unchanged where it is not, because the composite gathered it there and nowhere else, and
+        /// what it adds must be the material's own alpha times what the texture paints.
+        ///
+        /// **The alpha is the third question because it is the one a predicate can lose.** A device
+        /// material stores the surface's own alpha only where the content asked a blend to read one
+        /// — `Material::isBlended` — and asking the narrower `isTranslucent` instead sends every
+        /// additive surface over at one, which is a sheet drawn at full strength however far its
+        /// controller has faded it.
+        TEST_F(RtxVisibilityTest, anAdditiveSurfaceAddsByItsOwnAlphaAndIsMetByNothingThatShades)
         {
             constexpr std::uint32_t size = 32;
             constexpr std::size_t centre = centreValueOf(size);
@@ -951,7 +960,7 @@ namespace Rtx::Testing
             // through and a corner pixel does not.
             const std::array<osg::Vec3f, 4> held = uprightQuadAt(20.0f, -50.0f);
 
-            const auto build = [&](bool withQuad) {
+            const auto build = [&](std::optional<float> alpha) {
                 SceneDesc scene;
                 const Index wall = scene.addMesh(
                     MeshArrays{ .mPositions = sWallQuad, .mTexCoords = sQuadUv, .mIndices = sQuadIndices });
@@ -961,13 +970,13 @@ namespace Rtx::Testing
                     .mMesh = wall,
                     .mMaterial = scene.addMaterial(Material{ .mDiffuse = diffuse }) });
 
-                if (withQuad)
+                if (alpha.has_value())
                 {
                     const Index sheet = scene.addMesh(
                         MeshArrays{ .mPositions = held, .mTexCoords = sQuadUv, .mIndices = sQuadIndices });
                     const Index additive = scene.addMaterial(Material{
                         .mDiffuse = glow,
-                        .mOpacity = 0.5f,
+                        .mOpacity = *alpha,
                         .mAlphaMode = AlphaMode::Blend,
                         .mBlend = BlendKind::Add,
                     });
@@ -987,12 +996,12 @@ namespace Rtx::Testing
             std::vector<std::uint8_t> withShown;
             std::vector<std::uint8_t> withoutShown;
 
-            EXPECT_EQ(renderShot(build(true), textures, camera, size), size * size);
+            EXPECT_EQ(renderShot(build(0.5f), textures, camera, size), size * size);
             mRenderer->readChannel(Channel::Depth, withDepth);
             mRenderer->readChannel(Channel::Indirect, withBounce);
             mRenderer->readPixels(withShown);
 
-            EXPECT_EQ(renderShot(build(false), textures, camera, size), size * size);
+            EXPECT_EQ(renderShot(build(std::nullopt), textures, camera, size), size * size);
             mRenderer->readChannel(Channel::Depth, withoutDepth);
             mRenderer->readChannel(Channel::Indirect, withoutBounce);
             mRenderer->readPixels(withoutShown);
@@ -1013,6 +1022,25 @@ namespace Rtx::Testing
             const std::size_t corner = 4;
             EXPECT_EQ(withShown[corner], withoutShown[corner]) << "the quad reached a pixel it does not cover";
             EXPECT_EQ(withShown[corner + 1], withoutShown[corner + 1]);
+
+            // **What it adds, measured as radiance rather than as the picture.** The composite sums
+            // `texel * tint * alpha` over the crossings, so the added red is the material's own
+            // alpha times a constant this scene never changes — half the alpha adds half the red,
+            // and no alpha adds nothing at all.
+            const auto addedRedAt = [&](std::optional<float> alpha) {
+                std::vector<std::uint8_t> pixels;
+                EXPECT_EQ(countHits(build(alpha), textures, camera, size, pixels), size * size);
+
+                return mRadiance[centre];
+            };
+
+            const float bare = addedRedAt(std::nullopt);
+            const float quarter = addedRedAt(0.25f) - bare;
+            const float half = addedRedAt(0.5f) - bare;
+
+            EXPECT_GT(quarter, 0.0f) << "a quarter of the sheet is some of it";
+            EXPECT_NEAR(half, 2.0f * quarter, 1.0e-3f) << "and twice as much alpha adds twice as much";
+            EXPECT_NEAR(addedRedAt(0.0f), bare, 1.0e-4f) << "a sheet faded to nothing adds nothing";
         }
 
         /// The mip chain a ray cone selects from, at a distance chosen so the answer is a whole

@@ -18,7 +18,6 @@
 #include <osgParticle/ParticleSystemUpdater>
 
 #include <components/nifosg/autotransform.hpp>
-#include <components/nifosg/nifloader.hpp>
 #include <components/sceneutil/lightmanager.hpp>
 #include <components/sceneutil/skeleton.hpp>
 #include <components/sceneutil/stableidentity.hpp>
@@ -446,14 +445,13 @@ namespace Rtx
         mShading.resize(held);
     }
 
-    /// Everything the content did not hide, asked of the loader that stamped the bit: a host that
-    /// never configured `NifOsg::Loader` gets a mask of all ones and walks into nodes the content
-    /// said are not there.
+    /// Every node, until the owner states a mask — `setTraversalMask`, which says why the default
+    /// is not the narrower answer it looks like it should be.
     SceneExtractor::SceneExtractor(SceneDesc& scene, Traversals* traversals)
         : mScene(scene)
         , mWalk(std::make_unique<MirrorTraversal>(*this, mKinds))
         , mTraversals(traversals == nullptr ? mOwnTraversals : *traversals)
-        , mTraversalMask(~NifOsg::Loader::getHiddenNodeMask())
+        , mTraversalMask(~0u)
     {
         // Reserved once, so no frame rehashes a map. A cell's drawables arriving grow every
         // identity map on that frame, and an `unordered_map` that grows past its buckets rehashes

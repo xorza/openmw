@@ -60,7 +60,14 @@ namespace Rtx
 
                 // One where the surface is all there, so traversal branches on a number rather than
                 // on a mode it was never sent.
-                .mOpacity = material.isTranslucent() ? material.mOpacity : 1.0f,
+                //
+                // **A blend and not a translucency.** `isTranslucent` asks the narrower question —
+                // whether what stands behind shows through — which an additive sheet answers no to
+                // while still weighing what it adds by that same alpha. Asked that way every
+                // additive surface reaches the device at one, and a sheet an `NifOsg::AlphaController`
+                // holds at nought stands at full strength: that alpha is what draws the rays around
+                // the Heart of Lorkhan, and they would shine before the heart is struck.
+                .mOpacity = material.isBlended() ? material.mOpacity : 1.0f,
                 .mLayerOffset = material.mLayers.mOffset,
                 .mLayerCount = material.mLayers.mCount,
                 .mEmissive = material.mEmissive,

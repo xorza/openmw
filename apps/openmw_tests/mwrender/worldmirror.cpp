@@ -12,6 +12,7 @@
 #include <osg/ref_ptr>
 
 #include <components/esm3/loadcell.hpp>
+#include <components/nifosg/nifloader.hpp>
 #include <components/resource/bgsmfilemanager.hpp>
 #include <components/resource/imagemanager.hpp>
 #include <components/resource/niffilemanager.hpp>
@@ -138,6 +139,7 @@ namespace MWRender
             const osg::Node::NodeMask playing = mirror.getTraversalMask();
             EXPECT_NE(playing & Mask_Player, 0u) << "a game somebody is playing draws them";
             EXPECT_EQ(playing & Mask_Terrain, 0u) << "the intersector's ground is not the ring's";
+            EXPECT_EQ(playing & Mask_UpdateVisitor, 0u) << "and what the content hides stays hidden";
 
             mirror.setShowsPlayer(false);
             const osg::Node::NodeMask watching = mirror.getTraversalMask();
@@ -150,6 +152,27 @@ namespace MWRender
 
             mirror.setShowsPlayer(true);
             EXPECT_EQ(mirror.getTraversalMask(), playing) << "and it comes back";
+        }
+
+        /// **What the content hides is left out whether or not the loader has been told which bit
+        /// hides.** `NifOsg::VisController` stamps `Mask_UpdateVisitor` on a node its data says is
+        /// not there, and `NifOsg::Loader` learns that bit from `RenderingManager` — which the
+        /// engine builds *after* the renderer. So a mask that asks the loader for it subtracts
+        /// nought, and every hidden node in the game is walked, placed and traced: the Heart of
+        /// Lorkhan stands wearing the whole of its destruction, each shell at the frame that
+        /// sequence opens on.
+        ///
+        /// The loader is left untold here, which is the state the mirror is really built in.
+        TEST(RtxWorldMirrorTest, whatTheContentHidesIsLeftOutBeforeTheLoaderIsToldWhichBitHides)
+        {
+            const unsigned int told = NifOsg::Loader::getHiddenNodeMask();
+            NifOsg::Loader::setHiddenNodeMask(0);
+
+            const osg::Node::NodeMask mask = WorldMirror(Rtx::MirrorKnobs{}).getTraversalMask();
+
+            NifOsg::Loader::setHiddenNodeMask(told);
+
+            EXPECT_EQ(mask & Mask_UpdateVisitor, 0u) << "a node the content hid is walked";
         }
     }
 }
