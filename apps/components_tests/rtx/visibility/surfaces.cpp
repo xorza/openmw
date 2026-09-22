@@ -17,6 +17,7 @@
 #include <components/rtx/frameimage.hpp>
 #include <components/rtx/material.hpp>
 #include <components/rtx/mesh.hpp>
+#include <components/rtx/refusal.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
@@ -115,6 +116,82 @@ namespace Rtx::Testing
                 EXPECT_NE(table.mAddress, 0u) << table.mWhat;
                 EXPECT_EQ(table.mAddress % table.mAlign, 0u) << table.mWhat << " at " << table.mAddress;
             }
+        }
+
+        /// An arrival the device has no room for is drawn without what it could not stand, and
+        /// says what that was: the wall that stood before still stands, and the nearer wall that
+        /// arrived — its mesh and its texture — and a body posed on a rig beside it are left out.
+        /// The frames after it pose the body again and place the scene as it stands.
+        ///
+        /// **Room for the frame's memory and none for content's.** Two structures and a texture
+        /// arrive, and each is content, so each is refused; a placement that refitted the body left
+        /// out would build over a structure that is not there, and a trace that met the wall would
+        /// draw it blue.
+        TEST_F(RtxVisibilityTest, anArrivalTheDeviceHasNoRoomForIsLeftOutAndSaysSo)
+        {
+            constexpr std::uint32_t size = 32;
+            constexpr std::size_t centre = centreValueOf(size);
+
+            Shaders::VisibilityConstants camera = Testing::makeCamera(
+                osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
+            camera.mShowAlbedo = 1u;
+
+            constexpr std::array<std::uint8_t, 4> redTexel{ 255, 0, 0, 255 };
+            constexpr std::array<std::uint8_t, 4> blueTexel{ 0, 0, 255, 255 };
+            SceneDesc scene;
+            const Index far
+                = scene.addMesh(MeshArrays{ .mPositions = sWallQuad, .mTexCoords = sQuadUv, .mIndices = sQuadIndices });
+            const Index red
+                = scene.addMaterial(Material{ .mDiffuse = scene.textures().add(VFS::Path::NormalizedView("red.dds")) });
+            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = far, .mMaterial = red });
+
+            mRenderer->resize(size, size);
+            const TextureData first = describeTexel(redTexel, 0);
+            mRenderer->setScene(Rtx::SceneSlot::world(), scene, std::span(&first, 1));
+            EXPECT_TRUE(mRenderer->getRefusals(Rtx::SceneSlot::world()).empty());
+
+            // Handed over, as `SceneUploader` ends every hand-over: what arrives next is only what
+            // follows.
+            scene.clearArrivals();
+
+            const Index near
+                = scene.addMesh(MeshArrays{ .mPositions = sWallQuad, .mTexCoords = sQuadUv, .mIndices = sQuadIndices });
+            const Index blue = scene.addMaterial(
+                Material{ .mDiffuse = scene.textures().add(VFS::Path::NormalizedView("blue.dds")) });
+            scene.addInstance(MeshInstance{
+                .mTransform = osg::Matrixf::translate(0.0f, -50.0f, 0.0f), .mMesh = near, .mMaterial = blue });
+
+            const DeformedMesh body = Testing::addOneBoneBody(
+                scene, MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
+            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = body.mMesh });
+            Testing::poseByOneBone(scene, body.mMesh, osg::Matrixf::translate(0.0f, 0.0f, 1.0f));
+
+            TextureData second = describeTexel(blueTexel, scene.materials().getRows()[blue].mDiffuse);
+            second.mName = "blue";
+            {
+                const Testing::NoRoomForContent full(mRenderer->getDevice());
+                mRenderer->extendScene(Rtx::SceneSlot::world(), scene, std::span(&second, 1));
+            }
+
+            // The meshes first, because the structures are stood before the textures.
+            const std::span<const Refusal> refused = mRenderer->getRefusals(Rtx::SceneSlot::world());
+            ASSERT_EQ(refused.size(), 3u);
+            for (const Refusal& one : refused)
+                EXPECT_EQ(one.mWhy, "no device memory is left for it");
+            EXPECT_EQ(refused[0].mKind, Refused::Mesh);
+            EXPECT_EQ(refused[1].mKind, Refused::Mesh);
+            EXPECT_EQ(refused[2].mKind, Refused::Texture);
+            EXPECT_EQ(refused[2].mName, "blue");
+
+            Testing::poseByOneBone(scene, body.mMesh, osg::Matrixf::translate(0.0f, 0.0f, 2.0f));
+            mRenderer->placeScene(Rtx::SceneSlot::world(), scene);
+            mRenderer->renderFrame(camera, FrameOptions{ .mExposure = 1.0f });
+
+            std::vector<std::uint8_t> shown;
+            mRenderer->readPixels(shown);
+            ASSERT_GT(shown.size(), centre + 2);
+            EXPECT_GT(shown[centre], 200) << "the wall that stood before the arrival is not what the frame shows";
+            EXPECT_LT(shown[centre + 2], 100) << "the wall the device had no room for was drawn";
         }
 
         /// One renderer, three scenes, and the number of textures changing under it.
@@ -428,19 +505,18 @@ namespace Rtx::Testing
         /// of the wall, `u` from 0.356 to 0.644, and the texture is bright across its middle half:
         /// the centre pixel sees a texel of 1.0 under a factor of 1.501, eight cells from either
         /// boundary, which is 0.66624 in light and `1.055 * 0.66624^(1/2.4) - 0.055` encodes to
-        /// 213 of 255. Left alone it encodes to 255, a texture of one tone estimates to one
-        /// everywhere and changes nothing, and the two tones under a source that shades neutrally
-        /// — as a composite does, whose light came off in the bake — are drawn as painted under a
-        /// map that was cleared and never estimated. `StandIn` is that source with bytes of its
-        /// own, which is what a painted texture needs here; a composite carries none.
+        /// 213 of 255. Left alone it encodes to 255, and a texture of one tone estimates to one
+        /// everywhere and changes nothing. A slot described as the stand-in draws the one the array
+        /// holds, whatever bytes its description carries, under a map that was cleared and never
+        /// estimated: its block's 565 grey, `0x10 << 3 | 0x10 >> 2`, is 132 of 255.
         TEST_F(RtxVisibilityTest, aTexturesPaintedLightIsDividedBackOutOfItsAlbedo)
         {
             constexpr std::uint32_t size = 32;
             constexpr std::size_t centre = centreValueOf(size);
             const Testing::TestTexture twoTones = Testing::paintTwoTones(32, 96);
             const Testing::TestTexture oneTone = Testing::paintTwoTones(0, 128);
-            Testing::TestTexture neutral = Testing::paintTwoTones(32, 96);
-            neutral.mData.mSource = TextureSource::StandIn;
+            Testing::TestTexture standIn = Testing::paintTwoTones(32, 96);
+            standIn.mData.mSource = TextureSource::StandIn;
 
             SceneDesc scene;
             const Index mesh
@@ -464,7 +540,7 @@ namespace Rtx::Testing
 
             EXPECT_NEAR(shownAt(1.0f, twoTones.mData), 213, 1) << "a texture painted half again as bright comes back";
             EXPECT_NEAR(shownAt(1.0f, oneTone.mData), 255, 1) << "and a neutral map changes nothing";
-            EXPECT_NEAR(shownAt(1.0f, neutral.mData), 255, 1) << "a texture not to be estimated is not";
+            EXPECT_NEAR(shownAt(1.0f, standIn.mData), 132, 1) << "a stand-in draws the array's one grey, unestimated";
 
             // The strength is what makes this answerable rather than believable: the same map at no
             // strength has to leave the texture exactly as it was drawn.

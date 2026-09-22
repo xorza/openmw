@@ -278,6 +278,13 @@ namespace RtxTool
             "let the game's vanity camera orbit the player after thirty idle seconds, as the played "
             "game does. Off unless asked for: a run is idle by nature");
 
+        option(sFramed, "memory-budget", bpo::value<std::uint64_t>(),
+            "run as though the card's video memory budget were this many MiB, where it is more: "
+            "what a smaller card does with the place. Textures and structures stop where they "
+            "would stop there, textures coming down to a smaller side first, and what still does "
+            "not fit is refused and reported as the card would refuse it. What the frame itself "
+            "holds is never refused. Not given, the card's own budget");
+
         option(Verbs::Bench, "window", bpo::value<bool>()->default_value(true)->implicit_value(true),
             "show the run while it happens. The swapchain is mailbox, so it does not "
             "pace the loop; --window=false is one fewer thing between the trace and the number");

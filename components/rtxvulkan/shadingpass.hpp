@@ -27,7 +27,8 @@ namespace Rtx
         ///
         /// @param sampler any sampler the array binds: the dispatch fetches by texel and reads
         ///        none of it, but a combined image needs one.
-        /// @param data what `source` was uploaded from — its finest level's size and its format.
+        /// @param data what `source` was uploaded from, for its format. The size is the image's
+        ///        own, which for a texture held to a smaller side is a level further down the file.
         void record(VkCommandBuffer commands, const Image& source, VkSampler sampler, const Image& map,
             const TextureData& data) const;
 

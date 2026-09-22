@@ -6,6 +6,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -21,6 +22,7 @@
 #include <components/rtxvulkan/handles.hpp>
 #include <components/rtxvulkan/image.hpp>
 #include <components/rtxvulkan/imageuse.hpp>
+#include <components/rtxvulkan/memory.hpp>
 #include <components/rtxvulkan/texture.hpp>
 
 #include "guiquad.hpp"
@@ -111,7 +113,9 @@ namespace Rtx
 
                 Batch upload(getPool());
                 std::vector<VkBufferImageCopy> regions;
-                Texture texture(getDevice(), upload, passes.mPasses, sampler.get(), data, name, regions);
+                Texture texture = std::move(Texture::fromFile(
+                    getDevice(), upload, passes.mPasses, sampler.get(), data, 0, name, regions, MemoryUse::Essential)
+                                                .value());
                 upload.flush();
                 return texture;
             }

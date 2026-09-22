@@ -163,6 +163,7 @@ namespace MWRender
         // the layers load, because a figure taken under them is not one to compare against
         // anything; `playedRunSetup` says what a session with no command line answers.
         options.mValidation = setup.mValidation;
+        options.mMemoryBudget = setup.mMemoryBudget;
 
         // **The two finer levels, asked for by name and never on by themselves.** The build decides
         // whether the layers load; these decide what they check, and each costs far more than the

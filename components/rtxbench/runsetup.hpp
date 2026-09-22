@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <optional>
 
 #include <components/rtx/cellworld.hpp>
@@ -51,5 +52,9 @@ namespace Rtx
         /// decide. Settled is what makes two processes draw one picture; a run timing the
         /// streaming path says no (`Rtx::CellRing::setSettled`).
         std::optional<bool> mSettled;
+
+        /// `RendererOptions::mMemoryBudget`: the harness's, for a run that asks what a smaller
+        /// card does, and never a played session's.
+        std::optional<std::uint64_t> mMemoryBudget;
     };
 }

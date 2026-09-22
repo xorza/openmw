@@ -46,9 +46,11 @@ namespace Rtx
         // about to write over. An execution dependency is all a write-after-read needs.
         mSums.transition(commands, Use::sBufferComputeRead, Use::sBufferComputeWrite);
 
+        // The image's size and not the file's: a texture held to a smaller side stands from a
+        // level further down, and the estimate reads the level the image begins at.
         const Shaders::ShadingConstants constants{
-            .mWidth = data.mWidth,
-            .mHeight = data.mHeight,
+            .mWidth = source.getWidth(),
+            .mHeight = source.getHeight(),
             .mPunchThrough = data.mFormat == TextureFormat::Bc1RgbaSrgb ? 1u : 0u,
         };
 

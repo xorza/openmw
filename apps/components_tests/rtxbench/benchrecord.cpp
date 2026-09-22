@@ -99,5 +99,23 @@ namespace Rtx
             place.mTravelled = 0.25;
             EXPECT_NE(describePlace(place).find("25% of the route flown"), std::string::npos);
         }
+
+        /// A place whose textures stand smaller than their files says how many on the scene's line,
+        /// and one drawn as its files are says nothing about it.
+        TEST(RtxBenchRecordTest, thePlaceSaysHowManyTexturesStandSmallerOnlyWhereAnyDo)
+        {
+            BenchPlace place;
+            place.mView = "town";
+            place.mCell = "-3,-2";
+            place.mFrames = 1;
+            place.mWallSeconds = 1.0;
+            place.mScene.mTextureCount = 737;
+
+            EXPECT_EQ(describePlace(place).find("smaller"), std::string::npos) << describePlace(place);
+
+            place.mScene.mReducedTextureCount = 212;
+            EXPECT_NE(describePlace(place).find("737 textures, 0.0 MiB, 212 of them held smaller"), std::string::npos)
+                << describePlace(place);
+        }
     }
 }

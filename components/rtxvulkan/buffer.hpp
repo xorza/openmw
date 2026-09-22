@@ -9,6 +9,8 @@
 
 #include <vulkan/vulkan_core.h>
 
+#include <components/rtx/result.hpp>
+
 #include "imageuse.hpp"
 #include "memory.hpp"
 #include "owned.hpp"
@@ -63,6 +65,12 @@ namespace Rtx
         /// @param name what a capture and a validation message call it.
         static Buffer make(
             const Device& device, BufferKind kind, VkDeviceSize size, VkBufferUsageFlags usage, std::string_view name);
+
+        /// `make`, for a buffer something stands in for: why there is none where the device has
+        /// no room for it as `use` — `MemoryAllocator::tryTake`. The use first, as
+        /// `Image::tryMake` takes it.
+        static Result<Buffer, std::string_view> tryMake(MemoryUse use, const Device& device, BufferKind kind,
+            VkDeviceSize size, VkBufferUsageFlags usage, std::string_view name);
 
         /// `make`, for each kind by name.
         static Buffer deviceLocal(
@@ -196,8 +204,13 @@ namespace Rtx
         void clear() const { std::memset(writable<std::byte>(0, mSize).data(), 0, mSize); }
 
     private:
+        /// The handle alone, named and bound to nothing: what `make` and `tryMake` both begin
+        /// with, before either knows whether there is room.
         Buffer(
             const Device& device, BufferKind kind, VkDeviceSize size, VkBufferUsageFlags usage, std::string_view name);
+
+        /// Binds `memory`, and takes the address where the buffer has one.
+        void bind(DeviceMemory&& memory);
 
         /// What the destructor and a move over this assert: empty, or nothing on the queue reads it.
         bool mayDestroy() const;

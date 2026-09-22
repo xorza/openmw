@@ -72,9 +72,12 @@ namespace Rtx
         };
         mHandle = Owned<VkBuffer, vkDestroyBuffer>::make(device.getHandle(), vkCreateBuffer, create, "vkCreateBuffer");
         device.setName(mHandle.get(), name);
+    }
 
-        mMemory = device.getMemory().take(mHandle.get(), propertiesOf(kind), alignmentOwedBy(device, usage));
-        checkVk(vkBindBufferMemory(device.getHandle(), mHandle.get(), mMemory.getHandle(), mMemory.getOffset()),
+    void Buffer::bind(DeviceMemory&& memory)
+    {
+        mMemory = std::move(memory);
+        checkVk(vkBindBufferMemory(mDevice->getHandle(), mHandle.get(), mMemory.getHandle(), mMemory.getOffset()),
             "vkBindBufferMemory");
 
         if (mAddressable)
@@ -83,7 +86,7 @@ namespace Rtx
                 .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
                 .buffer = mHandle.get(),
             };
-            mAddress = vkGetBufferDeviceAddress(device.getHandle(), &info);
+            mAddress = vkGetBufferDeviceAddress(mDevice->getHandle(), &info);
         }
     }
 
@@ -119,7 +122,22 @@ namespace Rtx
     Buffer Buffer::make(const Device& device, const BufferKind kind, const VkDeviceSize size,
         const VkBufferUsageFlags usage, const std::string_view name)
     {
-        return Buffer(device, kind, size, usage, name);
+        Buffer made(device, kind, size, usage, name);
+        made.bind(device.getMemory().take(made.mHandle.get(), propertiesOf(kind), alignmentOwedBy(device, usage)));
+        return made;
+    }
+
+    Result<Buffer, std::string_view> Buffer::tryMake(const MemoryUse use, const Device& device, const BufferKind kind,
+        const VkDeviceSize size, const VkBufferUsageFlags usage, const std::string_view name)
+    {
+        Buffer made(device, kind, size, usage, name);
+        Result<DeviceMemory, std::string_view> memory
+            = device.getMemory().tryTake(made.mHandle.get(), propertiesOf(kind), alignmentOwedBy(device, usage), use);
+        if (!memory.isOk())
+            return Err{ memory.error() };
+
+        made.bind(std::move(memory.value()));
+        return made;
     }
 
     Buffer Buffer::deviceLocal(

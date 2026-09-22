@@ -427,6 +427,7 @@ which scene: the world's, or one `addViewScene` handed out.
 | `setScene(slot, scene, textures)`       | build everything a scene needs, replacing what was there                          |
 | `extendScene(slot, scene, arrived)`     | the same scene with more in it; nothing renumbered                                |
 | `describeHeld(slot)`                    | what the slot was built from and how far it was extended                          |
+| `getRefusals(slot)`                     | what the last build or extension could not stand for the device's sake            |
 | `dropTextures(slot, textures)`          | destroy the images of the slots a scene gave up                                   |
 | `placeScene(slot, scene)`               | the same scene with its instances, lights, sprites, ripples and poses moved         |
 | `addViewScene()`, `dropViewScene(slot)` | a scene of its own for a picture inside the interface                             |
@@ -588,6 +589,25 @@ order is construction order, and everything below the device is built on it.
 cache directory, for the played game only). `Timeline` is the one clock: every submit signals a
 value, every wait is the device's, and the clock is never read off the device on the frame
 path. `Graveyard` holds what a submit may still read until the timeline says it ran.
+
+**Memory, by what stands in for it** (`MemoryUse`). What the frame cannot go without — its
+targets, its tables, the geometry a hit reads — is `Essential`, taken with `take` and never
+refused here. A mesh's structure (`Structure`) and a texture's images (`Texture`) are content,
+taken with `tryTake`, which answers a `Result`: a refused structure leaves its mesh out, and every
+placement of it names no structure, which the top level skips; a refused texture draws the one
+stand-in the array holds. Content has blocks of its own and never shares one with the frame's,
+and new memory for it is exactly a block or, past half a block, the resource's own allocation.
+Each use stops where the uses before it could be made once more, measured on the driver's budget
+(`VK_EXT_memory_budget`), or on `RendererOptions::mMemoryBudget` where that is less: a structure
+leaves room for what the frame holds and what the process holds outside the allocator, and a
+texture leaves room for the structures too. `TextureArray::write` holds each arrival to one side —
+the largest at which it fits the room, and never past what the device takes of every image a
+texture is made as (`getSideLimit`) — and stands each file from its first level within it; the
+ground's composites, which no side brings down, give way first where nothing fits. A texture the
+room still cannot hold comes down a level at a time. What already stands is never made smaller,
+so an arrival that meets a full device is held smaller than one that came before it.
+`DeviceScene` stands the structures before the textures, and hands what it refused back through
+`Renderer::getRefusals`.
 
 **`DeviceScene`** (`devicescene.hpp`): everything one scene is traced against, the world's or a
 picture's, the same objects for both. `InstanceRecord`s (one row per slot, every decision
@@ -1047,15 +1067,18 @@ answers with a `Rtx::Result` whose error says why — a mesh's arrays, a texture
 the archives do not hold — and nothing on the content path throws. Whatever decides what becomes of
 the content reports the refusal to `Rtx::Refusals`, owned by `SceneDesc`, with the kind and the
 name; what cannot reach the scene holds `Rtx::Refusal`s and hands them over: the reader thread with
-the cell, `SceneTextures` with its descriptions. A texture — a ground layer's included — is drawn as
-a stand-in, and everything else is left out: a mesh, a model the cell ring reads, a sky layer, a
-moon, a lamp, an emitter or some of its sprites. Each distinct refusal is named once in the log in
+the cell, `SceneTextures` with its descriptions, and the backend with what the device could not
+stand, a texture past the side it takes or content it had no room for (`Renderer::getRefusals`,
+which `SceneUploader` reports). A texture — a ground layer's included — is drawn as a stand-in,
+`describeStandIn`, which the array stands once for every slot that draws it; everything else is left
+out: a mesh, a model the cell ring reads, a sky layer, a moon, a lamp, an emitter or some of its
+sprites. Each distinct refusal is named once in the log in
 one shape and counted by kind. The tables assert what the readers check (`MeshTable::checkFits`,
 `SceneDesc::checkPoses`). Content that draws nothing in the game — a lamp of no radius, an empty
 geometry, a moon of size nought — draws nothing here and is no refusal. What the configuration or
 the installation supplied and this renderer cannot run with throws `Rtx::InputError` and ends the
-run; a missing device feature throws `Rtx::Unsupported`, and a device that fails throws
-`Rtx::DeviceError`, which ends the game with its message.
+run; a missing device feature throws `Rtx::Unsupported`, and a device that fails — the frame's own
+memory refused included — throws `Rtx::DeviceError`, which ends the game with its message.
 
 ---
 

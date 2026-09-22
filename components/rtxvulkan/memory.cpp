@@ -4,6 +4,7 @@
 #include <cassert>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include <components/rtx/error.hpp>
@@ -49,22 +50,29 @@ namespace Rtx
 
             checkVk(result, "vmaAllocateMemory");
         }
+
+        /// Why `tryTake` refused: the one reason, because what stands in does not depend on
+        /// which use ran out first.
+        constexpr std::string_view sNoRoom = "no device memory is left for it";
     }
 
-    DeviceMemory::DeviceMemory(VmaAllocator_T* const owner, VmaAllocation_T* const allocation,
-        const VkDeviceMemory handle, const VkDeviceSize offset, void* const mapped)
+    DeviceMemory::DeviceMemory(MemoryAllocator* const owner, VmaAllocation_T* const allocation,
+        const VkDeviceMemory handle, const VkDeviceSize offset, void* const mapped, const VkDeviceSize size,
+        const std::uint32_t heap, const MemoryUse use)
         : mOwner(owner)
         , mAllocation(allocation)
         , mHandle(handle)
         , mOffset(offset)
         , mMapped(mapped)
+        , mSize(size)
+        , mHeap(heap)
+        , mUse(use)
     {
     }
 
     DeviceMemory::~DeviceMemory()
     {
-        if (mOwner != nullptr)
-            vmaFreeMemory(mOwner, mAllocation);
+        release();
     }
 
     DeviceMemory::DeviceMemory(DeviceMemory&& other) noexcept
@@ -73,6 +81,9 @@ namespace Rtx
         , mHandle(std::exchange(other.mHandle, VK_NULL_HANDLE))
         , mOffset(std::exchange(other.mOffset, 0))
         , mMapped(std::exchange(other.mMapped, nullptr))
+        , mSize(std::exchange(other.mSize, 0))
+        , mHeap(other.mHeap)
+        , mUse(other.mUse)
     {
     }
 
@@ -80,17 +91,25 @@ namespace Rtx
     {
         if (this != &other)
         {
-            if (mOwner != nullptr)
-                vmaFreeMemory(mOwner, mAllocation);
+            release();
 
             mOwner = std::exchange(other.mOwner, nullptr);
             mAllocation = std::exchange(other.mAllocation, nullptr);
             mHandle = std::exchange(other.mHandle, VK_NULL_HANDLE);
             mOffset = std::exchange(other.mOffset, 0);
             mMapped = std::exchange(other.mMapped, nullptr);
+            mSize = std::exchange(other.mSize, 0);
+            mHeap = other.mHeap;
+            mUse = other.mUse;
         }
 
         return *this;
+    }
+
+    void DeviceMemory::release()
+    {
+        if (mOwner != nullptr)
+            std::exchange(mOwner, nullptr)->give(*this);
     }
 
     MemoryAllocator::MemoryAllocator(const VkInstance instance, const VkPhysicalDevice physicalDevice,
@@ -116,6 +135,23 @@ namespace Rtx
         create.pVulkanFunctions = &functions;
 
         checkVk(vmaCreateAllocator(&create, &mAllocator), "vmaCreateAllocator");
+
+        // The type the library picks for a resource that asks for video memory and nothing else,
+        // which is what every structure and texture asks for.
+        const VmaAllocationCreateInfo video = askingFor(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        checkVk(vmaFindMemoryTypeIndex(mAllocator, ~0u, &video, &mVideoType), "vmaFindMemoryTypeIndex");
+        mVideoHeap = mMemory.memoryTypes[mVideoType].heapIndex;
+
+        // Made now and not when first asked for, so no thread ever makes one: a pool with no block
+        // holds nothing.
+        for (std::uint32_t type = 0; type < mMemory.memoryTypeCount; ++type)
+        {
+            if ((mMemory.memoryTypes[type].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) == 0)
+                continue;
+
+            const VmaPoolCreateInfo pool{ .memoryTypeIndex = type, .blockSize = sBlockBytes };
+            checkVk(vmaCreatePool(mAllocator, &pool, &mContentPools[type]), "vmaCreatePool");
+        }
     }
 
     MemoryAllocator::~MemoryAllocator()
@@ -123,6 +159,11 @@ namespace Rtx
         // The ranges and not the blocks: the library keeps an emptied block or two against the
         // next resource, which a range still standing in one is not.
         assert(getLiveCount() == 0 && "a device allocation was still standing a resource when the device went");
+
+        for (VmaPool_T* const pool : mContentPools)
+            if (pool != nullptr)
+                vmaDestroyPool(mAllocator, pool);
+
         vmaDestroyAllocator(mAllocator);
     }
 
@@ -145,7 +186,8 @@ namespace Rtx
         VmaAllocationInfo placed{};
         checkAllocated(vmaAllocateMemory(mAllocator, &requirements, &create, &allocation, &placed), properties);
 
-        return DeviceMemory(mAllocator, allocation, placed.deviceMemory, placed.offset, placed.pMappedData);
+        return hold(allocation, placed.deviceMemory, placed.offset, placed.pMappedData, placed.size, placed.memoryType,
+            MemoryUse::Essential);
     }
 
     DeviceMemory MemoryAllocator::take(const VkImage image, const VkMemoryPropertyFlags properties)
@@ -155,7 +197,165 @@ namespace Rtx
         VmaAllocationInfo placed{};
         checkAllocated(vmaAllocateMemoryForImage(mAllocator, image, &create, &allocation, &placed), properties);
 
-        return DeviceMemory(mAllocator, allocation, placed.deviceMemory, placed.offset, placed.pMappedData);
+        return hold(allocation, placed.deviceMemory, placed.offset, placed.pMappedData, placed.size, placed.memoryType,
+            MemoryUse::Essential);
+    }
+
+    Result<DeviceMemory, std::string_view> MemoryAllocator::tryTake(const VkBuffer buffer,
+        const VkMemoryPropertyFlags properties, const VkDeviceSize alignment, const MemoryUse use)
+    {
+        if (use == MemoryUse::Essential)
+            return take(buffer, properties, alignment);
+
+        assert(alignment > 0 && (alignment & (alignment - 1)) == 0 && "an alignment is a power of two");
+
+        // By hand, for the reason `take` gives.
+        VkMemoryRequirements requirements{};
+        vkGetBufferMemoryRequirements(mDevice, buffer, &requirements);
+        requirements.alignment = std::max(requirements.alignment, alignment);
+
+        return tryAllocate(requirements.size, requirements.memoryTypeBits, false, properties, use,
+            [&](const VmaAllocationCreateInfo& create, VmaAllocation* allocation, VmaAllocationInfo* placed) {
+                return vmaAllocateMemory(mAllocator, &requirements, &create, allocation, placed);
+            });
+    }
+
+    Result<DeviceMemory, std::string_view> MemoryAllocator::tryTake(
+        const VkImage image, const VkMemoryPropertyFlags properties, const MemoryUse use)
+    {
+        if (use == MemoryUse::Essential)
+            return take(image, properties);
+
+        // Whether the driver binds the image to nothing but an allocation of its own, which the
+        // library would otherwise find out only inside a pool that makes none.
+        VkMemoryDedicatedRequirements dedicated{ .sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS };
+        VkMemoryRequirements2 requirements{ .sType = VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2, .pNext = &dedicated };
+        const VkImageMemoryRequirementsInfo2 info{
+            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2,
+            .image = image,
+        };
+        vkGetImageMemoryRequirements2(mDevice, &info, &requirements);
+
+        return tryAllocate(requirements.memoryRequirements.size, requirements.memoryRequirements.memoryTypeBits,
+            dedicated.requiresDedicatedAllocation == VK_TRUE, properties, use,
+            [&](const VmaAllocationCreateInfo& create, VmaAllocation* allocation, VmaAllocationInfo* placed) {
+                return vmaAllocateMemoryForImage(mAllocator, image, &create, allocation, placed);
+            });
+    }
+
+    template <class Allocate>
+    Result<DeviceMemory, std::string_view> MemoryAllocator::tryAllocate(const VkDeviceSize size,
+        const std::uint32_t typeBits, bool own, const VkMemoryPropertyFlags properties, const MemoryUse use,
+        Allocate&& allocate)
+    {
+        VmaAllocationCreateInfo create = askingFor(properties);
+        std::uint32_t type = 0;
+        checkAllocated(vmaFindMemoryTypeIndex(mAllocator, typeBits, &create, &type), properties);
+        assert(mContentPools[type] != nullptr && "content asked for memory that is not video memory");
+
+        // Larger than half a block, an allocation of its own, as the library gives one outside a
+        // pool: a block past half full with one resource is a block the next one does not fit.
+        own |= size > sBlockBytes / 2;
+
+        VmaAllocation allocation = nullptr;
+        VmaAllocationInfo placed{};
+        if (own)
+            create.flags |= VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
+        else
+        {
+            // Room in a block content already holds costs the heap nothing, so it is weighed
+            // against nothing: a use at its ceiling still fills the gaps its own departures left.
+            create.pool = mContentPools[type];
+            create.flags |= VMA_ALLOCATION_CREATE_NEVER_ALLOCATE_BIT;
+            const VkResult inBlock = allocate(create, &allocation, &placed);
+            if (inBlock == VK_SUCCESS)
+                return hold(allocation, placed.deviceMemory, placed.offset, placed.pMappedData, placed.size,
+                    placed.memoryType, use);
+
+            if (inBlock != VK_ERROR_OUT_OF_DEVICE_MEMORY)
+                checkAllocated(inBlock, properties);
+
+            create.flags &= ~VmaAllocationCreateFlags{ VMA_ALLOCATION_CREATE_NEVER_ALLOCATE_BIT };
+        }
+
+        // New memory, which is exactly a block or exactly the resource.
+        const std::uint32_t heap = mMemory.memoryTypes[type].heapIndex;
+        VmaBudget budgets[VK_MAX_MEMORY_HEAPS]{};
+        vmaGetHeapBudgets(mAllocator, budgets);
+        const VmaBudget& budget = budgets[heap];
+        if (budget.usage + (own ? size : sBlockBytes)
+            > ceilingOf(heap, use, budget.budget, budget.usage, budget.statistics.blockBytes))
+            return Err{ sNoRoom };
+
+        // A driver refusing what its budget said it had is the same answer, and the one `tryTake`
+        // exists to give.
+        const VkResult result = allocate(create, &allocation, &placed);
+        if (result == VK_ERROR_OUT_OF_DEVICE_MEMORY)
+            return Err{ sNoRoom };
+
+        checkAllocated(result, properties);
+        return hold(
+            allocation, placed.deviceMemory, placed.offset, placed.pMappedData, placed.size, placed.memoryType, use);
+    }
+
+    DeviceMemory MemoryAllocator::hold(VmaAllocation_T* const allocation, const VkDeviceMemory handle,
+        const VkDeviceSize offset, void* const mapped, const VkDeviceSize size, const std::uint32_t type,
+        const MemoryUse use)
+    {
+        const std::uint32_t heap = mMemory.memoryTypes[type].heapIndex;
+        mHeld[heap][static_cast<std::size_t>(use)] += size;
+
+        return DeviceMemory(this, allocation, handle, offset, mapped, size, heap, use);
+    }
+
+    void MemoryAllocator::give(DeviceMemory& memory)
+    {
+        mHeld[memory.mHeap][static_cast<std::size_t>(memory.mUse)] -= memory.mSize;
+        vmaFreeMemory(mAllocator, memory.mAllocation);
+    }
+
+    VkDeviceSize MemoryAllocator::ceilingOf(const std::uint32_t heap, const MemoryUse use, const VkDeviceSize budget,
+        const VkDeviceSize usage, const VkDeviceSize blockBytes) const
+    {
+        VkDeviceSize owed = usage > blockBytes ? usage - blockBytes : 0;
+        for (std::size_t before = 0; before < static_cast<std::size_t>(use); ++before)
+            owed += mHeld[heap][before];
+
+        const VkDeviceSize heldTo = std::min(budget, mBudgetLimit.value_or(budget));
+        return heldTo > owed ? heldTo - owed : 0;
+    }
+
+    VkDeviceSize MemoryAllocator::getRoom(const MemoryUse use) const
+    {
+        VmaBudget budgets[VK_MAX_MEMORY_HEAPS]{};
+        vmaGetHeapBudgets(mAllocator, budgets);
+        const VmaBudget& budget = budgets[mVideoHeap];
+
+        VmaStatistics content{};
+        vmaGetPoolStatistics(mAllocator, mContentPools[mVideoType], &content);
+
+        const VkDeviceSize ceiling
+            = ceilingOf(mVideoHeap, use, budget.budget, budget.usage, budget.statistics.blockBytes);
+        const VkDeviceSize above = ceiling > budget.usage ? ceiling - budget.usage : 0;
+
+        // Whole blocks, because that is what the small resources `tryAllocate` places are placed in.
+        return content.blockBytes - content.allocationBytes + above / sBlockBytes * sBlockBytes;
+    }
+
+    VkDeviceSize MemoryAllocator::getHeld(const std::uint32_t heap, const MemoryUse use) const
+    {
+        assert(heap < VK_MAX_MEMORY_HEAPS);
+        return mHeld[heap][static_cast<std::size_t>(use)];
+    }
+
+    void MemoryAllocator::limitBudget(const std::optional<VkDeviceSize> bytes)
+    {
+        mBudgetLimit = bytes;
+    }
+
+    void MemoryAllocator::refreshBudget(const std::uint64_t frame)
+    {
+        vmaSetCurrentFrameIndex(mAllocator, static_cast<std::uint32_t>(frame));
     }
 
     std::size_t MemoryAllocator::getLiveCount() const
@@ -203,7 +403,7 @@ namespace Rtx
             // tells a driver that would not say from one that said none by the columns' absence.
             if (mBudget)
             {
-                use.mBudget = budgets[heap].budget;
+                use.mBudget = std::min(budgets[heap].budget, mBudgetLimit.value_or(budgets[heap].budget));
                 use.mHeld = budgets[heap].usage;
             }
         }

@@ -123,6 +123,10 @@ namespace Rtx
                 done.mKind = SceneUpload::Kind::Extended;
             }
 
+            // What the device could not stand, reported as what the describe could not: the scene
+            // is written here, and the backend holds it const.
+            scene.refusals().refuse(renderer.getRefusals(slot));
+
             timed.at(Timing::Upload) = since(described, std::chrono::steady_clock::now());
         }
 

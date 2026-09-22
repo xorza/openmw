@@ -1,5 +1,6 @@
 #include <cstddef>
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -13,6 +14,7 @@
 #include <components/rtxvulkan/device.hpp>
 #include <components/rtxvulkan/handles.hpp>
 #include <components/rtxvulkan/image.hpp>
+#include <components/rtxvulkan/memory.hpp>
 #include <components/rtxvulkan/spritelightpass.hpp>
 #include <components/rtxvulkan/texture.hpp>
 
@@ -42,7 +44,9 @@ namespace Rtx
 
                 Batch upload(getPool());
                 std::vector<VkBufferImageCopy> regions;
-                const Texture source(device, upload, passes.mPasses, sampler.get(), sprite, "sprite", regions);
+                const Texture source = std::move(Texture::fromFile(
+                    device, upload, passes.mPasses, sampler.get(), sprite, 0, "sprite", regions, MemoryUse::Essential)
+                                                     .value());
                 passes.mBake.record(upload.getCommands(), source.getImage(), sampler.get(), bake);
                 upload.flush();
 

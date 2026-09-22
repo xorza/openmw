@@ -12,6 +12,7 @@
 #include <components/rtx/guirenderer.hpp>
 #include <components/rtx/memoryreport.hpp>
 #include <components/rtx/reconstruction.hpp>
+#include <components/rtx/refusal.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/ripple.hpp>
 #include <components/rtx/runs.hpp>
@@ -80,6 +81,7 @@ namespace Rtx
         void setScene(SceneSlot slot, const SceneDesc& scene, std::span<const TextureData> textures) override;
         void extendScene(SceneSlot slot, const SceneDesc& scene, std::span<const TextureData> arrived) override;
         SceneHeld describeHeld(SceneSlot slot) const override;
+        std::span<const Refusal> getRefusals(SceneSlot slot) const override;
         void dropTextures(SceneSlot slot, std::span<const Index> textures) override;
         void placeScene(SceneSlot slot, const SceneDesc& scene) override;
         const SceneStats& getSceneStats() const override { return mStats; }
@@ -120,8 +122,11 @@ namespace Rtx
         void finishGuiTraces() override;
         void readPixels(std::vector<std::uint8_t>& pixels) override;
 
-        /// What a test asks of this backend and a game never does. None of the five is on a frame
-        /// path: each that reads submits a copy and waits for it, so none is const.
+        /// What a test asks of this backend and a game never does. None is on a frame path: each
+        /// that reads submits a copy and waits for it, so none of those is const.
+
+        /// The device the renderer made, for a test that holds its memory to a budget of its own.
+        const Device& getDevice() const { return mDevice; }
 
         /// The sea every scene is traced with, `SeaState{}` until told. Uploads a spectrum and
         /// waits the frames in flight out first.

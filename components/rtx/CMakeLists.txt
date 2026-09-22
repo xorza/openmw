@@ -106,6 +106,7 @@ set(RTX_FILES
     poseupdate.hpp
     prepared.hpp
     reconstruction.hpp
+    refusal.hpp
     refusals.cpp
     refusals.hpp
     renderer.hpp

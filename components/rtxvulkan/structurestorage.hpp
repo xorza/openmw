@@ -3,9 +3,11 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <string_view>
 
 #include <vulkan/vulkan_core.h>
 
+#include <components/rtx/result.hpp>
 #include <components/rtx/runs.hpp>
 
 #include "blocklist.hpp"
@@ -39,11 +41,13 @@ namespace Rtx
         /// @param name what a block is called in a capture, numbered from there.
         StructureStorage(VkBufferUsageFlags usage, std::string name);
 
-        /// Room for a structure of `bytes`, taken from the first block that has it.
+        /// Room for a structure of `bytes`, taken from the first block that has it, or why the
+        /// device has none: a block is memory a mesh can be left out for — `MemoryUse::Structure`.
         ///
         /// @param least how large to make a new block where none of the existing ones can hold it:
-        ///        a load asks for the whole scene's total, an arrival for nothing in particular.
-        StructureRoom take(const Device& device, VkDeviceSize bytes, VkDeviceSize least);
+        ///        a load asks for the whole scene's total, an arrival for nothing in particular. A
+        ///        device with no room for that much makes one only as large as the structure.
+        Result<StructureRoom, std::string_view> take(const Device& device, VkDeviceSize bytes, VkDeviceSize least);
 
         /// Gives a structure's room back, and gives the block to the device where that was the last
         /// room in it. The structure itself is the caller's to destroy, and a `Graveyard` destroys

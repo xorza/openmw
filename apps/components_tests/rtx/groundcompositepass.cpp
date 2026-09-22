@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -14,6 +15,7 @@
 
 #include <components/rtx/colour.hpp>
 #include <components/rtx/material.hpp>
+#include <components/rtx/refusal.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/ground.h>
@@ -79,8 +81,10 @@ namespace Rtx
                 const Index material = scene.addMaterial(chunk);
 
                 Batch setup(getPool());
-                const Texture composite(device, setup, "ground composite test");
-                TextureArray array(device, setup, layout, passes.mPasses, 2, textures);
+                const Texture composite = std::move(Texture::composite(device, setup, "ground composite test").value());
+                TextureArray array(device, setup, layout, passes.mPasses, 2);
+                std::vector<Refusal> refused;
+                array.write(setup, textures, refused);
                 array.sync(FrameSlot{});
                 const SceneBuffers buffers(device, setup, scene, {}, 1);
 

@@ -22,6 +22,7 @@
 #include "namedenum.hpp"
 #include "pacing.hpp"
 #include "reconstruction.hpp"
+#include "refusal.hpp"
 #include "runs.hpp"
 #include "shaders/visibility.h"
 #include "slot.hpp"
@@ -133,6 +134,13 @@ namespace Rtx
         /// silent nought; the game clears it. Not a knob of the run's picture, which is why it is
         /// not in the profile.
         bool mCounting = true;
+
+        /// The video memory the renderer takes its budget to be, in bytes, where the device states
+        /// more; nothing to take the device's word. For a run that asks what a smaller card does
+        /// with a place: content stops where it would stop there — textures held to a smaller side
+        /// first — and what still does not fit is refused as it would be. What the frame itself
+        /// holds is never refused, whatever this says.
+        std::optional<std::uint64_t> mMemoryBudget;
     };
 
     /// What a backend holds in one of its slots, as it says so itself. A slot and a scene are one
@@ -184,6 +192,10 @@ namespace Rtx
         /// the two cannot disagree about which slots they counted.
         std::uint32_t mTextureCount = 0;
         std::uint64_t mTextureBytes = 0;
+
+        /// How many of those stand smaller than their files: held to a smaller side where the
+        /// device had no room for them as the files are, or past the side it takes.
+        std::uint32_t mReducedTextureCount = 0;
     };
 
     /// What a frame is asked for, beyond where the camera stands.
@@ -363,6 +375,13 @@ namespace Rtx
 
         /// What this slot was last built from, and how far it has been extended since.
         virtual SceneHeld describeHeld(SceneSlot slot) const = 0;
+
+        /// What the last `setScene` or `extendScene` of `slot` could not stand for the device's
+        /// sake — a texture past the side it takes, a texture or a mesh it had no room for — for
+        /// the scene's owner to report with the rest of what content was refused
+        /// (`SceneDesc::refusals`). A texture refused draws the stand-in, and a mesh refused is
+        /// left out. Valid until the next call of either for `slot`.
+        virtual std::span<const Refusal> getRefusals(SceneSlot slot) const = 0;
 
         /// Destroys the images of the texture slots a scene gave up. The slots keep their place,
         /// as they do in the scene's own table, and no live material names a freed one.

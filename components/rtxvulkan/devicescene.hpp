@@ -9,6 +9,7 @@
 
 #include <components/rtx/instancerecord.hpp>
 #include <components/rtx/mesh.hpp>
+#include <components/rtx/refusal.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/slot.hpp>
 #include <components/rtx/texturedata.hpp>
@@ -44,7 +45,10 @@ namespace Rtx
         /// flushes: one submit for the whole cell, where a round trip apiece would be hundreds for
         /// a town. Every scene is traced by two frames at once, the doll's included — a picture
         /// inside the interface rides the frame it was asked on, and the next frame may place it
-        /// again while that one is still tracing — so every table has `sFrameSlots` copies.
+        /// again while that one is still tracing — so every table has `sFrameSlots` copies. The
+        /// structures before the textures, because a mesh left out is worse than a texture held to
+        /// a smaller side, and the textures are held to what the structures left — what the device
+        /// had no room for is `getRefusals`.
         ///
         /// @param skin what poses this scene's bodies, at the build and at every placement.
         /// @param passes what every texture is made with as it arrives.
@@ -53,11 +57,11 @@ namespace Rtx
             const TexturePasses& passes, const GroundCompositePass& ground, const SceneDesc& scene,
             std::span<const TextureData> textures);
 
-        /// Takes in what the scene says arrived: the textures, and the meshes where the mesh table's
-        /// revision moved — the geometry blocks are appended to rather than replaced, so every
-        /// address a structure was built from is still its own. The revision and not the count,
-        /// because a freed slot taken over holds different geometry at the same size. Into
-        /// `batch`, which the caller defers or flushes.
+        /// Takes in what the scene says arrived: the meshes where the mesh table's revision moved —
+        /// the geometry blocks are appended to rather than replaced, so every address a structure
+        /// was built from is still its own — and then the textures, for the reason the constructor
+        /// gives. The revision and not the count, because a freed slot taken over holds different
+        /// geometry at the same size. Into `batch`, which the caller defers or flushes.
         ///
         /// @param timer where the arrived meshes' build is timed, or null for a picture's scene.
         void extend(Batch& batch, const SceneDesc& scene, std::span<const TextureData> arrived, GpuTimer* timer);
@@ -92,6 +96,10 @@ namespace Rtx
 
         /// What this scene holds, as `Renderer::describeHeld` answers it.
         SceneHeld describe() const;
+
+        /// What the build or the last `extend` left out for want of room on the device, or for a
+        /// side the device does not take — `Renderer::getRefusals`.
+        std::span<const Refusal> getRefusals() const { return mRefusals; }
 
         /// Reads into `stats` what a placement can have moved, which is every figure but the three
         /// a build settles — one of which is a loop over every texture, and a placement runs on the
@@ -163,5 +171,8 @@ namespace Rtx
 
         /// The submit a picture of each copy rides, as the timeline value it was recorded for.
         std::array<std::uint64_t, sFrameSlots> mPictureRides{};
+
+        /// Filled by the build, refilled by every `extend`, and never freed.
+        std::vector<Refusal> mRefusals;
     };
 }

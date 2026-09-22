@@ -151,6 +151,8 @@ namespace Rtx
         , mGuiPass(mDevice, options.mShaderDirectory, PresentTargets::sFormat)
         , mGuiTextures(mDevice)
     {
+        mDevice.getMemory().limitBudget(options.mMemoryBudget);
+
         // `SPRITE_LIST_UNBINNED` and a count of nought are both nought.
         mNoSprites.clear();
 
@@ -446,6 +448,9 @@ namespace Rtx
             mPreviousCamera = Shaders::VisibilityConstants{};
         }
 
+        // What the device has room for is decided below, against what it says now.
+        mDevice.getMemory().refreshBudget(mDevice.getTimeline().getNext());
+
         // One submit for the whole cell, asked of the queue once at the flush below — by hand
         // rather than left to the destructor, so a submit that fails throws out of here instead
         // of being logged on the way past.
@@ -473,6 +478,8 @@ namespace Rtx
         if (slot.isWorld())
             timer = &mRing.begin().mTimer;
 
+        mDevice.getMemory().refreshBudget(mDevice.getTimeline().getNext());
+
         Batch setup(mDevice.getPool());
         held.extend(setup, scene, arrived, timer);
 
@@ -496,6 +503,11 @@ namespace Rtx
     {
         const std::unique_ptr<DeviceScene>& held = slotAt(slot);
         return held != nullptr ? held->describe() : SceneHeld{};
+    }
+
+    std::span<const Refusal> VulkanRenderer::getRefusals(const SceneSlot slot) const
+    {
+        return sceneAt(slot).getRefusals();
     }
 
     void VulkanRenderer::dropTextures(const SceneSlot slot, std::span<const Index> textures)

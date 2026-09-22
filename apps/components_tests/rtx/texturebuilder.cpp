@@ -2,6 +2,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
@@ -46,6 +47,45 @@ namespace Rtx
             image->setFileName("textures/tx_test.dds");
             image->allocateImage(4, 4, 1, format, GL_UNSIGNED_BYTE);
             return image;
+        }
+
+        /// Where a texture held to a side begins, and what it costs from there: its first level no
+        /// larger than the side along either axis, and the bytes from that level to the end.
+        ///
+        /// **Hand-computed.** Sixteen by eight at four bytes a texel is 512 bytes, then eight by
+        /// four at 128 and four by two at 32: 672 from the top, 160 from the second level and 32
+        /// from the third. The width is what a side is held against, being the longer axis.
+        TEST(RtxTextureBuilderTest, aTextureHeldToASideBeginsAtItsFirstLevelWithinIt)
+        {
+            constexpr std::array levels{ MipLevel{ 0, 16, 8 }, MipLevel{ 512, 8, 4 }, MipLevel{ 640, 4, 2 } };
+            const std::array<std::byte, 672> bytes{};
+            const TextureData texture{
+                .mFormat = TextureFormat::Rgba8Unorm,
+                .mWidth = 16,
+                .mHeight = 8,
+                .mBytes = bytes,
+                .mLevels = levels,
+            };
+
+            struct Case
+            {
+                std::uint32_t mSide;
+                std::optional<std::uint32_t> mFirst;
+            };
+            for (const Case& one : { Case{ 16, 0 }, Case{ 15, 1 }, Case{ 8, 1 }, Case{ 7, 2 }, Case{ 4, 2 },
+                     Case{ 3, std::nullopt }, Case{ 0, std::nullopt } })
+                EXPECT_EQ(texture.firstLevelWithin(one.mSide), one.mFirst) << "held to " << one.mSide;
+
+            EXPECT_EQ(texture.bytesFrom(0), 672u);
+            EXPECT_EQ(texture.bytesFrom(1), 160u);
+            EXPECT_EQ(texture.bytesFrom(2), 32u);
+
+            // The stand-in is one block of four, and a device that took less has nothing to begin at.
+            const TextureData standIn = describeStandIn();
+            EXPECT_EQ(standIn.mSource, TextureSource::StandIn);
+            EXPECT_EQ(standIn.firstLevelWithin(4), 0u);
+            EXPECT_EQ(standIn.firstLevelWithin(3), std::nullopt);
+            EXPECT_EQ(standIn.bytesFrom(0), 8u) << "one BC1 block";
         }
 
         /// DXT1 arrives under two names and both of them read the alpha bit.
@@ -265,7 +305,7 @@ namespace Rtx
             const auto check = [&](const SceneTextures& described, const char* which) {
                 ASSERT_EQ(described.getDescriptions().size(), std::size_t{ 1 }) << which;
                 EXPECT_EQ(described.getDescriptions()[0].mSlot, staying.mTexture) << which;
-                EXPECT_EQ(described.getDescriptions()[0].mName, "unreadable") << which;
+                EXPECT_EQ(described.getDescriptions()[0].mName, "stand-in") << which;
                 ASSERT_EQ(described.getRefusals().size(), 1u) << which;
                 EXPECT_EQ(described.getRefusals()[0].mKind, Refused::Texture) << which;
                 EXPECT_EQ(described.getRefusals()[0].mWhy, "no image reads from the file") << which;
@@ -301,7 +341,7 @@ namespace Rtx
             described.describeAll(scene, images);
             ASSERT_EQ(described.getDescriptions().size(), std::size_t{ 1 });
             EXPECT_EQ(described.getDescriptions()[0].mSlot, bake);
-            EXPECT_EQ(described.getDescriptions()[0].mName, "unreadable");
+            EXPECT_EQ(described.getDescriptions()[0].mName, "stand-in");
             EXPECT_EQ(described.getDescriptions()[0].mSource, Rtx::TextureSource::StandIn);
             EXPECT_EQ(described.getDescriptions()[0].mFrom, Rtx::sNoIndex);
             ASSERT_EQ(described.getRefusals().size(), 1u);
@@ -363,7 +403,7 @@ namespace Rtx
             ASSERT_EQ(described.getDescriptions().size(), std::size_t{ 1 });
             EXPECT_EQ(described.getDescriptions()[0].mSource, Rtx::TextureSource::StandIn);
             EXPECT_EQ(described.getDescriptions()[0].mFrom, Rtx::sNoIndex);
-            EXPECT_EQ(described.getDescriptions()[0].mName, "unreadable");
+            EXPECT_EQ(described.getDescriptions()[0].mName, "stand-in");
             ASSERT_EQ(described.getRefusals().size(), 1u);
             EXPECT_EQ(described.getRefusals()[0].mWhy, "no ground was queued to flatten into it");
         }

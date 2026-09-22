@@ -349,6 +349,8 @@ namespace RtxTool
             request.mSetup.mMirror = framed.mMirror;
             request.mSetup.mLatency = framed.mLatency;
             request.mSetup.mValidation = validation;
+            if (variables.count("memory-budget") != 0)
+                request.mSetup.mMemoryBudget = variables["memory-budget"].as<std::uint64_t>() * 1024 * 1024;
             request.mHud = variables["hud"].as<bool>();
             request.mVanity = variables["vanity"].as<bool>();
             request.mRandomSeed = variables["random-seed"].as<unsigned int>();

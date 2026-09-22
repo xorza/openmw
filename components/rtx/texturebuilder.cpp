@@ -49,31 +49,25 @@ namespace Rtx
         return image;
     }
 
-    namespace
+    TextureData describeStandIn()
     {
-        /// What a texture that could not be read is drawn as: mid grey and not magenta, because a
-        /// live graph's unreadable textures are mostly things that were never files, and the refusal
-        /// already names each. One opaque BC1 block with both endpoints the same grey.
-        TextureData standIn(std::vector<MipLevel>& levels)
-        {
-            // 0x8410 is RGB565 for (16, 16, 16) out of (31, 63, 31) — a touch above half, which is
-            // mid grey once the sRGB curve is undone.
-            static constexpr std::array<std::byte, 8> sBlock{ std::byte{ 0x10 }, std::byte{ 0x84 }, std::byte{ 0x10 },
-                std::byte{ 0x84 }, std::byte{}, std::byte{}, std::byte{}, std::byte{} };
+        // Mid grey and not magenta, because a live graph's unreadable textures are mostly things
+        // that were never files, and the refusal already names each. One opaque BC1 block with both
+        // endpoints the same grey: 0x8410 is RGB565 for (16, 16, 16) out of (31, 63, 31) — a touch
+        // above half, which is mid grey once the sRGB curve is undone.
+        static constexpr std::array<std::byte, 8> sBlock{ std::byte{ 0x10 }, std::byte{ 0x84 }, std::byte{ 0x10 },
+            std::byte{ 0x84 }, std::byte{}, std::byte{}, std::byte{}, std::byte{} };
+        static constexpr MipLevel sLevel{ .mOffset = 0, .mWidth = 4, .mHeight = 4 };
 
-            const std::size_t first = levels.size();
-            levels.push_back(MipLevel{ 0, 4, 4 });
-
-            return TextureData{
-                .mSource = TextureSource::StandIn,
-                .mFormat = TextureFormat::Bc1RgbaSrgb,
-                .mWidth = 4,
-                .mHeight = 4,
-                .mBytes = sBlock,
-                .mLevels = std::span<const MipLevel>(levels).subspan(first, 1),
-                .mName = "unreadable",
-            };
-        }
+        return TextureData{
+            .mSource = TextureSource::StandIn,
+            .mFormat = TextureFormat::Bc1RgbaSrgb,
+            .mWidth = 4,
+            .mHeight = 4,
+            .mBytes = sBlock,
+            .mLevels = std::span<const MipLevel>(&sLevel, 1),
+            .mName = "stand-in",
+        };
     }
 
     Result<void, std::string> checkUploadable(const osg::Image& image)
@@ -169,11 +163,12 @@ namespace Rtx
         // Reserved before anything points into it, and that is what makes the spans safe. Every
         // description spans this one table, so it must not grow while they are being taken — and
         // every level count is known before the first description is built. A table kept from the
-        // last arrival is usually large enough already, and then this asks for nothing.
+        // last arrival is usually large enough already, and then this asks for nothing. Only a file
+        // puts levels here: a bake and a composite carry none, and the stand-in's are its own.
         std::size_t levels = 0;
         for (const Kept& kept : mKept)
-            levels += kept.mImage.isOk() && kept.mImage.value() != nullptr ? kept.mImage.value()->getNumMipmapLevels()
-                                                                           : 1u;
+            if (kept.mImage.isOk() && kept.mImage.value() != nullptr)
+                levels += kept.mImage.value()->getNumMipmapLevels();
         mLevels.reserve(levels);
 
         // What the assertion below is taken against: the reserve and the fill agree by argument
@@ -195,7 +190,7 @@ namespace Rtx
                 mRefusals.push_back(Refusal{ .mKind = Refused::Texture,
                     .mName = std::string(row.mKind == TextureKind::File ? row.mPath.value() : row.mBaked),
                     .mWhy = described.error() });
-                data = standIn(mLevels);
+                data = describeStandIn();
             }
 
             data.mSlot = kept.mSlot;

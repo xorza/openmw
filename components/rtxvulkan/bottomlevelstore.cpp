@@ -2,12 +2,15 @@
 
 #include <algorithm>
 #include <cassert>
+#include <string>
+#include <string_view>
 #include <utility>
 
 #include <osg/Vec3f>
 
 #include <components/rtx/mesh.hpp>
 #include <components/rtx/meshtable.hpp>
+#include <components/rtx/result.hpp>
 #include <components/rtx/scenedesc.hpp>
 
 #include "buffer.hpp"
@@ -65,7 +68,8 @@ namespace Rtx
     }
 
     void BottomLevelStore::build(Batch& batch, const SceneDesc& scene, std::span<const Index> meshes,
-        const BlockedBuffer& poses, const BlockedBuffer& indices, const std::uint64_t placement)
+        const BlockedBuffer& poses, const BlockedBuffer& indices, const std::uint64_t placement,
+        std::vector<Refusal>& refused)
     {
         const DeviceFunctions& functions = mDevice.getFunctions();
         const std::size_t held = scene.meshes().getRows().size();
@@ -228,8 +232,23 @@ namespace Rtx
 
             const Index slot = meshes[at];
             Row& row = mRows[slot];
-            row.mStructure = AccelerationStructure::bottomLevel(
-                mDevice, mStorage, mStorage.take(mDevice, mBuilding[at].mSize, wanted), mBuilding[at].mSize);
+
+            // Left out where the device has no room: the slot holds no structure and so nothing a
+            // refit or a rebuild reads, and the scratch it was counted into goes unread. A load's
+            // whole total is not asked for again once the device has refused it, and each structure
+            // after asks for its own room.
+            const Result<StructureRoom, std::string_view> room = mStorage.take(mDevice, mBuilding[at].mSize, wanted);
+            if (!room.isOk())
+            {
+                row.mUpdatable = false;
+                row.mUpdateScratch = 0;
+                row.mBuildScratch = 0;
+                wanted = 0;
+                refused.push_back(Refusal{ .mKind = Refused::Mesh, .mWhy = std::string(room.error()) });
+                continue;
+            }
+
+            row.mStructure = AccelerationStructure::bottomLevel(mDevice, mStorage, room.value(), mBuilding[at].mSize);
 
             mBuild.mBuilds[at].dstAccelerationStructure = row.mStructure.getHandle();
             mBuild.mBuilds[at].scratchData.deviceAddress = scratchAddress + mBuilding[at].mScratchOffset;
@@ -245,6 +264,10 @@ namespace Rtx
             mLiveBuilds.push_back(mBuild.mBuilds[at]);
             mBuild.mRangePointers.push_back(&mBuild.mRanges[at]);
         }
+
+        // Every structure refused: a build of none is not a command Vulkan takes.
+        if (mLiveBuilds.empty())
+            return;
 
         const VkCommandBuffer commands = batch.getCommands();
         functions.mCmdBuildAccelerationStructures(
@@ -414,10 +437,14 @@ namespace Rtx
             // loose one; the top level can be built over the tight one in this same command
             // buffer, because its address is its own from the moment it is made. Taken before the
             // answer is popped: a device that refuses the room leaves the answer where it was, to
-            // be asked again, rather than a structure answered and never copied.
+            // be asked again by a later placement, rather than a structure answered and never
+            // copied.
             const VkDeviceSize tight = state.mTightSize;
-            AccelerationStructure made = AccelerationStructure::bottomLevel(
-                mDevice, mStorage, mStorage.take(mDevice, tight, sCompactionPerPlacement), tight);
+            const Result<StructureRoom, std::string_view> room = mStorage.take(mDevice, tight, sCompactionPerPlacement);
+            if (!room.isOk())
+                break;
+
+            AccelerationStructure made = AccelerationStructure::bottomLevel(mDevice, mStorage, room.value(), tight);
             mAnswered.pop(1);
 
             mCompactionCopies.push_back(VkCopyAccelerationStructureInfoKHR{

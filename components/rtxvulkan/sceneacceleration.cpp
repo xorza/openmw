@@ -53,12 +53,13 @@ namespace Rtx
             mPoses.settle(FrameSlot{ slot });
     }
 
-    void SceneAcceleration::build(Batch& batch, const SceneDesc& scene, std::span<const InstanceRecord> records)
+    void SceneAcceleration::build(
+        Batch& batch, const SceneDesc& scene, std::span<const InstanceRecord> records, std::vector<Refusal>& refused)
     {
         assert(mBottomLevel.size() == 0 && mTopLevel.isEmpty() && "a scene built twice");
 
         // The rows after the structures, because a row names the address of the structure it places.
-        mBottomLevel.build(batch, scene, mEveryMesh, mPoses.at(FrameSlot{}), mIndices, mPlacements);
+        mBottomLevel.build(batch, scene, mEveryMesh, mPoses.at(FrameSlot{}), mIndices, mPlacements, refused);
         writeRows(records, {});
         prepareTopLevel(scene, FrameSlot{});
         recordTopLevel(batch.getCommands(), nullptr);
@@ -108,21 +109,32 @@ namespace Rtx
         writeGeometry(batch, scene, scene.meshes().getArrived());
     }
 
-    void SceneAcceleration::buildArrived(Batch& batch, const SceneDesc& scene, GpuTimer* timer)
+    void SceneAcceleration::buildArrived(
+        Batch& batch, const SceneDesc& scene, GpuTimer* timer, std::vector<Refusal>& refused)
     {
         // The builds a crossing brings, bracketed as one zone. Without it they are device time
         // the frame's fence carries and no zone accounts for, so the frame a player feels is the one
         // frame whose report says nothing about what made it slow.
         openZone(timer, batch.getCommands(), "blas");
 
-        mBottomLevel.build(batch, scene, scene.meshes().getArrived(), mPoses.at(FrameSlot{}), mIndices, mPlacements);
+        mBottomLevel.build(
+            batch, scene, scene.meshes().getArrived(), mPoses.at(FrameSlot{}), mIndices, mPlacements, refused);
 
         closeZone(timer, batch.getCommands());
     }
 
     void SceneAcceleration::prepareRefit(const SceneDesc& scene, const FrameSlot slot)
     {
-        const std::span<const Index> deformed = scene.meshes().getDeformed();
+        // Posed and left out is a body the device had no room for: nothing traces it, so nothing
+        // refits it either.
+        mRefitting.clear();
+        for (const Index mesh : scene.meshes().getDeformed())
+        {
+            assert(mesh < mBottomLevel.size() && "a mesh this holds no structure for");
+            if (mBottomLevel.stands(mesh))
+                mRefitting.push_back(mesh);
+        }
+        const std::span<const Index> deformed = mRefitting;
 
         // This frame's copy, which the pass has already posed into. `SkinPass::record` runs
         // ahead of this in the same command buffer and pays the poses' account — every pose this
@@ -155,7 +167,6 @@ namespace Rtx
         mRebuilt = sNoIndex;
         for (const Index mesh : deformed)
         {
-            assert(mesh < mBottomLevel.size() && "a mesh this holds no structure for");
             assert(mBottomLevel.isUpdatable(mesh) && "a mesh posed that was not built to be refitted");
 
             const std::uint64_t builtAt = mBottomLevel.getRebuiltAt(mesh);

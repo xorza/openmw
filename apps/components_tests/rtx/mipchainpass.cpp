@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <initializer_list>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -14,6 +15,7 @@
 #include <components/rtxvulkan/device.hpp>
 #include <components/rtxvulkan/handles.hpp>
 #include <components/rtxvulkan/image.hpp>
+#include <components/rtxvulkan/memory.hpp>
 #include <components/rtxvulkan/texture.hpp>
 
 #include "harness.hpp"
@@ -80,7 +82,9 @@ namespace Rtx
 
                 Batch upload(getPool());
                 std::vector<VkBufferImageCopy> regions;
-                const Texture stood(device, upload, passes.mPasses, sampler.get(), file, name, regions);
+                const Texture stood = std::move(Texture::fromFile(
+                    device, upload, passes.mPasses, sampler.get(), file, 0, name, regions, MemoryUse::Essential)
+                                                    .value());
                 upload.flush();
 
                 return stood.getImage().getMipLevels();

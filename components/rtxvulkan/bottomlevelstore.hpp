@@ -7,6 +7,7 @@
 
 #include <vulkan/vulkan_core.h>
 
+#include <components/rtx/refusal.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/slots.hpp>
 
@@ -64,7 +65,9 @@ namespace Rtx
 
         /// Creates and records the build of a structure for each of `meshes`, taking storage for it.
         /// A slot that already holds one has it destroyed first: a slot the scene handed out again
-        /// arrives carrying different geometry.
+        /// arrives carrying different geometry. A mesh the device has no room for is left out and
+        /// appended to `refused`: its slot holds no structure, so every placement of it names none,
+        /// which is an instance the top level skips — `stands` says which.
         ///
         /// @param poses the first copy of the deforming vertices, which is what a deforming mesh's
         ///        structure is built over — `SkinPass` has written the pose into it.
@@ -72,7 +75,7 @@ namespace Rtx
         /// @param placement which placement this is, on the clock the rebuild rota reads: what
         ///        `getRebuiltAt` answers for each of `meshes` until the rota comes round.
         void build(Batch& batch, const SceneDesc& scene, std::span<const Index> meshes, const BlockedBuffer& poses,
-            const BlockedBuffer& indices, std::uint64_t placement);
+            const BlockedBuffer& indices, std::uint64_t placement, std::vector<Refusal>& refused);
 
         /// Destroys the structures of `meshes` and gives their storage back. Idempotent, because
         /// both the frame that places and the one that appends run it. The structures go to the
@@ -80,6 +83,10 @@ namespace Rtx
         void release(std::span<const Index> meshes);
 
         std::size_t size() const { return mRows.size(); }
+
+        /// Whether `mesh` has a structure: not where its slot is free, where it holds no triangle,
+        /// or where the device had no room for it.
+        bool stands(const Index mesh) const { return !mRows[mesh].mStructure.isEmpty(); }
         VkAccelerationStructureKHR getStructure(const Index mesh) const { return mRows[mesh].mStructure.getHandle(); }
         VkDeviceAddress getAddress(const Index mesh) const { return mRows[mesh].mStructure.getAddress(); }
 

@@ -36,15 +36,15 @@ namespace Rtx
         , mAcceleration(device, batch, scene, sFrameSlots)
         , mBuffers(device, batch, scene, mRecords, sFrameSlots)
         , mSkinTables(device, batch, scene, sFrameSlots)
-        , mTextures(device, batch, textureLayout, passes, static_cast<std::uint32_t>(scene.textures().getRows().size()),
-              textures)
+        , mTextures(device, batch, textureLayout, passes, static_cast<std::uint32_t>(scene.textures().getRows().size()))
     {
         // Posed before it is built. The structures are built over the first copy of the
         // positions, and a skinned body's bind pose is not where the body is; the pass writes the
         // pose into that copy and the build then reads it. The other copy is owed the same pose and
         // takes it on the first placement that writes it.
         mSkin.record(batch.getCommands(), skinning(scene, FrameSlot{}));
-        mAcceleration.build(batch, scene, mRecords);
+        mAcceleration.build(batch, scene, mRecords, mRefusals);
+        mTextures.write(batch, textures, mRefusals);
         mBuiltMeshes = scene.meshes().getRevision();
         mBuiltStructure = scene.getStructureRevision();
         mBuiltFrom = scene.getIdentity();
@@ -82,7 +82,7 @@ namespace Rtx
     {
         assert(scene.getIdentity() == mBuiltFrom && "an extension of a scene this slot was not built from");
 
-        mTextures.write(batch, arrived);
+        mRefusals.clear();
 
         if (scene.meshes().getRevision() != mBuiltMeshes)
         {
@@ -94,9 +94,11 @@ namespace Rtx
             // the build reads — and only the meshes that arrived, over the rows `SkinTables::extend`
             // staged. `SkinPass::recordArrived` says why it may not be every mesh the copy owes.
             mSkin.recordArrived(batch.getCommands(), skinning(scene, FrameSlot{}), scene.meshes().getArrived());
-            mAcceleration.buildArrived(batch, scene, timer);
+            mAcceleration.buildArrived(batch, scene, timer, mRefusals);
             mBuiltMeshes = scene.meshes().getRevision();
         }
+
+        mTextures.write(batch, arrived, mRefusals);
 
         mBuiltStructure = scene.getStructureRevision();
     }
@@ -180,5 +182,6 @@ namespace Rtx
         const TexturesHeld textures = mTextures.getHeld();
         stats.mTextureCount = textures.mCount;
         stats.mTextureBytes = textures.mBytes;
+        stats.mReducedTextureCount = textures.mReduced;
     }
 }

@@ -13,6 +13,7 @@
 #include <components/resource/imagemanager.hpp>
 #include <components/rtx/material.hpp>
 #include <components/rtx/mesh.hpp>
+#include <components/rtx/refusal.hpp>
 #include <components/rtx/refusals.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
@@ -141,6 +142,50 @@ namespace Rtx
             EXPECT_EQ(crossed.mDropped, std::size_t{ 1 });
             EXPECT_EQ(renderer.mDropped.back(), fourth.mTexture);
             EXPECT_FALSE(renderer.mAppendedToWrongEnd);
+        }
+
+        /// What the device could not stand is reported with what the describe could not, once a
+        /// build or an arrival has asked it and never on a placement, which stands nothing.
+        ///
+        /// **The describe refuses the path nothing reads, and the device refuses a mesh and a
+        /// texture of its own**: two textures and a mesh, each named once. A placement asks the
+        /// renderer nothing, and a refusal the device repeats at the next arrival is the one already
+        /// named, so only the arrival's own unreadable texture is new.
+        TEST(RtxSceneUploaderTest, whatTheDeviceCouldNotStandIsReportedWithTheScenesRefusals)
+        {
+            VFS::Manager vfs;
+            Resource::ImageManager images(&vfs, 0);
+
+            Rtx::SceneDesc scene;
+            SceneUploader uploader;
+            Testing::CountingRenderer renderer;
+            renderer.mRefusing = {
+                Refusal{ .mKind = Refused::Mesh, .mWhy = "no device memory is left for it" },
+                Refusal{ .mKind = Refused::Texture,
+                    .mName = "textures/vast.dds",
+                    .mWhy = "no device memory is left for it" },
+            };
+
+            Testing::addModel(scene, VFS::Path::NormalizedView("textures/one.dds"));
+            const auto hand = [&] {
+                return uploader.hand(renderer,
+                    Rtx::SceneUploader::Handing{
+                        .mSlot = Rtx::SceneSlot::world(), .mScene = scene, .mImages = images });
+            };
+
+            EXPECT_EQ(hand().mKind, SceneUpload::Kind::Rebuilt);
+            EXPECT_EQ(scene.refusals().count(Refused::Mesh), 1u);
+            EXPECT_EQ(scene.refusals().count(Refused::Texture), 2u);
+
+            renderer.mRefusing.push_back(Refusal{ .mKind = Refused::Mesh, .mWhy = "a placement asked" });
+            EXPECT_EQ(hand().mKind, SceneUpload::Kind::Placed);
+            EXPECT_EQ(scene.refusals().count(Refused::Mesh), 1u) << "a placement asked the device what it refused";
+            renderer.mRefusing.pop_back();
+
+            Testing::addModel(scene, VFS::Path::NormalizedView("textures/two.dds"));
+            EXPECT_EQ(hand().mKind, SceneUpload::Kind::Extended);
+            EXPECT_EQ(scene.refusals().count(Refused::Mesh), 1u);
+            EXPECT_EQ(scene.refusals().count(Refused::Texture), 3u);
         }
 
         /// Two uploaders over one scene do not share a decision, which is what makes one per renderer

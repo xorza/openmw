@@ -9,6 +9,7 @@
 
 #include <components/rtx/instancerecord.hpp>
 #include <components/rtx/mesh.hpp>
+#include <components/rtx/refusal.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/shaders/scene.h>
 
@@ -50,8 +51,10 @@ namespace Rtx
         /// Builds every mesh's structure, writes every row, and builds the top level, in one submit
         /// with each stage ending in the barrier the next one needs. Once, after the constructor.
         /// `scene` must place at least one instance: a top-level structure over nothing has no
-        /// instance buffer to be built from.
-        void build(Batch& batch, const SceneDesc& scene, std::span<const InstanceRecord> records);
+        /// instance buffer to be built from. A mesh the device has no room for is left out and
+        /// appended to `refused` — `BottomLevelStore::build`.
+        void build(Batch& batch, const SceneDesc& scene, std::span<const InstanceRecord> records,
+            std::vector<Refusal>& refused);
 
         /// Rebuilds what a moved world changed: every deformed mesh's structure, then the top level,
         /// in one command buffer with a barrier between — two `submitAndWait`s were a round trip
@@ -80,12 +83,13 @@ namespace Rtx
         void extend(Batch& batch, const SceneDesc& scene);
 
         /// Builds the structures of the meshes that arrived, over the first copy of the positions
-        /// as `extend` and the pass left it.
+        /// as `extend` and the pass left it. A mesh the device has no room for is left out and
+        /// appended to `refused`, as `build` does.
         ///
         /// @param timer the frame the arrival lands in, so its builds are one zone of that frame's
         ///        report rather than device time nothing accounts for. Null for a picture inside the
         ///        interface, which is not timed — `VulkanRenderer::placeScene` says why.
-        void buildArrived(Batch& batch, const SceneDesc& scene, GpuTimer* timer);
+        void buildArrived(Batch& batch, const SceneDesc& scene, GpuTimer* timer, std::vector<Refusal>& refused);
 
         /// Destroys the structures of `meshes` and gives their storage back.
         void release(std::span<const Index> meshes) { mBottomLevel.release(meshes); }
@@ -227,6 +231,10 @@ namespace Rtx
 
         /// What one run of `prepareRefit` describes.
         StructureBuildBatch mRefit;
+
+        /// The deformed meshes a refit rebuilds: every one the scene posed that has a structure,
+        /// because one the device had no room for is left out. Refilled per placement.
+        std::vector<Index> mRefitting;
 
         /// Two totals, each assigned, because one accumulated. The bottom levels are made once
         /// and the top level again every frame that moves, so adding both to one figure reported a

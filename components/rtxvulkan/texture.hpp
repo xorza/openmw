@@ -11,6 +11,8 @@
 #include <osg/Vec4f>
 #include <vulkan/vulkan_core.h>
 
+#include <components/rtx/refusal.hpp>
+#include <components/rtx/result.hpp>
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/slots.hpp>
 #include <components/rtx/texturedata.hpp>
@@ -20,6 +22,7 @@
 #include "frameslots.hpp"
 #include "handles.hpp"
 #include "image.hpp"
+#include "memory.hpp"
 #include "readstamp.hpp"
 #include "slottable.hpp"
 
@@ -57,30 +60,36 @@ namespace Rtx
         /// A slot with nothing in it yet, which is what the array holds while it is being filled.
         Texture() = default;
 
-        /// A texture from its file's bytes: uploaded level by level where the file carried a
-        /// chain, and where it carried one level of more than a texel, uploaded once and the chain
-        /// made by `passes.mChain` from that upload — `MipChain` says which files and why — into
-        /// a four-byte image of the same curve, the upload buried under the batch.
+        /// A texture from its file's bytes, from level `first` on: uploaded level by level where
+        /// the file carried a chain, and where it carried one level of more than a texel, uploaded
+        /// once and the chain made by `passes.mChain` from that upload — `MipChain` says which
+        /// files and why — into a four-byte image of the same curve, the upload buried under the
+        /// batch. Why there is none where the device has no room for it as `use`. Every image is
+        /// made before anything is recorded, so a refusal leaves the batch as it found it.
         ///
         /// @param passes what makes the chain and estimates the map, or fills the map with the
         ///        neutral one where `data` says the texture is not to be estimated.
         /// @param sampler the sampler the array binds this texture through, which the dispatches
         ///        are handed the texture with.
+        /// @param first the level the image begins at: nought for the file as it is, and further
+        ///        down for one held to a smaller side. Nought where the device completes the chain,
+        ///        which begins at the file's one level.
         /// @param name what a capture calls it. Empty where the build names no objects.
         /// @param regions the caller's scratch, cleared and refilled here with one copy per level.
-        Texture(const Device& device, Batch& batch, const TexturePasses& passes, VkSampler sampler,
-            const TextureData& data, std::string_view name, std::vector<VkBufferImageCopy>& regions);
+        static Result<Texture, std::string_view> fromFile(const Device& device, Batch& batch,
+            const TexturePasses& passes, VkSampler sampler, const TextureData& data, std::uint32_t first,
+            std::string_view name, std::vector<VkBufferImageCopy>& regions, MemoryUse use);
 
         /// A sprite's light bake: shaped like `source`, made from its alpha by `passes.mBake` in
         /// the same batch, under the neutral map. `source` must stand, and its upload must be
         /// recorded ahead of this, in this batch or in one already submitted.
-        Texture(const Device& device, Batch& batch, const TexturePasses& passes, VkSampler sampler,
-            const Texture& source, std::string_view name);
+        static Result<Texture, std::string_view> bakeOf(const Device& device, Batch& batch, const TexturePasses& passes,
+            VkSampler sampler, const Texture& source, std::string_view name);
 
         /// A chunk's flattened ground, stood empty under the neutral map: `GROUND_COMPOSITE_EXTENT`
         /// square, display-encoded, with a chain to one texel and a `UNORM` view a dispatch stores
         /// through. Written by `TextureArray::bakeComposites`, in the placement after it arrives.
-        Texture(const Device& device, Batch& batch, std::string_view name);
+        static Result<Texture, std::string_view> composite(const Device& device, Batch& batch, std::string_view name);
 
         /// One texel of `colour`, whole floats so the value is the one named, under the neutral
         /// map: what `TEXTURE_NEUTRAL` stands, once, when the array is made.
@@ -125,11 +134,15 @@ namespace Rtx
     };
 
     /// What a texture array stands: how many of its slots hold a texture, and what those come to,
-    /// out of one walk, so the two cannot disagree about which slots they counted.
+    /// out of one walk, so the two cannot disagree about which slots they counted. A slot that
+    /// draws the stand-in holds none.
     struct TexturesHeld
     {
         std::uint32_t mCount = 0;
         VkDeviceSize mBytes = 0;
+
+        /// How many of those stand smaller than their files, from a level further down.
+        std::uint32_t mReduced = 0;
     };
 
     /// Every texture a scene uses, in one descriptor array a shader indexes by material, and every
@@ -147,17 +160,16 @@ namespace Rtx
     class TextureArray
     {
     public:
-        /// An array of `slots` textures, with `textures` written into the slots they name. The
-        /// length is the scene's table and not what was described, because a slot the scene has
-        /// given back still sits between two that are. `textures` may be empty: a slot nothing
-        /// describes is one no material names, which is what `descriptorBindingPartiallyBound` is
-        /// required for.
+        /// An array of `slots` textures, none of them written yet: `write` stands them. The length
+        /// is the scene's table and not what was described, because a slot the scene has given
+        /// back still sits between two that are. A slot nothing describes is one no material
+        /// names, which is what `descriptorBindingPartiallyBound` is required for.
         ///
         /// @param layout what `describeLayout` made: every array is shaped by the one the renderer
         ///        keeps, which is what lets one pass be handed any scene's set.
         /// @param passes the renderer's, which every texture is made with as it arrives.
         TextureArray(const Device& device, Batch& batch, const SetLayout& layout, const TexturePasses& passes,
-            std::uint32_t slots, std::span<const TextureData> textures);
+            std::uint32_t slots);
 
         /// The shape of every set an array here holds: two bindless arrays, partially bound and
         /// updated after bind. Made once by whoever owns the passes that name it.
@@ -167,9 +179,17 @@ namespace Rtx
         /// why the sets are allocated at the maximum rather than at the scene's count. By slot and
         /// not by appending, because a slot a departing cell freed is taken over wherever it sits.
         /// What a slot held before goes to `graveyard`: a frame in flight may be reading it. The
-        /// descriptors are owed to every set and written by `sync`. The bakes go in after
-        /// everything else, because a bake is made from a source that may be arriving beside it.
-        void write(Batch& batch, std::span<const TextureData> arrived);
+        /// descriptors are owed to every set and written by `sync`. The bakes go in after every
+        /// file, because a bake is made from a source that may be arriving beside it, and the
+        /// ground last, for the reason `chooseSide` gives.
+        ///
+        /// **Every file from the first level within one side**, `chooseSide`'s for the room the
+        /// device has left for textures — one side for the whole arrival, so no texture of it is
+        /// coarser than another for having come later. A texture the room still cannot hold comes
+        /// down a level at a time, and one with no level at all it can hold draws the stand-in, as
+        /// does one past the device's side at every level; each of those is appended to `refused`,
+        /// saying why.
+        void write(Batch& batch, std::span<const TextureData> arrived, std::vector<Refusal>& refused);
 
         /// Writes the descriptors `slot`'s set owes. Before the placement that binds it, after
         /// `finishReads`: the bindings allow an update after a bind, but not of a descriptor a
@@ -199,7 +219,7 @@ namespace Rtx
 
         /// How long the array is, which is where an append begins and what an uploader compares a
         /// scene's table against. Not how many textures there are: see `getHeld`.
-        std::uint32_t getCount() const { return static_cast<std::uint32_t>(mTextures.size()); }
+        std::uint32_t getCount() const { return static_cast<std::uint32_t>(mSlots.size()); }
 
         /// Where `slot`'s copy of the texel counts is — `GpuTables::mTextureTexels` — named for
         /// the next submit, which `sync(slot)` brought up to date.
@@ -209,10 +229,53 @@ namespace Rtx
         /// nothing, and neither is counted here.
         TexturesHeld getHeld() const;
 
+        /// The side the last `write` held its files to, which is `getSideLimit` where the room took
+        /// nothing off. Read by the tests and by nothing else.
+        std::uint32_t getSide() const { return mSide; }
+
+        /// The most texels a side the device takes of every image a texture is made as — the
+        /// least `maxExtent` over those images' formats and usages, which is what `vkCreateImage`
+        /// is valid against, and never more than `maxImageDimension2D`.
+        std::uint32_t getSideLimit() const { return mSideLimit; }
+
+        /// The side `write` holds `arrived` to where the device has `room` bytes for it: the
+        /// largest, from the device's own down by halves, at which the arrival comes to no more
+        /// than the room. Where it fits at no side, the largest at which its files do without the
+        /// ground's composites, which no side brings down and which then take what is left — one
+        /// texel where not even that fits, and each texture comes down as far as its file goes.
+        std::uint32_t chooseSide(std::span<const TextureData> arrived, VkDeviceSize room) const;
+
     private:
+        /// One slot of the array: the texture standing in it, or the stand-in, which stands once
+        /// beside the array for every slot that draws it. One row, so a slot cannot be half
+        /// updated.
+        struct Slot
+        {
+            Texture mTexture;
+            bool mStandIn = false;
+
+            /// Whether the texture stands smaller than its file.
+            bool mReduced = false;
+
+            bool isEmpty() const { return mTexture.isEmpty() && !mStandIn; }
+        };
+
+        /// What `slot` is sampled through: its texture, or the stand-in.
+        const Texture& standingIn(const Slot& slot) const { return slot.mStandIn ? mStandIn : slot.mTexture; }
+
+        /// What `arrived` would take of the device held to `side`: the bytes uploaded and the
+        /// chains and maps the device makes beside them, the ground's composites only where
+        /// `ground` says. The resources' own bytes, which the allocator rounds up a little, and the
+        /// reason `write` still comes down level by level.
+        VkDeviceSize costAt(std::span<const TextureData> arrived, std::uint32_t side, bool ground) const;
+
+        /// What `texture` is made as, held to `side`, or why the device had no room for it.
+        Result<Texture, std::string_view> make(
+            Batch& batch, const TextureData& texture, std::uint32_t side, std::string_view name);
+
         /// Stands one of `arrived` in its slot: a texture from its bytes, or a bake from its source,
-        /// which must stand already.
-        void stand(Batch& batch, const TextureData& texture);
+        /// which must stand already — or the stand-in, where the texture cannot stand.
+        void stand(Batch& batch, const TextureData& texture, std::uint32_t side, std::vector<Refusal>& refused);
 
         /// Queues a write of `image` into `set` at `binding[slot]`, behind the image info the write
         /// names by address.
@@ -235,7 +298,7 @@ namespace Rtx
         /// Indexed by slot. A slot the scene has freed holds nothing until something takes it over —
         /// `drop` buries the image it had, and the descriptor is left naming what has gone for the
         /// reason `drop` gives.
-        std::vector<Texture> mTextures;
+        std::vector<Slot> mSlots;
 
         /// One per `TextureWrap`, indexed by it: the sampler a slot is bound through is the one its
         /// file's wrap names, for the texture and for its shading map alike.
@@ -244,6 +307,17 @@ namespace Rtx
         /// The one texel every material with no diffuse names, at `TEXTURE_NEUTRAL` of every set:
         /// beside the array rather than in it, so the array's length stays the scene's table's.
         Texture mNeutral;
+
+        /// `describeStandIn`, stood once, essential: what every slot that cannot stand draws, so a
+        /// refusal costs the device nothing and a device with no room left can still refuse.
+        Texture mStandIn;
+
+        std::uint32_t mSideLimit = 0;
+        std::uint32_t mSide = 0;
+
+        /// The least side the log has said textures are held to, which it says again only for a
+        /// smaller one.
+        std::uint32_t mSaidSide = 0;
 
         /// One word per slot of the array, `TEXTURE_SLOTS` long: how many texels the texture in
         /// it holds, which `coneLod` reads where it asked the driver for a size.

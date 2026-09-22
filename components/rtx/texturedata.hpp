@@ -5,6 +5,7 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <string_view>
 #include <vector>
@@ -169,7 +170,9 @@ namespace Rtx
         /// one texel.
         GroundComposite,
 
-        /// The grey a slot whose file could not be read is drawn with. Its bytes are its own.
+        /// What a slot is drawn as where what it names cannot stand: `describeStandIn`, whose
+        /// bytes it carries. A backend stands one image for every such slot, and for a slot it has
+        /// no room for, so a refusal costs the device nothing.
         StandIn,
     };
 
@@ -220,6 +223,25 @@ namespace Rtx
         /// file's is estimated on the device as it arrives, `ShadingPass`. Derived, because it is
         /// the source and nothing else that decides it.
         bool hasNeutralShading() const { return mSource != TextureSource::File; }
+
+        /// The first level no wider and no taller than `side`, or nothing where every level is
+        /// larger: where a texture held to that side begins. The levels halve, so every level
+        /// after it is within the side too.
+        std::optional<std::uint32_t> firstLevelWithin(std::uint32_t side) const
+        {
+            for (std::uint32_t level = 0; level < mLevels.size(); ++level)
+                if (std::max(mLevels[level].mWidth, mLevels[level].mHeight) <= side)
+                    return level;
+
+            return std::nullopt;
+        }
+
+        /// How many bytes the levels from `level` on take: what an upload that begins there copies.
+        std::size_t bytesFrom(std::uint32_t level) const
+        {
+            assert(level < mLevels.size() && "a level past the end of the chain");
+            return mBytes.size() - mLevels[level].mOffset;
+        }
     };
 
 }

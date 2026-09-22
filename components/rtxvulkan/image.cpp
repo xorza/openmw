@@ -64,6 +64,28 @@ namespace Rtx
     Image::Image(const Device& device, std::uint32_t width, std::uint32_t height, VkFormat format,
         VkImageUsageFlags usage, std::string_view name, std::uint32_t mipLevels, std::uint32_t depth,
         VkFormat storageFormat)
+        : Image(Unbound{}, device, width, height, format, usage, name, mipLevels, depth, storageFormat)
+    {
+        bind(device.getMemory().take(mHandle.get(), VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT), name);
+    }
+
+    Result<Image, std::string_view> Image::tryMake(const MemoryUse use, const Device& device, std::uint32_t width,
+        std::uint32_t height, VkFormat format, VkImageUsageFlags usage, std::string_view name, std::uint32_t mipLevels,
+        std::uint32_t depth, VkFormat storageFormat)
+    {
+        Image made(Unbound{}, device, width, height, format, usage, name, mipLevels, depth, storageFormat);
+        Result<DeviceMemory, std::string_view> memory
+            = device.getMemory().tryTake(made.mHandle.get(), VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, use);
+        if (!memory.isOk())
+            return Err{ memory.error() };
+
+        made.bind(std::move(memory.value()), name);
+        return made;
+    }
+
+    Image::Image(Unbound, const Device& device, std::uint32_t width, std::uint32_t height, VkFormat format,
+        VkImageUsageFlags usage, std::string_view name, std::uint32_t mipLevels, std::uint32_t depth,
+        VkFormat storageFormat)
         : mDevice(&device)
         , mWidth(width)
         , mHeight(height)
@@ -72,6 +94,7 @@ namespace Rtx
         , mUsage(usage)
         , mMipLevels(mipLevels)
         , mTexelBytes(texelBytesOf(format))
+        , mStorageFormat(storageFormat)
     {
         assert(mipLevels >= 1 && "an image holds its own full level at least");
         assert(depth >= 1 && "an image holds one slice at least");
@@ -110,22 +133,30 @@ namespace Rtx
             .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
         };
         mHandle = Owned<VkImage, vkDestroyImage>::make(device.getHandle(), vkCreateImage, create, "vkCreateImage");
+        device.setName(mHandle.get(), name);
+    }
 
-        mMemory = device.getMemory().take(mHandle.get(), VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    void Image::bind(DeviceMemory&& memory, std::string_view name)
+    {
+        const Device& device = *mDevice;
+        const bool volume = mDepth > 1;
+        const bool twoFormats = mStorageFormat != VK_FORMAT_UNDEFINED && mStorageFormat != mFormat;
+
+        mMemory = std::move(memory);
         checkVk(vkBindImageMemory(device.getHandle(), mHandle.get(), mMemory.getHandle(), mMemory.getOffset()),
             "vkBindImageMemory");
 
         const VkImageViewUsageCreateInfo sampledOnly{
             .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_USAGE_CREATE_INFO,
-            .usage = usage & ~VkImageUsageFlags{ VK_IMAGE_USAGE_STORAGE_BIT },
+            .usage = mUsage & ~VkImageUsageFlags{ VK_IMAGE_USAGE_STORAGE_BIT },
         };
         const VkImageViewCreateInfo view{
             .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
             .pNext = twoFormats ? &sampledOnly : nullptr,
             .image = mHandle.get(),
             .viewType = volume ? VK_IMAGE_VIEW_TYPE_3D : VK_IMAGE_VIEW_TYPE_2D,
-            .format = format,
-            .subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, mipLevels, 0, 1 },
+            .format = mFormat,
+            .subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, mMipLevels, 0, 1 },
         };
         mView = Owned<VkImageView, vkDestroyImageView>::make(
             device.getHandle(), vkCreateImageView, view, "vkCreateImageView");
@@ -133,14 +164,14 @@ namespace Rtx
         // Only where something will write through them. A storage descriptor is what these views
         // exist for, and an image without the usage bit can have none — a chain that is only ever
         // sampled would be paying for views nothing may name.
-        if ((mipLevels > 1 || twoFormats) && (usage & VK_IMAGE_USAGE_STORAGE_BIT) != 0)
+        if ((mMipLevels > 1 || twoFormats) && (mUsage & VK_IMAGE_USAGE_STORAGE_BIT) != 0)
         {
-            mLevelViews.reserve(mipLevels);
-            for (std::uint32_t level = 0; level < mipLevels; ++level)
+            mLevelViews.reserve(mMipLevels);
+            for (std::uint32_t level = 0; level < mMipLevels; ++level)
             {
                 VkImageViewCreateInfo one = view;
                 one.pNext = nullptr;
-                one.format = twoFormats ? storageFormat : format;
+                one.format = twoFormats ? mStorageFormat : mFormat;
                 one.subresourceRange.baseMipLevel = level;
                 one.subresourceRange.levelCount = 1;
                 mLevelViews.push_back(Owned<VkImageView, vkDestroyImageView>::make(
@@ -149,7 +180,6 @@ namespace Rtx
             }
         }
 
-        device.setName(mHandle.get(), name);
         device.setName(mView.get(), name);
     }
 
@@ -177,6 +207,7 @@ namespace Rtx
             mUsage = other.mUsage;
             mMipLevels = other.mMipLevels;
             mTexelBytes = other.mTexelBytes;
+            mStorageFormat = other.mStorageFormat;
         }
 
         return *this;

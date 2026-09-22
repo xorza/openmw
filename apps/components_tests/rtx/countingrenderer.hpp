@@ -11,6 +11,7 @@
 #include <components/rtx/guirenderer.hpp>
 #include <components/rtx/memoryreport.hpp>
 #include <components/rtx/reconstruction.hpp>
+#include <components/rtx/refusal.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
@@ -86,6 +87,9 @@ namespace Rtx::Testing
                 .mStructureRevision = built.mRevision,
                 .mTextureCount = countAt(slot) };
         }
+
+        /// What the device refused, which a test fills to be what the next hand-over answers.
+        std::span<const Rtx::Refusal> getRefusals(Rtx::SceneSlot) const override { return mRefusing; }
 
         /// **The texture array does not shrink**, which is what `mTextures` staying put records: a
         /// slot goes on being where an append begins from whether or not it holds an image.
@@ -209,6 +213,9 @@ namespace Rtx::Testing
         std::uint64_t mFrames = 0;
         std::uint64_t mSkipped = 0;
         std::uint32_t mDropCalls = 0;
+
+        /// What `getRefusals` answers, as a device short of room would after a hand-over.
+        std::vector<Rtx::Refusal> mRefusing;
 
     private:
         Rtx::SceneStats mStats;

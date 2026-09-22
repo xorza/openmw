@@ -9,6 +9,7 @@
 #include <vulkan/vulkan_core.h>
 
 #include <components/rtx/mesh.hpp>
+#include <components/rtx/refusal.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/scene.h>
@@ -80,7 +81,9 @@ namespace Rtx
             void build(BottomLevelStore& store, std::span<const Index> meshes)
             {
                 Batch batch(getPool());
-                store.build(batch, mScene, meshes, mPoses.at(FrameSlot{}), mIndices, 0);
+                std::vector<Refusal> refused;
+                store.build(batch, mScene, meshes, mPoses.at(FrameSlot{}), mIndices, 0, refused);
+                EXPECT_TRUE(refused.empty()) << "a device with room refused a structure";
                 batch.flush();
             }
 
@@ -88,7 +91,9 @@ namespace Rtx
             void buildDeferred(BottomLevelStore& store, std::span<const Index> meshes)
             {
                 Batch batch(getPool());
-                store.build(batch, mScene, meshes, mPoses.at(FrameSlot{}), mIndices, 0);
+                std::vector<Refusal> refused;
+                store.build(batch, mScene, meshes, mPoses.at(FrameSlot{}), mIndices, 0, refused);
+                EXPECT_TRUE(refused.empty()) << "a device with room refused a structure";
                 batch.defer();
             }
 
@@ -177,6 +182,48 @@ namespace Rtx
 
             EXPECT_EQ(store.getCompactableBytes(), 0u);
             EXPECT_EQ(store.getCompactableNowBytes(), 0u);
+
+            // Before the store goes: a buried structure gives its room back to the store's storage.
+            getDevice().waitIdle();
+            getDevice().collectIdle();
+        }
+
+        /// A mesh the device has no room for is left out: its slot holds no structure, so a row
+        /// placing it names none and the top level skips it, and the meshes built before it stand.
+        ///
+        /// **Room for the frame's memory and none for content's**, which is what the build asks
+        /// both of: its scratch and the staged positions are the frame's and are made, and the
+        /// structure's room is content's and is refused. The first grid's block was made to its
+        /// size, so the second has nowhere to go but a block of its own.
+        TEST_F(RtxBottomLevelStoreTest, aMeshTheDeviceHasNoRoomForIsLeftOutAndPlacesNothing)
+        {
+            const std::array<Index, 2> grids{ addGrid(mScene, 64, 0.0f), addGrid(mScene, 64, 1.0f) };
+            stage();
+
+            BottomLevelStore store(getDevice());
+            build(store, std::span(grids).subspan(0, 1));
+
+            std::vector<Refusal> refused;
+            {
+                const Testing::NoRoomForContent full(getDevice());
+                Batch batch(getPool());
+                store.build(
+                    batch, mScene, std::span(grids).subspan(1, 1), mPoses.at(FrameSlot{}), mIndices, 0, refused);
+                batch.flush();
+            }
+
+            ASSERT_EQ(refused.size(), 1u);
+            EXPECT_EQ(refused[0].mKind, Refused::Mesh);
+            EXPECT_EQ(refused[0].mWhy, "no device memory is left for it");
+
+            EXPECT_FALSE(store.stands(grids[1]));
+            EXPECT_EQ(store.getStructure(grids[1]), VK_NULL_HANDLE);
+            EXPECT_EQ(store.getAddress(grids[1]), 0u) << "a row placing a mesh left out would name a structure";
+            EXPECT_TRUE(store.stands(grids[0])) << "a mesh built before the device ran out was taken down";
+            EXPECT_NE(store.getAddress(grids[0]), 0u);
+
+            build(store, std::span(grids).subspan(1, 1));
+            EXPECT_TRUE(store.stands(grids[1]));
 
             // Before the store goes: a buried structure gives its room back to the store's storage.
             getDevice().waitIdle();

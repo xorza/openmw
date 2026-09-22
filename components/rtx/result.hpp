@@ -44,6 +44,14 @@ namespace Rtx
             return std::get<0>(mState);
         }
 
+        /// The same, for a value moved out: a resource has one owner, and the result was only its
+        /// way here.
+        T& value()
+        {
+            assert(isOk() && "the value of a result that failed");
+            return std::get<0>(mState);
+        }
+
         const E& error() const
         {
             assert(!isOk() && "the error of a result that holds a value");

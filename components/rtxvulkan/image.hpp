@@ -8,6 +8,8 @@
 
 #include <vulkan/vulkan_core.h>
 
+#include <components/rtx/result.hpp>
+
 #include "imageuse.hpp"
 #include "memory.hpp"
 #include "owned.hpp"
@@ -42,6 +44,13 @@ namespace Rtx
         Image(const Device& device, std::uint32_t width, std::uint32_t height, VkFormat format, VkImageUsageFlags usage,
             std::string_view name, std::uint32_t mipLevels = 1, std::uint32_t depth = 1,
             VkFormat storageFormat = VK_FORMAT_UNDEFINED);
+
+        /// The same, for an image something stands in for: why there is none where the device has
+        /// no room for it as `use` — `MemoryAllocator::tryTake`. The use first, so the parameters
+        /// the constructor defaults stay last.
+        static Result<Image, std::string_view> tryMake(MemoryUse use, const Device& device, std::uint32_t width,
+            std::uint32_t height, VkFormat format, VkImageUsageFlags usage, std::string_view name,
+            std::uint32_t mipLevels = 1, std::uint32_t depth = 1, VkFormat storageFormat = VK_FORMAT_UNDEFINED);
 
         /// Asserts that no submit still reads the image — `isIdle` — as a buffer's does: an image
         /// a submit may still read is buried, never destroyed.
@@ -153,6 +162,18 @@ namespace Rtx
         std::uint32_t getMipLevels() const { return mMipLevels; }
 
     private:
+        /// The handle alone, with no memory bound and no view: what the constructor and `tryMake`
+        /// both begin with, before either knows whether there is room.
+        struct Unbound
+        {
+        };
+        Image(Unbound, const Device& device, std::uint32_t width, std::uint32_t height, VkFormat format,
+            VkImageUsageFlags usage, std::string_view name, std::uint32_t mipLevels, std::uint32_t depth,
+            VkFormat storageFormat);
+
+        /// Binds `memory` and makes the views, which is the rest of what the constructor does.
+        void bind(DeviceMemory&& memory, std::string_view name);
+
         /// What the destructor and a move over this assert: empty, or nothing on the queue reads it.
         bool mayDestroy() const;
 
@@ -186,6 +207,9 @@ namespace Rtx
         VkImageUsageFlags mUsage = 0;
         std::uint32_t mMipLevels = 1;
         std::uint32_t mTexelBytes = 0;
+
+        /// The format a storage view is made in, where it is not `mFormat`, which `bind` reads.
+        VkFormat mStorageFormat = VK_FORMAT_UNDEFINED;
     };
 
     /// A one-texel image for a binding a shader declares and a branch never reads, because a

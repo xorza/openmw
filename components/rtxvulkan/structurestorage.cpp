@@ -4,6 +4,7 @@
 #include <cassert>
 #include <cstddef>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "device.hpp"
@@ -26,26 +27,42 @@ namespace Rtx
     {
     }
 
-    StructureRoom StructureStorage::take(const Device& device, VkDeviceSize bytes, VkDeviceSize least)
+    Result<StructureRoom, std::string_view> StructureStorage::take(
+        const Device& device, VkDeviceSize bytes, VkDeviceSize least)
     {
         assert(bytes > 0);
 
         // Every live block may hold a structure, so the list is asked for the first that fits,
-        // and a new block is as large as the caller asked or as the structure needs.
+        // and a new block is as large as the caller asked or as the structure needs — as the
+        // structure needs and no more, where the device has no room for what the caller asked.
         return mBlocks.take(
             unitsFor(bytes), [](const Block&) { return true; },
-            [&](const std::uint32_t units, const std::uint32_t slot) {
-                const std::uint32_t made = std::max(unitsFor(least), units);
-
+            [&](const std::uint32_t units, const std::uint32_t slot) -> Result<Block, std::string_view> {
                 // Named only where a capture could read it: a release build names nothing, and
                 // the concatenation is a trip to the heap for a name that goes nowhere.
                 std::string name;
                 if constexpr (Device::wantsNames())
                     name = mName + " " + std::to_string(slot);
 
+                const auto make = [&](const std::uint32_t capacity) {
+                    return Buffer::tryMake(MemoryUse::Structure, device, BufferKind::DeviceLocal,
+                        VkDeviceSize{ capacity } * sAlignment, mUsage, name);
+                };
+
+                std::uint32_t made = std::max(unitsFor(least), units);
+                Result<Buffer, std::string_view> buffer = make(made);
+                if (!buffer.isOk() && made > units)
+                {
+                    made = units;
+                    buffer = make(made);
+                }
+
+                if (!buffer.isOk())
+                    return Err{ buffer.error() };
+
                 Block block;
                 block.mCapacity = made;
-                block.mBuffer = Buffer::deviceLocal(device, VkDeviceSize{ made } * sAlignment, mUsage, name);
+                block.mBuffer = std::move(buffer.value());
                 return block;
             });
     }

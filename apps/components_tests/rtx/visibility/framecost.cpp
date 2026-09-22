@@ -12,6 +12,7 @@
 
 #include <components/rtx/camera.hpp>
 #include <components/rtx/mesh.hpp>
+#include <components/rtx/refusal.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
@@ -201,12 +202,15 @@ namespace Rtx::Testing
             const SetLayout layout = TextureArray::describeLayout(device);
             const Testing::TexturePassSet passes(device);
             Batch setup(pool);
-            TextureArray array(device, setup, layout, passes.mPasses, slots, {});
+            TextureArray array(device, setup, layout, passes.mPasses, slots);
             setup.flush();
 
+            // Held across the arrivals as a scene holds its own, and never written to: a device
+            // with room refuses nothing.
+            std::vector<Refusal> refused;
             const auto arrive = [&](Batch& batch, std::uint32_t slot) {
                 const TextureData described = describe(slot);
-                array.write(batch, std::span(&described, 1));
+                array.write(batch, std::span(&described, 1), refused);
             };
 
             {

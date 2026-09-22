@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
@@ -109,6 +110,26 @@ namespace Rtx::Testing
         texture.mBytes.assign(texels.begin(), texels.end());
         texture.mLevels.assign(1, MipLevel{ 0, extent, extent });
         texture.describe(extent, extent, name);
+    }
+
+    /// A texture of `levels` levels from `width` by `height` down, every byte of every level
+    /// `value`: for a test that asks where a texture begins and what that costs, and not what it
+    /// draws.
+    inline void paintLevels(TestTexture& texture, std::uint32_t width, std::uint32_t height, std::uint32_t levels,
+        std::string_view name, std::uint8_t value = 128)
+    {
+        texture.mBytes.clear();
+        texture.mLevels.clear();
+        for (std::uint32_t level = 0; level < levels; ++level)
+        {
+            const std::uint32_t levelWidth = std::max(width >> level, 1u);
+            const std::uint32_t levelHeight = std::max(height >> level, 1u);
+            texture.mLevels.push_back(
+                MipLevel{ static_cast<std::uint32_t>(texture.mBytes.size()), levelWidth, levelHeight });
+            texture.mBytes.insert(texture.mBytes.end(), std::size_t{ levelWidth } * levelHeight * 4, value);
+        }
+
+        texture.describe(width, height, name);
     }
 
     /// Adds one level of `width` by `height` to an uncompressed texture whose levels' alphas a

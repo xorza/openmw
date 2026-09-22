@@ -59,10 +59,12 @@ namespace Rtx
                                R"("waterInstances": {}, "mediumInstances": {}, )"
                                R"("structureBytes": {}, "structureLiveBytes": {}, )"
                                R"("compactableBytes": {}, "compactableNowBytes": {}, "rebuilt": {}, )"
-                               R"("tableBytes": {}, "textureCount": {}, "textureBytes": {}}})",
+                               R"("tableBytes": {}, "textureCount": {}, "textureBytes": {}, )"
+                               R"("reducedTextureCount": {}}})",
                 scene.mInstances.mPlaced, scene.mInstances.mCutout, scene.mInstances.mWater, scene.mInstances.mMedium,
                 scene.mStructureBytes, scene.mStructureLiveBytes, scene.mCompactableBytes, scene.mCompactableNowBytes,
-                scene.mRebuilt, scene.mTableBytes, scene.mTextureCount, scene.mTextureBytes);
+                scene.mRebuilt, scene.mTableBytes, scene.mTextureCount, scene.mTextureBytes,
+                scene.mReducedTextureCount);
         }
 
         std::string asJson(const Arrivals& arrivals)
@@ -175,6 +177,16 @@ namespace Rtx
             return std::format(" ({:.1f} of them would compact to {:.1f})", megabytes(scene.mCompactableNowBytes),
                 megabytes(scene.mCompactableBytes));
         }
+
+        /// How many textures stand smaller than their files, and nothing where none does: a place
+        /// drawn as its files are says nothing about it.
+        std::string describeReduced(const SceneStats& scene)
+        {
+            if (scene.mReducedTextureCount == 0)
+                return {};
+
+            return std::format(", {} of them held smaller", scene.mReducedTextureCount);
+        }
     }
 
     std::string describePlace(const BenchPlace& place)
@@ -197,11 +209,11 @@ namespace Rtx
         if (!place.mCell.empty())
             out += std::format(
                 "  cell {} at {} in {}   {} instances ({} cutouts)   {:.1f} MiB structures in "
-                "{:.1f} reserved{}   {} textures, {:.1f} MiB\n",
+                "{:.1f} reserved{}   {} textures, {:.1f} MiB{}\n",
                 place.mCell, describeHour(place.mHour), place.mWeather, place.mScene.mInstances.mPlaced,
                 place.mScene.mInstances.mCutout, megabytes(place.mScene.mStructureLiveBytes),
                 megabytes(place.mScene.mStructureBytes), describeCompaction(place.mScene), place.mScene.mTextureCount,
-                megabytes(place.mScene.mTextureBytes));
+                megabytes(place.mScene.mTextureBytes), describeReduced(place.mScene));
 
         // **Two facts and not one line.** A staged place pays one build before its frames and can
         // name what it cost; a run of a real game builds a little at every crossing and has no such

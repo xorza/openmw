@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <span>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -16,6 +17,7 @@
 #include <components/rtxvulkan/device.hpp>
 #include <components/rtxvulkan/handles.hpp>
 #include <components/rtxvulkan/image.hpp>
+#include <components/rtxvulkan/memory.hpp>
 #include <components/rtxvulkan/shadingpass.hpp>
 #include <components/rtxvulkan/texture.hpp>
 
@@ -28,11 +30,11 @@ namespace Rtx
     {
         struct RtxShadingPassTest : Testing::DeviceTest
         {
-            /// Uploads `data` as the array does, runs the pass over it again into a map of the
-            /// test's own, and hands that map back as the device stores it: one unorm16 a cell, row
-            /// by row. The test's own map and not `Texture`'s, because a map the trace samples is
-            /// never copied back and carries no usage for it.
-            std::vector<std::uint16_t> mapOf(const TextureData& data, std::string_view name)
+            /// Uploads `data` as the array does, from level `first` on, runs the pass over it again
+            /// into a map of the test's own, and hands that map back as the device stores it: one
+            /// unorm16 a cell, row by row. The test's own map and not `Texture`'s, because a map
+            /// the trace samples is never copied back and carries no usage for it.
+            std::vector<std::uint16_t> mapOf(const TextureData& data, std::string_view name, std::uint32_t first = 0)
             {
                 Device& device = getDevice();
                 const Testing::TexturePassSet passes(device);
@@ -44,7 +46,9 @@ namespace Rtx
 
                 Batch upload(getPool());
                 std::vector<VkBufferImageCopy> regions;
-                const Texture source(device, upload, passes.mPasses, sampler.get(), data, name, regions);
+                const Texture source = std::move(Texture::fromFile(
+                    device, upload, passes.mPasses, sampler.get(), data, first, name, regions, MemoryUse::Essential)
+                                                     .value());
                 passes.mShading.record(upload.getCommands(), source.getImage(), sampler.get(), map, data);
                 upload.flush();
 
@@ -94,6 +98,42 @@ namespace Rtx
             ASSERT_EQ(encoded.size(), ShadingMap::sCells);
             EXPECT_NEAR(decodeShading(encoded[middle]), 1.501f, 0.002f);
             EXPECT_NEAR(decodeShading(encoded[side]), 0.5f, 0.002f);
+        }
+
+        /// A texture held to a smaller side is estimated over the level it stands from, as the host
+        /// estimates that level on its own.
+        ///
+        /// **The image's size and not the file's.** The two tones at 128 across and again at 64 —
+        /// bright over columns 32 to 96 and then 16 to 48, which is the first level box-filtered
+        /// exactly, every boundary being on an even column. Stood from the second level the image is
+        /// 64 across, and an estimate over the file's 128 reads three quarters of its texels past
+        /// the image. Linear, so the two sum the same arithmetic, to the two steps the first test
+        /// allows.
+        TEST_F(RtxShadingPassTest, aTextureHeldToASmallerSideIsEstimatedOverTheLevelItStandsFrom)
+        {
+            constexpr std::uint32_t halfExtent = Testing::sTwoTonesExtent / 2;
+            std::vector<std::uint8_t> halved(std::size_t{ halfExtent } * halfExtent * 4, 255);
+            for (std::uint32_t y = 0; y < halfExtent; ++y)
+                for (std::uint32_t x = 0; x < halfExtent; ++x)
+                    for (std::size_t channel = 0; channel < 3; ++channel)
+                        halved[(std::size_t{ y } * halfExtent + x) * 4 + channel] = x >= 16 && x < 48 ? 255 : 156;
+
+            Testing::TestTexture half;
+            Testing::paintFlat(half, halfExtent, halved, "half");
+
+            const Testing::TestTexture full = Testing::paintTwoTones(32, 96, TextureFormat::Rgba8Unorm);
+            Testing::TestTexture both;
+            both.mBytes = full.mBytes;
+            both.mBytes.insert(both.mBytes.end(), halved.begin(), halved.end());
+            both.mLevels = { full.mLevels.front(),
+                MipLevel{ static_cast<std::uint32_t>(full.mBytes.size()), halfExtent, halfExtent } };
+            both.describe(Testing::sTwoTonesExtent, Testing::sTwoTonesExtent, "two levels");
+
+            const ShadingMap host(half.mData);
+            const std::vector<std::uint16_t> device = mapOf(both.mData, "two levels from the second", 1);
+            ASSERT_EQ(device.size(), ShadingMap::sCells);
+            for (std::size_t cell = 0; cell < device.size(); ++cell)
+                EXPECT_NEAR(int{ device[cell] }, encodeShading(host.getValues()[cell]), 2) << "at cell " << cell;
         }
 
         /// A BC1 hole is not a colour.
