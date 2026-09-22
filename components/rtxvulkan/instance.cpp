@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstring>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <components/debug/debuglog.hpp>
@@ -30,7 +31,7 @@ namespace Rtx
                 [&](const VkLayerProperties& layer) { return std::strcmp(layer.layerName, name) == 0; });
         }
 
-        bool hasInstanceExtension(const char* name)
+        bool loaderOffers(const char* name)
         {
             const std::vector<VkExtensionProperties> extensions = enumerateVk<VkExtensionProperties>(
                 "vkEnumerateInstanceExtensionProperties", [](std::uint32_t* count, VkExtensionProperties* into) {
@@ -69,24 +70,23 @@ namespace Rtx
         // driver's pacing answers through (`LatencyPacer`). Taken with any surface where the
         // loader has it, so each of the two can stand without the other.
         const bool surfaceCapabilities2
-            = !surfaceExtensions.empty() && hasInstanceExtension(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
+            = !surfaceExtensions.empty() && loaderOffers(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
         if (surfaceCapabilities2)
             extensions.push_back(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
 
         // What the device half of swapchain maintenance rests on: a present fence is the only
         // thing that says the presentation engine has finished with an image. Taken where the
         // loader has both, so a driver without them presents as before.
-        mSurfaceMaintenance = surfaceCapabilities2 && hasInstanceExtension(VK_KHR_SURFACE_MAINTENANCE_1_EXTENSION_NAME);
-        if (mSurfaceMaintenance)
+        if (surfaceCapabilities2 && loaderOffers(VK_KHR_SURFACE_MAINTENANCE_1_EXTENSION_NAME))
             extensions.push_back(VK_KHR_SURFACE_MAINTENANCE_1_EXTENSION_NAME);
 
-        mDebugUtils = wantDebugUtils && hasInstanceExtension(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+        const bool debugUtils = wantDebugUtils && loaderOffers(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 
         // Validation reaches us only through the messenger, so without the extension it would run
         // and report nothing — worse than not running at all, because the clean output would read
         // as a pass.
         const bool wanted = options.mLevel != ValidationLevel::Off;
-        const bool validation = wanted && mDebugUtils && hasLayer(sValidationLayer);
+        const bool validation = wanted && debugUtils && hasLayer(sValidationLayer);
         if (wanted && !validation)
         {
             const std::string missing = std::string(sValidationLayer) + " or " + VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
@@ -100,7 +100,7 @@ namespace Rtx
             Log(Debug::Warning) << "Vulkan validation was requested but " << missing << " is missing.";
         }
 
-        if (mDebugUtils)
+        if (debugUtils)
             extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 
         if (validation)
@@ -206,6 +206,7 @@ namespace Rtx
         };
 
         checkVkSupport(vkCreateInstance(&createInfo, nullptr, &mHandle), "vkCreateInstance");
+        mExtensions.assign(extensions.begin(), extensions.end());
 
         // A constructor that throws runs no destructor, and this throw is caught and reported
         // rather than ending the process, so anything after a successful create cleans up before it
@@ -240,6 +241,11 @@ namespace Rtx
             mHandle = VK_NULL_HANDLE;
             throw;
         }
+    }
+
+    bool Instance::hasExtension(const std::string_view name) const
+    {
+        return std::find(mExtensions.begin(), mExtensions.end(), name) != mExtensions.end();
     }
 
     Instance::~Instance()

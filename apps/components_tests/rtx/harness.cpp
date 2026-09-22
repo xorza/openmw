@@ -83,6 +83,9 @@ namespace Rtx::Testing
 
             harness->mDevice = std::make_unique<Device>(
                 *harness->mInstance, PhysicalDevice::select(harness->mInstance->getHandle()), getPipelineCacheSpec());
+            if (ValidationLog* log = harness->mInstance->getValidationLog(); log != nullptr)
+                log->takeErrorsOnThisThread(harness->mMadeWith);
+
             return harness;
         }
 
@@ -96,12 +99,22 @@ namespace Rtx::Testing
             });
         }
 
+        /// What the layers raised while the validated renderer was made: the other loads none.
+        std::vector<std::string>& rendererMadeWith()
+        {
+            static std::vector<std::string> sMadeWith;
+            return sMadeWith;
+        }
+
         std::unique_ptr<VulkanRenderer> buildRenderer(bool validation, std::string& reason)
         {
             // Every test resizes to what it needs; one texel is only what the first target costs.
             try
             {
-                return std::make_unique<VulkanRenderer>(describeRenderer(1, 1, validation));
+                auto renderer = std::make_unique<VulkanRenderer>(describeRenderer(1, 1, validation));
+                if (validation)
+                    renderer->takeValidationErrors(rendererMadeWith());
+                return renderer;
             }
             catch (const Unsupported& obstacle)
             {
@@ -258,6 +271,11 @@ namespace Rtx::Testing
     VulkanRenderer* getRenderer(std::string& reason)
     {
         return cachedRenderer(true, reason);
+    }
+
+    const std::vector<std::string>& getRendererMadeWith()
+    {
+        return rendererMadeWith();
     }
 
     VulkanRenderer* getUnvalidatedRenderer(std::string& reason)

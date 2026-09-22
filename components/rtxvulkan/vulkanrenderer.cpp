@@ -81,22 +81,14 @@ namespace Rtx
             return std::bit_cast<float>(sign | ((exponent + 112u) << 23) | (mantissa << 13));
         }
 
-        /// The instance a window needs, which is the headless one plus whatever SDL asks for.
+        /// The instance a window needs, which is the headless one plus whatever SDL asks for — the
+        /// surface among it, which is what tells the device to take a swapchain.
         std::vector<const char*> surfaceExtensionsFor(const RendererOptions& options)
         {
             if (options.mWindow == nullptr)
                 return {};
 
             return Presenter::getInstanceExtensions(options.mWindow);
-        }
-
-        /// A swapchain is the only thing presenting adds to the device.
-        std::vector<const char*> deviceExtensionsFor(const RendererOptions& options)
-        {
-            if (options.mWindow == nullptr)
-                return {};
-
-            return { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
         }
 
         /// How much wider the arms' image plane is than the eye's, per axis —
@@ -111,8 +103,7 @@ namespace Rtx
     VulkanRenderer::VulkanRenderer(const RendererOptions& options)
         : mInstance(options.mValidation, surfaceExtensionsFor(options))
         , mDevice(mInstance, PhysicalDevice::select(mInstance.getHandle()),
-              PipelineCacheSpec{ .mDirectory = options.mCacheDirectory, .mShaderDirectory = options.mShaderDirectory },
-              deviceExtensionsFor(options))
+              PipelineCacheSpec{ .mDirectory = options.mCacheDirectory, .mShaderDirectory = options.mShaderDirectory })
         , mCounting(options.mCounting)
         , mProfile(options.mProfile)
         , mReadsCounts(mCounting || mProfile.mStressOverlapMs > 0.0)

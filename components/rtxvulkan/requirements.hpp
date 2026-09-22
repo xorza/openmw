@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <span>
 #include <string>
@@ -108,9 +109,32 @@ namespace Rtx
     /// The table itself, in the order `PhysicalDevice::profileOf` reads the device's answers in.
     std::span<const RequiredFormat> getRequiredFormats();
 
-    /// Extensions used when the driver offers them and lived without when it does not. Reported by
-    /// `openmw-rtxtool info` so it is visible which of them a run actually had.
-    std::span<const char* const> getOptionalDeviceExtensions();
+    /// What the renderer does where the driver offers it and goes without where it does not.
+    enum class DeviceOption : std::uint8_t
+    {
+        FaultReport,
+        MemoryBudget,
+        PresentFences,
+        Checkpoints,
+        Pacing,
+    };
+
+    inline constexpr std::size_t sDeviceOptions = static_cast<std::size_t>(DeviceOption::Pacing) + 1;
+
+    /// One option as extensions: the ones it is made of, enabled all or none, and what the registry
+    /// says has to be enabled beside them — an instance extension or a device one — before any of
+    /// them may be. An option whose needs are not met is not taken, however much of it the driver
+    /// offers: the present id rests on a swapchain, which a device with no window has none of.
+    struct OptionalExtensions
+    {
+        DeviceOption mOption;
+        std::span<const char* const> mExtensions;
+        std::span<const char* const> mNeeds;
+    };
+
+    /// Every option, in the order of `DeviceOption`. Reported by `openmw-rtxtool info`, so it is
+    /// visible which a device offers; `Device::has` says which a device took.
+    std::span<const OptionalExtensions> getOptionalExtensions();
 
     /// The table itself, so a test can prove its entries address distinct fields.
     std::span<const RequiredFeature> getRequiredDeviceFeatures();

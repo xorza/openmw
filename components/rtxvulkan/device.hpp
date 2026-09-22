@@ -5,7 +5,6 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include <vector>
 
 #include <vulkan/vulkan_core.h>
 
@@ -163,14 +162,15 @@ namespace Rtx
     class Device
     {
     public:
+        /// Takes the swapchain where `instance` loaded a surface, which it does for a window and
+        /// never headless, and each option (`getOptionalExtensions`) the device offers whole whose
+        /// needs are met by what is taken by then.
+        ///
         /// @param instance must outlive the device. Not held: a `VkDevice` does not reference its
         ///        instance, but every entry point reached through it does.
         /// @param cache where the pipeline cache is kept and what it is keyed on. An empty
         ///        directory keeps none, and every pipeline is compiled from source every run.
-        /// @param extraExtensions device extensions beyond the required and optional lists — the
-        ///        swapchain, when there is a window.
-        Device(const Instance& instance, PhysicalDevice&& physicalDevice, const PipelineCacheSpec& cache,
-            const std::vector<const char*>& extraExtensions = {});
+        Device(const Instance& instance, PhysicalDevice&& physicalDevice, const PipelineCacheSpec& cache);
         ~Device();
 
         VkDevice getHandle() const { return mHandle.get(); }

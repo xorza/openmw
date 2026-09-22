@@ -104,6 +104,34 @@ namespace Rtx
                 physical.hasOptionalExtension(VK_EXT_DEVICE_FAULT_EXTENSION_NAME));
         }
 
+        /// The device and the renderer are made without a validation error. What the layers raise
+        /// while either is made reaches no test's own drain, which takes whatever is on the log for
+        /// a previous test's and drops it — and a device that enabled an extension without the one
+        /// it rests on raised its error there, on every run, for nobody.
+        TEST_F(RtxDeviceTest, theDeviceAndTheRendererAreMadeWithoutAValidationError)
+        {
+            for (const std::string& error : mHarness->mMadeWith)
+                ADD_FAILURE() << "making the device: " << error;
+
+            std::string reason;
+            if (Testing::getRenderer(reason) == nullptr)
+                GTEST_SKIP() << reason;
+
+            for (const std::string& error : Testing::getRendererMadeWith())
+                ADD_FAILURE() << "making the renderer: " << error;
+        }
+
+        /// A device with no window takes no option that rests on a swapchain, whatever the driver
+        /// offers: no present id and no pacing on it, and no present fence. The test's device is
+        /// made on an instance with no surface, as every headless run's is.
+        TEST_F(RtxDeviceTest, aDeviceWithNoWindowTakesNoOptionThatRestsOnASwapchain)
+        {
+            ASSERT_FALSE(mHarness->mInstance->hasExtension(VK_KHR_SURFACE_EXTENSION_NAME));
+
+            EXPECT_FALSE(mHarness->mDevice->hasLatencyPacing());
+            EXPECT_FALSE(mHarness->mDevice->hasPresentFences());
+        }
+
         TEST_F(RtxDeviceTest, everyRequiredFeatureIsActuallySupported)
         {
             DeviceFeatures supported;

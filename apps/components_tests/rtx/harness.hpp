@@ -48,6 +48,10 @@ namespace Rtx::Testing
     {
         std::unique_ptr<Instance> mInstance;
         std::unique_ptr<Device> mDevice;
+
+        /// What the layers raised while the two were made, taken before any test's own drain,
+        /// which reads whatever is on the log as a previous test's and drops it.
+        std::vector<std::string> mMadeWith;
     };
 
     /// Why this machine cannot build a Vulkan instance, or empty where it can.
@@ -159,6 +163,10 @@ namespace Rtx::Testing
     /// a test that stands up its own costs the suite two seconds. Only an upscaler needs its own,
     /// because the mode is fixed when the renderer is built.
     VulkanRenderer* getRenderer(std::string& reason);
+
+    /// What the layers raised while `getRenderer`'s renderer was made, for the reason
+    /// `Harness::mMadeWith` gives. Empty until `getRenderer` has made one.
+    const std::vector<std::string>& getRendererMadeWith();
 
     /// The same, with no validation layers loaded, for the one test that counts allocations.
     ///

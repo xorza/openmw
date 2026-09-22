@@ -1,6 +1,8 @@
 #include "device.hpp"
 
 #include <algorithm>
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <format>
@@ -83,24 +85,41 @@ namespace Rtx
         }
     }
 
-    Device::Device(const Instance& instance, PhysicalDevice&& physicalDevice, const PipelineCacheSpec& cache,
-        const std::vector<const char*>& extraExtensions)
+    Device::Device(const Instance& instance, PhysicalDevice&& physicalDevice, const PipelineCacheSpec& cache)
         : mPhysicalDevice(std::move(physicalDevice))
     {
         std::vector<const char*> extensions;
         for (const char* const name : getRequiredDeviceExtensions())
             extensions.push_back(name);
-        for (const char* const name : mPhysicalDevice.getAvailableOptionalExtensions())
+
+        // The swapchain rests on the surface, which the instance loads for a window and never
+        // headless: one fact, stated where the instance was made, and read here rather than said
+        // to the device a second time.
+        if (instance.hasExtension(VK_KHR_SURFACE_EXTENSION_NAME))
+            extensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+
+        // **An option is taken whole where the device offers every extension of it and every one
+        // it needs is already taken**, by the instance or by this device. The table's order is the
+        // order the needs are met in. What a driver offers is not what a device may enable: the
+        // present id is offered to a device with no window, and rests on a swapchain it has none of.
+        std::array<bool, sDeviceOptions> taken{};
+        const auto listed = [&](const char* const name) {
+            return std::any_of(extensions.begin(), extensions.end(),
+                [&](const char* const held) { return std::strcmp(held, name) == 0; });
+        };
+        const auto enabled = [&](const char* const name) { return instance.hasExtension(name) || listed(name); };
+        for (const OptionalExtensions& option : getOptionalExtensions())
         {
-            // The swapchain half rests on the surface half, which is an instance extension: a
-            // headless run loads neither, and a device that asked for this one without it is a
-            // device the driver may refuse.
-            if (std::strcmp(name, VK_KHR_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME) == 0
-                && !instance.hasSurfaceMaintenance())
+            const bool offered = std::all_of(option.mExtensions.begin(), option.mExtensions.end(),
+                [&](const char* const name) { return mPhysicalDevice.hasOptionalExtension(name); });
+            if (!offered || !std::all_of(option.mNeeds.begin(), option.mNeeds.end(), enabled))
                 continue;
 
-            extensions.push_back(name);
+            extensions.insert(extensions.end(), option.mExtensions.begin(), option.mExtensions.end());
+            taken[static_cast<std::size_t>(option.mOption)] = true;
         }
+        const auto has = [&](const DeviceOption option) { return taken[static_cast<std::size_t>(option)]; };
+
         // What the upscaler's runtime asks for, which it will not start without. Appended rather
         // than added to the required list because that list is what this renderer needs to trace
         // at all, and a build without an upscaler must not fail on a device that lacks them.
@@ -113,13 +132,9 @@ namespace Rtx
             if (std::strcmp(name, VK_EXT_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME) == 0)
                 continue;
 
-            const auto already = [&](const char* const listed) { return std::strcmp(listed, name) == 0; };
-            if (std::none_of(extensions.begin(), extensions.end(), already))
+            if (!listed(name))
                 extensions.push_back(name);
         }
-
-        for (const char* const name : extraExtensions)
-            extensions.push_back(name);
 
         DeviceFeatures features;
         requestRequiredFeatures(features);
@@ -135,15 +150,9 @@ namespace Rtx
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_FEATURES_KHR,
         };
 
-        const bool offersFault = mPhysicalDevice.hasOptionalExtension(VK_EXT_DEVICE_FAULT_EXTENSION_NAME);
-        const bool offersPresentFences = instance.hasSurfaceMaintenance()
-            && mPhysicalDevice.hasOptionalExtension(VK_KHR_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME);
-        const bool offersPacing = mPhysicalDevice.hasOptionalExtension(VK_KHR_PRESENT_ID_EXTENSION_NAME)
-            && mPhysicalDevice.hasOptionalExtension(VK_NV_LOW_LATENCY_2_EXTENSION_NAME);
-
-        // Only what the device offers is chained, into the query and into the creation alike. A
+        // Only what the device took is chained, into the query and into the creation alike. A
         // driver may offer an extension without the feature it provides, so each has to be asked;
-        // asking for one whose extension is not there is a structure the driver was never told to
+        // asking for one whose extension is not enabled is a structure the driver was never told to
         // expect.
         void* asked = nullptr;
         const auto chain = [&asked](auto& structure) {
@@ -151,11 +160,11 @@ namespace Rtx
             asked = &structure;
         };
 
-        if (offersFault)
+        if (has(DeviceOption::FaultReport))
             chain(fault);
-        if (offersPresentFences)
+        if (has(DeviceOption::PresentFences))
             chain(presentFences);
-        if (offersPacing)
+        if (has(DeviceOption::Pacing))
             chain(presentId);
 
         if (asked != nullptr)
@@ -168,9 +177,9 @@ namespace Rtx
             fault.deviceFaultVendorBinary = VK_FALSE;
         }
 
-        const bool describesFault = offersFault && fault.deviceFault == VK_TRUE;
-        mPresentFences = offersPresentFences && presentFences.swapchainMaintenance1 == VK_TRUE;
-        const bool paces = offersPacing && presentId.presentId == VK_TRUE;
+        const bool describesFault = has(DeviceOption::FaultReport) && fault.deviceFault == VK_TRUE;
+        mPresentFences = has(DeviceOption::PresentFences) && presentFences.swapchainMaintenance1 == VK_TRUE;
+        const bool paces = has(DeviceOption::Pacing) && presentId.presentId == VK_TRUE;
 
         // The same chain again, of what the device turned out to have rather than what it offered,
         // in front of the features the renderer requires.
@@ -226,7 +235,7 @@ namespace Rtx
         if (describesFault)
             load(mHandle.get(), mGetDeviceFaultInfo, "vkGetDeviceFaultInfoEXT");
 
-        if (mPhysicalDevice.hasOptionalExtension(VK_NV_DEVICE_DIAGNOSTIC_CHECKPOINTS_EXTENSION_NAME))
+        if (has(DeviceOption::Checkpoints))
         {
             load(mHandle.get(), mCmdSetCheckpoint, "vkCmdSetCheckpointNV");
             load(mHandle.get(), mGetQueueCheckpointData, "vkGetQueueCheckpointDataNV");
@@ -254,8 +263,7 @@ namespace Rtx
         mPipelineCache = std::make_unique<PipelineCache>(
             mHandle.get(), mPhysicalDevice.getProperties().mProperties2.properties, cache);
         mMemory = std::make_unique<MemoryAllocator>(instance.getHandle(), mPhysicalDevice.getHandle(), mHandle.get(),
-            mPhysicalDevice.getProperties().mMemory,
-            mPhysicalDevice.hasOptionalExtension(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME));
+            mPhysicalDevice.getProperties().mMemory, has(DeviceOption::MemoryBudget));
         mTimeline = std::make_unique<Timeline>(*this);
         // `new` and not `make_unique`, which the pool's private constructor does not admit.
         mPool.reset(new CommandPool(*this));

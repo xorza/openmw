@@ -38,8 +38,10 @@ namespace Rtx
             /// and about 246 MiB where it does not.
             VkDeviceSize mHostWrittenBytes = 0;
 
-            /// Which of `getOptionalDeviceExtensions()` this device offers, in that order. The
-            /// pointers are the static list's own, so they outlive every device.
+            /// Which of the options' extensions (`getOptionalExtensions`) this device offers, in the
+            /// table's order: what it offers, and not what a device made on it takes, which the
+            /// options' needs decide. The pointers are the static table's own, so they outlive
+            /// every device.
             std::vector<const char*> mOptionalExtensions;
 
             /// How many bits of the device's clock the chosen queue writes into a timestamp, or nought
@@ -69,9 +71,6 @@ namespace Rtx
         /// that can present. A separate transfer queue is an M12 question.
         std::uint32_t getQueueFamily() const { return mProfile.mQueueFamily; }
 
-        /// Which of `getOptionalDeviceExtensions()` this device offers, in that order.
-        const std::vector<const char*>& getAvailableOptionalExtensions() const { return mProfile.mOptionalExtensions; }
-
         /// How many bits of the device's clock the chosen queue writes into a timestamp, or nought
         /// where it writes none — `Profile::mTimestampBits`, for the timer that reads the clock.
         std::uint32_t getTimestampBits() const { return mProfile.mTimestampBits; }
@@ -83,7 +82,7 @@ namespace Rtx
             return mProperties->mAccelerationStructure.minAccelerationStructureScratchOffsetAlignment;
         }
 
-        /// Whether `name` is one of them.
+        /// Whether this device offers `name`, one of the options' extensions.
         bool hasOptionalExtension(const char* name) const;
 
         /// Multi-line report for `openmw-rtxtool info`.

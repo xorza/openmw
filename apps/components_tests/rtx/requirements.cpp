@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cstddef>
 #include <set>
 #include <span>
 #include <string_view>
@@ -78,21 +79,45 @@ namespace Rtx
             EXPECT_EQ(seen.size(), getRequiredDeviceFeatures().size());
         }
 
-        /// The driver's pacing is optional, both halves of it, and never required: a card without
-        /// Reflex traces as it did. Named here so a list edited to require one cannot pass.
-        TEST(RtxRequirementsTest, theDriversPacingIsOptionalAndComesInTwoHalves)
+        /// The driver's pacing is optional, both halves of it as one option, and never required: a
+        /// card without Reflex traces as it did. Named here so a list edited to require one cannot
+        /// pass.
+        ///
+        /// **And what each option rests on is stated**, which the registry's `depends` says: the
+        /// present id rests on a swapchain, and a present fence on a swapchain and the instance's
+        /// half of its maintenance. Taken without them, the present id went to every headless
+        /// device.
+        TEST(RtxRequirementsTest, theOptionsAreTheirExtensionsWholeAndStateWhatTheyRestOn)
         {
-            const std::span<const char* const> optional = getOptionalDeviceExtensions();
-            const auto listed = [&](const char* const name) {
-                return std::any_of(optional.begin(), optional.end(),
-                    [&](const char* const held) { return std::string_view(held) == name; });
+            const auto names = [](std::span<const char* const> list) {
+                return std::vector<std::string_view>(list.begin(), list.end());
             };
-            EXPECT_TRUE(listed(VK_KHR_PRESENT_ID_EXTENSION_NAME));
-            EXPECT_TRUE(listed(VK_NV_LOW_LATENCY_2_EXTENSION_NAME));
+            const std::span<const OptionalExtensions> options = getOptionalExtensions();
+            ASSERT_EQ(options.size(), sDeviceOptions);
+
+            const OptionalExtensions& pacing = options[static_cast<std::size_t>(DeviceOption::Pacing)];
+            EXPECT_EQ(names(pacing.mExtensions),
+                (std::vector<std::string_view>{
+                    VK_KHR_PRESENT_ID_EXTENSION_NAME, VK_NV_LOW_LATENCY_2_EXTENSION_NAME }));
+            EXPECT_EQ(names(pacing.mNeeds), (std::vector<std::string_view>{ VK_KHR_SWAPCHAIN_EXTENSION_NAME }));
+
+            const OptionalExtensions& fences = options[static_cast<std::size_t>(DeviceOption::PresentFences)];
+            EXPECT_EQ(names(fences.mNeeds),
+                (std::vector<std::string_view>{
+                    VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_SURFACE_MAINTENANCE_1_EXTENSION_NAME }));
+
+            for (const DeviceOption alone :
+                { DeviceOption::FaultReport, DeviceOption::MemoryBudget, DeviceOption::Checkpoints })
+                EXPECT_TRUE(options[static_cast<std::size_t>(alone)].mNeeds.empty())
+                    << "an option core 1.4 carries alone names a need";
 
             const std::span<const char* const> required = getRequiredDeviceExtensions();
-            for (const char* const name : required)
-                EXPECT_FALSE(listed(name)) << name << " is both required and optional";
+            for (const OptionalExtensions& option : options)
+                for (const char* const name : option.mExtensions)
+                    EXPECT_EQ(std::find_if(required.begin(), required.end(),
+                                  [&](const char* const held) { return std::string_view(held) == name; }),
+                        required.end())
+                        << name << " is both required and optional";
         }
 
         /// The two directions of the table have to agree: what `requestRequiredFeatures` writes is

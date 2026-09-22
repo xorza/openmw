@@ -169,9 +169,10 @@ namespace Rtx
             profile.mTimestampBits = queues[*family].timestampValidBits;
         }
 
-        for (const char* const name : getOptionalDeviceExtensions())
-            if (has(extensions, name))
-                profile.mOptionalExtensions.push_back(name);
+        for (const OptionalExtensions& option : getOptionalExtensions())
+            for (const char* const name : option.mExtensions)
+                if (has(extensions, name))
+                    profile.mOptionalExtensions.push_back(name);
 
         // In the order a reader would want to be told. A device short of the version cannot be
         // asked the rest of these questions meaningfully, and naming one missing feature of a card

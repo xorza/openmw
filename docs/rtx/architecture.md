@@ -586,7 +586,11 @@ order is construction order, and everything below the device is built on it.
 **The device.** `Instance`, `PhysicalDevice::select` (refuses a device missing anything in
 `DeviceFeatures`, each a `RequiredFeature`), `Device` (queue, command pool, `Timeline`, `Graveyard`, object names),
 `Validation` (a sink a test reads), `MemoryAllocator` (VMA), `PipelineCache` (a file in the
-cache directory, for the played game only). `Timeline` is the one clock: every submit signals a
+cache directory, for the played game only). The device takes the swapchain where the instance
+loaded a surface, which it does for a window and never headless, and each option
+(`getOptionalExtensions`: the fault report, the memory budget, present fences, checkpoints,
+pacing) whole, where the device offers every extension of it and the ones it rests on are
+already taken. `Timeline` is the one clock: every submit signals a
 value, every wait is the device's, and the clock is never read off the device on the frame
 path. `Graveyard` holds what a submit may still read until the timeline says it ran.
 
@@ -649,7 +653,8 @@ format is not one a compute shader may store to.
 `VK_NV_low_latency2` with `VK_KHR_present_id` — over one swapchain: one sleep before each
 present, at the top of the frame before input is read; the markers around the simulation, the
 submission and the present; the id every present and every submit carries. Live where the
-device offers both extensions and the surface paces the present mode in force (`PacedModes`,
+device took both extensions — which it does only with a window, the present id resting on a
+swapchain — and the surface paces the present mode in force (`PacedModes`,
 read off `VkLatencySurfaceCapabilitiesNV` once per surface), dormant otherwise, and every
 present is paced where it is live at all: `[RTX] reflex` moves two flags inside the sleep mode
 and the frame-rate limit is the interval the sleep enforces. [`reflex.md`](reflex.md) is the

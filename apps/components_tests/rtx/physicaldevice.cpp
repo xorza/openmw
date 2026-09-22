@@ -154,15 +154,19 @@ namespace Rtx
             Card bare(&describeTuring);
             EXPECT_TRUE(bare.profile().mOptionalExtensions.empty()) << "an extension nothing offered was taken";
 
+            // Every option's extensions, in the table's order.
+            std::vector<const char*> every;
+            for (const OptionalExtensions& option : getOptionalExtensions())
+                every.insert(every.end(), option.mExtensions.begin(), option.mExtensions.end());
+
             Card full(&describeTuring);
-            for (const char* const name : getOptionalDeviceExtensions())
+            for (const char* const name : every)
                 full.mExtensions.emplace_back(name);
 
             const PhysicalDevice::Profile profile = full.profile();
-            ASSERT_EQ(profile.mOptionalExtensions.size(), getOptionalDeviceExtensions().size());
+            ASSERT_EQ(profile.mOptionalExtensions.size(), every.size());
             for (std::size_t at = 0; at < profile.mOptionalExtensions.size(); ++at)
-                EXPECT_STREQ(profile.mOptionalExtensions[at], getOptionalDeviceExtensions()[at])
-                    << "the order the list states was not kept";
+                EXPECT_STREQ(profile.mOptionalExtensions[at], every[at]) << "the order the table states was not kept";
 
             EXPECT_EQ(profile.mObstacle, "") << "an optional extension decided whether the card qualifies";
         }

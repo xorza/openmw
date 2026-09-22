@@ -1,6 +1,7 @@
 #include "requirements.hpp"
 
 #include <array>
+#include <cstddef>
 #include <string>
 
 namespace Rtx
@@ -40,31 +41,57 @@ namespace Rtx
             VK_KHR_SHADER_CLOCK_EXTENSION_NAME,
         };
 
-        constexpr std::array sOptionalDeviceExtensions{
+        constexpr std::array sFaultReport{ VK_EXT_DEVICE_FAULT_EXTENSION_NAME };
+        constexpr std::array sMemoryBudget{ VK_EXT_MEMORY_BUDGET_EXTENSION_NAME };
+        constexpr std::array sPresentFences{ VK_KHR_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME };
+        constexpr std::array sCheckpoints{ VK_NV_DEVICE_DIAGNOSTIC_CHECKPOINTS_EXTENSION_NAME };
+        constexpr std::array sPacing{ VK_KHR_PRESENT_ID_EXTENSION_NAME, VK_NV_LOW_LATENCY_2_EXTENSION_NAME };
+
+        /// What the registry says a swapchain's extensions rest on beside core 1.4: the swapchain
+        /// itself, which a device takes only where its instance has a surface, and for a present
+        /// fence the instance's half of swapchain maintenance as well.
+        constexpr std::array sSwapchain{ VK_KHR_SWAPCHAIN_EXTENSION_NAME };
+        constexpr std::array sMaintainedSwapchain{
+            VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+            VK_KHR_SURFACE_MAINTENANCE_1_EXTENSION_NAME,
+        };
+
+        constexpr std::array sOptionalExtensions{
             // Turns a device loss from "the driver said no" into where it faulted: the addresses,
             // how precisely they are known, and what the vendor adds. `Device::describeFault` is
             // what reads it, and `Device` enables its feature where the driver has it.
-            VK_EXT_DEVICE_FAULT_EXTENSION_NAME,
+            OptionalExtensions{ DeviceOption::FaultReport, sFaultReport, {} },
             // What the driver says is left, which the heap's own size does not. A budget moves
             // with whatever else is on the card, and it is the figure a residency decision belongs
             // against — most of all on a card whose host-visible heap is a couple of hundred
-            // megabytes. `MemoryAllocator::report` is what reads it.
-            VK_EXT_MEMORY_BUDGET_EXTENSION_NAME,
+            // megabytes. `MemoryAllocator` is what reads it.
+            OptionalExtensions{ DeviceOption::MemoryBudget, sMemoryBudget, {} },
             // A fence the presentation engine signals, which is the only thing that says it has
             // finished with an image. `Presenter` retires its semaphores and its swapchain against
             // one where the driver has it, and against a device-idle where it does not.
-            VK_KHR_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME,
+            OptionalExtensions{ DeviceOption::PresentFences, sPresentFences, sMaintainedSwapchain },
             // A marker the queue remembers passing, so a device loss names the last zone each
             // stage reached rather than an address: `GpuTimer::open` sets one per zone in a build
             // that names things, and `Device::describeFault` reads them back.
-            VK_NV_DEVICE_DIAGNOSTIC_CHECKPOINTS_EXTENSION_NAME,
+            OptionalExtensions{ DeviceOption::Checkpoints, sCheckpoints, {} },
             // The driver's frame pacing — Reflex — and the number each present carries so the
             // driver can tell one frame's markers from the next's. Both or neither: the pacing
             // needs the present id, and the id alone is a number nothing reads. `LatencyPacer` is
             // what uses them, and only where there is a window.
-            VK_KHR_PRESENT_ID_EXTENSION_NAME,
-            VK_NV_LOW_LATENCY_2_EXTENSION_NAME,
+            OptionalExtensions{ DeviceOption::Pacing, sPacing, sSwapchain },
         };
+
+        /// A table out of `DeviceOption`'s order is an option read as another.
+        constexpr bool everyOptionInItsPlace()
+        {
+            for (std::size_t at = 0; at < sOptionalExtensions.size(); ++at)
+                if (static_cast<std::size_t>(sOptionalExtensions[at].mOption) != at)
+                    return false;
+
+            return sOptionalExtensions.size() == sDeviceOptions;
+        }
+
+        static_assert(everyOptionInItsPlace(), "the optional extensions are not in the order of their options");
 
         constexpr std::array sRequiredDeviceFeatures{
             RequiredFeature{
@@ -191,9 +218,9 @@ namespace Rtx
         return sRequiredDeviceExtensions;
     }
 
-    std::span<const char* const> getOptionalDeviceExtensions()
+    std::span<const OptionalExtensions> getOptionalExtensions()
     {
-        return sOptionalDeviceExtensions;
+        return sOptionalExtensions;
     }
 
     std::string versionString(std::uint32_t version)

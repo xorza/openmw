@@ -3,6 +3,9 @@
 #include <cstdint>
 #include <memory>
 #include <span>
+#include <string>
+#include <string_view>
+#include <vector>
 
 #include <vulkan/vulkan_core.h>
 
@@ -30,9 +33,10 @@ namespace Rtx
         /// offending call.
         ValidationLog* getValidationLog() const { return mValidationLog.get(); }
 
-        /// Whether `VK_KHR_surface_maintenance1` was loaded, which the device's swapchain half needs
-        /// beside it. False for a headless instance, which has no surface to maintain.
-        bool hasSurfaceMaintenance() const { return mSurfaceMaintenance; }
+        /// Whether `name` was loaded: what a device made on this instance reads an option's needs
+        /// against, and a surface's `VK_KHR_surface` among them — loaded with a window and never
+        /// headless, and what the device's swapchain rests on.
+        bool hasExtension(std::string_view name) const;
 
         /// `vkGetPhysicalDeviceSurfaceCapabilities2KHR`, or null: the extended question of a
         /// surface, which is where a surface says which present modes the driver paces under
@@ -46,14 +50,17 @@ namespace Rtx
         /// Whether `VK_EXT_debug_utils` was enabled, which is what object names and command-buffer
         /// labels need. True whenever this build names objects, not only under validation — a
         /// capture is worth having without paying for the layers.
-        bool hasDebugUtils() const { return mDebugUtils; }
+        bool hasDebugUtils() const { return hasExtension(VK_EXT_DEBUG_UTILS_EXTENSION_NAME); }
 
         /// The version the loader reported, which is at least `sApiVersion`.
         std::uint32_t getApiVersion() const { return mApiVersion; }
 
     private:
+        /// Every extension loaded, as names of its own: a surface's are the window library's and
+        /// the upscaler's are its runtime's, and neither promises its strings outlive the call.
+        std::vector<std::string> mExtensions;
+
         // Held by pointer so the address handed to the debug callback survives everything.
-        bool mSurfaceMaintenance = false;
         std::unique_ptr<ValidationLog> mValidationLog;
         VkInstance mHandle = VK_NULL_HANDLE;
         VkDebugUtilsMessengerEXT mMessenger = VK_NULL_HANDLE;
@@ -62,6 +69,5 @@ namespace Rtx
         PFN_vkDestroyDebugUtilsMessengerEXT mDestroyMessenger = nullptr;
         PFN_vkGetPhysicalDeviceSurfaceCapabilities2KHR mGetSurfaceCapabilities2 = nullptr;
         std::uint32_t mApiVersion = 0;
-        bool mDebugUtils = false;
     };
 }
