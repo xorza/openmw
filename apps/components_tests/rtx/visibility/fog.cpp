@@ -977,7 +977,7 @@ namespace Rtx::Testing
         /// rates.
         ///
         /// **An adding sprite, because what it puts into the pixel is the transmittance times a
-        /// constant.** `spritesAlong` writes `mAdded` as `(1 - addedThrough) * FLAME_INTENSITY`, and
+        /// constant.** `spritesAlong` writes `mAdded` as `(1 - addedThrough) * SUNLIT_WHITE`, and
         /// for one sprite that is its own `glow` — the texel, the paint and the chord, all of them
         /// the same in both legs, times `reaching`. A covering sprite is lit by the froxel it stands
         /// in, and the froxel moves when the fog does.

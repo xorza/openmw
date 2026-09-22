@@ -91,6 +91,13 @@ namespace Rtx::Testing
         texture.describe(extent, extent, "mip ladder");
     }
 
+    /// Which level of `paintMipLadder` a linear sample came from, whole or fractional. The inverse
+    /// of what that function paints, stated beside it so the two cannot come to disagree.
+    inline float ladderLevel(float sampled)
+    {
+        return (sampled * 255.0f - 40.0f) / 30.0f;
+    }
+
     /// A texture of exactly these texels at `extent` square: one level, uncompressed and not
     /// display-encoded, so what comes back out is what went in.
     ///

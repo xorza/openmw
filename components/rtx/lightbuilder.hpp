@@ -138,7 +138,7 @@ namespace Rtx
         /// whose mean texel is `mean`. Nothing where the emitter does not add.
         ///
         /// **What a sprite radiates is what `spritesAlong` adds for it**: its texel under the
-        /// particle's colour and alpha, at `FLAME_INTENSITY`, with the texture's mean texel —
+        /// particle's colour and alpha, at `SUNLIT_WHITE`, with the texture's mean texel —
         /// already weighted by its own alpha, `MeanTexel::mColour` — standing for the texel. A
         /// billboard shows the whole of its disc to every direction, and flames that add hide
         /// nothing of one another, so a cloud of them is a source of intensity `pi * r^2 * L`

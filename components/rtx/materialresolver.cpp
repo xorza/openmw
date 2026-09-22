@@ -71,11 +71,13 @@ namespace Rtx
         }
     }
 
-    const osg::StateSet* MaterialResolver::animate(osg::Node& node, osg::NodeVisitor* visitor)
+    const osg::StateSet* MaterialResolver::animate(osg::Node& node, osg::NodeVisitor* visitor, const bool underAnimated)
     {
         // Asked of every node in the graph every frame, and nearly all of a cell hangs off no
-        // callback at all.
-        if (node.getCullCallback() == nullptr && node.getUpdateCallback() == nullptr)
+        // callback at all and stands under nothing animated.
+        const bool chained = node.getCullCallback() != nullptr || node.getUpdateCallback() != nullptr;
+        const bool inherits = underAnimated && node.getStateSet() != nullptr;
+        if (!chained && !inherits)
             return nullptr;
 
         // The casts are taken when the chains change, not per frame. The entry remembers what it
@@ -88,11 +90,11 @@ namespace Rtx
         if (arrived || chains != held.mChains)
         {
             held.mChains = chains;
-            held.mUpdater = findUpdater(node);
+            held.mUpdater = chained ? findUpdater(node) : nullptr;
         }
 
         SceneUtil::StateSetUpdater* updater = held.mUpdater;
-        if (updater == nullptr)
+        if (updater == nullptr && !inherits)
             return nullptr;
 
         if (held.mStateSet == nullptr)
@@ -104,10 +106,12 @@ namespace Rtx
             // the material a parent was contributing.
             const osg::StateSet* base = node.getStateSet();
             held.mStateSet = base != nullptr ? new osg::StateSet(*base, osg::CopyOp::SHALLOW_COPY) : new osg::StateSet;
-            updater->setDefaults(held.mStateSet);
+            if (updater != nullptr)
+                updater->setDefaults(held.mStateSet);
         }
 
-        updater->apply(held.mStateSet, visitor);
+        if (updater != nullptr)
+            updater->apply(held.mStateSet, visitor);
         return held.mStateSet;
     }
 

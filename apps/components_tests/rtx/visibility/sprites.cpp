@@ -347,7 +347,7 @@ namespace Rtx::Testing
 
         /// Two flames in one place add less than twice one, because a flame absorbs what it emits.
         ///
-        /// A texel of alpha `128/255 = 0.50196` adds that share of `FLAME_INTENSITY` on its own,
+        /// A texel of alpha `128/255 = 0.50196` adds that share of `SUNLIT_WHITE` on its own,
         /// which is what it always added. Two of them screen — `1 - 0.49804^2 = 0.75196` of it —
         /// where a sum would have reached `1.00392`. The original's framebuffer clamped that sum at
         /// one, and this is the smooth form of the same limit.
@@ -382,9 +382,8 @@ namespace Rtx::Testing
                 return mRadiance[centre];
             };
 
-            EXPECT_NEAR(glowing(1), Shaders::FLAME_INTENSITY * sHalfAlpha, 0.01f) << "one adds what it painted";
-            EXPECT_NEAR(
-                glowing(2), Shaders::FLAME_INTENSITY * (1.0f - (1.0f - sHalfAlpha) * (1.0f - sHalfAlpha)), 0.01f)
+            EXPECT_NEAR(glowing(1), Shaders::SUNLIT_WHITE * sHalfAlpha, 0.01f) << "one adds what it painted";
+            EXPECT_NEAR(glowing(2), Shaders::SUNLIT_WHITE * (1.0f - (1.0f - sHalfAlpha) * (1.0f - sHalfAlpha)), 0.01f)
                 << "two screen rather than sum";
         }
 

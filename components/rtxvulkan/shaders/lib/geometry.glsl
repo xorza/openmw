@@ -67,14 +67,25 @@ bool readsSecondUvs(GpuMesh mesh, uint unit)
     return mesh.mSecondTexCoordOffset != NO_STREAM && ((mesh.mUnitStreams >> unit) & 1u) != 0u;
 }
 
-/// The vertex normal interpolated across the triangle a hit landed on, in the mesh's own space and
-/// not yet unit: a mesh with no normals holds zeros, which the caller reads as "use the plane".
-vec3 triangleNormal(uvec3 corner, vec3 weight)
+/// The vertex normals of the triangle a hit landed on, in the mesh's own space and not yet unit:
+/// a mesh with no normals holds zeros, which the caller reads as "use the plane".
+void triangleNormals(uvec3 corner, out vec3 normal[3])
 {
     NormalBlock block = normalBlockOf(corner.x);
     const uvec3 at = corner % VERTEX_BLOCK;
 
-    return block.at[at.x] * weight.x + block.at[at.y] * weight.y + block.at[at.z] * weight.z;
+    normal[0] = block.at[at.x];
+    normal[1] = block.at[at.y];
+    normal[2] = block.at[at.z];
+}
+
+/// The same interpolated across the triangle, which is what a hit shades with.
+vec3 triangleNormal(uvec3 corner, vec3 weight)
+{
+    vec3 normal[3];
+    triangleNormals(corner, normal);
+
+    return normal[0] * weight.x + normal[1] * weight.y + normal[2] * weight.z;
 }
 
 /// How far the point a hit landed on moved since the previous frame, in the mesh's own space:

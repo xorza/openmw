@@ -609,7 +609,7 @@ PuffLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit, Co
             const float reaching = exp(-fogColumnOver(air, crossing.mSeen) * band);
 
             // **No gain, deliberately.** The blend the file asks for says exactly how much light
-            // the sprite adds; `FLAME_INTENSITY` is only what carries the original's scale, where
+            // the sprite adds; `SUNLIT_WHITE` is only what carries the original's scale, where
             // a fully lit surface reached one, onto this renderer's. A flame then comes out tens of
             // times the mean of the room it stands in, because that is what a flame is, and the
             // exposure downstream decides where it lands. A gain on top of it blows every flame to
@@ -694,7 +694,7 @@ PuffLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit, Co
         layer.mCoveredAt = coveredAt / coverage;
     }
 
-    layer.mAdded = (1.0 - addedThrough) * FLAME_INTENSITY;
+    layer.mAdded = (1.0 - addedThrough) * SUNLIT_WHITE;
 
 
     return layer;

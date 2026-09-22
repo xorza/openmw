@@ -50,24 +50,35 @@ SurfaceCone surfaceConeAt(vec3 crossed, vec3 direction)
 /// `maxImageDimension2D` of 16384 allows is 14.
 const float TEXTURE_FINEST_BASE = -64.0;
 
-/// Every term of the level but the texture's own resolution: the texel-to-world area ratio of the
-/// triangle, the cone's width where it landed, and the angle the surface presents.
+/// Every term of the level but the texture's own resolution: the texture-to-world area ratio of
+/// the triangle, the cone's width where it landed, and the angle the surface presents.
 ///
+/// **The ratio and not the coordinates it was measured from**, because a mesh's own texture
+/// coordinates are not the only parameterisation a surface reads a sheet through: a sphere map is
+/// indexed by where the eye is, and `spherePoint` measures the same ratio for it. One statement of
+/// the level, two ways of reaching the area — written twice is how the two would come to disagree.
+///
+/// @param uvArea twice the triangle's area in the texture's own coordinates, against `cone.mArea`,
+///        which is twice its area in the world. Doubled on both sides, so the two cancel.
 /// @param coneWidth how wide the ray's cone is where it landed, or zero for a ray that carries no
 ///        cone at all — which is every shadow ray, and which reads the finest level.
-float coneBase(vec2 uv0, vec2 uv1, vec2 uv2, SurfaceCone cone, float coneWidth)
+float coneBaseOf(float uvArea, SurfaceCone cone, float coneWidth)
 {
-    if (!(coneWidth > 0.0) || !(cone.mArea > 0.0))
-        return TEXTURE_FINEST_BASE;
-
-    const float uvArea = abs((uv1.x - uv0.x) * (uv2.y - uv0.y) - (uv2.x - uv0.x) * (uv1.y - uv0.y));
-    if (!(uvArea > 0.0))
+    if (!(coneWidth > 0.0) || !(cone.mArea > 0.0) || !(uvArea > 0.0))
         return TEXTURE_FINEST_BASE;
 
     // The frame's bias rides in the base, so every read through a `TexturePoint` — the albedo,
     // the mask, the emissive map, each ground layer — moves by the same levels. `mLevelBias`
     // says what it is for.
     return 0.5 * log2(uvArea / cone.mArea) + log2(coneWidth) - log2(cone.mFacing) + frame.mLevelBias;
+}
+
+/// The same for a triangle read through the mesh's own texture coordinates.
+float coneBase(vec2 uv0, vec2 uv1, vec2 uv2, SurfaceCone cone, float coneWidth)
+{
+    const float uvArea = abs((uv1.x - uv0.x) * (uv2.y - uv0.y) - (uv2.x - uv0.x) * (uv1.y - uv0.y));
+
+    return coneBaseOf(uvArea, cone, coneWidth);
 }
 
 /// Where on a texture a hit lands, and how coarse a level the ray's cone can still tell apart
@@ -99,6 +110,63 @@ TexturePoint texturePoint(vec2 uv[3], vec3 weight, vec4 transform, SurfaceCone c
 
     return TexturePoint(corner0 * weight.x + corner1 * weight.y + corner2 * weight.z,
         coneBase(corner0, corner1, corner2, cone, coneWidth));
+}
+
+/// Where a sphere-mapped sheet is read, and how coarse a level the ray's cone can tell apart
+/// there. `objects.vert`'s own coordinates: the eye-space view vector reflected about the eye-space
+/// normal, folded onto the sheet, in whichever basis the caller shades in.
+///
+/// **The sheet is parameterised by the reflection, so its footprint is the normal's and not the
+/// mesh's.** The two share nothing but the ray, so a `TexturePoint` built for the mesh's own
+/// coordinates is wrong in either direction and by any amount: it blurs a flat blade, whose sheet
+/// coordinate does not move at all, and it aliases the streaks on a curve that sweeps them.
+///
+/// **The ratio is closed form and not an estimate.** The sphere map `r.xy / (2 sqrt(2 + 2 r.z))` is
+/// Lambert's azimuthal equal-area projection over four, so it carries solid angle to sheet area at
+/// exactly one sixteenth, everywhere. Reflecting about a normal carries solid angle by `4 cos`, for
+/// the angle between the ray and that normal — the shading normal the sheet is reflected about,
+/// and not the plane's `SurfaceCone::mFacing`, which is how wide the ray's own footprint lies and
+/// a different question. So the sheet area the triangle covers is `cos / 4` of the solid angle its
+/// vertex normals span, and that span is the flat triangle their tips make.
+///
+/// **Solid angle is rotation invariant, so the normals never leave the mesh's own space.** Bringing
+/// them across would want the object-to-world matrix, and `Hit` refuses to carry one: twelve floats
+/// on every ray in the frame, for a sheet nearly no material has. A placement scaled unevenly would
+/// move the span, which is the assumption the whole tree already makes of a normal — `Hit::mShading`
+/// comes through the same matrix rather than its inverse transpose.
+///
+/// **What this leaves out is the ray's own turn across the triangle**, which moves the reflection
+/// as much as the normal does. At 1080p and sixty degrees a pixel spans about a milliradian, so it
+/// moves the sheet coordinate by 0.00025 — eight thousandths of a texel on a sheet 32 across, where
+/// the normal's term is the whole of what a curve does.
+///
+/// @param normal the triangle's three vertex normals, as `triangleNormals` hands them: the mesh's
+///        own space, and not yet unit.
+/// @param shading where the hit's own normal points, in the caller's basis and unit.
+/// @param direction the ray, in the caller's basis and unit.
+TexturePoint spherePoint(vec3 normal[3], vec3 shading, vec3 direction, SurfaceCone cone, float coneWidth)
+{
+    const vec3 r = reflect(direction, shading);
+    const float m = 2.0 * sqrt(r.x * r.x + r.y * r.y + (r.z + 1.0) * (r.z + 1.0));
+    const vec2 at = r.xy / m + 0.5;
+
+    // **Unit, because what the three tips span is a solid angle on the sphere** and a stored normal
+    // is not one. A mesh that carries none holds zeros, which will not normalise: it shades from
+    // its plane instead, whose normal stands still across the triangle, so the span is nought — and
+    // the finest level is what a sheet coordinate that does not move across a triangle wants.
+    const float shortest
+        = min(min(dot(normal[0], normal[0]), dot(normal[1], normal[1])), dot(normal[2], normal[2]));
+    if (!(shortest > 1e-8))
+        return TexturePoint(at, TEXTURE_FINEST_BASE);
+
+    const vec3 tip = normalize(normal[0]);
+    const vec3 spread = cross(normalize(normal[1]) - tip, normalize(normal[2]) - tip);
+
+    // Doubled, as `coneBaseOf` takes it: the tips' own triangle is half this cross, the solid angle
+    // the reflections span is `4 cos` of that, and a sixteenth of it is sheet area.
+    const float sheetArea = 0.25 * abs(dot(direction, shading)) * length(spread);
+
+    return TexturePoint(at, coneBaseOf(sheetArea, cone, coneWidth));
 }
 
 /// Which mip one texture on that sheet should be read from.

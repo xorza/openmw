@@ -175,7 +175,7 @@ namespace Rtx::Testing
         /// the mean. One sprite of radius 6, colour (1, 0.5, 0.25) decoded to (1, 0.21404, 0.05088)
         /// at a quarter of alpha, and one of radius 2, white and whole. Each is `r^2 * alpha` of
         /// `mean * colour`: `9 * (1, 0.046203, 0)` and `4 * (1, 0.21586, 0)`, summed
-        /// `(13, 1.27927, 0)`; the disc's pi and `FLAME_INTENSITY`'s `8 / pi` leave eight, and the
+        /// `(13, 1.27927, 0)`; the disc's pi and `SUNLIT_WHITE`'s `8 / pi` leave eight, and the
         /// gain four, so the lamp is `(416, 40.937, 0)`, at the emitter's own ball — (100, 0, 12)
         /// and 8 wide, as `particles.cpp` measures it — reaching sixteen radii.
         ///

@@ -165,6 +165,24 @@ namespace Rtx
             return 0.0f;
         }
 
+        /// Every texture slot this material names in its own right, each once, whichever of them
+        /// is set.
+        ///
+        /// **Beside the fields, because the list and the fields fall out of step nowhere else.**
+        /// What keeps a slot alive is the material row that names it — the walk's own hold on an
+        /// image goes on the frame after the material arrived — so a map missing from this list is
+        /// a slot freed under a live material and handed to the next texture that arrives, and the
+        /// surface then wears whatever took it. A map added to the struct is added here, and
+        /// `MaterialTable` adds the layers' own to what this walks.
+        template <class Visit>
+        void forEachTexture(Visit visit) const
+        {
+            visit(mDiffuse);
+            visit(mEmissive);
+            visit(mEnvironment);
+            visit(mDark);
+        }
+
         /// Whether traversal has to stop and ask this material whether a hit is a hole — the one
         /// predicate the build marks an instance non-opaque by and the shader tests against. A
         /// cutoff with no texture to sample is not one, and neither is an additive surface, whose

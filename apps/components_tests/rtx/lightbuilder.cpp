@@ -587,7 +587,7 @@ namespace Rtx
         /// colour (1, 0.5, 0) at alpha a half, and one of radius 2, white and whole. Each is
         /// `r^2 * alpha` of `mean * colour`: `18 * (0.5, 0.125, 0) = (9, 2.25, 0)` and
         /// `4 * (0.5, 0.25, 0) = (2, 1, 0)`, summed `(11, 3.25, 0)`. A disc's area puts on a pi
-        /// and `FLAME_INTENSITY` is `8 / pi`, so the intensity is `8 * (11, 3.25, 0)`, and by the
+        /// and `SUNLIT_WHITE` is `8 / pi`, so the intensity is `8 * (11, 3.25, 0)`, and by the
         /// gain of four `(352, 104, 0)`. The lamp stands at the emitter's own ball — centre
         /// (100, 0, 10), reach 8 — reaching sixteen radii.
         ///

@@ -110,9 +110,21 @@ namespace Rtx
         /// identifies it.
         Resolved resolveWater();
 
-        /// Runs the state-set controller on `node`, if it carries one, and hands back what it wrote.
-        /// Null where the node animates no shading, which is nearly every node in a cell.
-        const osg::StateSet* animate(osg::Node& node, osg::NodeVisitor* visitor);
+        /// The state set `node` shades with where that is not simply the one it wears, or null
+        /// where it is — which is nearly every node in a cell. One per node, rewritten in place, so
+        /// a material keyed on its address is the same material next frame.
+        ///
+        /// **Two nodes need one: the node a controller writes, and a node standing under one.** For
+        /// the first it is what the controller wrote. For the second it is an identity: what a
+        /// material is keyed on has to be unique to the placement, and the state set the content
+        /// gave a shape is shared by every instance of the model. `SceneUtil::addEnchantedGlow`
+        /// hangs its sheet on an instance's root, above the shape the sheet is read into — so keyed
+        /// on the shared state set, one material stands for the enchanted sword and the plain one
+        /// beside it at once, is read once, and never cycles its sheet.
+        ///
+        /// @param underAnimated whether an animated state set is above `node` on the chain —
+        ///        `Shading::mAnimatedThrough`.
+        const osg::StateSet* animate(osg::Node& node, osg::NodeVisitor* visitor, bool underAnimated);
 
         /// Whether every material the map holds was met this epoch, the sea's included — see
         /// `Kept::whole`. What the mirror asks before it sweeps, because the survivor list this
@@ -159,11 +171,15 @@ namespace Rtx
         /// **`SceneUtil::GlowUpdater` cycles thirty-two caustic sheets at sixteen a second**, one
         /// `setTextureAttribute` a frame, and a resolver that kept only the sheet of the frame gave
         /// one back and took one up on every frame: an `extendScene` a frame with a decode and an
-        /// upload in it. Thirty-two, because that is the largest cycle the game ships; a
-        /// thirty-third distinct image drops the oldest and counts it.
+        /// upload in it. Thirty-two for the cycle, because that is the largest the game ships, and
+        /// a place for each of the material's other maps beside it: the ring holds every image the
+        /// material wears, and a ring of the cycle alone holds the diffuse map too, so every sheet
+        /// change drops the sheet due next and takes it up again a sixteenth of a second later.
+        /// One past what fits drops the oldest and counts it.
         struct Worn
         {
-            static constexpr std::size_t sMost = 32;
+            static constexpr std::size_t sCycle = 32;
+            static constexpr std::size_t sMost = sCycle + sSurfaceMapCount - 1;
 
             std::array<const osg::Image*, sMost> mImages{};
             std::uint8_t mCount = 0;
@@ -183,8 +199,9 @@ namespace Rtx
         {
             osg::ref_ptr<osg::StateSet> mStateSet;
 
-            /// The controller found on the node's callback chains, or null where there was none,
-            /// and what the chains looked like when it was found.
+            /// The controller found on the node's callback chains, or null where there was none —
+            /// which is every node animated by an ancestor alone — and what the chains looked like
+            /// when it was found.
             SceneUtil::StateSetUpdater* mUpdater = nullptr;
             std::uintptr_t mChains = 0;
         };

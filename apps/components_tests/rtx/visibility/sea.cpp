@@ -39,12 +39,6 @@ namespace Rtx::Testing
 {
     namespace
     {
-        /// Which level of `paintMipLadder` a linear sample came from.
-        float ladderLevel(float sampled)
-        {
-            return (sampled * 255.0f - 40.0f) / 30.0f;
-        }
-
         /// How far a field varies, as a fraction of its own mean.
         ///
         /// **The measure every water pattern here is judged by**, because what a caustic or a shaft

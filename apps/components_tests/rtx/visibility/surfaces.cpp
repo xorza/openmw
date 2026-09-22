@@ -1,4 +1,5 @@
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -687,11 +688,12 @@ namespace Rtx::Testing
         /// **The centre pixel is exact and the corners say which way the sheet is turned.** A ray
         /// straight down the axis reflects straight back, which lands on the middle of the sheet —
         /// the bilinear mean of all four quadrants, `(0.5, 0.5, 0.5)` — so what the sheet adds
-        /// there is `EMISSIVE_INTENSITY * 0.5 * tint`, which under a tint of `(1, 0.5, 0.25)` is
-        /// `(4, 2, 1)`. A ray up and to the right of the axis reflects up and to the right, which
-        /// lands past the middle in `u` and in `v`: more of the second column than a ray up and to
-        /// the left reads, which is more green, and more of the second row than a ray down and to
-        /// the left reads, which is more blue. Under the tint every channel keeps its sign.
+        /// there is `SUNLIT_WHITE * 0.5 * tint`, which under a tint of `(1, 0.5, 0.25)` is
+        /// `SUNLIT_WHITE * (0.5, 0.25, 0.125)`. A ray up and to the right of the axis reflects
+        /// up and to the right, which lands past the middle in `u` and in `v`: more of the second
+        /// column than a ray up and to the left reads, which is more green, and more of the second
+        /// row than a ray down and to the left reads, which is more blue. Under the tint every
+        /// channel keeps its sign.
         TEST_F(RtxVisibilityTest, anEnvironmentSheetIsAddedPastTheAlbedoWhereTheEyesReflectionLands)
         {
             // Odd, so the centre pixel's own centre is on the axis and the reflection lands on the
@@ -740,15 +742,116 @@ namespace Rtx::Testing
             };
 
             const osg::Vec3f middle = addedAt(centre / 4);
-            EXPECT_NEAR(middle.x(), Shaders::EMISSIVE_INTENSITY * 0.5f, 1.0e-3f);
-            EXPECT_NEAR(middle.y(), Shaders::EMISSIVE_INTENSITY * 0.25f, 1.0e-3f);
-            EXPECT_NEAR(middle.z(), Shaders::EMISSIVE_INTENSITY * 0.125f, 1.0e-3f);
+            EXPECT_NEAR(middle.x(), Shaders::SUNLIT_WHITE * 0.5f, 1.0e-3f);
+            EXPECT_NEAR(middle.y(), Shaders::SUNLIT_WHITE * 0.25f, 1.0e-3f);
+            EXPECT_NEAR(middle.z(), Shaders::SUNLIT_WHITE * 0.125f, 1.0e-3f);
 
             const osg::Vec3f upRight = addedAt(std::size_t{ 3 } * size + 29);
             const osg::Vec3f upLeft = addedAt(std::size_t{ 3 } * size + 3);
             const osg::Vec3f downLeft = addedAt(std::size_t{ 29 } * size + 3);
             EXPECT_GT(upRight.y(), upLeft.y()) << "a reflection to the right reads the sheet's second column";
             EXPECT_GT(upLeft.z(), downLeft.z()) << "a reflection upward reads the sheet's second row";
+        }
+
+        /// A sphere-mapped sheet is read at the level its own coordinates ask for, and the mesh's
+        /// texture coordinates have nothing to do with it.
+        ///
+        /// **Two quads of one shape, differing only in how far their vertex normals lean.** The
+        /// sheet is a mip ladder, so the value a pixel comes back with names the level it sampled.
+        /// Everything but the normals is shared — the triangle, the camera, the cone, the angle the
+        /// plane presents — so what the two levels differ by is the closed form and nothing else.
+        ///
+        /// **The form.** `spherePoint` takes the sheet area of a triangle to be `cos / 4` of the
+        /// solid angle its vertex normals span. Normals fanned as `(k x / h, -1, k z / h)` over a
+        /// quad of half-extent `h` span `4 k^2 / (1 + 2 k^2)`, the same for either triangle, and at
+        /// the middle pixel the cosine is one: the ray is the axis and the interpolated normal there
+        /// is `(n0 + n2) / 2`, which is `(0, -1, 0)` however far the corners lean. So `k = 1/5`
+        /// spans `4/27` and `k = 2/sqrt(19)` spans `16/27`, four times it, and a level is half a
+        /// logarithm of an area — exactly one level apart.
+        ///
+        /// **And the level itself, which the ratio alone would not pin.** Four times the span is one
+        /// level coarser whatever constant the area carries, so the gentler quad's own level is what
+        /// says the constant is `cos / 4` and not something else. Its sheet area is `0.25 * 4/27`,
+        /// which is `1/27`; the triangle covers `4 h^2 = 1024` of the world; the cone is
+        /// `away * 2 tan(30) / size = 6.792` wide where it lands, and the plane faces the ray. So
+        /// the base is `0.5 log2(1/27648) + log2(6.792)`, or `-4.614`, and a 64-texel sheet adds
+        /// `0.5 log2(4096)`, which is six: **1.386**.
+        ///
+        /// **A quad whose normals do not lean at all reads the finest level**, whatever its texture
+        /// coordinates are: a sheet coordinate that stands still across a triangle has nothing to
+        /// average, and `TEXTURE_FINEST_BASE` is what `coneBaseOf` answers for an area of nought.
+        ///
+        /// The surface is black, so what the middle pixel holds is the sheet and nothing else.
+        TEST_F(RtxVisibilityTest, anEnvironmentSheetIsReadAtTheLevelItsOwnCurvatureAsksFor)
+        {
+            // Odd, so the middle pixel's own centre is on the axis. Small, because one pixel is
+            // read and a trace is the cost of this test.
+            constexpr std::uint32_t size = 17;
+            constexpr std::size_t centre = centreValueOf(size);
+
+            // Smaller than the frame at this distance, which is what puts the level inside the
+            // ladder rather than under its finest.
+            constexpr float half = 16.0f;
+            constexpr float away = 100.0f;
+
+            const std::array<osg::Vec3f, 4> quad{
+                osg::Vec3f(-half, 0.0f, -half),
+                osg::Vec3f(half, 0.0f, -half),
+                osg::Vec3f(half, 0.0f, half),
+                osg::Vec3f(-half, 0.0f, half),
+            };
+
+            const auto fannedBy = [](float k) {
+                return std::array<osg::Vec3f, 4>{
+                    osg::Vec3f(-k, -1.0f, -k),
+                    osg::Vec3f(k, -1.0f, -k),
+                    osg::Vec3f(k, -1.0f, k),
+                    osg::Vec3f(-k, -1.0f, k),
+                };
+            };
+
+            TestTexture ladder;
+            paintMipLadder(ladder);
+
+            const Shaders::VisibilityConstants camera
+                = makeCamera(osg::Vec3f(0.0f, -away, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
+
+            const auto levelOf = [&](std::span<const osg::Vec3f> normals) {
+                SceneDesc scene;
+                const Index mesh = scene.addMesh(MeshArrays{
+                    .mPositions = quad, .mNormals = normals, .mTexCoords = sQuadUv, .mIndices = sQuadIndices });
+                const Index environment = scene.textures().add(VFS::Path::NormalizedView("ladder.dds"));
+
+                // Black, so the sheet is the whole of what the pixel holds: the albedo multiplies
+                // everything a surface gathers and the sheet is added past it.
+                const Index material
+                    = scene.addMaterial(Material{ .mEnvironment = environment, .mDiffuseColour = osg::Vec3f() });
+                scene.addInstance(
+                    MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = mesh, .mMaterial = material });
+
+                // The quad covers the middle of the frame and not the whole of it, which is what
+                // puts the level inside the ladder: five pixels across, of seventeen.
+                std::vector<std::uint8_t> pixels;
+                EXPECT_EQ(countHits(scene, std::span(&ladder.mData, 1), camera, size, pixels), 25u);
+
+                return ladderLevel(mRadiance[centre] / Shaders::SUNLIT_WHITE);
+            };
+
+            const std::array<osg::Vec3f, 4> flat = fannedBy(0.0f);
+            const std::array<osg::Vec3f, 4> leaning = fannedBy(0.2f);
+            const std::array<osg::Vec3f, 4> leaningMore = fannedBy(2.0f / std::sqrt(19.0f));
+
+            EXPECT_NEAR(levelOf(flat), 0.0f, 0.01f) << "a sheet that does not move reads the finest level";
+
+            const float little = levelOf(leaning);
+            const float much = levelOf(leaningMore);
+
+            EXPECT_NEAR(much - little, 1.0f, 0.02f) << "four times the span is one level coarser";
+            EXPECT_NEAR(little, 1.386f, 0.02f) << "and the level itself is the area the form gives";
+
+            // Against neither end of the ladder, or the two above are a clamp rather than the form.
+            EXPECT_GT(little, 0.2f);
+            EXPECT_LT(much, 5.5f);
         }
 
         /// The dark map multiplies the albedo, read at the unit the content bound it at and on the

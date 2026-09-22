@@ -26,7 +26,26 @@ namespace Rtx
         /// Whether a controller rewrote this since the last frame, so `MaterialResolver::resolve`
         /// reads a known state set again instead of handing back the slot it already has.
         bool mAnimated = false;
+
+        /// Whether this state set or any above it is a controller's, resolved as the chain is built
+        /// the way `mFade` is, rather than counted beside it where the two could part.
+        ///
+        /// **What stands under a controller is animated by it.** `SceneUtil::addEnchantedGlow` hangs
+        /// its sheet on an instance's root, above the shape the sheet is read into, and that shape's
+        /// own state set is shared by every instance of the model — so a material keyed on it stands
+        /// for the enchanted sword and the plain one beside it at once. `MaterialResolver::animate`
+        /// is what this is asked for.
+        bool mAnimatedThrough = false;
     };
+
+    /// Whether a controller's state set stands anywhere on `shading` — `Shading::mAnimatedThrough`
+    /// at the near end, which is that question resolved as the chain was built rather than asked of
+    /// each link. What a material keyed on the near end has to know, and what says a sprite's
+    /// reading is this frame's rather than the one held.
+    inline bool animatedThrough(std::span<const Shading> shading)
+    {
+        return !shading.empty() && shading.back().mAnimatedThrough;
+    }
 
     /// What the content said this surface is, folded out of the chain of state sets in force at it,
     /// root first and nearest last, which is how OpenGL resolves the same chain — a parent's

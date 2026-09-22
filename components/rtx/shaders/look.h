@@ -311,6 +311,23 @@ namespace Rtx::Shaders
     /// than as shadow.
     const vec3 NO_TEXTURE_ALBEDO = vec3(0.5f, 0.5f, 0.5f);
 
+    /// The radiance a fully lit white card leaves, which is what the original's one meant.
+    ///
+    /// **What a texel of one is worth wherever the original added the content rather than lighting
+    /// it.** There a fully lit surface reached one, so a flame sprite at one and a sphere-mapped
+    /// sheet at one both reached that same white; here a Lambertian card under `DAYLIGHT` leaves
+    /// `DAYLIGHT / pi`, and carrying their one onto this renderer's scale is multiplying by it.
+    /// One constant, because one derivation: a flame and an enchanted item's caustic sheet are the
+    /// same convention met on two kinds of geometry, and stating it twice is how the two would come
+    /// to disagree.
+    ///
+    /// **This is not `EMISSIVE_INTENSITY` below**, which is a material's own glow, was measured
+    /// against rendered frames rather than derived, and sits about three times this. Content
+    /// carried at that scale is more than its own meaning: at night the exposure then puts every
+    /// texel of it past white, the fringe the texture painted goes with the core, and a flame or a
+    /// sheet reads as a cut-out that switches on.
+    const float SUNLIT_WHITE = DAYLIGHT * INV_PI;
+
     /// What an emissive of one is worth on screen.
     ///
     /// **The original's scale is not this renderer's.** There a fully lit surface reached one and an
@@ -319,10 +336,11 @@ namespace Rtx::Shaders
     ///
     /// **What sets it is what a night frame shows.** A night's exposure is metered off a dark scene,
     /// so a surface held high enough washes to white and loses the pattern on it — a glowing
-    /// mushroom cap reading as a blob rather than as a mushroom. `FLAME_INTENSITY` says the same of
-    /// a sprite and answers it by deriving a fully lit white card, `DAYLIGHT / pi`; this sits about
-    /// three times that, chosen against rendered frames rather than derived, because a material's
-    /// one and a sprite's one are two content conventions and not one.
+    /// mushroom cap reading as a blob rather than as a mushroom. `SUNLIT_WHITE` above says the same
+    /// of the content the original added rather than lit, and answers it by deriving a fully lit
+    /// white card; this sits about three times that, chosen against rendered frames rather than
+    /// derived, because a material's own glow and painted content added past the lighting are two
+    /// conventions and not one.
     ///
     /// **A glow lights nothing, and this is the whole of what it does.** A lamp for every glowing
     /// shape is hundreds of lights in the grid per cell, and what they buy is the warm ring under a
@@ -902,17 +920,6 @@ namespace Rtx::Shaders
     /// taken to mean this, and the price is one part in a hundred of the background through the
     /// densest texel a sprite has.
     const float SPRITE_ALPHA_LIMIT = 0.99f;
-
-    /// What a flame texel of one is worth, as light.
-    ///
-    /// **A white card square to the sun, which is what the original's one meant.** There a fully
-    /// lit surface reached one and an additive sprite at one reached the same white, so the two
-    /// stand at one level here: a card under `DAYLIGHT` leaves `DAYLIGHT / pi`. This is not
-    /// `EMISSIVE_INTENSITY`, which is a material's convention and not a sprite's, and which sits
-    /// about three times this. A flame carried at that scale is more than its own meaning, and at night the
-    /// exposure then puts every texel of it past white — the fringe the texture painted goes with
-    /// the core, and a sprite reads as a cut-out that switches on.
-    const float FLAME_INTENSITY = DAYLIGHT * INV_PI;
 
     /// How strongly smoke throws the sun forward: Henyey-Greenstein's asymmetry.
     ///

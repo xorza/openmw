@@ -281,7 +281,7 @@ namespace Rtx
         for (const Sprite& sprite : sprites)
             discs += osg::componentMultiply(mean, sprite.mColour) * (sprite.mAlpha * sprite.mRadius * sprite.mRadius);
 
-        mDiscs += discs * Shaders::FLAME_INTENSITY;
+        mDiscs += discs * Shaders::SUNLIT_WHITE;
         mBall.expandBy(osg::BoundingSpheref(emitter.mCentre, emitter.mReach));
     }
 

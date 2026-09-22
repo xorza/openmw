@@ -290,7 +290,7 @@ namespace Rtx
 
         // Above the node's own, which is where a rasterizing cull would push it too: what a
         // controller decided this frame overrides what the model was authored with.
-        if (const osg::StateSet* animated = mExtractor.animate(node))
+        if (const osg::StateSet* animated = mExtractor.animate(node, animatedThrough(mShading)))
             pushShading(*animated, true);
 
         const InstanceClass outer = mClass;
@@ -419,11 +419,12 @@ namespace Rtx
 
     void MirrorTraversal::pushShading(const osg::StateSet& stateSet, const bool animated)
     {
-        const float above = mShading.empty() ? 1.0f : mShading.back().mFade;
+        const Shading* const above = mShading.empty() ? nullptr : &mShading.back();
         mShading.push_back(Shading{
             .mStateSet = &stateSet,
-            .mFade = fadeThrough(stateSet, above),
+            .mFade = fadeThrough(stateSet, above != nullptr ? above->mFade : 1.0f),
             .mAnimated = animated,
+            .mAnimatedThrough = animated || (above != nullptr && above->mAnimatedThrough),
         });
     }
 
@@ -431,7 +432,14 @@ namespace Rtx
     {
         const std::size_t held = mShading.size();
         if (const osg::StateSet* own = drawable.getStateSet())
+        {
             pushShading(*own, false);
+
+            // A drawable carries no controller of its own, so what this asks is the other half of
+            // `animate`: a state set of its own under an animated one.
+            if (const osg::StateSet* animated = mExtractor.animate(drawable, animatedThrough(mShading)))
+                pushShading(*animated, true);
+        }
 
         mExtractor.addDrawable(drawable, identityWith(mPathHash, mChildIndex), mShading, placed(), mClass);
 
@@ -625,9 +633,9 @@ namespace Rtx
         return went;
     }
 
-    const osg::StateSet* SceneExtractor::animate(osg::Node& node)
+    const osg::StateSet* SceneExtractor::animate(osg::Node& node, const bool underAnimated)
     {
-        return mMaterials.animate(node, mWalk.get());
+        return mMaterials.animate(node, mWalk.get(), underAnimated);
     }
 
     void SceneExtractor::addLight(

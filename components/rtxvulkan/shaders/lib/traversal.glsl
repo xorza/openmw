@@ -751,12 +751,17 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
         const vec3 viewEye = vec3(dot(direction, right), dot(direction, up), -dot(direction, forward));
         const vec3 normalEye = vec3(dot(surface.mNormal, right), dot(surface.mNormal, up), -dot(surface.mNormal, forward));
 
-        const vec3 r = reflect(viewEye, normalEye);
-        const float m = 2.0 * sqrt(r.x * r.x + r.y * r.y + (r.z + 1.0) * (r.z + 1.0));
-        const TexturePoint sheet = TexturePoint(r.xy / m + 0.5, point.mBase);
+        // **Its own footprint and not the surface's**, which `spherePoint` says at length: a sheet
+        // indexed by the reflection is not read at the level the mesh's coordinates ask for. The
+        // second fetch of the triangle's normals in the frame, and the only one outside the
+        // traversal — paid by the materials that wear a sheet, which are few.
+        vec3 normal[3];
+        triangleNormals(corner, normal);
+
+        const TexturePoint sheet = spherePoint(normal, normalEye, viewEye, cone, surface.mFootprint);
 
         surface.mEmitted
-            += EMISSIVE_INTENSITY * sampleDiffuse(material.mEnvironment, sheet).rgb * material.mEnvironmentColour;
+            += SUNLIT_WHITE * sampleDiffuse(material.mEnvironment, sheet).rgb * material.mEnvironmentColour;
     }
 
     return surface;

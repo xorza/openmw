@@ -73,14 +73,14 @@ namespace Rtx
         /// Records that `slot`'s row was written, once however many times it is.
         void note(Index slot);
 
-        /// Every texture slot `material` names — its two roles, and every layer of its run. One
-        /// walk, or a role added to the hold and forgotten in the drop frees a slot something still
-        /// stands on.
+        /// Every texture slot `material` names — its own maps, and every layer of its run. One
+        /// walk, or a slot added to the hold and forgotten in the drop is freed under something
+        /// that still stands on it. The maps are `Material`'s own list, because the table is not
+        /// where a map is declared; the layers are here, because their run is this table's storage.
         template <class Visit>
         void forEachTexture(const Material& material, Visit visit) const
         {
-            visit(material.mDiffuse);
-            visit(material.mEmissive);
+            material.forEachTexture(visit);
 
             for (const MaterialLayer& layer : material.mLayers.in(getLayers()))
                 visit(layer.mDiffuse);

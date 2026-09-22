@@ -366,35 +366,33 @@ namespace Rtx::Testing
             EXPECT_EQ(mScene.textures().getRows().size(), 4u);
         }
 
-        /// An animated material keeps every texture it has worn, so a controller that cycles
-        /// thirty-two sheets at sixteen a second — `SceneUtil::GlowUpdater` — takes no slot and
-        /// gives none back on any frame after the first it showed each on. The material's death
-        /// lets them all go.
-        TEST_F(RtxSceneExtractorTest, anAnimatedMaterialKeepsEveryTextureItHasWorn)
+        /// A controller that shows a different sheet every frame, out of `mSheets`, on the unit
+        /// the enchantment's glow uses: `SceneUtil::GlowUpdater`, with its clock made explicit.
+        class FlipController : public SceneUtil::StateSetUpdater
         {
-            /// A controller that shows a different sheet every frame, out of `mSheets`.
-            class FlipController : public SceneUtil::StateSetUpdater
+        public:
+            std::vector<osg::ref_ptr<osg::Image>> mSheets;
+            std::size_t mShown = 0;
+
+            /// Unit one by number and not by `paint`, which appends: the walk hands the controller
+            /// a copy of the node's own state set, which already carries the diffuse at nought.
+            void setDefaults(osg::StateSet* stateset) override
             {
-            public:
-                std::vector<osg::ref_ptr<osg::Image>> mSheets;
-                std::size_t mShown = 0;
+                stateset->setTextureAttributeAndModes(1, new osg::Texture2D(mSheets.front()), osg::StateAttribute::ON);
+                stateset->setTextureAttribute(1,
+                    new SceneUtil::TextureType(std::string(textureRoleName(TextureRole::Environment))),
+                    osg::StateAttribute::ON);
+            }
 
-                /// Unit nought by number and not by `paint`, which appends: the walk hands the
-                /// controller a copy of the node's own state set, which already carries the unit.
-                void setDefaults(osg::StateSet* stateset) override
-                {
-                    stateset->setAttribute(new SceneUtil::Material, osg::StateAttribute::ON);
-                    stateset->setTextureAttributeAndModes(
-                        0, new osg::Texture2D(mSheets.front()), osg::StateAttribute::ON);
-                    stateset->setTextureAttribute(0, new SceneUtil::TextureType("diffuseMap"), osg::StateAttribute::ON);
-                }
+            void apply(osg::StateSet* stateset, osg::NodeVisitor*) override
+            {
+                stateset->setTextureAttribute(
+                    1, new osg::Texture2D(mSheets[mShown]), osg::StateAttribute::ON | osg::StateAttribute::OVERRIDE);
+            }
+        };
 
-                void apply(osg::StateSet* stateset, osg::NodeVisitor*) override
-                {
-                    stateset->setTextureAttribute(0, new osg::Texture2D(mSheets[mShown]), osg::StateAttribute::ON);
-                }
-            };
-
+        osg::ref_ptr<FlipController> makeFlip()
+        {
             osg::ref_ptr<FlipController> controller = new FlipController;
             for (std::size_t sheet = 0; sheet < 32; ++sheet)
             {
@@ -402,14 +400,47 @@ namespace Rtx::Testing
                 image->setFileName("textures/magicitem/caust" + std::to_string(sheet) + ".dds");
                 controller->mSheets.push_back(image);
             }
+            return controller;
+        }
 
+        /// A shape wearing `state`: on the node the way `NifOsg` builds one, or on the drawable
+        /// under it, which is the other place a walk can meet a state set.
+        osg::ref_ptr<osg::Group> makeShape(osg::StateSet* state, const bool onDrawable = false)
+        {
             osg::ref_ptr<osg::Geometry> quad = makeQuad();
-            osg::ref_ptr<osg::Group> node = new osg::Group;
-            node->addChild(quad);
+            osg::ref_ptr<osg::Group> shape = new osg::Group;
+            if (onDrawable)
+                quad->setStateSet(state);
+            else
+                shape->setStateSet(state);
+            shape->addChild(quad);
+            return shape;
+        }
+
+        osg::ref_ptr<osg::StateSet> shapeState()
+        {
+            osg::ref_ptr<osg::StateSet> state = new osg::StateSet;
+            paint(*state, "textures/w_sword.dds");
+            state->setAttribute(new SceneUtil::Material, osg::StateAttribute::ON);
+            return state;
+        }
+
+        /// An animated material keeps every texture it has worn, so a controller that cycles
+        /// thirty-two caustic sheets at sixteen a second — `SceneUtil::GlowUpdater` — takes no slot
+        /// and gives none back on any frame after the first it showed each on. The material's death
+        /// lets them all go.
+        ///
+        /// **The sheet cycles beside a diffuse that stays**, which is the shape the game's glow has:
+        /// a ring sized for the cycle alone holds the diffuse in it too, and from the second cycle
+        /// on every sheet change drops the sheet due next and takes it up again.
+        TEST_F(RtxSceneExtractorTest, anAnimatedMaterialKeepsEveryTextureItHasWorn)
+        {
+            osg::ref_ptr<FlipController> controller = makeFlip();
+            osg::ref_ptr<osg::Group> node = makeShape(shapeState());
             node->addUpdateCallback(controller);
 
             osgUtil::UpdateVisitor update;
-            for (unsigned int frame = 1; frame <= 40; ++frame)
+            for (unsigned int frame = 1; frame <= 72; ++frame)
             {
                 controller->mShown = (frame - 1) % 32;
                 update.setTraversalNumber(frame);
@@ -419,16 +450,19 @@ namespace Rtx::Testing
                 walk(*node, 0, frame);
 
                 ASSERT_EQ(mScene.materials().getRows().size(), 1u) << "on frame " << frame;
-                EXPECT_EQ(mScene.materials().getRows()[0].mDiffuse, controller->mShown)
+                EXPECT_EQ(mScene.materials().getRows()[0].mDiffuse, 0u) << "on frame " << frame;
+                EXPECT_EQ(mScene.materials().getRows()[0].mEnvironment, controller->mShown + 1)
                     << "the sheet shown on frame " << frame;
 
-                // A slot per distinct sheet as each is first shown, and none given back: on the
-                // second time round every slot is already there.
-                const std::size_t worn = std::min<std::size_t>(frame, 32);
+                // The diffuse and a slot per distinct sheet as each is first shown, and none given
+                // back: on the second time round every slot is already there.
+                const std::size_t worn = std::min<std::size_t>(frame, 32) + 1;
                 EXPECT_EQ(mScene.textures().getRows().size(), worn) << "on frame " << frame;
+                EXPECT_EQ(mScene.textures().getLiveCount(), worn) << "on frame " << frame;
                 if (frame > 32)
                 {
                     EXPECT_TRUE(mScene.textures().getArrived().empty()) << "a sheet arrived again on frame " << frame;
+                    EXPECT_TRUE(mScene.textures().getFreed().empty()) << "a sheet was given back on frame " << frame;
                 }
 
                 mExtractor.retire();
@@ -436,13 +470,106 @@ namespace Rtx::Testing
             }
 
             // The material goes, and every sheet with it.
-            node->removeChild(quad);
+            node->removeChild(0, 1);
             mScene.clearPlacement();
-            walk(*node, 0, 41);
+            walk(*node, 0, 73);
             mExtractor.retire();
 
-            for (std::size_t sheet = 0; sheet < 32; ++sheet)
-                EXPECT_TRUE(mScene.textures().isFree(sheet)) << "sheet " << sheet << " outlived the material";
+            for (std::size_t slot = 0; slot < 33; ++slot)
+                EXPECT_TRUE(mScene.textures().isFree(slot)) << "slot " << slot << " outlived the material";
+        }
+
+        /// A material read once keeps every map it names for as long as it stands. The walk's own
+        /// hold on an image goes on the frame after the material arrived, so the row's is the one
+        /// that lasts — and a map the row does not hold is freed under it, its slot handed to the
+        /// next texture that arrives.
+        TEST_F(RtxSceneExtractorTest, aMaterialReadOnceKeepsItsEnvironmentAndDarkMaps)
+        {
+            osg::ref_ptr<osg::Geometry> quad = makeQuad();
+            osg::StateSet& state = *quad->getOrCreateStateSet();
+            paint(state, "textures/a_glass.dds");
+            paint(state, "textures/tx_6th_dark.dds", TextureRole::Dark);
+            paint(state, "textures/vfx_alt_envir.dds", TextureRole::Environment);
+
+            for (unsigned int frame = 1; frame <= 6; ++frame)
+            {
+                mScene.clearPlacement();
+                walk(*quad, 0, frame);
+
+                ASSERT_EQ(mScene.materials().getRows().size(), 1u) << "on frame " << frame;
+                const Rtx::Material& material = mScene.materials().getRows()[0];
+                EXPECT_EQ(material.mDiffuse, 0u);
+                EXPECT_EQ(material.mEnvironment, 1u);
+                EXPECT_EQ(material.mDark, 2u);
+                EXPECT_EQ(mScene.textures().getLiveCount(), 3u) << "on frame " << frame;
+                EXPECT_TRUE(mScene.textures().getFreed().empty()) << "a map was given back on frame " << frame;
+
+                mExtractor.retire();
+                mScene.clearArrivals();
+            }
+        }
+
+        /// A glow the game puts on an instance's root is read into the shape under it, and the
+        /// shape's state set is the one every instance of the model shares. So a shape under an
+        /// animated state set is animated too and keyed on its own node: the enchanted sword's
+        /// sheet cycles, and the plain sword of the same model beside it wears none.
+        ///
+        /// **Both places a walk meets a state set**, because the chain is what carries the answer
+        /// and a drawable's own link is the last one on it.
+        TEST_F(RtxSceneExtractorTest, aGlowAboveAShapeAnimatesItAndLeavesTheSameShapeElsewhereAlone)
+        {
+            for (const bool onDrawable : { false, true })
+            {
+                Rtx::SceneDesc scene;
+                SceneExtractor extractor(scene);
+
+                osg::ref_ptr<osg::StateSet> shared = shapeState();
+
+                osg::ref_ptr<FlipController> controller = makeFlip();
+                osg::ref_ptr<osg::Group> enchanted = new osg::Group;
+                enchanted->addChild(makeShape(shared, onDrawable));
+                enchanted->addUpdateCallback(controller);
+
+                osg::ref_ptr<osg::Group> plain = new osg::Group;
+                plain->addChild(makeShape(shared, onDrawable));
+
+                osg::ref_ptr<osg::Group> both = new osg::Group;
+                both->addChild(plain);
+                both->addChild(enchanted);
+
+                const char* const where = onDrawable ? " with the state set on the drawable" : "";
+
+                osgUtil::UpdateVisitor update;
+                for (unsigned int frame = 1; frame <= 40; ++frame)
+                {
+                    controller->mShown = (frame - 1) % 32;
+                    update.setTraversalNumber(frame);
+                    both->accept(update);
+
+                    scene.clearPlacement();
+                    extractor.extract(*both, osg::Matrixf::identity(), 0, frame);
+
+                    ASSERT_EQ(scene.materials().getRows().size(), 2u) << "on frame " << frame << where;
+                    ASSERT_EQ(scene.placements().getRows().size(), 2u) << "on frame " << frame << where;
+
+                    const Rtx::Index plainMaterial = scene.placements().getRows()[0].mInstance.mMaterial;
+                    const Rtx::Index glowingMaterial = scene.placements().getRows()[1].mInstance.mMaterial;
+                    ASSERT_NE(plainMaterial, glowingMaterial) << "on frame " << frame << where;
+
+                    const Rtx::Material& glowing = scene.materials().getRows()[glowingMaterial];
+                    EXPECT_TRUE(glowing.mAnimated) << "on frame " << frame << where;
+                    EXPECT_EQ(glowing.mEnvironment, controller->mShown + 1)
+                        << "the sheet shown on frame " << frame << where;
+
+                    const Rtx::Material& bare = scene.materials().getRows()[plainMaterial];
+                    EXPECT_FALSE(bare.mAnimated) << "on frame " << frame << where;
+                    EXPECT_EQ(bare.mEnvironment, Rtx::sNoIndex) << "on frame " << frame << where;
+                    EXPECT_EQ(bare.mDiffuse, glowing.mDiffuse) << "on frame " << frame << where;
+
+                    extractor.retire();
+                    scene.clearArrivals();
+                }
+            }
         }
 
         /// An actor's fade rides its placement, and a model's own alpha does not ride it twice.

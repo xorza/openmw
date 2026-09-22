@@ -1,6 +1,5 @@
 #include "emitterresolver.hpp"
 
-#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -104,10 +103,9 @@ namespace Rtx
         HeldSprite& held = known->second;
 
         // Read where the entry arrives, and again where a link of the chain animates; every other
-        // frame the reading is the one held.
-        const bool animated
-            = std::any_of(shading.begin(), shading.end(), [](const Shading& link) { return link.mAnimated; });
-        if (arrived || animated)
+        // frame the reading is the one held. `Shading::mAnimatedThrough` is that scan resolved as
+        // the chain is built, so no reader walks the links for it.
+        if (arrived || animatedThrough(shading))
             describeSprite(held, shading);
 
         if (held.mSprite == nullptr)
