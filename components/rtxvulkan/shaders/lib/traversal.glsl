@@ -63,6 +63,20 @@ float surfaceOpacity(GpuInstance instance, GpuMaterial material)
     return instance.mOpacity * material.mOpacity;
 }
 
+/// Which faces traversal shows a ray, from whether the ray draws the picture.
+///
+/// **A ray that draws shows what the rasterizer shows.** OpenMW draws the world with
+/// `GL_CULL_FACE` on, so the content states which face of a surface is there, and a ray standing in
+/// for that pass states it the same way. A ray that carries light meets a surface from either
+/// side instead: a wall met from behind that stopped nothing would leak the light behind it.
+///
+/// `SceneAcceleration::placeRow` is where a row says it is drawn from both faces, and
+/// `InstanceRecord::mTwoSided` is what the content said.
+uint facingFor(bool draws)
+{
+    return draws ? gl_RayFlagsCullBackFacingTrianglesEXT : gl_RayFlagsNoneEXT;
+}
+
 /// Whether what is behind a surface of this opacity is meant to show through it.
 ///
 /// The product rather than the two facts it is made of, so a caller that wants the number as well as
@@ -368,13 +382,14 @@ Hit committedHit(
 ///        a hit object from it.
 /// @param hit a `Hit` this fills in.
 /// @param footprint,spread how wide the ray's cone starts and how fast it opens. See `trace`.
-#define RTX_TRAVERSE(query, hit, origin, direction, tmin, footprint, spread, mask)                          \
+/// @param draws whether this ray draws the picture — `facingFor`. **A literal at every call.**
+#define RTX_TRAVERSE(query, hit, origin, direction, tmin, footprint, spread, mask, draws)                   \
     {                                                                                                       \
         /* No blanket opaque flag: the per-instance bits the build set from each material are what   */      \
         /* decide whether traversal stops to ask, and forcing opacity here would override them and   */      \
         /* put every leaf back inside the card it was painted on.                                    */      \
         rayQueryInitializeEXT(                                                                              \
-            (query), sceneTop, gl_RayFlagsNoneEXT, (mask), (origin), (tmin), (direction), frame.mFar);      \
+            (query), sceneTop, facingFor(draws), (mask), (origin), (tmin), (direction), frame.mFar);        \
                                                                                                             \
         /* An lvalue the resolve needs and nothing here reads: a ray that keeps what it passed      */      \
         /* through cannot commit the surface it passed through, and this one commits.                */      \
@@ -456,11 +471,13 @@ float lightThrough(vec3 from, vec3 towards, float distance)
 ///        at, which is the eye's own rule: `visibility.rgen` peels those and commits what stands
 ///        behind them. An asker whose question is "where does the picture end" wants this, and one
 ///        asking "what is the nearest thing there" does not.
-float surfaceWithin(
-    vec3 origin, vec3 direction, float tmin, float reach, float footprint, float spread, uint mask, bool seeThrough)
+/// @param draws the same division again, and the same two askers — `facingFor`. Where the picture
+///        ends is where the eye's own ray ends, and the eye culls.
+float surfaceWithin(vec3 origin, vec3 direction, float tmin, float reach, float footprint, float spread, uint mask,
+    bool seeThrough, bool draws)
 {
     rayQueryEXT query;
-    rayQueryInitializeEXT(query, sceneTop, gl_RayFlagsNoneEXT, mask, origin, tmin, direction, reach);
+    rayQueryInitializeEXT(query, sceneTop, facingFor(draws), mask, origin, tmin, direction, reach);
 
     // An lvalue the macro needs and nothing here reads: what a surface walked past let through is
     // a question for whoever wants the picture, and this ray wants the distance.
@@ -475,7 +492,7 @@ float surfaceWithin(
 
 float solidWithin(vec3 origin, vec3 direction, float tmin, float reach, float footprint, float spread)
 {
-    return surfaceWithin(origin, direction, tmin, reach, footprint, spread, solidMask(frame.mRayMask), false);
+    return surfaceWithin(origin, direction, tmin, reach, footprint, spread, solidMask(frame.mRayMask), false, false);
 }
 
 /// What a ray found, resolved down to the inputs shading needs.
@@ -779,11 +796,13 @@ Surface resolve(Hit hit, vec3 origin, vec3 direction)
 /// @param footprint how wide the ray's cone starts, which for a primary ray is nothing and for a
 ///        reflection is whatever the pixel had already spread to at the water.
 /// @param spread how much wider that cone gets per unit travelled.
-Hit traverse(vec3 origin, vec3 direction, float tmin, float footprint, float spread, uint mask)
+/// @param draws whether this ray draws the picture — `facingFor`. A reflection and the bed under a
+///        waterline pixel do; a bounce carries light and does not.
+Hit traverse(vec3 origin, vec3 direction, float tmin, float footprint, float spread, uint mask, bool draws)
 {
     rayQueryEXT query;
     Hit hit;
-    RTX_TRAVERSE(query, hit, origin, direction, tmin, footprint, spread, mask)
+    RTX_TRAVERSE(query, hit, origin, direction, tmin, footprint, spread, mask, draws)
 
     return hit;
 }
@@ -792,9 +811,9 @@ Hit traverse(vec3 origin, vec3 direction, float tmin, float footprint, float spr
 ///
 /// **The two halves back to back, for every ray but the eye's own.** Only the primary ray has
 /// anything to put between them, and `visibility.rgen` is where it does.
-Surface trace(vec3 origin, vec3 direction, float tmin, float footprint, float spread, uint mask)
+Surface trace(vec3 origin, vec3 direction, float tmin, float footprint, float spread, uint mask, bool draws)
 {
-    return resolve(traverse(origin, direction, tmin, footprint, spread, mask), origin, direction);
+    return resolve(traverse(origin, direction, tmin, footprint, spread, mask, draws), origin, direction);
 }
 
 #endif

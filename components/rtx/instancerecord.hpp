@@ -71,6 +71,12 @@ namespace Rtx
         /// whether to run.
         bool mAdditive = false;
 
+        /// Whether both faces of this placement are drawn, so that a ray that draws may not cull
+        /// it — `facingFor`. Morrowind states it two ways and either is enough: the content turns
+        /// `GL_CULL_FACE` off, which is `Material::mTwoSided`, or it doubles the shape for its
+        /// back, which is `FoldedShape::mFolded`.
+        bool mTwoSided = false;
+
         /// Whether the slot this record sits in holds a placement. Records are addressed by slot
         /// and slots have gaps, because a slot index is what a hit reads back.
         bool mPlaced = false;
@@ -79,9 +85,8 @@ namespace Rtx
     };
 
     /// Fills `records` with one row per slot the scene holds, in slot order — a record with
-    /// `mPlaced` false is a gap to be skipped and never renumbered away. Every instance is built
-    /// with face culling disabled, because Morrowind leans on sheet geometry lit and hit from both
-    /// faces. An out-parameter refilled in place.
+    /// `mPlaced` false is a gap to be skipped and never renumbered away. An out-parameter refilled
+    /// in place.
     void makeInstanceRecords(const SceneDesc& scene, std::vector<InstanceRecord>& records);
 
     /// Rewrites the rows of the slots the scene says changed — `getMoved` and `getSettled` — leaves

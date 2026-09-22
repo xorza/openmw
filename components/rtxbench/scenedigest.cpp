@@ -330,7 +330,7 @@ namespace Rtx
 
     /// The same, for the field types the lists above hand over as one value each.
     static_assert(sizeof(Run) == 8, "Run is read whole and must have no padding");
-    static_assert(sizeof(FoldedShape) == 2, "FoldedShape is read whole and must have no padding");
+    static_assert(sizeof(FoldedShape) == 3, "FoldedShape is read whole and must have no padding");
     static_assert(sizeof(osg::BoundingBoxf) == 24, "a bounding box is read whole and must have no padding");
     static_assert(sizeof(osg::Matrixf) == 64, "a transform is read whole and must have no padding");
 

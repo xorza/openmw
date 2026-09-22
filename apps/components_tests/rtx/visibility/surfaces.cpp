@@ -416,6 +416,10 @@ namespace Rtx::Testing
         /// One linear-128 texel, for a test whose subject is not the texture.
         constexpr std::array<std::uint8_t, 4> sGreyTexel{ 128, 128, 128, 255 };
 
+        /// One that is red alone, for a test reading what a second surface put on a pixel: whatever
+        /// it adds lands in a channel the grey one leaves where it was.
+        constexpr std::array<std::uint8_t, 4> sRedTexel{ 255, 0, 0, 255 };
+
         /// The other half of de-lighting: the shader dividing the estimate back out.
         ///
         /// `ShadingMap`'s own tests say what the estimate is and `RtxShadingPassTest` says the
@@ -949,7 +953,6 @@ namespace Rtx::Testing
             constexpr std::size_t centre = centreValueOf(size);
 
             const TextureData grey = describeTexel(sGreyTexel, 0);
-            constexpr std::array<std::uint8_t, 4> sRedTexel{ 255, 0, 0, 255 };
             const TextureData red = describeTexel(sRedTexel, 1);
             const std::array<TextureData, 2> textures{ grey, red };
 
@@ -1041,6 +1044,115 @@ namespace Rtx::Testing
             EXPECT_GT(quarter, 0.0f) << "a quarter of the sheet is some of it";
             EXPECT_NEAR(half, 2.0f * quarter, 1.0e-3f) << "and twice as much alpha adds twice as much";
             EXPECT_NEAR(addedRedAt(0.0f), bare, 1.0e-4f) << "a sheet faded to nothing adds nothing";
+        }
+
+        /// **An additive sheet is drawn from the face the content draws, and not from its back.**
+        /// The rasterizer draws the world with `GL_CULL_FACE` on, and what adds is drawn rather
+        /// than shaded — so the walk that stands in for that pass culls what it culls.
+        ///
+        /// `meshes/e/magic_hit_s.nif`, the ellipsoid a Shield spell puts around an actor, is what
+        /// asks: it is closed, single-sided and additive, and it encloses the eye in first person.
+        /// Culling nothing, the trace added its far wall over every pixel of the frame, and the
+        /// player looked out through a purple haze the rasterizer never drew.
+        TEST_F(RtxVisibilityTest, anAdditiveSurfaceIsDrawnFromTheFaceTheContentDraws)
+        {
+            constexpr std::uint32_t size = 32;
+            constexpr std::size_t centre = centreValueOf(size);
+
+            const TextureData grey = describeTexel(sGreyTexel, 0);
+            const TextureData red = describeTexel(sRedTexel, 1);
+            const std::array<TextureData, 2> textures{ grey, red };
+
+            const Shaders::VisibilityConstants camera = wallCamera(
+                size, osg::Vec3f(2.0f, 2.0f, 2.0f), osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f));
+
+            const std::array<osg::Vec3f, 4> held = uprightQuadAt(20.0f, -50.0f);
+
+            const auto build = [&](std::optional<std::array<osg::Vec3f, 4>> sheet, bool twoSided) {
+                SceneDesc scene;
+                const Index wall = scene.addMesh(
+                    MeshArrays{ .mPositions = sWallQuad, .mTexCoords = sQuadUv, .mIndices = sQuadIndices });
+                const Index diffuse = scene.textures().add(VFS::Path::NormalizedView("grey.dds"));
+                const Index glow = scene.textures().add(VFS::Path::NormalizedView("red.dds"));
+                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                    .mMesh = wall,
+                    .mMaterial = scene.addMaterial(Material{ .mDiffuse = diffuse }) });
+
+                if (sheet.has_value())
+                {
+                    const Index mesh = scene.addMesh(
+                        MeshArrays{ .mPositions = *sheet, .mTexCoords = sQuadUv, .mIndices = sQuadIndices });
+                    const Index additive = scene.addMaterial(Material{
+                        .mDiffuse = glow,
+                        .mOpacity = 0.5f,
+                        .mAlphaMode = AlphaMode::Blend,
+                        .mBlend = BlendKind::Add,
+                        .mTwoSided = twoSided,
+                    });
+                    scene.addInstance(
+                        MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = mesh, .mMaterial = additive });
+                }
+
+                return scene;
+            };
+
+            const auto redAt = [&](std::optional<std::array<osg::Vec3f, 4>> sheet, bool twoSided) {
+                std::vector<std::uint8_t> pixels;
+                EXPECT_EQ(countHits(build(sheet, twoSided), textures, camera, size, pixels), size * size);
+
+                return mRadiance[centre];
+            };
+
+            const float bare = redAt(std::nullopt, false);
+            const float facing = redAt(held, false);
+            const float turnedAway = redAt(turned(held), false);
+            const float bothWays = redAt(turned(held), true);
+
+            EXPECT_GT(facing, bare + 1.0e-3f) << "the face the content draws adds nothing";
+            EXPECT_NEAR(turnedAway, bare, 1.0e-4f) << "the back of a single-sided sheet was drawn";
+            EXPECT_NEAR(bothWays, facing, 1.0e-4f) << "a sheet drawn both ways adds from either face";
+        }
+
+        /// **A placement that turns a mesh over shows the same face of it.**
+        ///
+        /// Traversal carries the ray into the mesh's own space and reads the winding there, so a
+        /// placement of a negative determinant leaves which face is drawn alone. That is the space
+        /// the engine means: `SceneUtil::attach` builds a left body part out of the right one under
+        /// a scale of minus one and flips `osg::FrontFace` back over it, because the rasterizer
+        /// does carry the determinant and traversal does not.
+        ///
+        /// Measured here rather than assumed, because the other reading would take every left arm
+        /// in the game out of the frame.
+        TEST_F(RtxVisibilityTest, aMirroredPlacementShowsTheFaceItsMeshShows)
+        {
+            constexpr std::uint32_t size = 32;
+
+            const Shaders::VisibilityConstants camera = wallCamera(
+                size, osg::Vec3f(2.0f, 2.0f, 2.0f), osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f));
+
+            // A quad halfway to the wall and square about the axis, so a mirror about x leaves it
+            // where it was and changes nothing but its winding.
+            const std::array<osg::Vec3f, 4> held = uprightQuadAt(20.0f, -50.0f);
+
+            const auto metAt = [&](const osg::Matrixf& place) {
+                SceneDesc scene;
+                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                    .mMesh = scene.addMesh(MeshArrays{ .mPositions = sWallQuad, .mIndices = sQuadIndices }) });
+                scene.addInstance(MeshInstance{ .mTransform = place,
+                    .mMesh = scene.addMesh(MeshArrays{ .mPositions = held, .mIndices = sQuadIndices }) });
+
+                EXPECT_EQ(renderShot(scene, {}, camera, size), size * size);
+
+                std::vector<float> depth;
+                mRenderer->readChannel(Channel::Depth, depth);
+                EXPECT_EQ(depth.size(), std::size_t{ size } * size * 2);
+
+                return depth[centreOf(size) * 2 + 1];
+            };
+
+            EXPECT_NEAR(metAt(osg::Matrixf::identity()), 50.0f, 0.1f) << "the quad stands halfway to the wall";
+            EXPECT_NEAR(metAt(osg::Matrixf::scale(-1.0f, 1.0f, 1.0f)), 50.0f, 0.1f)
+                << "and the eye met the wall behind the mirrored one";
         }
 
         /// The mip chain a ray cone selects from, at a distance chosen so the answer is a whole

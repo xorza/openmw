@@ -83,8 +83,9 @@ struct WaterPath
 ///        unhalved, because a disc is named by its radius.
 WaterPath waterRay(vec3 origin, vec3 direction, float footprint, float spread, float lobe, uint seed)
 {
+    // Drawn, because a reflection is a picture of the world and shows the faces the world shows.
     const Surface hit
-        = trace(origin, direction, SHADOW_BIAS, footprint, spread + 2.0 * lobe, solidMask(frame.mRayMask));
+        = trace(origin, direction, SHADOW_BIAS, footprint, spread + 2.0 * lobe, solidMask(frame.mRayMask), true);
 
     WaterPath path;
     path.mPosition = hit.mPosition;

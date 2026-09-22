@@ -932,11 +932,14 @@ namespace Rtx::Testing
             const auto look = [&](bool lidded, bool lit) {
                 // The same sheet either way, over the march or under it, so the two frames differ
                 // in what the shadow ray finds and in nothing else — not in what is in the scene,
-                // nor in how large it is.
+                // nor in how large it is. Drawn from both faces for that same reason: a sheet the
+                // eye met from over and one it met from under would not be the same sheet, and a
+                // roof in the game has an underside the content modelled.
                 SceneDesc scene;
                 scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
                     .mMesh = scene.addMesh(MeshArrays{
-                        .mPositions = sheetAt(40000.0f, lidded ? 500.0f : -500.0f), .mIndices = sQuadIndices }) });
+                        .mPositions = sheetAt(40000.0f, lidded ? 500.0f : -500.0f), .mIndices = sQuadIndices }),
+                    .mMaterial = scene.addMaterial(Material{ .mTwoSided = true }) });
 
                 Shaders::VisibilityConstants camera = makeCamera(
                     osg::Vec3f(0.0f, 0.0f, 0.0f), osg::Vec3f(0.0f, 1000.0f, 0.0f), 60.0f, size, size, 100000.0f);

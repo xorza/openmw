@@ -95,6 +95,7 @@ namespace Rtx
                 .mCutout = worn.mCutout,
                 .mTranslucent = !worn.mAdditive && (instance.mOpacity < 1.0f || worn.mTranslucent),
                 .mAdditive = worn.mAdditive,
+                .mTwoSided = worn.mTwoSided || scene.meshes().getRows()[instance.mMesh].mShape.mFolded,
                 .mPlaced = true,
             };
         }

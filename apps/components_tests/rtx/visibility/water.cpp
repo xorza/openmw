@@ -802,10 +802,12 @@ namespace Rtx::Testing
             constexpr float surface = size * step / (2.0f * 100.0f * halfHeight);
             constexpr float image = size * step / (2.0f * 300.0f * halfHeight);
 
+            // A ceiling, drawn from both faces because what the water reflects is its underside
+            // and a ceiling in the game has one the content modelled.
             SceneDesc scene = makeOpenWater(4000.0f);
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh
-                = scene.addMesh(MeshArrays{ .mPositions = sheetAt(4000.0f, 200.0f), .mIndices = sQuadIndices }) });
+                .mMesh = scene.addMesh(MeshArrays{ .mPositions = sheetAt(4000.0f, 200.0f), .mIndices = sQuadIndices }),
+                .mMaterial = scene.addMaterial(Material{ .mTwoSided = true }) });
 
             const auto look = [&](float across) {
                 Shaders::VisibilityConstants camera = makeCamera(

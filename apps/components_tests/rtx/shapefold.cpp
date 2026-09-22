@@ -83,10 +83,15 @@ namespace Rtx
             EXPECT_EQ(solid, before);
 
             // A doubled card with one lone triangle beside it: the twin goes, the lone one stays,
-            // and the shape is not a sheet — a leaf's stem is not lit through.
+            // and the shape is not a sheet — a leaf's stem is not lit through. It is folded all the
+            // same, which is what keeps a ray that draws from culling the card the twin went from.
             std::vector<std::uint32_t> mixed{ 0, 1, 2, 2, 1, 0, 1, 2, 3 };
-            EXPECT_FALSE(fold.fold(sCard, mixed).mSheet);
+            const FoldedShape part = fold.fold(sCard, mixed);
+            EXPECT_FALSE(part.mSheet);
+            EXPECT_TRUE(part.mFolded);
             EXPECT_EQ(mixed, (std::vector<std::uint32_t>{ 0, 1, 2, 1, 2, 3 }));
+
+            EXPECT_FALSE(fold.fold(tetra, solid).mFolded) << "a solid the fold took nothing from";
 
             std::vector<std::uint32_t> none;
             EXPECT_FALSE(fold.fold(sCard, none).mSheet);

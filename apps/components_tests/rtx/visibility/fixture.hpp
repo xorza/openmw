@@ -50,6 +50,10 @@ namespace Rtx::Testing
         SceneDesc scene;
         Material water;
         water.mKind = MaterialKind::Water;
+
+        // What `MaterialResolver::resolveWater` says of the sea, because a swimmer looks up at the
+        // surface from under it and a ray that draws culls everything the content shows one face of.
+        water.mTwoSided = true;
         scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
             .mMesh = scene.addMesh(MeshArrays{ .mPositions = sheetAt(extent, 0.0f), .mIndices = sQuadIndices }),
             .mMaterial = scene.addMaterial(water) });
@@ -127,7 +131,8 @@ namespace Rtx::Testing
     /// **The two numbers an opacity is made of, added the one way.** The shader multiplies a
     /// material's alpha by a placement's fade, and a helper that built either of them its own way
     /// would be holding up a surface this renderer does not have.
-    inline void addPane(SceneDesc& scene, std::span<const osg::Vec3f> quad, const osg::Vec4f& colour, float fade = 1.0f)
+    inline void addPane(SceneDesc& scene, std::span<const osg::Vec3f> quad, const osg::Vec4f& colour, float fade = 1.0f,
+        bool twoSided = false)
     {
         // A test states a pane as a colour and how much of it there is, which is the pair the
         // record states too. Linear already, so there is nothing to decode: `Rtx::decodeColour` is
@@ -136,6 +141,7 @@ namespace Rtx::Testing
             .mDiffuseColour = osg::Vec3f(colour.r(), colour.g(), colour.b()),
             .mOpacity = colour.a(),
             .mAlphaMode = AlphaMode::Blend,
+            .mTwoSided = twoSided,
         });
 
         scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),

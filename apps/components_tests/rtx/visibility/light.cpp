@@ -198,6 +198,52 @@ namespace Rtx::Testing
             EXPECT_EQ(through(5), 0);
         }
 
+        /// **A shell is one layer of the peel and not two.**
+        ///
+        /// The rasterizer draws the world with `GL_CULL_FACE` on, so a robe, a cuirass and a pane
+        /// of glass each show the eye one face. Culling nothing, the peel walked through the far
+        /// wall as well as the near one and composited the same alpha twice: the Ancestor Ghost,
+        /// whose seven body shapes blend `SRC_ALPHA, INV_SRC_ALPHA` at an alpha of 0.45 and carry no
+        /// `NiStencilProperty`, covered 0.45 + 0.55 * 0.45 of its pixel where the game covers 0.45.
+        /// A faded actor was worse: `PEEL_LAYERS` is four, counted for a cuirass over a skirt over a
+        /// leg, and with the backs of those three the budget ran out and the last layer drew solid.
+        ///
+        /// Two black half panes on the eye's ray, the near one facing the eye and the far one facing
+        /// away, which is what a closed surface is from outside. The figures are the ones the test
+        /// above pins: one layer is 111 and two is the wall at a quarter.
+        TEST_F(RtxVisibilityTest, aShellIsPeeledFromTheFaceItShowsAndNotFromItsBack)
+        {
+            constexpr std::uint32_t size = 33;
+
+            const osg::Vec3f bright(2.0f, 2.0f, 2.0f);
+            const osg::Vec4f half(0.0f, 0.0f, 0.0f, 0.5f);
+
+            // Where `litThroughStack` stands its panes: the eye is at x = 100 looking at the origin,
+            // so its ray runs at x = -y and a pane on it is centred there.
+            const auto paneAt = [](float away, bool facingTheEye) {
+                std::array<osg::Vec3f, 4> pane = uprightQuadAt(10.0f, away);
+                for (osg::Vec3f& corner : pane)
+                    corner.x() -= away;
+
+                return facingTheEye ? pane : turned(pane);
+            };
+
+            const auto throughShell = [&](bool bothFaces) {
+                SceneDesc scene = makeWall();
+                addPane(scene, paneAt(-60.0f, true), half);
+                addPane(scene, paneAt(-50.0f, false), half, 1.0f, bothFaces);
+
+                std::vector<std::uint8_t> pixels;
+                EXPECT_GT(countHits(scene, {}, wallCamera(size, bright), size, pixels), 0u);
+
+                return int{ pixels[centreValueOf(size)] };
+            };
+
+            EXPECT_EQ(throughShell(false), 111) << "the far wall of a shell was drawn";
+            EXPECT_EQ(throughShell(true), int{ litThroughStack({}, bright * 0.25f) })
+                << "and a surface the content draws from both faces is still two layers";
+        }
+
         /// A placement the game is fading is seen through, whatever its material says.
         ///
         /// **The same pane, made see-through by the other of the two numbers.** The tests around

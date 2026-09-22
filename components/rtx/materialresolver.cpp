@@ -154,7 +154,11 @@ namespace Rtx
         if (const Entry held = reuse(sSea); held != mMaterials.end())
             return Resolved{ .mIndex = held->second.mIndex, .mKey = sSea };
 
-        return Resolved{ .mIndex = adopt(sSea, Material{ .mKind = MaterialKind::Water })->second.mIndex, .mKey = sSea };
+        // **Drawn from both faces**, which is what `SceneUtil::createSimpleWaterStateSet` says by
+        // turning `GL_CULL_FACE` off: a swimmer looks up at the surface from under it.
+        return Resolved{ .mIndex
+            = adopt(sSea, Material{ .mKind = MaterialKind::Water, .mTwoSided = true })->second.mIndex,
+            .mKey = sSea };
     }
 
     MaterialReading MaterialResolver::read(std::span<const Shading> shading, AlphaScratch& scratch, MeanTexels& means)

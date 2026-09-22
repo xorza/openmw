@@ -109,6 +109,11 @@ struct GatherRule
     /// Whether what the crossings let through is summed — `blockedBy` — which a layer that covers
     /// reports as its transmittance and a layer that adds has no use for.
     bool mBlocks;
+
+    /// Whether this walk draws the picture, which is what decides the faces it is shown —
+    /// `facingFor`. A sheet that adds is drawn. A medium is entered and left, and which face of a
+    /// shell its winding names carries no meaning on that content.
+    bool mDraws;
 };
 
 /// What a walk gathered along a ray.
@@ -161,7 +166,7 @@ Gathered gatherAlong(vec3 origin, vec3 direction, float limit, Cone cone, Gather
     gathered.mCovering = 0u;
 
     rayQueryEXT query;
-    rayQueryInitializeEXT(query, sceneTop, gl_RayFlagsNoneEXT, rule.mMask, origin, 0.0, direction, limit);
+    rayQueryInitializeEXT(query, sceneTop, facingFor(rule.mDraws), rule.mMask, origin, 0.0, direction, limit);
 
     while (rayQueryProceedEXT(query))
     {
@@ -285,7 +290,7 @@ PuffLayer mediumAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit, Con
     PuffLayer layer = noPuffs();
 
     const Gathered gathered
-        = gatherAlong(origin, direction, limit, cone, GatherRule(MASK_MEDIUM, true, false, false, true));
+        = gatherAlong(origin, direction, limit, cone, GatherRule(MASK_MEDIUM, true, false, false, true, false));
     if (gathered.mCoverage == 0u)
         return layer;
 
@@ -321,7 +326,7 @@ PuffLayer mediumAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit, Con
 vec3 additiveAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit, Cone cone)
 {
     const Gathered gathered
-        = gatherAlong(origin, direction, limit, cone, GatherRule(MASK_ADDITIVE, false, true, true, false));
+        = gatherAlong(origin, direction, limit, cone, GatherRule(MASK_ADDITIVE, false, true, true, false, true));
     if (gathered.mCoverage == 0u)
         return vec3(0.0);
 

@@ -228,12 +228,15 @@ namespace Rtx
 
         std::size_t kept = 0;
         bool sheet = true;
+        bool folded = false;
         for (std::size_t t = 0; t < count; ++t)
         {
             if (mFates[t] == Fate::Dropped)
                 continue;
             if (mFates[t] == Fate::Alone)
                 sheet = false;
+            else
+                folded = true;
 
             if (kept != t)
                 std::copy_n(indices.begin() + static_cast<std::ptrdiff_t>(3 * t), 3,
@@ -244,6 +247,6 @@ namespace Rtx
 
         // On what survives, because that is what a ray will meet. A doubled card folds to one
         // quad, which has a boundary; a shape with no twins folds to itself and is whatever it was.
-        return FoldedShape{ .mSheet = sheet, .mClosed = closes(positions, indices) };
+        return FoldedShape{ .mSheet = sheet, .mFolded = folded, .mClosed = closes(positions, indices) };
     }
 }

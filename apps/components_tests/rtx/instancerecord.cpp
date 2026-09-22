@@ -145,5 +145,40 @@ namespace Rtx
             EXPECT_TRUE(kept[pane].mMotion == still) << "a placement made this frame arrived from nowhere";
             EXPECT_EQ(kept.size(), std::size_t{ more } + 1);
         }
+
+        /// Which faces a row is drawn from.
+        ///
+        /// **Morrowind states both faces two ways.** The content turns `GL_CULL_FACE` off, which is
+        /// `Material::mTwoSided`, or it doubles the shape with a reversed twin — which `ShapeFold`
+        /// folds back into one triangle and records as `FoldedShape::mFolded`, whether it doubled
+        /// the whole shape or a hem of it. A leaf culled after that fold would be gone from one
+        /// side, so either says both faces.
+        TEST(RtxInstanceRecordTest, aRowSaysWhichFacesItIsDrawnFrom)
+        {
+            SceneDesc scene;
+            const Index plain
+                = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
+            const Index doubled
+                = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices },
+                    FoldedShape{ .mSheet = true, .mFolded = true });
+            const Index hemmed
+                = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices },
+                    FoldedShape{ .mFolded = true });
+
+            const Index opaque = scene.addMaterial(Material{});
+            const Index bothFaces = scene.addMaterial(Material{ .mTwoSided = true });
+
+            const Index solid = scene.addInstance(MeshInstance{ .mMesh = plain, .mMaterial = opaque });
+            const Index stated = scene.addInstance(MeshInstance{ .mMesh = plain, .mMaterial = bothFaces });
+            const Index leaf = scene.addInstance(MeshInstance{ .mMesh = doubled, .mMaterial = opaque });
+            const Index awning = scene.addInstance(MeshInstance{ .mMesh = hemmed, .mMaterial = opaque });
+
+            const std::vector<InstanceRecord> records = whole(scene);
+
+            EXPECT_FALSE(records[solid].mTwoSided) << "the scene root culls everything the content does not spare";
+            EXPECT_TRUE(records[stated].mTwoSided) << "a material the content turned culling off for";
+            EXPECT_TRUE(records[leaf].mTwoSided) << "a shape the content doubled and the fold halved";
+            EXPECT_TRUE(records[awning].mTwoSided) << "and one the fold took a twin from anywhere at all";
+        }
     }
 }

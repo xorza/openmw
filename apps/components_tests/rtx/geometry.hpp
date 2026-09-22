@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -25,6 +26,14 @@ namespace Rtx::Testing
 {
     /// Two triangles of a quad, wound so its face points the way its corners were listed.
     inline constexpr std::array<std::uint32_t, 6> sQuadIndices{ 0, 1, 2, 0, 2, 3 };
+
+    /// The same quad in the same place, showing the other of its two faces: its corners read
+    /// backwards, which is the winding `sQuadIndices` reads them at reversed.
+    inline std::array<osg::Vec3f, 4> turned(std::array<osg::Vec3f, 4> quad)
+    {
+        std::reverse(quad.begin(), quad.end());
+        return quad;
+    }
 
     /// A texture laid once across a quad, in the same corner order.
     inline const std::array<osg::Vec2f, 4> sQuadUv{

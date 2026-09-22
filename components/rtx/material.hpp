@@ -100,8 +100,9 @@ namespace Rtx
         /// state set share the mode. What a mesh carries is the colours themselves.
         VertexColour mVertexColour = VertexColour::None;
 
-        /// Sheet geometry lit and hit from both faces. Morrowind leans on this heavily and a ray
-        /// tracer has to be told, because back-face culling is not free the way a rasterizer's is.
+        /// Both faces of this surface are drawn, which the content says by turning `GL_CULL_FACE`
+        /// off. Vanilla says it by doubling a shape instead, and `InstanceRecord::mTwoSided` is
+        /// where the two ways of saying it meet and a ray that draws reads them.
         bool mTwoSided = false;
 
         /// Mesh texture coordinates to this material's, as `uv * xy + zw` — the same form the
@@ -228,6 +229,10 @@ namespace Rtx
             /// that gathers what adds, and by no ray that shades, shadows or bounces.
             bool mAdditive = false;
 
+            /// What `Material::mTwoSided` says, carried here because the row that culls by it is
+            /// the placement's and not the material's.
+            bool mTwoSided = false;
+
             bool operator==(const Traversed& other) const = default;
         };
 
@@ -239,6 +244,7 @@ namespace Rtx
                 .mTranslucent = isTranslucent(),
                 .mMedium = isMedium(),
                 .mAdditive = isAdditive(),
+                .mTwoSided = mTwoSided,
             };
         }
     };

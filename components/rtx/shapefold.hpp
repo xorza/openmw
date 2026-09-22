@@ -19,6 +19,18 @@ namespace Rtx
         /// a shader reads it as leave to light the mesh through its back.
         bool mSheet = false;
 
+        /// Some triangle was one of a reversed pair, so what is left of this shape stands for both
+        /// faces of itself wherever a twin went. `mSheet` is the whole shape and this is any part
+        /// of it: an awning with a doubled hem on a single-sided canopy is one mesh, and the hem's
+        /// twin goes while the canopy's triangles stand alone.
+        ///
+        /// **What keeps a ray that draws from culling such a mesh.** The fold left one triangle
+        /// where the content drew two, so culling the one by its winding takes the hem out of the
+        /// frame from the side whose copy was dropped. The whole mesh is spared, which costs the
+        /// canopy its culling and is the conservative half of a question only a per-triangle answer
+        /// settles.
+        bool mFolded = false;
+
         /// Every edge of what survives carries a triangle each way, so the shape has no boundary and
         /// a ray that enters it leaves through the far side. Which of a surface's two normals is
         /// lying depends on this: a boulder's interpolated normals describe it and its facets do
@@ -31,10 +43,10 @@ namespace Rtx
     /// Folds the reversed twin every sheet in the game is doubled with back into one triangle, and
     /// says what the shape was. Morrowind has no two-sided flag, so the content draws a card's
     /// back by modelling it: a second triangle over the same three positions, wound the other way,
-    /// with vertices of its own — 3670 shapes in the game are nothing but such pairs. This
-    /// renderer culls nothing, so it meets both copies at the same depth and light passing through
-    /// the card would be taken off twice. A shape that was nothing but pairs is a sheet, which is
-    /// what lets a leaf carry the light that falls on its far side.
+    /// with vertices of its own — 3670 shapes in the game are nothing but such pairs. Every ray
+    /// that carries light meets both faces of everything, so it meets both copies at the same depth
+    /// and light passing through the card would be taken off twice. A shape that was nothing but
+    /// pairs is a sheet, which is what lets a leaf carry the light that falls on its far side.
     class ShapeFold
     {
     public:
