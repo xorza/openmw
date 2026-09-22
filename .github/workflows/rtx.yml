@@ -30,11 +30,11 @@
 # is published. The packaging can be tried without a tag: run the workflow by hand with `package`
 # on, and the archives come back as artifacts, in the one zip GitHub wraps around each.
 #
-# Every action is named by its major version tag, so a patch release reaches this workflow
-# without an edit; `hendrikmuhs/ccache-action` is the exception and carries its exact version,
-# because its `v1` tag still points at v1.2.20 of November 2025. The token can only read and is
-# not left in the checkout — the one job that writes a release says so itself and runs on a tag
-# alone — and a newer push cancels the run it supersedes.
+# Every action is pinned to a full commit, with the release it belongs to beside it: a tag is
+# whatever its owner last pointed it at, and 2026 has two forks' worth of tags rewritten under
+# the repositories that trusted them. The token can only read and is not left in the checkout —
+# the one job that writes a release says so itself and runs on a tag alone — and a newer push
+# cancels the run it supersedes.
 name: Ray tracing
 
 on:
@@ -69,7 +69,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -122,7 +122,7 @@ jobs:
         # Git Bash on Windows, so every `run` here is the one script on both systems.
         shell: bash
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -144,7 +144,7 @@ jobs:
         # saves afresh; an older cache is restored all the same, because `rtx` judges each set by
         # the directory it leaves and fetches only what a bump changed.
         if: runner.os == 'Windows'
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: deps
           key: deps-${{ matrix.os }}-${{ hashFiles('CI/deps_versions.msvc.sh', 'apps/rtxtool/rtx') }}
@@ -152,7 +152,7 @@ jobs:
 
       - name: Vulkan SDK cache
         id: vulkan
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/vulkan-sdk
           # The workflow's own hash beside the version, because what is cached is what the steps
@@ -229,7 +229,7 @@ jobs:
       - name: NGX SDK
         # A sparse checkout of NVIDIA's public repository at the pinned tag, of what this leg's
         # system reads: about 150 MB either way.
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: NVIDIA/DLSS
           ref: ${{ env.NGX_TAG }}
@@ -240,7 +240,7 @@ jobs:
       - name: NGX_ROOT, the one way FindNGX is pointed at a checkout
         run: echo "NGX_ROOT=${GITHUB_WORKSPACE}/dlss" >> "$GITHUB_ENV"
 
-      - uses: hendrikmuhs/ccache-action@v1
+      - uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d # v1.2.24
         with:
           key: ${{ github.job }}-${{ matrix.os }}
           max-size: 1000M
@@ -264,7 +264,7 @@ jobs:
         if: env.PACKAGE == 'true'
         # `dist` whole, so the folder keeps its name inside the zip GitHub wraps around the
         # artifact, which is the only zip a run's page offers.
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: openmw-${{ github.ref_name }}-${{ matrix.os }}
           path: dist
@@ -273,7 +273,7 @@ jobs:
 
       - name: Logs
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: logs-${{ matrix.os }}-${{ github.sha }}
           path: |
@@ -292,7 +292,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: openmw-*
           path: dist
@@ -308,7 +308,7 @@ jobs:
           done
           ls -l
 
-      - uses: softprops/action-gh-release@v3
+      - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           draft: true
           files: dist/*
