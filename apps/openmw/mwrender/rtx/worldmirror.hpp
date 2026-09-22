@@ -26,6 +26,7 @@
 
 namespace Resource
 {
+    class ImageManager;
     class ResourceSystem;
 }
 
@@ -63,8 +64,9 @@ namespace MWRender
         /// exception unwinds, where the frame's own message is the one to read.
         ~WorldMirror();
 
-        /// The resource system the cell ring's models and images are loaded through. Told once,
-        /// where the world is attached.
+        /// The resource system the cell ring's models and the hand-over's pictures are loaded
+        /// through. Told once, where the world is attached; what is kept of it is the image
+        /// manager, which is all a frame reaches for.
         void attach(Resource::ResourceSystem& resources);
 
         /// The world is going: every thread that reads it stops, what was read of it goes, and
@@ -183,9 +185,10 @@ namespace MWRender
         /// ground to flatten.
         Rtx::CompositeQueue mComposites;
 
-        /// Where the ring's models and images are loaded from, and the pictures the hand-over
-        /// resolves. Borrowed: the world outlives this.
-        Resource::ResourceSystem* mResources = nullptr;
+        /// Where the hand-over resolves its pictures. Borrowed: the world outlives this. The
+        /// scene manager beside it is read once, in `attach`, and is not kept — a frame asks for
+        /// one manager and holds one.
+        Resource::ImageManager* mImages = nullptr;
 
         /// Where the world's clock stood on the last frame, so the emitters are given the gap.
         double mLastSimulationTime = 0.0;

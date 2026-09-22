@@ -4,8 +4,6 @@
 #include <memory>
 #include <vector>
 
-#include <osg/Vec2i>
-#include <osg/Vec3f>
 #include <osg/Vec4i>
 
 #include <components/esm3/refnum.hpp>
@@ -36,10 +34,8 @@ namespace MWRender
 
         Terrain::World& getTerrain() override { return *mTerrain; }
 
-        bool enableReference(
-            int type, ESM::RefNum refnum, const osg::Vec3f& position, const osg::Vec2i& cell, bool enabled) override;
-        bool blacklistReference(
-            int type, ESM::RefNum refnum, const osg::Vec3f& position, const osg::Vec2i& cell) override;
+        bool enableReference(int type, const MWWorld::ConstPtr& ptr, bool enabled) override;
+        bool blacklistReference(int type, const MWWorld::ConstPtr& ptr) override;
         bool unlockCache() override;
         void collectPagedRefnums(const osg::Vec4i& activeGrid, std::vector<ESM::RefNum>& out) override;
         void clear() override;

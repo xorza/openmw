@@ -21,6 +21,7 @@
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/shaders/visibility.h>
 #include <components/rtx/stepped.hpp>
+#include <components/rtxbench/runsetup.hpp>
 #include <components/sdlutil/vsyncmode.hpp>
 #include <components/settings/categories.hpp>
 #include <components/vfs/pathutil.hpp>
@@ -204,9 +205,9 @@ namespace MWRender
         void blacklistReference(ESM::RefNum refnum);
         void forgetReferences();
 
-        /// `Rtx::Renderer::getProfile`: the knobs the frames are traced under now, for a stop that
-        /// writes a picture by the same rules. Not `mSetup`'s, which is what the backend was made
-        /// with and stays so.
+        /// `Rtx::Renderer::getProfile`: the knobs the frames are traced under now — what the
+        /// backend was made with, and then whatever a setting moved. The one copy, which the
+        /// frame path reads as a stop that writes a picture by the same rules does.
         const Rtx::RenderProfile& getProfile() const { return mRenderer->getProfile(); }
 
         /// The moment a subject is posed at, for a view drawn inside this frame's window.
@@ -222,6 +223,10 @@ namespace MWRender
         void setMapOverlay(TracedOverlay* overlay) { mMapOverlay = overlay; }
 
     private:
+        /// Builds everything from the setup, which is spent here. Delegated to, so `mRun` can bind
+        /// to `mPlayed` where the host installed none and the setup can be a temporary either way.
+        RtxRenderer(const RendererSpec& spec, const RtxSetup* run, const Rtx::RunSetup& setup);
+
         /// Where a frame stands, asserted at every entry point: the order `renderFrame` takes is
         /// the one order the mirror, the pictures, the backend and the run's hook agree on, and a
         /// call out of its turn — a hook that traced a frame from inside the frame, a picture
@@ -332,15 +337,21 @@ namespace MWRender
         /// What a frame is read back into, refilled per read and never freed.
         std::vector<std::uint8_t> mReadBack;
 
-        /// What the run was made with, and the run itself: the setup the harness installed before
-        /// the engine started, or the played session's own, made from `[RTX]` and the played
-        /// answers. The two hosts cannot come to draw one picture through two differently configured
-        /// renderers, because both reach the renderer through this one record. The run inside it is
-        /// borrowed: `RtxSetup::mRun` says whose it is and that it outlives this. Before the window
-        /// and the mirror, which are built from what it says.
-        /// The played answers, for a session that installed no run: `mInstalled` refers to it then.
+        /// The run a played session is, for a host that installed none. Before `mRun`, which binds
+        /// to it then.
         PlayedRun mPlayed;
-        const RtxSetup mInstalled;
+
+        /// The run this renderer answers to per frame: the harness's, which outlives this, or
+        /// `mPlayed`. Bound once and never rebound, so the two hosts cannot come to draw one
+        /// picture through two differently answered renderers.
+        RtxRun& mRun;
+
+        /// How long every frame stands for, or nothing to time each one off the wall — the one
+        /// thing `Rtx::RunSetup` states that outlives the construction it is spent in. The window,
+        /// the backend and the mirror are what the rest of it became, and what a frame reads about
+        /// how the picture is made is the backend's `getProfile`, which a setting may move and a
+        /// record made before the backend may not.
+        std::optional<float> mStep;
 
         /// Before the backend, whose surface is on it: the members below die first.
         RtxWindow mWindow;

@@ -46,10 +46,12 @@ namespace Rtx
     {
     }
 
-    void SkinPass::pose(VkCommandBuffer commands, const SceneDesc& scene, const FrameSlot slot, const Index index,
-        SkinTables& tables, const Rows rows, BlockedBuffer& into, BlockedBuffer& normalsInto,
-        const ComputePipeline*& bound) const
+    void SkinPass::pose(VkCommandBuffer commands, const Skinning& what, const Index index, const Rows rows,
+        BlockedBuffer& into, BlockedBuffer& normalsInto, const ComputePipeline*& bound) const
     {
+        const SceneDesc& scene = what.mScene;
+        SkinTables& tables = what.mTables;
+
         const MeshRange& mesh = scene.meshes().getRows()[index];
         assert(posable(mesh) && "a pose of a mesh with nothing to pose");
 
@@ -62,7 +64,7 @@ namespace Rtx
         // The pose, whichever kind: the bones as rows or the weights four to a word, as
         // `Rtx::PoseWord` lays them, at the one address either kernel reads from nought.
         const VkDeviceAddress pose
-            = rows == Rows::Written ? tables.writePose(scene, slot, index) : tables.getPose(mesh, slot);
+            = rows == Rows::Written ? tables.writePose(scene, what.mSlot, index) : tables.getPose(mesh, what.mSlot);
 
         const Deformer& deformer = scene.deformers().getDeformers()[mesh.mDeformer];
         if (deformer.mKind == Deform::Rig)
@@ -110,54 +112,53 @@ namespace Rtx
         vkCmdDispatch(commands, groupsFor(mesh.mVertices.mCount, Shaders::SKIN_WORKGROUP), 1, 1);
     }
 
-    bool SkinPass::record(VkCommandBuffer commands, const SceneDesc& scene, const FrameSlot slot, SkinTables& tables,
-        SlotBlocks& poses, SlotBlocks& normals, GpuTimer* const timer) const
+    bool SkinPass::record(VkCommandBuffer commands, const Skinning& what) const
     {
         // Owed to every copy, and paid to this one: a mesh that moved last frame and stands still
         // now is still owed here, or this copy would carry a pose two frames old.
-        poses.write(scene.meshes().getDeformed());
+        what.mPoses.write(what.mScene.meshes().getDeformed());
 
         // One pipeline bound at a time, and a bind only where the kind changes: a crowd is one
         // kind for most of its length.
         const ComputePipeline* bound = nullptr;
         bool recorded = false;
 
-        BlockedBuffer& normalsInto = normals.at(slot);
-        poses.sync(slot, [&](const Index index, BlockedBuffer& into) {
-            if (!posable(scene.meshes().getRows()[index]))
+        BlockedBuffer& normalsInto = what.mNormals.at(what.mSlot);
+        what.mPoses.sync(what.mSlot, [&](const Index index, BlockedBuffer& into) {
+            if (!posable(what.mScene.meshes().getRows()[index]))
                 return;
 
             if (!recorded)
             {
-                openZone(timer, commands, "skin");
+                openZone(what.mTimer, commands, "skin");
                 recorded = true;
             }
 
-            pose(commands, scene, slot, index, tables, Rows::Written, into, normalsInto, bound);
+            pose(commands, what, index, Rows::Written, into, normalsInto, bound);
         });
 
         if (!recorded)
             return false;
 
         posed(commands);
-        closeZone(timer, commands);
+        closeZone(what.mTimer, commands);
         return true;
     }
 
-    bool SkinPass::recordArrived(VkCommandBuffer commands, const SceneDesc& scene, const FrameSlot slot,
-        const std::span<const Index> arrived, SkinTables& tables, SlotBlocks& poses, SlotBlocks& normals) const
+    bool SkinPass::recordArrived(
+        VkCommandBuffer commands, const Skinning& what, const std::span<const Index> arrived) const
     {
         const ComputePipeline* bound = nullptr;
         bool recorded = false;
 
-        BlockedBuffer& into = poses.at(slot);
-        BlockedBuffer& normalsInto = normals.at(slot);
+        BlockedBuffer& into = what.mPoses.at(what.mSlot);
+        BlockedBuffer& normalsInto = what.mNormals.at(what.mSlot);
         for (const Index index : arrived)
         {
-            if (!posable(scene.meshes().getRows()[index]))
+            if (!posable(what.mScene.meshes().getRows()[index]))
                 continue;
 
-            pose(commands, scene, slot, index, tables, Rows::Staged, into, normalsInto, bound);
+            pose(commands, what, index, Rows::Staged, into, normalsInto, bound);
             recorded = true;
         }
 

@@ -65,10 +65,16 @@ namespace Rtx
         mSprites.transition(commands, Use::sBufferCopyWrite, Use::sBufferShaderReadWrite);
     }
 
-    void SpriteBin::record(const SpriteShadePass& shading, const SpriteBinPass& pass, const SpriteSource& source,
-        const osg::Vec3f& origin, const Shaders::Camera& camera, const osg::Vec3f& toSun, VkCommandBuffer commands,
-        GpuTimer* const timer)
+    void SpriteBin::record(VkCommandBuffer commands, const Binning& what)
     {
+        const SpriteShadePass& shading = what.mShading;
+        const SpriteBinPass& pass = what.mPass;
+        const SpriteSource& source = what.mSource;
+        const osg::Vec3f& origin = what.mOrigin;
+        const Shaders::Camera& camera = what.mCamera;
+        const osg::Vec3f& toSun = what.mToSun;
+        GpuTimer* const timer = what.mTimer;
+
         const std::uint32_t count = source.mSpriteCount;
         assert(mSprites.getSize() >= source.mSprites->getSize() && "a bin recorded over sprites it never took");
 

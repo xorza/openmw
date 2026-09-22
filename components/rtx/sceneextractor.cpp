@@ -487,6 +487,10 @@ namespace Rtx
     ExtractionStats SceneExtractor::extractWorld(
         const osg::Node& root, const osg::Matrixf& transform, std::size_t anchor, std::size_t frame, CellRing& ring)
     {
+        // Here, because this is the one call that holds the ring and the frame both: a ring told
+        // one frame and walked for another adopts twice on a frame walked twice.
+        ring.setFrame(frame);
+
         return walk(root, transform, anchor, frame, &ring, false);
     }
 

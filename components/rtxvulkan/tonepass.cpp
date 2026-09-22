@@ -40,10 +40,18 @@ namespace Rtx
     {
     }
 
-    void TonePass::record(VkCommandBuffer commands, const Image& colour, const Buffer& exposure, const Buffer& sunGlare,
-        const Image& starsShown, const Image& puffsDepth, const Image* bloom, VkDescriptorSet textures,
-        const Image& target, Shaders::ToneConstants constants) const
+    void TonePass::record(VkCommandBuffer commands, const Tone& what) const
     {
+        const Image& colour = what.mColour;
+        const Buffer& exposure = what.mExposure;
+        const Buffer& sunGlare = what.mSunGlare;
+        const Image& starsShown = what.mStarsShown;
+        const Image& puffsDepth = what.mPuffsDepth;
+        const Image* const bloom = what.mBloom;
+        const VkDescriptorSet textures = what.mTextures;
+        const Image& target = what.mTarget;
+        Shaders::ToneConstants constants = what.mConstants;
+
         assert(constants.mCamera.mWidth <= target.getWidth() && constants.mCamera.mHeight <= target.getHeight());
 
         // Set from whether there is a pyramid, rather than asked of the caller. A strength with

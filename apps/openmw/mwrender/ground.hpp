@@ -3,8 +3,6 @@
 
 #include <vector>
 
-#include <osg/Vec2i>
-#include <osg/Vec3f>
 #include <osg/Vec4i>
 
 #include <components/esm/refid.hpp>
@@ -23,6 +21,7 @@ namespace Terrain
 
 namespace MWWorld
 {
+    class ConstPtr;
     class GroundcoverStore;
 }
 
@@ -53,26 +52,30 @@ namespace MWRender
 
         virtual Terrain::World& getTerrain() = 0;
 
-        /// A script enabled or disabled the exterior reference `refnum` of record type `type`,
-        /// which stands at `position` in `cell`. @return whether what the distance draws changed
-        /// for it, which is what upstream's paging says where it dropped or restored a chunk.
-        virtual bool enableReference(
-            int type, ESM::RefNum refnum, const osg::Vec3f& position, const osg::Vec2i& cell, bool enabled)
-            = 0;
+        /// A script enabled or disabled the exterior reference `ptr`, of record type `type`.
+        /// @return whether what the distance draws changed for it, which is what upstream's paging
+        /// says where it dropped or restored a chunk, and what makes the caller reload the terrain.
+        ///
+        /// **The reference and not the four facts one paging reads off it.** Which of them a
+        /// renderer needs is the renderer's: upstream's paging finds the chunk by the position and
+        /// the cell, and a ring that stands references itself reads the number alone. The type is
+        /// a parameter because it comes out of the world's store, which nothing below this can
+        /// reach.
+        virtual bool enableReference(int type, const MWWorld::ConstPtr& ptr, bool enabled) = 0;
 
         /// The game moved, deleted or animates the reference, so the distance must never stand it
         /// again, whatever a script says of it later. @return as `enableReference`.
-        virtual bool blacklistReference(
-            int type, ESM::RefNum refnum, const osg::Vec3f& position, const osg::Vec2i& cell)
-            = 0;
+        virtual bool blacklistReference(int type, const MWWorld::ConstPtr& ptr) = 0;
 
         /// The cell grid has moved: what the game told the distance while the grid changed may now
-        /// be applied. @return whether what the distance draws changed.
-        virtual bool unlockCache() = 0;
+        /// be applied. @return whether what the distance draws changed. A renderer that keeps no
+        /// such cache has nothing to unlock and answers no.
+        virtual bool unlockCache() { return false; }
 
         /// Adds to `out` every reference inside `activeGrid` the distance draws itself, so the game
-        /// does not stand it a second time.
-        virtual void collectPagedRefnums(const osg::Vec4i& activeGrid, std::vector<ESM::RefNum>& out) = 0;
+        /// does not stand it a second time. A renderer that stands nothing inside the grid adds
+        /// nothing.
+        virtual void collectPagedRefnums(const osg::Vec4i& activeGrid, std::vector<ESM::RefNum>& out) {}
 
         /// A new game or a load: nothing a script said about a reference holds any more.
         virtual void clear() = 0;

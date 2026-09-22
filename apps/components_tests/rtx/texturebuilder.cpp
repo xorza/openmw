@@ -260,7 +260,8 @@ namespace Rtx
             ASSERT_EQ(described.getDescriptions().size(), std::size_t{ 1 });
             EXPECT_EQ(described.getDescriptions()[0].mSlot, bake);
             EXPECT_EQ(described.getDescriptions()[0].mName, "unreadable");
-            EXPECT_EQ(described.getDescriptions()[0].mBakedFrom, Rtx::sNoIndex);
+            EXPECT_EQ(described.getDescriptions()[0].mSource, Rtx::TextureSource::StandIn);
+            EXPECT_EQ(described.getDescriptions()[0].mFrom, Rtx::sNoIndex);
             EXPECT_EQ(described.getUnreadable(), 1u);
 
             // The emitter holds the source under a wrap of its own beside the bake; the bake finds
@@ -269,10 +270,11 @@ namespace Rtx
             described.describe(scene, images, std::span(&bake, 1));
             ASSERT_EQ(described.getDescriptions().size(), std::size_t{ 1 });
             EXPECT_EQ(described.getDescriptions()[0].mSlot, bake);
-            EXPECT_EQ(described.getDescriptions()[0].mBakedFrom, source);
+            EXPECT_EQ(described.getDescriptions()[0].mSource, Rtx::TextureSource::SpriteBake);
+            EXPECT_EQ(described.getDescriptions()[0].mFrom, source);
             EXPECT_TRUE(described.getDescriptions()[0].mBytes.empty()) << "a bake carries no bytes";
             EXPECT_TRUE(described.getDescriptions()[0].mLevels.empty()) << "a bake is shaped like its source";
-            EXPECT_TRUE(described.getDescriptions()[0].mNeutralShading);
+            EXPECT_TRUE(described.getDescriptions()[0].hasNeutralShading());
             EXPECT_EQ(described.getUnreadable(), 0u);
         }
 
@@ -305,17 +307,19 @@ namespace Rtx
             described.describe(scene, images, std::span(&composite, 1), &queue);
             ASSERT_EQ(described.getDescriptions().size(), std::size_t{ 1 });
             EXPECT_EQ(described.getDescriptions()[0].mSlot, composite);
-            EXPECT_EQ(described.getDescriptions()[0].mCompositeOf, material);
+            EXPECT_EQ(described.getDescriptions()[0].mSource, Rtx::TextureSource::GroundComposite);
+            EXPECT_EQ(described.getDescriptions()[0].mFrom, material);
             EXPECT_EQ(described.getDescriptions()[0].mFormat, Rtx::TextureFormat::Rgba8Srgb);
             EXPECT_TRUE(described.getDescriptions()[0].mBytes.empty()) << "a composite carries no bytes";
             EXPECT_TRUE(described.getDescriptions()[0].mLevels.empty()) << "a composite is shaped by the pass";
-            EXPECT_TRUE(described.getDescriptions()[0].mNeutralShading);
+            EXPECT_TRUE(described.getDescriptions()[0].hasNeutralShading());
             EXPECT_EQ(described.getUnreadable(), 0u);
 
             queue.releaseFinished();
             described.describe(scene, images, std::span(&composite, 1), &queue);
             ASSERT_EQ(described.getDescriptions().size(), std::size_t{ 1 });
-            EXPECT_EQ(described.getDescriptions()[0].mCompositeOf, Rtx::sNoIndex);
+            EXPECT_EQ(described.getDescriptions()[0].mSource, Rtx::TextureSource::StandIn);
+            EXPECT_EQ(described.getDescriptions()[0].mFrom, Rtx::sNoIndex);
             EXPECT_EQ(described.getDescriptions()[0].mName, "unreadable");
             EXPECT_EQ(described.getUnreadable(), 1u);
         }
@@ -345,7 +349,8 @@ namespace Rtx
             EXPECT_TRUE(described.getDescriptions()[0].mCompleteChain) << "the chain is the device's to make";
             EXPECT_EQ(described.getDescriptions()[0].mBytes.data(), reinterpret_cast<const std::byte*>(image->data()))
                 << "the file's own bytes, spanned and not copied";
-            EXPECT_FALSE(described.getDescriptions()[0].mNeutralShading) << "a file is estimated on the device";
+            EXPECT_EQ(described.getDescriptions()[0].mSource, Rtx::TextureSource::File);
+            EXPECT_FALSE(described.getDescriptions()[0].hasNeutralShading()) << "a file is estimated on the device";
         }
     }
 }

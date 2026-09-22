@@ -30,6 +30,11 @@ namespace Rtx
 
         bool isOpen() const { return !mTarget.isEmpty(); }
 
+        /// What both images are, and so what every frame is presented at — the one statement of
+        /// the output extent, because these are the images that carry it. Zero before the first
+        /// `resize`, which is what an asked extent is compared against.
+        VkExtent2D getExtent() const { return VkExtent2D{ mTarget.getWidth(), mTarget.getHeight() }; }
+
         /// The one this frame writes, made writable: `wait` is called with it on the first claim
         /// after a present and not again. At the first write rather than at the present, because
         /// with two frames in flight the blit that last read this image is behind a trace still

@@ -151,8 +151,16 @@ namespace Rtx
         if (bins)
         {
             mVisibility.recordSpriteShelter(commands, inputs, what.mSampled, sprites.mSpriteCount, what.mTimer);
-            bin.record(mSpriteShade, mSpriteBin, sprites, what.mAsked.mOrigin, what.mAsked.mCamera,
-                what.mAsked.mSun.mDirection, commands, what.mTimer);
+            bin.record(commands,
+                Binning{
+                    .mShading = mSpriteShade,
+                    .mPass = mSpriteBin,
+                    .mSource = sprites,
+                    .mOrigin = what.mAsked.mOrigin,
+                    .mCamera = what.mAsked.mCamera,
+                    .mToSun = what.mAsked.mSun.mDirection,
+                    .mTimer = what.mTimer,
+                });
         }
 
         mChannels->begin(commands);

@@ -193,9 +193,10 @@ namespace Rtx
         mWrap = data.mWrap;
 
         // Estimated off the texture just made, by a dispatch behind it, or cleared to the neutral
-        // factor where nothing is to be estimated — `TextureData::mNeutralShading`.
-        mShading = makeShadingMap(device, batch, name, data.mNeutralShading);
-        if (!data.mNeutralShading)
+        // factor where nothing is to be estimated — `TextureData::hasNeutralShading`.
+        const bool neutral = data.hasNeutralShading();
+        mShading = makeShadingMap(device, batch, name, neutral);
+        if (!neutral)
             passes.mShading.record(batch.getCommands(), mImage, sampler, mShading, data);
 
         mBytes += sShadingBytes;
@@ -335,12 +336,15 @@ namespace Rtx
         if (arrived.empty())
             return;
 
+        // Every source before every bake, because a bake is made from the texture standing in the
+        // slot it names. Two walks and not a sort: the order is the kind's, and `arrived` is what
+        // one cell brought.
         for (const TextureData& texture : arrived)
-            if (texture.mBakedFrom == sNoIndex)
+            if (texture.mSource != TextureSource::SpriteBake)
                 stand(batch, texture);
 
         for (const TextureData& texture : arrived)
-            if (texture.mBakedFrom != sNoIndex)
+            if (texture.mSource == TextureSource::SpriteBake)
                 stand(batch, texture);
     }
 
@@ -359,23 +363,29 @@ namespace Rtx
 
         // What the slot held is buried and not destroyed: its descriptor is the one a frame in
         // flight bound, and it stays valid until the timeline says nothing reads it.
-        if (texture.mCompositeOf != sNoIndex)
+        switch (texture.mSource)
         {
-            mDevice.getGraveyard().replace(mTextures[texture.mSlot], Texture(mDevice, batch, name));
-            mPendingComposites.push_back(PendingComposite{ .mSlot = texture.mSlot, .mMaterial = texture.mCompositeOf });
-        }
-        else if (texture.mBakedFrom == sNoIndex)
-            mDevice.getGraveyard().replace(
-                mTextures[texture.mSlot], Texture(mDevice, batch, mPasses, sampler, texture, name, mRegionScratch));
-        else
-        {
-            // The source stands: `SceneTextures` names one only where the table holds it live, a
-            // live slot is described whenever it arrives, and `write` stands every source ahead of
-            // every bake. A bake of a slot that holds nothing is a contract broken and not content.
-            contract(texture.mBakedFrom < mTextures.size() && !mTextures[texture.mBakedFrom].isEmpty(),
-                "a sprite light bake names a source that does not stand");
-            mDevice.getGraveyard().replace(mTextures[texture.mSlot],
-                Texture(mDevice, batch, mPasses, sampler, mTextures[texture.mBakedFrom], name));
+            case TextureSource::GroundComposite:
+                mDevice.getGraveyard().replace(mTextures[texture.mSlot], Texture(mDevice, batch, name));
+                mPendingComposites.push_back(PendingComposite{ .mSlot = texture.mSlot, .mMaterial = texture.mFrom });
+                break;
+
+            case TextureSource::SpriteBake:
+                // The source stands: `SceneTextures` names one only where the table holds it live,
+                // a live slot is described whenever it arrives, and `write` stands every source
+                // ahead of every bake. A bake of a slot that holds nothing is a contract broken and
+                // not content.
+                contract(texture.mFrom < mTextures.size() && !mTextures[texture.mFrom].isEmpty(),
+                    "a sprite light bake names a source that does not stand");
+                mDevice.getGraveyard().replace(mTextures[texture.mSlot],
+                    Texture(mDevice, batch, mPasses, sampler, mTextures[texture.mFrom], name));
+                break;
+
+            case TextureSource::File:
+            case TextureSource::StandIn:
+                mDevice.getGraveyard().replace(
+                    mTextures[texture.mSlot], Texture(mDevice, batch, mPasses, sampler, texture, name, mRegionScratch));
+                break;
         }
 
         // How many texels the slot now holds, for `coneLod`, owed to every copy beside the

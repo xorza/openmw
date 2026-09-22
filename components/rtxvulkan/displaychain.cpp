@@ -124,11 +124,19 @@ namespace Rtx
         }
 
         openZone(what.mTimer, commands, "tone");
-        mTone.record(commands, what.mShown, *exposure, *share, channels.get(Channel::StarsShown),
-            channels.get(Channel::PuffsDepth), what.mBloom ? mBloom.getPyramid() : nullptr, what.mInputs.mTextures,
-            what.mTarget,
-            toneFor(what.mSampled, what.mSpriteTileList, what.mExtent.width, what.mExtent.height, channels.getWidth(),
-                channels.getHeight()));
+        mTone.record(commands,
+            Tone{
+                .mColour = what.mShown,
+                .mExposure = *exposure,
+                .mSunGlare = *share,
+                .mStarsShown = channels.get(Channel::StarsShown),
+                .mPuffsDepth = channels.get(Channel::PuffsDepth),
+                .mBloom = what.mBloom ? mBloom.getPyramid() : nullptr,
+                .mTextures = what.mInputs.mTextures,
+                .mTarget = what.mTarget,
+                .mConstants = toneFor(what.mSampled, what.mSpriteTileList, what.mExtent.width, what.mExtent.height,
+                    channels.getWidth(), channels.getHeight()),
+            });
         closeZone(what.mTimer, commands);
 
         recordDebugLines(commands, what);
@@ -160,15 +168,20 @@ namespace Rtx
         Image& target = what.mTarget;
         target.transition(commands, Use::sComputeWrite, Use::sColourAttachment);
 
-        mLines.record(commands, target, channels.get(Channel::Depth),
-            Shaders::LineConstants{
-                .mCamera = Shaders::cameraOnGrid(what.mSampled.mCamera, target.getWidth(), target.getHeight()),
-                .mOrigin = what.mSampled.mOrigin,
-                .mNear = what.mSampled.mNear,
-                .mTraced = Shaders::uvec2(channels.getWidth(), channels.getHeight()),
-            },
-            what.mDebugVertices->getHandle(), static_cast<std::uint32_t>(debug.mLines.size()),
-            static_cast<std::uint32_t>(debug.mTriangles.size()));
+        mLines.record(commands,
+            Lines{
+                .mTarget = target,
+                .mDepth = channels.get(Channel::Depth),
+                .mConstants = {
+                    .mCamera = Shaders::cameraOnGrid(what.mSampled.mCamera, target.getWidth(), target.getHeight()),
+                    .mOrigin = what.mSampled.mOrigin,
+                    .mNear = what.mSampled.mNear,
+                    .mTraced = Shaders::uvec2(channels.getWidth(), channels.getHeight()),
+                },
+                .mVertices = what.mDebugVertices->getHandle(),
+                .mLineCount = static_cast<std::uint32_t>(debug.mLines.size()),
+                .mTriangleCount = static_cast<std::uint32_t>(debug.mTriangles.size()),
+            });
 
         target.transition(commands, Use::sColourAttachment, Use::sComputeWrite);
 

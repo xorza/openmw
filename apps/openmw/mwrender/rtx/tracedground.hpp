@@ -1,13 +1,6 @@
 #pragma once
 
-#include <vector>
-
-#include <osg/Vec2i>
-#include <osg/Vec3f>
-#include <osg/Vec4i>
-
 #include <components/esm/refid.hpp>
-#include <components/esm3/refnum.hpp>
 
 #include "../ground.hpp"
 #include "tracedterrain.hpp"
@@ -38,18 +31,12 @@ namespace MWRender
 
         Terrain::World& getTerrain() override { return mTerrain; }
 
-        /// Told to the ring, and false: the ring stands and drops on its own walk, so the game has
-        /// nothing to rebuild here.
-        bool enableReference(
-            int type, ESM::RefNum refnum, const osg::Vec3f& position, const osg::Vec2i& cell, bool enabled) override;
-        bool blacklistReference(
-            int type, ESM::RefNum refnum, const osg::Vec3f& position, const osg::Vec2i& cell) override;
-
-        /// The ring keeps no cache of the game's toggles to unlock.
-        bool unlockCache() override { return false; }
-
-        /// Nothing: the ring stands nothing inside the active grid.
-        void collectPagedRefnums(const osg::Vec4i& activeGrid, std::vector<ESM::RefNum>& out) override {}
+        /// Told to the ring by its reference number, and false: the ring stands and drops on its
+        /// own walk, so the game has nothing to rebuild here. The rest of what the reference says
+        /// is the paging's, and the seam's default answers the two questions a ring has no cache
+        /// and no grid for.
+        bool enableReference(int type, const MWWorld::ConstPtr& ptr, bool enabled) override;
+        bool blacklistReference(int type, const MWWorld::ConstPtr& ptr) override;
 
         void clear() override;
 

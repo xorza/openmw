@@ -43,8 +43,7 @@ namespace Rtx
         // positions, and a skinned body's bind pose is not where the body is; the pass writes the
         // pose into that copy and the build then reads it. The other copy is owed the same pose and
         // takes it on the first placement that writes it.
-        mSkin.record(batch.getCommands(), scene, FrameSlot{}, mSkinTables, mAcceleration.getPoses(),
-            mBuffers.getNormals(), nullptr);
+        mSkin.record(batch.getCommands(), skinning(scene, FrameSlot{}));
         mAcceleration.build(batch, scene, mRecords);
         mBuiltMeshes = scene.meshes().getRevision();
         mBuiltStructure = scene.getStructureRevision();
@@ -57,6 +56,18 @@ namespace Rtx
         // And the ground that arrived flattened, off that copy: a scene built from nothing is
         // traced before any placement, and a composite stood empty is undefined until baked.
         bakeGround(batch.getCommands(), FrameSlot{});
+    }
+
+    Skinning DeviceScene::skinning(const SceneDesc& scene, const FrameSlot slot, GpuTimer* const timer)
+    {
+        return Skinning{
+            .mScene = scene,
+            .mSlot = slot,
+            .mTables = mSkinTables,
+            .mPoses = mAcceleration.getPoses(),
+            .mNormals = mBuffers.getNormals(),
+            .mTimer = timer,
+        };
     }
 
     bool DeviceScene::bakeGround(const VkCommandBuffer commands, const FrameSlot slot)
@@ -82,8 +93,7 @@ namespace Rtx
             // Posed before it is built, as the constructor does, into the first copy, which is what
             // the build reads — and only the meshes that arrived, over the rows `SkinTables::extend`
             // staged. `SkinPass::recordArrived` says why it may not be every mesh the copy owes.
-            mSkin.recordArrived(batch.getCommands(), scene, FrameSlot{}, scene.meshes().getArrived(), mSkinTables,
-                mAcceleration.getPoses(), mBuffers.getNormals());
+            mSkin.recordArrived(batch.getCommands(), skinning(scene, FrameSlot{}), scene.meshes().getArrived());
             mAcceleration.buildArrived(batch, scene, timer);
             mBuiltMeshes = scene.meshes().getRevision();
         }
@@ -110,8 +120,7 @@ namespace Rtx
         // The pose first, because the refit reads it. Every skinned body and morphed face this
         // copy owes is computed into it here, and the barrier the pass ends in is what the refit
         // and the trace wait on.
-        const bool posed = mSkin.record(placing.mCommands, scene, placing.mSlot, mSkinTables, mAcceleration.getPoses(),
-            mBuffers.getNormals(), placing.mTimer);
+        const bool posed = mSkin.record(placing.mCommands, skinning(scene, placing.mSlot, placing.mTimer));
 
         const bool built = mAcceleration.place(scene, mRecords, mChangedRecords, placing);
 

@@ -248,11 +248,10 @@ namespace Rtx
         /// upscaler reconstructs across pass through.
         std::optional<std::chrono::steady_clock::time_point> mLastFrameAt;
 
-        std::uint32_t mOutputWidth = 0;
-        std::uint32_t mOutputHeight = 0;
-
         /// The frame as bytes at the output extent, which is what anything outside this reads: two
-        /// images, swapped by every present, and the one the last present read. `PresentTargets`
+        /// images, swapped by every present, and the one the last present read. It is also where
+        /// that extent is stated — `PresentTargets::getExtent` — rather than beside it in a pair
+        /// of members something would have to keep level. `PresentTargets`
         /// says why there are two.
         PresentTargets mTargets;
 

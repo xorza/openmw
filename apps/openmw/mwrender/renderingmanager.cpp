@@ -1238,18 +1238,15 @@ namespace MWRender
     {
         if (!ptr.isInCell() || !ptr.getCell()->isExterior())
             return false;
-        return mGround->enableReference(type, ptr.getCellRef().getRefNum(), ptr.getCellRef().getPosition().asVec3(),
-            osg::Vec2i(ptr.getCell()->getCell()->getGridX(), ptr.getCell()->getCell()->getGridY()), enabled);
+        return mGround->enableReference(type, ptr, enabled);
     }
     void RenderingManager::pagingBlacklistObject(int type, const MWWorld::ConstPtr& ptr)
     {
         if (!ptr.isInCell() || !ptr.getCell()->isExterior())
             return;
-        ESM::RefNum refnum = ptr.getCellRef().getRefNum();
-        if (!refnum.hasContentFile())
+        if (!ptr.getCellRef().getRefNum().hasContentFile())
             return;
-        mGround->blacklistReference(type, refnum, ptr.getCellRef().getPosition().asVec3(),
-            osg::Vec2i(ptr.getCell()->getCell()->getGridX(), ptr.getCell()->getCell()->getGridY()));
+        mGround->blacklistReference(type, ptr);
     }
     bool RenderingManager::pagingUnlockCache()
     {

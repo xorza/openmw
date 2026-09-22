@@ -57,6 +57,7 @@ namespace Rtx
             levels.push_back(MipLevel{ 0, 4, 4 });
 
             return TextureData{
+                .mSource = TextureSource::StandIn,
                 .mFormat = TextureFormat::Bc1RgbaSrgb,
                 .mWidth = 4,
                 .mHeight = 4,
@@ -182,9 +183,9 @@ namespace Rtx
             else if (kept.mBakedFrom != sNoIndex)
             {
                 described = TextureData{
+                    .mSource = TextureSource::SpriteBake,
+                    .mFrom = kept.mBakedFrom,
                     .mFormat = TextureFormat::Rgba8Unorm,
-                    .mBakedFrom = kept.mBakedFrom,
-                    .mNeutralShading = true,
                 };
             }
             else if (const Index chunk = composites != nullptr ? composites->find(kept.mSlot) : sNoIndex;
@@ -193,9 +194,9 @@ namespace Rtx
                 // Flattened on the device in the placement after this arrival, from the chunk's
                 // own stack: the description carries the chunk and no bytes.
                 described = TextureData{
+                    .mSource = TextureSource::GroundComposite,
+                    .mFrom = chunk,
                     .mFormat = TextureFormat::Rgba8Srgb,
-                    .mCompositeOf = chunk,
-                    .mNeutralShading = true,
                 };
             }
 
@@ -211,7 +212,6 @@ namespace Rtx
                                     << "\" could not be read; drawing the stand-in";
 
                 described = standIn(mLevels);
-                described->mNeutralShading = true;
             }
 
             described->mSlot = kept.mSlot;

@@ -832,9 +832,11 @@ asserted so.
 
 1. `Engine::go` builds a `RendererSpec`. With a host installed (the harness) it calls
    `EngineHost::createRenderer`; otherwise `MWRender::createRenderer` off `[RTX] enabled`.
-2. `RtxRenderer::RtxRenderer(spec, run)`: `mInstalled` is the host's `RtxSetup` or
-   `playedSetup` from `[RTX]`; `RtxWindow` makes the SDL window (`SDL_WINDOW_VULKAN`, hidden
-   when headless); an `osg::Camera`, `FrameStamp` and `Stats` are made and adopted;
+2. `RtxRenderer::RtxRenderer(spec, run)`: the setup is the host's `RtxSetup::mSetup` or
+   `playedRunSetup` from `[RTX]`, and it is spent here — what outlives it is the run and the
+   stated step, and what a frame reads about the picture is the backend's `getProfile`;
+   `RtxWindow` makes the SDL window (`SDL_WINDOW_VULKAN`, hidden when headless); an
+   `osg::Camera`, `FrameStamp` and `Stats` are made and adopted;
    `RendererOptions` is filled (shader directory, cache directory for a played session only,
    the window, vsync, validation, hit counting for a run only, the profile); groundcover on is
    refused; `Rtx::createVulkanRenderer(options)`; `mWindow.fit`; no GL context is asserted.

@@ -78,6 +78,8 @@ namespace Rtx
         void setMinSize(float minSize) { mPlacer.setMinSize(minSize); }
 
         /// The frame the next walk is for, so a frame walked twice adopts one cell and not two.
+        /// Told by `SceneExtractor::extractWorld`, which is the call that has the ring and the
+        /// frame both; a caller that drives a ring outside a walk says it itself.
         void setFrame(std::size_t frame);
 
         /// Whether a walk waits for the cell it is about to adopt, so which frame a cell is adopted

@@ -145,19 +145,16 @@ namespace MWRender
         /// each reader times what it is about — a setting that could state a step once made a
         /// played game step by frames, and at two hundred of them a second the world ran three
         /// times over.
-        RtxSetup playedSetup(PlayedRun& played)
+        Rtx::RunSetup playedRunSetup()
         {
-            return RtxSetup{
-                .mSetup = {
-                    .mProfile = profileFromSettings(),
-                    .mValidation
-                    = { .mLevel = Rtx::sValidationByDefault ? Rtx::ValidationLevel::On : Rtx::ValidationLevel::Off },
-                    .mMirror = knobsFromSettings(),
-                    .mHeadless = false,
-                    .mStep = std::nullopt,
-                    .mSettled = std::nullopt,
-                },
-                .mRun = played,
+            return Rtx::RunSetup{
+                .mProfile = profileFromSettings(),
+                .mValidation
+                = { .mLevel = Rtx::sValidationByDefault ? Rtx::ValidationLevel::On : Rtx::ValidationLevel::Off },
+                .mMirror = knobsFromSettings(),
+                .mHeadless = false,
+                .mStep = std::nullopt,
+                .mSettled = std::nullopt,
             };
         }
 
@@ -174,15 +171,19 @@ namespace MWRender
 
     }
 
-    RtxRenderer::RtxRenderer(const RendererSpec& spec, const RtxSetup* run)
-        : mInstalled(run != nullptr ? *run : playedSetup(mPlayed))
-        , mWindow(mInstalled.mSetup.mHeadless)
+    RtxRenderer::RtxRenderer(const RendererSpec& spec, const RtxSetup* const run)
+        : RtxRenderer(spec, run, run != nullptr ? run->mSetup : playedRunSetup())
+    {
+    }
+
+    RtxRenderer::RtxRenderer(const RendererSpec& spec, const RtxSetup* const run, const Rtx::RunSetup& setup)
+        : mRun(run != nullptr ? run->mRun : mPlayed)
+        , mStep(setup.mStep)
+        , mWindow(setup.mHeadless)
         , mUpdateVisitor(new Rtx::PoseUpdate)
         , mStartTick(osg::Timer::instance()->tick())
-        , mMirror(mInstalled.mSetup.mMirror)
+        , mMirror(setup.mMirror)
     {
-        const Rtx::RunSetup& setup = mInstalled.mSetup;
-
         // **Made here, because there is no viewer to make them.** Every renderer needs the four and
         // one built on `osgViewer` gets them already wired together.
         const osg::ref_ptr<osg::Camera> camera = new osg::Camera;
@@ -214,7 +215,7 @@ namespace MWRender
         options.mPacing = pacingFromSettings();
         // **The run's answer.** A launcher making a measurement says on its command line whether
         // the layers load, because a figure taken under them is not one to compare against
-        // anything; `playedSetup` says what a session with no command line answers.
+        // anything; `playedRunSetup` says what a session with no command line answers.
         options.mValidation = setup.mValidation;
 
         // **The two finer levels, asked for by name and never on by themselves.** The build decides
@@ -830,7 +831,7 @@ namespace MWRender
         // **The same graph again, and it should add nothing.** Only a run that asked pays for it,
         // because a second whole-graph walk is the largest cost a frame has.
         mWalked.mAgain.reset();
-        if (mInstalled.mRun.wantsSecondWalk())
+        if (mRun.wantsSecondWalk())
             mWalked.mAgain = mMirror.mirror(frame, view, when.getFrameNumber());
 
         // After the last walk, because a walk clears the frame's lists.
@@ -838,9 +839,9 @@ namespace MWRender
 
         traceWorld(frame, view, report, since);
 
+        // Where the frame is stamped as left, which is why no path out of here stamps it again:
+        // the world-hidden return above ends in this same call.
         renderGui();
-
-        mTimer.leave(std::chrono::steady_clock::now());
     }
 
     void RtxRenderer::traceWorld(
@@ -981,15 +982,16 @@ namespace MWRender
         // **The stop's own count where a run is being made, and the game's frame number
         // otherwise.** `RtxRun::getSampleFrame` says why: a measured run has to walk the same
         // sequence twice, and a game's frame number carries the loading screen's frames with it.
-        constants->mFrame
-            = mInstalled.mRun.getSampleFrame().value_or(static_cast<std::uint32_t>(frame.mWhen.getFrameNumber()));
+        constants->mFrame = mRun.getSampleFrame().value_or(static_cast<std::uint32_t>(frame.mWhen.getFrameNumber()));
 
-        // **Both hosts light the world by the profile's rules.** `Rtx::makeCameraFromView` names
-        // every field it fills and leaves the rest value-initialised, and `texturing.glsl`
+        // **Both hosts light the world by the profile's rules**, and the profile is the backend's:
+        // what it was made with, and then whatever a setting moved. `Rtx::makeCameraFromView`
+        // names every field it fills and leaves the rest value-initialised, and `texturing.glsl`
         // short-circuits on a `mDelight` of nought, handing the trace Bethesda's textures with
         // their painted lighting still in them.
-        constants->mDelight = mInstalled.mSetup.mProfile.mDelight;
-        constants->mShowAlbedo = mInstalled.mSetup.mProfile.mShowAlbedo ? 1u : 0u;
+        const Rtx::RenderProfile& profile = mRenderer->getProfile();
+        constants->mDelight = profile.mDelight;
+        constants->mShowAlbedo = profile.mShowAlbedo ? 1u : 0u;
 
         return constants;
     }
@@ -1004,7 +1006,7 @@ namespace MWRender
 
         // **The schedule's and not the profile's**, because a warm-up is not averaged in — a picture
         // of a half-built cell in the sum is what `RtxRun::getAccumulated` exists to keep out.
-        const std::uint32_t accumulated = mInstalled.mRun.getAccumulated();
+        const std::uint32_t accumulated = mRun.getAccumulated();
 
         // **The bias is carried rather than worked out here**, because a room is the exception to
         // the rule that would derive it — `Rtx::Skylight::mExposureBias`. Whichever light this cell
@@ -1016,9 +1018,9 @@ namespace MWRender
         // cost to an address with no caller. `Rtx::Timing::Trace` says what the row is for.
         const std::chrono::steady_clock::time_point tracing = std::chrono::steady_clock::now();
 
-        Rtx::FrameOptions options = Rtx::FrameOptions::forFrame(
-            mInstalled.mSetup.mProfile, accumulated, mInstalled.mSetup.mStep, exposureBias);
-        options.mReadBack = mInstalled.mRun.wantsFrameCopy();
+        Rtx::FrameOptions options
+            = Rtx::FrameOptions::forFrame(mRenderer->getProfile(), accumulated, mStep, exposureBias);
+        options.mReadBack = mRun.wantsFrameCopy();
 
         // What the debug modes drew, read off the world root here, after the game's own update
         // has rebuilt them for this frame and before the frame is recorded.
@@ -1043,12 +1045,12 @@ namespace MWRender
             // counts the frames it traced, and `RtxRun::frame` says why a count of answers is not
             // that.
             mPhase.step(Phase::Run, Phase::Tracing);
-            mInstalled.mRun.frame(describeContext(), report);
+            mRun.frame(describeContext(), report);
 
             // Once a second, which is how often `Rtx::FrameRate` closes a line — and the window is asked
             // then whether anybody can see it, rather than a copy of that being kept here.
             if (mTimer.addFrame(*since))
-                mWindow.setTitle(mTimer.writeTitle(report.mLatency, mInstalled.mRun.describeTitle()).data());
+                mWindow.setTitle(mTimer.writeTitle(report.mLatency, mRun.describeTitle()).data());
         }
     }
 }

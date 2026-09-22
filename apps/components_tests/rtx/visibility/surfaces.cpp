@@ -428,17 +428,18 @@ namespace Rtx::Testing
         /// the centre pixel sees a texel of 1.0 under a factor of 1.501, eight cells from either
         /// boundary, which is 0.66624 in light and `1.055 * 0.66624^(1/2.4) - 0.055` encodes to
         /// 213 of 255. Left alone it encodes to 255, a texture of one tone estimates to one
-        /// everywhere and changes nothing, and the two tones flagged neutral — a composite, whose
-        /// light came off in the bake — are drawn as painted under a map that was cleared and
-        /// never estimated.
+        /// everywhere and changes nothing, and the two tones under a source that shades neutrally
+        /// — as a composite does, whose light came off in the bake — are drawn as painted under a
+        /// map that was cleared and never estimated. `StandIn` is that source with bytes of its
+        /// own, which is what a painted texture needs here; a composite carries none.
         TEST_F(RtxVisibilityTest, aTexturesPaintedLightIsDividedBackOutOfItsAlbedo)
         {
             constexpr std::uint32_t size = 32;
             constexpr std::size_t centre = centreValueOf(size);
             const Testing::TestTexture twoTones = Testing::paintTwoTones(32, 96);
             const Testing::TestTexture oneTone = Testing::paintTwoTones(0, 128);
-            Testing::TestTexture composite = Testing::paintTwoTones(32, 96);
-            composite.mData.mNeutralShading = true;
+            Testing::TestTexture neutral = Testing::paintTwoTones(32, 96);
+            neutral.mData.mSource = TextureSource::StandIn;
 
             SceneDesc scene;
             const Index mesh
@@ -462,7 +463,7 @@ namespace Rtx::Testing
 
             EXPECT_NEAR(shownAt(1.0f, twoTones.mData), 213, 1) << "a texture painted half again as bright comes back";
             EXPECT_NEAR(shownAt(1.0f, oneTone.mData), 255, 1) << "and a neutral map changes nothing";
-            EXPECT_NEAR(shownAt(1.0f, composite.mData), 255, 1) << "a texture not to be estimated is not";
+            EXPECT_NEAR(shownAt(1.0f, neutral.mData), 255, 1) << "a texture not to be estimated is not";
 
             // The strength is what makes this answerable rather than believable: the same map at no
             // strength has to leave the texture exactly as it was drawn.
@@ -1424,9 +1425,9 @@ namespace Rtx::Testing
             scene.setMaterial(chunk, flattened);
             const TextureData composite{
                 .mSlot = flattened.mDiffuse,
+                .mSource = TextureSource::GroundComposite,
+                .mFrom = chunk,
                 .mFormat = TextureFormat::Rgba8Srgb,
-                .mCompositeOf = chunk,
-                .mNeutralShading = true,
             };
 
             // Into the standing world: the arrival stands the composite empty, and the placement

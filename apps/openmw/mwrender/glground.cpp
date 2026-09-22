@@ -2,8 +2,12 @@
 
 #include <utility>
 
+#include <osg/Vec2i>
+
 #include <components/terrain/world.hpp>
 
+#include "../mwworld/cellstore.hpp"
+#include "../mwworld/ptr.hpp"
 #include "groundcover.hpp"
 #include "objectpaging.hpp"
 
@@ -19,13 +23,24 @@ namespace MWRender
 
     GlGround::~GlGround() = default;
 
-    // Upstream's, from RenderingManager::pagingEnableObject.
-    bool GlGround::enableReference(
-        int type, ESM::RefNum refnum, const osg::Vec3f& position, const osg::Vec2i& cell, bool enabled)
+    namespace
+    {
+        /// The exterior cell a reference stands in, as the paging indexes its chunks by.
+        osg::Vec2i cellOf(const MWWorld::ConstPtr& ptr)
+        {
+            const MWWorld::Cell& cell = *ptr.getCell()->getCell();
+            return osg::Vec2i(cell.getGridX(), cell.getGridY());
+        }
+    }
+
+    // Upstream's, from RenderingManager::pagingEnableObject. The position and the cell are what
+    // this paging finds a reference's chunk by, and no other renderer reads them.
+    bool GlGround::enableReference(const int type, const MWWorld::ConstPtr& ptr, const bool enabled)
     {
         if (!mObjectPaging)
             return false;
-        if (mObjectPaging->enableObject(type, refnum, position, cell, enabled))
+        if (mObjectPaging->enableObject(
+                type, ptr.getCellRef().getRefNum(), ptr.getCellRef().getPosition().asVec3(), cellOf(ptr), enabled))
         {
             mTerrain->rebuildViews();
             return true;
@@ -34,11 +49,12 @@ namespace MWRender
     }
 
     // Upstream's, from RenderingManager::pagingBlacklistObject.
-    bool GlGround::blacklistReference(int type, ESM::RefNum refnum, const osg::Vec3f& position, const osg::Vec2i& cell)
+    bool GlGround::blacklistReference(const int type, const MWWorld::ConstPtr& ptr)
     {
         if (!mObjectPaging)
             return false;
-        if (mObjectPaging->blacklistObject(type, refnum, position, cell))
+        if (mObjectPaging->blacklistObject(
+                type, ptr.getCellRef().getRefNum(), ptr.getCellRef().getPosition().asVec3(), cellOf(ptr)))
         {
             mTerrain->rebuildViews();
             return true;

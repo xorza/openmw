@@ -34,6 +34,28 @@ namespace Rtx
     /// lived in was read by a frame in flight while the next trace's bin rewrote the sprites in
     /// place from the host. One per frame in flight in the world's chain, and one for the pictures,
     /// whose batches are ordered on the queue and touch nothing from the host.
+    /// What one bin is of: the sprites, where they are seen from, and what lights them. A record
+    /// and not an argument list, because `mOrigin` is a place and `mToSun` a direction and the
+    /// two are one type, so a list takes either for the other.
+    struct Binning
+    {
+        const SpriteShadePass& mShading;
+        const SpriteBinPass& mPass;
+
+        /// The sprites this bin took, as the scene's tables describe them.
+        const SpriteSource& mSource;
+
+        /// Where the eye stands, and the camera whose screen tiles the sprites are binned into.
+        osg::Vec3f mOrigin;
+        Shaders::Camera mCamera;
+
+        /// Toward the sun, which the shade lights every sprite by.
+        osg::Vec3f mToSun;
+
+        /// Null where the run is not being timed.
+        GpuTimer* mTimer = nullptr;
+    };
+
     class SpriteBin
     {
     public:
@@ -49,12 +71,10 @@ namespace Rtx
         /// the shade reads the sprites.
         void take(const SpriteSource& source, const Shaders::Camera& camera, VkCommandBuffer commands);
 
-        /// Shades the sprites `take` copied against `toSun` in place, and records the bin of them
-        /// into the screen tiles of `camera` — ahead of the trace that reads the tiles, in the
-        /// same commands.
-        void record(const SpriteShadePass& shading, const SpriteBinPass& pass, const SpriteSource& source,
-            const osg::Vec3f& origin, const Shaders::Camera& camera, const osg::Vec3f& toSun, VkCommandBuffer commands,
-            GpuTimer* timer);
+        /// Shades the sprites `take` copied against the sun in place, and records the bin of them
+        /// into the camera's screen tiles — ahead of the trace that reads the tiles, in the same
+        /// commands. `commands` first, as every other `record` in this backend takes it.
+        void record(VkCommandBuffer commands, const Binning& what);
 
         VkDeviceAddress getSpritesAddress() const { return mSprites.addressFor(); }
         VkDeviceAddress getTileListAddress() const { return mTileList.addressFor(); }

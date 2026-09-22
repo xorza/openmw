@@ -75,7 +75,7 @@ namespace Rtx
             // The estimate the device makes as the texture arrives, made here for the sheet: the
             // host's `ShadingMap` is the reference that dispatch is held to, and neutral where the
             // texture is one nothing estimates.
-            const std::optional<ShadingMap> painted = texture.mNeutralShading || !(strength > 0.0f)
+            const std::optional<ShadingMap> painted = texture.hasNeutralShading() || !(strength > 0.0f)
                 ? std::nullopt
                 : std::optional<ShadingMap>(std::in_place, texture);
 

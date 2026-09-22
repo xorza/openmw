@@ -1,5 +1,6 @@
 #include "tracedground.hpp"
 
+#include "../../mwworld/ptr.hpp"
 #include "rtxrenderer.hpp"
 
 namespace MWRender
@@ -11,17 +12,15 @@ namespace MWRender
     {
     }
 
-    bool TracedGround::enableReference(
-        int type, const ESM::RefNum refnum, const osg::Vec3f& position, const osg::Vec2i& cell, const bool enabled)
+    bool TracedGround::enableReference(int type, const MWWorld::ConstPtr& ptr, const bool enabled)
     {
-        mRenderer.setReferenceEnabled(refnum, enabled);
+        mRenderer.setReferenceEnabled(ptr.getCellRef().getRefNum(), enabled);
         return false;
     }
 
-    bool TracedGround::blacklistReference(
-        int type, const ESM::RefNum refnum, const osg::Vec3f& position, const osg::Vec2i& cell)
+    bool TracedGround::blacklistReference(int type, const MWWorld::ConstPtr& ptr)
     {
-        mRenderer.blacklistReference(refnum);
+        mRenderer.blacklistReference(ptr.getCellRef().getRefNum());
         return false;
     }
 

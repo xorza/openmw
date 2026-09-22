@@ -150,6 +150,10 @@ namespace Rtx
         /// lamps, which have no node anywhere. A reference and not a stored pointer, so no caller
         /// can be the one that forgets it and has the distant ground swept on every frame after the
         /// first, and the extractor holds nothing of the ring between two walks.
+        ///
+        /// **`ring` is told `frame` here**, because this is the call that holds both: a ring told
+        /// one frame and walked for another adopts twice on a frame walked twice, and a caller
+        /// that has to remember two calls is a caller that can forget one.
         ExtractionStats extractWorld(const osg::Node& root, const osg::Matrixf& transform, std::size_t anchor,
             std::size_t frame, CellRing& ring);
 

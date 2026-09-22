@@ -147,6 +147,32 @@ namespace Rtx
         return format != TextureFormat::Rgba8Unorm;
     }
 
+    /// What stands in a texture slot, which decides what a description carries and how a backend
+    /// builds it. Stated rather than deduced from two sentinels, for the reason
+    /// `Rtx::TextureKind` gives of the table a description is built from: a reader that has to
+    /// work out which of four a value is works it out in its own order, and two orders are one
+    /// rule written twice.
+    enum class TextureSource : std::uint8_t
+    {
+        /// A file the content named, decoded. `TextureData::mBytes` and `mLevels` are the file's
+        /// own, and `mCompleteChain` says whether the device finishes a chain it did not carry.
+        File,
+
+        /// The light bake of a sprite texture — `SpriteLightMap` says what a bake is — made on
+        /// the device from that texture's alpha, `SpriteLightPass`. `TextureData::mFrom` is the
+        /// slot it is made from, and it carries no bytes: a bake is shaped like its source.
+        SpriteBake,
+
+        /// A distant chunk's layer stack, flattened on the device by `GroundCompositePass` in the
+        /// placement that writes the chunk's material row. `TextureData::mFrom` is that row, and
+        /// it carries no bytes: a composite is `GROUND_COMPOSITE_EXTENT` square with a chain to
+        /// one texel.
+        GroundComposite,
+
+        /// The grey a slot whose file could not be read is drawn with. Its bytes are its own.
+        StandIn,
+    };
+
     /// A decoded texture, ready to upload and owning none of it. No graphics API in it, because an
     /// upload of a block-compressed file with its chain already built is a copy and never a
     /// conversion.
@@ -161,42 +187,39 @@ namespace Rtx
         /// through. The scene's table says, per slot.
         TextureWrap mWrap = TextureWrap::Repeat;
 
+        /// What stands in the slot, which says which of the fields below mean anything.
+        TextureSource mSource = TextureSource::File;
+
+        /// What the source names, by the source: the sprite texture a bake is made from, or the
+        /// material row whose ground a composite is. `sNoIndex` under `File` and `StandIn`, which
+        /// are made from nothing but their own bytes.
+        Index mFrom = sNoIndex;
+
         TextureFormat mFormat = TextureFormat::Bc1RgbaSrgb;
         std::uint32_t mWidth = 0;
         std::uint32_t mHeight = 0;
 
-        /// Every level, back to back. The levels index into this.
+        /// Every level, back to back. The levels index into this. Empty under `SpriteBake` and
+        /// `GroundComposite`, whose bytes are the device's.
         std::span<const std::byte> mBytes;
         std::span<const MipLevel> mLevels;
 
-        /// The slot of the sprite texture this is the light bake of — `SpriteLightMap` says what a
-        /// bake is — made on the device from that texture's alpha, `SpriteLightPass`, so this
-        /// carries no bytes and no levels of its own: the bake is shaped like its source. `sNoIndex`
-        /// for every texture whose bytes are its own, which is every other one.
-        Index mBakedFrom = sNoIndex;
-
-        /// The material row of the chunk this is the flattened ground of — `GroundCompositePass`
-        /// sums that chunk's layer stack into it on the device, in the placement that writes the
-        /// row — so this carries no bytes and no levels: a composite is `GROUND_COMPOSITE_EXTENT`
-        /// square with a chain to one texel. `sNoIndex` for every other texture.
-        Index mCompositeOf = sNoIndex;
-
         /// Whether a backend completes the chain the file did not carry, `MipChainPass`, from the
         /// one level here down to one texel. Set by the builder where `MipChain::wantedFor` says,
-        /// and never for a texture a test paints to be read at its one level, or for a bake or a
-        /// composite, which carry no level at all.
+        /// and never for a texture a test paints to be read at its one level. Under `File` alone.
         bool mCompleteChain = false;
-
-        /// Whether the shading map beside it is the neutral one rather than an estimate made off
-        /// its texels — a composite, whose painted light came off per tile in the bake and would
-        /// come off twice; a bake, which nothing divides; and the stand-in, which is one grey. A
-        /// file's is estimated on the device as it arrives, `ShadingPass`.
-        bool mNeutralShading = false;
 
         /// What to call it in a capture — the file it came from. Spans storage the description's
         /// owner holds, like everything else here. Empty is allowed and only costs a nameless object
         /// in a debugger; every backend has somewhere to put it.
         std::string_view mName;
+
+        /// Whether the shading map beside it is the neutral one rather than an estimate made off
+        /// its texels — a composite, whose painted light came off per tile in the bake and would
+        /// come off twice; a bake, which nothing divides; and the stand-in, which is one grey. A
+        /// file's is estimated on the device as it arrives, `ShadingPass`. Derived, because it is
+        /// the source and nothing else that decides it.
+        bool hasNeutralShading() const { return mSource != TextureSource::File; }
     };
 
 }

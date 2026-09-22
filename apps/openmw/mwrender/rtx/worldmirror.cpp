@@ -148,7 +148,7 @@ namespace MWRender
 
     void WorldMirror::attach(Resource::ResourceSystem& resources)
     {
-        mResources = &resources;
+        mImages = resources.getImageManager();
         mContent = std::make_unique<SceneContent>(*resources.getSceneManager());
     }
 
@@ -171,7 +171,7 @@ namespace MWRender
             mExtractor.detach(mRing);
 
         mContent.reset();
-        mResources = nullptr;
+        mImages = nullptr;
     }
 
     void WorldMirror::standSea(const MWWorld::CellStore& cell)
@@ -261,10 +261,10 @@ namespace MWRender
             .mSimulationTime = frame.mWhen.getSimulationTime(),
         };
 
-        mRing.setFrame(frameNumber);
-
         // Told once a frame, because what the graph does not hold is the frame's to say. The
-        // world walk asks it, and the precipitation walk above cannot: it is a subtree.
+        // world walk asks it, and the precipitation walk above cannot: it is a subtree. Which
+        // frame the ring is standing for is `extractWorld`'s to say, because that call has the
+        // ring and the number both.
         mRing.follow(around);
 
         // One walk over the whole graph, where every path is already distinct.
@@ -288,12 +288,12 @@ namespace MWRender
 
     Rtx::SceneUpload WorldMirror::hand(Rtx::Renderer& renderer, Rtx::FrameSpend& spend)
     {
-        assert(mResources != nullptr && "a hand-over before the world was attached");
+        assert(mImages != nullptr && "a hand-over before the world was attached");
 
         return mUploader.hand(renderer,
             Rtx::SceneUploader::Handing{ .mSlot = Rtx::SceneSlot::world(),
                 .mScene = mScene,
-                .mImages = *mResources->getImageManager(),
+                .mImages = *mImages,
                 .mComposites = &mComposites,
                 .mSpend = &spend });
     }

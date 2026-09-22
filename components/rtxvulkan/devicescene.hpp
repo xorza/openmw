@@ -16,6 +16,7 @@
 #include "frameslots.hpp"
 #include "sceneacceleration.hpp"
 #include "scenebuffers.hpp"
+#include "skinpass.hpp"
 #include "skintables.hpp"
 #include "texture.hpp"
 
@@ -26,7 +27,6 @@ namespace Rtx
     class GpuTimer;
     class SceneDesc;
     class GroundCompositePass;
-    class SkinPass;
     struct Placing;
 
     /// Everything one scene is traced against, on the device — the world's, or a picture's in
@@ -112,6 +112,11 @@ namespace Rtx
         VkDeviceAddress getTextureTexels() const { return mTextures.getTexelsAddress(mSlot); }
 
     private:
+        /// What this scene poses with, at `slot` and timed into `timer`. The three tables are
+        /// this scene's and are the same at every call, so they are stated once rather than at
+        /// each of the build, the arrival and the placement.
+        Skinning skinning(const SceneDesc& scene, FrameSlot slot, GpuTimer* timer = nullptr);
+
         /// Records the bake of every composite that arrived since the last, over `slot`'s copy of
         /// the tables — the copy just written, whose set is synced. True where one was recorded.
         bool bakeGround(VkCommandBuffer commands, FrameSlot slot);

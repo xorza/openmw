@@ -226,7 +226,9 @@ namespace Rtx
 
         // What is about to be replaced may still be in flight.
         drain();
-        createTargets(mOutputWidth, mOutputHeight);
+
+        const VkExtent2D output = mTargets.getExtent();
+        createTargets(output.width, output.height);
     }
 
     void VulkanRenderer::setSea(const SeaState& sea)
@@ -245,9 +247,6 @@ namespace Rtx
     {
         assert(width > 0 && height > 0);
 
-        mOutputWidth = width;
-        mOutputHeight = height;
-
         // Whatever upscales picks the render size. Asked of the mode and not of the runtime: a
         // runtime that is up because somebody upscaled and then turned it off is kept for the next
         // time, and asking it what to trace at for no upscaling is a question it refuses.
@@ -257,7 +256,7 @@ namespace Rtx
 
         // Two, and interchangeable, because the frame after this one must not rewrite the image
         // the present is still blitting out of. `PresentTargets` is what holds that rule.
-        mTargets.resize(mDevice, mOutputWidth, mOutputHeight);
+        mTargets.resize(mDevice, width, height);
 
         // A runtime that is up because somebody upscaled and then turned it off keeps nothing
         // but itself: the feature and its image go with the mode.
@@ -269,8 +268,8 @@ namespace Rtx
         // Over whatever the frame is by the time the curve maps it, which is the upscaler's
         // output where one runs and the trace's own extent where none does. The same test the frame
         // path makes, because a pyramid built at the other extent is a bloom at the wrong scale.
-        const std::uint32_t shownWidth = upscaling() ? mOutputWidth : mFrame.getWidth();
-        const std::uint32_t shownHeight = upscaling() ? mOutputHeight : mFrame.getHeight();
+        const std::uint32_t shownWidth = upscaling() ? width : mFrame.getWidth();
+        const std::uint32_t shownHeight = upscaling() ? height : mFrame.getHeight();
         mDisplay.resize(shownWidth, shownHeight);
 
         // A frame of a different size is not one this one can be reprojected against.
@@ -666,7 +665,7 @@ namespace Rtx
             height = shown.height;
         }
 
-        if (width == mOutputWidth && height == mOutputHeight)
+        if (width == mTargets.getExtent().width && height == mTargets.getExtent().height)
             return;
 
         // The images about to be replaced may still be in flight.
@@ -775,8 +774,8 @@ namespace Rtx
         return FrameExtents{
             .mRenderWidth = mFrame.getWidth(),
             .mRenderHeight = mFrame.getHeight(),
-            .mOutputWidth = mOutputWidth,
-            .mOutputHeight = mOutputHeight,
+            .mOutputWidth = mTargets.getExtent().width,
+            .mOutputHeight = mTargets.getExtent().height,
         };
     }
 
@@ -933,7 +932,7 @@ namespace Rtx
         // upscaler left where the puffs want it — and over the trace's own composite where nothing
         // does. The whole of the frame is the picture, which is the output's extent either way.
         assert(shown == inputs.mShown && "the puffs composited over a frame the set does not name");
-        assert(shown->getWidth() == mOutputWidth && shown->getHeight() == mOutputHeight);
+        assert(shown->getWidth() == mTargets.getExtent().width && shown->getHeight() == mTargets.getExtent().height);
         if (!upscaling())
             shown->transition(commands, Use::sAnyGeneralRead, Use::sTraceReadWrite);
 
@@ -950,7 +949,7 @@ namespace Rtx
         mDisplay.record(commands,
             Display{
                 .mShown = *shown,
-                .mExtent = VkExtent2D{ mOutputWidth, mOutputHeight },
+                .mExtent = mTargets.getExtent(),
                 .mInputs = inputs,
                 .mSampled = sampled,
                 .mSpriteTileList = mFrame.getSpriteTileList(inputs),

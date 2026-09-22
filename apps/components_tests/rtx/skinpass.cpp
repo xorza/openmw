@@ -191,7 +191,9 @@ namespace Rtx
             const auto poseAndRead = [&](FrameSlot slot) {
                 bool recorded = false;
                 pool.submitAndWait([&](VkCommandBuffer commands) {
-                    recorded = pass.record(commands, scene, slot, tables, poses, normals, nullptr);
+                    recorded = pass.record(commands,
+                        Skinning{
+                            .mScene = scene, .mSlot = slot, .mTables = tables, .mPoses = poses, .mNormals = normals });
 
                     handOver(commands, Use::sBufferComputeWrite,
                         BufferUse{ VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT });
@@ -300,8 +302,13 @@ namespace Rtx
             {
                 Batch arrival(pool);
                 tables.extend(arrival, scene);
-                EXPECT_TRUE(pass.recordArrived(
-                    arrival.getCommands(), scene, FrameSlot{ 0 }, scene.meshes().getArrived(), tables, poses, normals))
+                EXPECT_TRUE(pass.recordArrived(arrival.getCommands(),
+                    Skinning{ .mScene = scene,
+                        .mSlot = FrameSlot{ 0 },
+                        .mTables = tables,
+                        .mPoses = poses,
+                        .mNormals = normals },
+                    scene.meshes().getArrived()))
                     << "an arrival with nothing to pose";
 
                 handOver(arrival.getCommands(), Use::sBufferComputeWrite,
@@ -396,8 +403,13 @@ namespace Rtx
                 poses.reserve(arrival, 8);
                 normals.reserve(arrival, 8);
                 tables.extend(arrival, scene);
-                EXPECT_TRUE(pass.recordArrived(
-                    arrival.getCommands(), scene, FrameSlot{ 0 }, scene.meshes().getArrived(), tables, poses, normals));
+                EXPECT_TRUE(pass.recordArrived(arrival.getCommands(),
+                    Skinning{ .mScene = scene,
+                        .mSlot = FrameSlot{ 0 },
+                        .mTables = tables,
+                        .mPoses = poses,
+                        .mNormals = normals },
+                    scene.meshes().getArrived()));
                 arrival.defer();
             }
 
@@ -428,7 +440,12 @@ namespace Rtx
             const VkDeviceSize poseBytes = 8 * sizeof(osg::Vec3f);
             const Buffer read = Buffer::readBack(device, poseBytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT, "test");
             pool.submitAndWait([&](VkCommandBuffer commands) {
-                EXPECT_TRUE(pass.record(commands, scene, FrameSlot{ 0 }, tables, poses, normals, nullptr));
+                EXPECT_TRUE(pass.record(commands,
+                    Skinning{ .mScene = scene,
+                        .mSlot = FrameSlot{ 0 },
+                        .mTables = tables,
+                        .mPoses = poses,
+                        .mNormals = normals }));
 
                 handOver(commands, Use::sBufferComputeWrite,
                     BufferUse{ VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT });

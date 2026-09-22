@@ -14,6 +14,7 @@
 #include <apps/openmw/mwrender/rtx/framereport.hpp>
 #include <apps/openmw/mwrender/rtx/rtxrun.hpp>
 #include <components/rtx/renderer.hpp>
+#include <components/rtx/scratch.hpp>
 #include <components/rtxbench/benchrecord.hpp>
 #include <components/rtxbench/benchrun.hpp>
 #include <components/rtxbench/cardwatch.hpp>
@@ -220,31 +221,15 @@ namespace RtxTool
                 mFlown = eye;
             }
 
-            /// Empties it for the next stop, keeping the room every row grew.
-            void restart()
-            {
-                mSeen = 0;
-                mFirstMeasured = 0;
-                mHitPercent = 0.0;
-                mWallMs = 0.0;
-                mNotFinite = Rtx::NotFinite{};
-                mPendingSpend = Rtx::FrameSpend{};
-                mPendingArrived = 0;
-                mCell = nullptr;
-                mArrived = false;
-                mTurnedTo = 0;
-                mTurned = 0.0f;
-
-                mSamples.clear();
-                mLatencyMs.clear();
-                mGpu = Rtx::GpuBreakdown{};
-                mCrossings = Rtx::Crossings{};
-                mArrivals = Rtx::Arrivals{};
-                mOverlap = Rtx::Overlap{};
-                mHold = Rtx::HoldTimes{};
-                mClock = Rtx::GpuClock{};
-                mCard = Rtx::CardShare{};
-            }
+            /// Empties it for the next stop, keeping the room the frame series and the latency
+            /// series grew — the two the longest stop of a run reserves.
+            ///
+            /// **Every field not named is reset by being unnamed**, which is what `beginStop`
+            /// promises of this call: a field added to the struct is reset here whether or not its
+            /// author remembered to. The route's three — `mFrom`, `mFromLook` and `mFlown` — are
+            /// reset with the rest, because every branch of `beginStop` reaches `standAt` after
+            /// this and writes all three.
+            void restart() { Rtx::reuseKeeping(*this, &StopProgress::mSamples, &StopProgress::mLatencyMs); }
         };
 
         Rtx::SessionRequest mRequest;

@@ -52,10 +52,15 @@ namespace Rtx
     {
     }
 
-    void LinePass::record(const VkCommandBuffer commands, const Image& target, const Image& depth,
-        const Shaders::LineConstants& constants, const VkBuffer vertices, const std::uint32_t lineCount,
-        const std::uint32_t triangleCount) const
+    void LinePass::record(const VkCommandBuffer commands, const Lines& what) const
     {
+        const Image& target = what.mTarget;
+        const Image& depth = what.mDepth;
+        const Shaders::LineConstants& constants = what.mConstants;
+        const VkBuffer vertices = what.mVertices;
+        const std::uint32_t lineCount = what.mLineCount;
+        const std::uint32_t triangleCount = what.mTriangleCount;
+
         assert(constants.mCamera.mOrthographic == 0 && "debug lines through a parallel projection");
         assert(constants.mCamera.mWidth == target.getWidth() && constants.mCamera.mHeight == target.getHeight()
             && "a camera on a grid other than the target's");
