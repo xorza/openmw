@@ -3,6 +3,7 @@
 
 #include "hosttypes.h"
 #include "portable.h"
+#include "storageformat.h"
 
 // The scene's tables, and the scale its brightnesses are measured on, as both sides see them.
 // Scalar block layout throughout, so a `uint` is four bytes and a `vec2` is eight on both sides and
@@ -44,6 +45,19 @@ namespace Rtx::Shaders
     /// **The last slot and not the first**, so the scene's own slots stay what they were: its
     /// table hands out from nought, and every test that names a slot by number still does.
     const uint TEXTURE_NEUTRAL = TEXTURE_SLOTS - 1u;
+
+    /// Where the texture set binds its two arrays: the textures, and their shading maps at the
+    /// same slots.
+    ///
+    /// **Named on both sides because a swap would be silent.** Both are `TEXTURE_SLOTS` combined
+    /// image samplers, so a layout and a shader that disagreed on which is which would pass every
+    /// check the layers make, and the trace would sample shading maps as colour.
+    const uint TEXTURE_BIND_IMAGES = 0;
+    const uint TEXTURE_BIND_SHADING = 1;
+
+/// What every texture this renderer writes is stored as: a chain a file did not carry, a sprite's
+/// light bake and a ground composite. Read back through the file's curve where the file had one.
+#define TEXTURE_WRITTEN_FORMAT STORAGE_RGBA8
 
     /// Elements in one block of the shared vertex buffers, and of the index buffer.
     ///

@@ -13,6 +13,7 @@
 
 #include "composite.h"
 #include "gbuffer.h"
+#include "sets.h"
 
 #include "lib/pixels.glsl"
 
@@ -20,7 +21,7 @@ layout(local_size_x = COMPOSITE_WORKGROUP, local_size_y = COMPOSITE_WORKGROUP) i
 
 /// Everything already resolved: direct light, emission, the sky, water, and the fog over all of it.
 /// No format, for the reason the bounce below gives twice over: the run decides its width too.
-layout(set = 0, binding = COMPOSITE_BIND_DIRECT) uniform readonly image2D direct;
+layout(set = SET_PASS, binding = COMPOSITE_BIND_DIRECT) uniform readonly image2D direct;
 
 /// One bounce with the albedo divided out, times whatever the water and the air took off it on the
 /// way to the eye — the only channel a filter is allowed to touch.
@@ -30,17 +31,17 @@ layout(set = 0, binding = COMPOSITE_BIND_DIRECT) uniform readonly image2D direct
 /// `ATROUS_CHANNEL` and whichever width the run gave the channel. A `readonly` image that states
 /// no format converts from whatever the view holds, which `requirements.cpp` requires the device
 /// to be able to do.
-layout(set = 0, binding = COMPOSITE_BIND_INDIRECT) uniform readonly image2D indirect;
+layout(set = SET_PASS, binding = COMPOSITE_BIND_INDIRECT) uniform readonly image2D indirect;
 
 /// What to put back: the surface's own albedo, and nothing of the path.
-layout(set = 0, binding = COMPOSITE_BIND_ALBEDO, GBUFFER_ALBEDO) uniform readonly image2D albedo;
+layout(set = SET_PASS, binding = COMPOSITE_BIND_ALBEDO, GBUFFER_ALBEDO) uniform readonly image2D albedo;
 
 /// The running sum, when `mAccumulate` asks for one.
-layout(set = 0, binding = COMPOSITE_BIND_SUM, rgba32f) uniform image2D sum;
+layout(set = SET_PASS, binding = COMPOSITE_BIND_SUM, COMPOSITE_SUM_FORMAT) uniform image2D sum;
 
 /// The frame, in the linear radiance everything after this reads: an upscaler across several of
 /// them, and then the curve. As wide as the run made the channels it is composed from.
-layout(set = 0, binding = COMPOSITE_BIND_COLOUR) uniform writeonly image2D colour;
+layout(set = SET_PASS, binding = COMPOSITE_BIND_COLOUR) uniform writeonly image2D colour;
 
 layout(push_constant, scalar) uniform Push
 {

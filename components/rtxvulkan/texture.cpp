@@ -20,6 +20,7 @@
 
 #include "commands.hpp"
 #include "device.hpp"
+#include "formats.hpp"
 #include "graveyard.hpp"
 #include "groundcompositepass.hpp"
 #include "imageuse.hpp"
@@ -45,7 +46,8 @@ namespace Rtx
             if constexpr (Device::wantsNames())
                 shadingName = std::string(name) + " shading";
 
-            return Image::tryMake(use, device, Shaders::SHADING_EXTENT, Shaders::SHADING_EXTENT, VK_FORMAT_R16_UNORM,
+            return Image::tryMake(use, device, Shaders::SHADING_EXTENT, Shaders::SHADING_EXTENT,
+                toVulkanFormat(SHADING_MAP_FORMAT),
                 VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, shadingName);
         }
 
@@ -77,30 +79,48 @@ namespace Rtx
             return chainBytes(chain.getWidth(), chain.getHeight(), chain.getMipLevels());
         }
 
-        /// `format` with its transfer curve taken off: the same bytes, read as the bytes they are.
-        /// Every format this uploads has such a twin, in the same compatibility class.
-        VkFormat withoutCurve(const VkFormat format)
+        /// A format with a transfer curve and its twin without one: the same bytes in the same
+        /// compatibility class, read through the curve or as the bytes they are.
+        struct CurveTwins
         {
-            switch (format)
-            {
-                case VK_FORMAT_BC1_RGBA_SRGB_BLOCK:
-                    return VK_FORMAT_BC1_RGBA_UNORM_BLOCK;
-                case VK_FORMAT_BC2_SRGB_BLOCK:
-                    return VK_FORMAT_BC2_UNORM_BLOCK;
-                case VK_FORMAT_BC3_SRGB_BLOCK:
-                    return VK_FORMAT_BC3_UNORM_BLOCK;
-                case VK_FORMAT_R8G8B8A8_SRGB:
-                    return VK_FORMAT_R8G8B8A8_UNORM;
-                case VK_FORMAT_B8G8R8A8_SRGB:
-                    return VK_FORMAT_B8G8R8A8_UNORM;
-                default:
-                    return format;
-            }
+            VkFormat mEncoded;
+            VkFormat mLinear;
+        };
+
+        /// Every format this uploads or writes that has a curve, beside its twin — one table, so
+        /// the two directions below cannot disagree.
+        constexpr std::array sCurveTwins{
+            CurveTwins{ VK_FORMAT_BC1_RGBA_SRGB_BLOCK, VK_FORMAT_BC1_RGBA_UNORM_BLOCK },
+            CurveTwins{ VK_FORMAT_BC2_SRGB_BLOCK, VK_FORMAT_BC2_UNORM_BLOCK },
+            CurveTwins{ VK_FORMAT_BC3_SRGB_BLOCK, VK_FORMAT_BC3_UNORM_BLOCK },
+            CurveTwins{ VK_FORMAT_R8G8B8A8_SRGB, VK_FORMAT_R8G8B8A8_UNORM },
+            CurveTwins{ VK_FORMAT_B8G8R8A8_SRGB, VK_FORMAT_B8G8R8A8_UNORM },
+        };
+
+        /// `format` with its transfer curve taken off: the same bytes, read as the bytes they are.
+        /// A format with no curve is its own.
+        constexpr VkFormat withoutCurve(const VkFormat format)
+        {
+            for (const CurveTwins& twins : sCurveTwins)
+                if (twins.mEncoded == format)
+                    return twins.mLinear;
+            return format;
         }
 
-        /// The two arrays the set holds: the textures, and their shading maps at the same slots.
-        constexpr std::uint32_t sTextureBinding = 0;
-        constexpr std::uint32_t sShadingBinding = 1;
+        /// `format` read through a transfer curve, which is how the trace samples a written texture
+        /// whose file was display-encoded.
+        constexpr VkFormat withCurve(const VkFormat format)
+        {
+            for (const CurveTwins& twins : sCurveTwins)
+                if (twins.mLinear == format)
+                    return twins.mEncoded;
+            broken("a format with no twin under a curve");
+        }
+
+        /// What a written texture is stored as, which is what the shaders that write it declare,
+        /// and the same bytes through the curve.
+        constexpr VkFormat sWrittenFormat = toVulkanFormat(TEXTURE_WRITTEN_FORMAT);
+        constexpr VkFormat sWrittenEncoded = withCurve(sWrittenFormat);
 
         /// Every stage that resolves a hit, and every dispatch. The trace reads these arrays from
         /// its closest-hit shaders, from the any-hit shader that tests a cutout and from the miss
@@ -113,10 +133,10 @@ namespace Rtx
         /// pipeline outlives a cell and two set layouts are compatible only where they are
         /// identically defined. The maximum costs a few hundred kilobytes of pool, paid once.
         constexpr std::array<VkDescriptorSetLayoutBinding, 2> sBindings{
-            VkDescriptorSetLayoutBinding{
-                sTextureBinding, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, Shaders::TEXTURE_SLOTS, sStages },
-            VkDescriptorSetLayoutBinding{
-                sShadingBinding, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, Shaders::TEXTURE_SLOTS, sStages },
+            VkDescriptorSetLayoutBinding{ Shaders::TEXTURE_BIND_IMAGES, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                Shaders::TEXTURE_SLOTS, sStages },
+            VkDescriptorSetLayoutBinding{ Shaders::TEXTURE_BIND_SHADING, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                Shaders::TEXTURE_SLOTS, sStages },
         };
 
         constexpr VkImageUsageFlags sUploaded = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
@@ -150,9 +170,8 @@ namespace Rtx
                 takes(withoutCurve(toVulkanFormat(format)), sUploaded, 0);
             }
 
-            takes(VK_FORMAT_R8G8B8A8_SRGB, sWritten,
-                VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT | VK_IMAGE_CREATE_EXTENDED_USAGE_BIT);
-            takes(VK_FORMAT_R8G8B8A8_UNORM, sWritten, 0);
+            takes(sWrittenEncoded, sWritten, VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT | VK_IMAGE_CREATE_EXTENDED_USAGE_BIT);
+            takes(sWrittenFormat, sWritten, 0);
 
             return side;
         }
@@ -178,37 +197,6 @@ namespace Rtx
             return "its smallest level is " + std::to_string(last.mWidth) + " by " + std::to_string(last.mHeight)
                 + " texels, and the device takes " + std::to_string(limit) + " a side";
         }
-    }
-
-    VkFormat toVulkanFormat(TextureFormat format)
-    {
-        switch (format)
-        {
-            case TextureFormat::Bc1RgbaSrgb:
-                return VK_FORMAT_BC1_RGBA_SRGB_BLOCK;
-            case TextureFormat::Bc2Srgb:
-                return VK_FORMAT_BC2_SRGB_BLOCK;
-            case TextureFormat::Bc3Srgb:
-                return VK_FORMAT_BC3_SRGB_BLOCK;
-            case TextureFormat::Rgba8Unorm:
-                return VK_FORMAT_R8G8B8A8_UNORM;
-            case TextureFormat::Rgba8Srgb:
-                return VK_FORMAT_R8G8B8A8_SRGB;
-            case TextureFormat::Bgra8Srgb:
-                return VK_FORMAT_B8G8R8A8_SRGB;
-
-            // Never uploaded: `describeImage` refuses them, so one arriving here is a contract
-            // broken and not a file.
-            case TextureFormat::Rgb8:
-            case TextureFormat::Luminance:
-            case TextureFormat::LuminanceAlpha:
-            case TextureFormat::Unnamed:
-                break;
-        }
-
-        // A format nothing above named: a new one that forgets a case lands here rather than
-        // creating an image with a format nobody chose.
-        broken("a texture format this renderer does not upload");
     }
 
     Result<Texture, std::string_view> Texture::fromFile(const Device& device, Batch& batch, const TexturePasses& passes,
@@ -273,8 +261,8 @@ namespace Rtx
             // read and none over the dispatch's store — `MipChain` says why the chain is loose.
             const bool encoded = isSrgb(data.mFormat);
             Result<Image, std::string_view> chain = Image::tryMake(use, device, data.mWidth, data.mHeight,
-                encoded ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM, sWritten, name,
-                levelsTo1x1(data.mWidth, data.mHeight), 1, encoded ? VK_FORMAT_R8G8B8A8_UNORM : VK_FORMAT_UNDEFINED);
+                encoded ? sWrittenEncoded : sWrittenFormat, sWritten, name, levelsTo1x1(data.mWidth, data.mHeight), 1,
+                encoded ? sWrittenFormat : VK_FORMAT_UNDEFINED);
             if (!chain.isOk())
                 return Err{ chain.error() };
 
@@ -303,7 +291,7 @@ namespace Rtx
 
         const Image& from = source.mImage;
         Result<Image, std::string_view> image = Image::tryMake(MemoryUse::Texture, device, from.getWidth(),
-            from.getHeight(), VK_FORMAT_R8G8B8A8_UNORM, sWritten, name, from.getMipLevels());
+            from.getHeight(), sWrittenFormat, sWritten, name, from.getMipLevels());
         if (!image.isOk())
             return Err{ image.error() };
 
@@ -349,8 +337,8 @@ namespace Rtx
         // usages for that blit, and the `UNORM` view for the store.
         constexpr std::uint32_t extent = Shaders::GROUND_COMPOSITE_EXTENT;
         Result<Image, std::string_view> image = Image::tryMake(MemoryUse::Texture, device, extent, extent,
-            VK_FORMAT_R8G8B8A8_SRGB, sWritten | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, name,
-            levelsTo1x1(extent, extent), 1, VK_FORMAT_R8G8B8A8_UNORM);
+            sWrittenEncoded, sWritten | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, name,
+            levelsTo1x1(extent, extent), 1, sWrittenFormat);
         if (!image.isOk())
             return Err{ image.error() };
 
@@ -715,8 +703,9 @@ namespace Rtx
                 continue;
 
             const VkSampler sampler = mSamplers[static_cast<std::size_t>(held.getWrap())].get();
-            queueWrite(set, sTextureBinding, at, held.describe(sampler), mImageScratch, mWriteScratch);
-            queueWrite(set, sShadingBinding, at, held.describeShading(sampler), mImageScratch, mWriteScratch);
+            queueWrite(set, Shaders::TEXTURE_BIND_IMAGES, at, held.describe(sampler), mImageScratch, mWriteScratch);
+            queueWrite(
+                set, Shaders::TEXTURE_BIND_SHADING, at, held.describeShading(sampler), mImageScratch, mWriteScratch);
         }
 
         updateSets(mDevice, mWriteScratch);

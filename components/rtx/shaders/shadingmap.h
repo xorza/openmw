@@ -4,6 +4,7 @@
 #include "hosttypes.h"
 #include "look.h"
 #include "portable.h"
+#include "storageformat.h"
 
 // The shading estimate's dispatch: what `shadingmap.comp` is told about the texture it reads,
 // and the one number the estimate is made with that both the dispatch and `Rtx::ShadingMap`
@@ -27,6 +28,10 @@ namespace Rtx::Shaders
     const uint SHADING_MAP_BIND_SUMS = 0;
     const uint SHADING_MAP_BIND_MAP = 1;
     const uint SHADING_MAP_BINDINGS = 2;
+
+/// What the map is stored as, which the dispatch stores and the trace samples: the unorm
+/// `encodeShading` rounds to.
+#define SHADING_MAP_FORMAT STORAGE_R16
 
     /// How many times the grid is box blurred, three by three and wrapping, before it is
     /// normalised: three passes are a close enough Gaussian for anything this coarse, and a

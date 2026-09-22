@@ -7,11 +7,11 @@
 namespace Rtx
 {
     ComputePipeline::ComputePipeline(const Device& device, std::span<const VkDescriptorSetLayoutBinding> bindings,
-        std::uint32_t pushConstantBytes, std::span<const VkDescriptorSetLayout> laterSets,
-        const std::filesystem::path& module, std::string_view name, std::span<const std::uint32_t> specialization)
+        std::uint32_t pushConstantBytes, const SharedSetLayouts& shared, const std::filesystem::path& module,
+        std::string_view name, std::span<const std::uint32_t> specialization)
         : Pipeline(
             PipelineLayout(device, bindings,
-                VkPushConstantRange{ .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT, .size = pushConstantBytes }, laterSets),
+                VkPushConstantRange{ .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT, .size = pushConstantBytes }, shared),
             VK_PIPELINE_BIND_POINT_COMPUTE)
     {
         const ShaderModule compiled = loadShaderModule(device, module);

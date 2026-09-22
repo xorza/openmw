@@ -23,18 +23,19 @@
 // every texture at least 128 across — a cell is then four texels or more, a block's width —
 // and differs by a block's edge for the few smaller ones, where this is the exact quantity.
 
+#include "sets.h"
 #include "shadingmap.h"
 
 layout(local_size_x = SHADING_EXTENT, local_size_y = SHADING_EXTENT) in;
 
 /// Every cell's sum, as the summing stage left it.
-layout(set = 0, binding = SHADING_MAP_BIND_SUMS, scalar) readonly buffer Sums
+layout(set = SET_PASS, binding = SHADING_MAP_BIND_SUMS, scalar) readonly buffer Sums
 {
     ShadingSum sums[];
 };
 
 /// The map, as the trace samples it: `Rtx::encodeShading`'s unorm, one cell a texel.
-layout(set = 0, binding = SHADING_MAP_BIND_MAP, r16) uniform writeonly image2D map;
+layout(set = SET_PASS, binding = SHADING_MAP_BIND_MAP, SHADING_MAP_FORMAT) uniform writeonly image2D map;
 
 const uint CELLS = SHADING_EXTENT * SHADING_EXTENT;
 

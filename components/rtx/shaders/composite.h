@@ -3,6 +3,7 @@
 
 #include "hosttypes.h"
 #include "portable.h"
+#include "storageformat.h"
 
 // What the last pass needs to turn the trace's separate channels back into one picture. Included
 // verbatim by both sides, for the reason `visibility.h` is.
@@ -21,6 +22,10 @@ namespace Rtx::Shaders
     const uint COMPOSITE_BIND_SUM = 3;
     const uint COMPOSITE_BIND_COLOUR = 4;
     const uint COMPOSITE_BINDINGS = 5;
+
+/// What the running sum a reference is built in is kept as: full floats, for the reason
+/// `GBUFFER_RADIANCE_SUMMED` is.
+#define COMPOSITE_SUM_FORMAT STORAGE_RGBA32F
 
     /// Threads along each edge of the composite's workgroup.
     const uint COMPOSITE_WORKGROUP = 8;

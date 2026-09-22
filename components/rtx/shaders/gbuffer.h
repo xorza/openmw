@@ -3,11 +3,12 @@
 
 #include "hosttypes.h"
 #include "portable.h"
+#include "storageformat.h"
 
 // What each channel of the G-buffer is made of, said once for both sides that have to agree.
 //
-// **A shader's layout qualifier and the `VkFormat` its image was created with are one fact written
-// twice**, and they had drifted: the albedo channel moved to half floats and the two shaders that
+// **A shader's layout qualifier and the format its image was created with are one fact**, and
+// written twice they had drifted: the albedo channel moved to half floats and the two shaders that
 // declare it went on saying `rgba32f`. What that costs is not a compile error and not a validation
 // *error* — the layers report it as a warning, and the warning says "undefined values to the whole
 // image, not just the texel being accessed". A whole channel of the frame, silently, on a
@@ -40,9 +41,8 @@
 // five levels — so eight bytes rather than sixteen takes a fifth off that pass's traffic, and
 // sixteen megabytes at 1080p rather than thirty-three.
 //
-// So the format is a macro rather than a constant: a layout qualifier is a token GLSL reads before
-// it parses anything, and `VK_FORMAT_*` is an enumerator. The preprocessor is the one thing both
-// languages share, which is what lets one line define both.
+// So each format is one line naming a `storageformat.h` layout, which is both the qualifier the
+// shader declares and what the host creates the image as.
 
 // **The two radiance channels are the one pair with no format here.** How wide they are is a
 // run's choice — `Rtx::RadianceWidth` says which run gets which and why — so the host picks
@@ -50,31 +50,17 @@
 // reads or writes one declares it with no format at all and lets the load or the store convert.
 // `requirements.cpp` asks the device for both halves of that.
 
-#ifdef RTX_HOST
+#define GBUFFER_RADIANCE_SHOWN STORAGE_RGBA16F
+#define GBUFFER_RADIANCE_SUMMED STORAGE_RGBA32F
+#define GBUFFER_ALBEDO STORAGE_RGBA16F
+#define GBUFFER_GUIDE STORAGE_RGBA16F
+#define GBUFFER_MOTION STORAGE_RG16F
+#define GBUFFER_DEPTH STORAGE_RG32F
+#define GBUFFER_LAYER STORAGE_RGBA16F
+#define GBUFFER_PUFF_DEPTH STORAGE_RG32F
+#define GBUFFER_STARS STORAGE_RGBA8
 
-#define GBUFFER_RADIANCE_SHOWN VK_FORMAT_R16G16B16A16_SFLOAT
-#define GBUFFER_RADIANCE_SUMMED VK_FORMAT_R32G32B32A32_SFLOAT
-#define GBUFFER_ALBEDO VK_FORMAT_R16G16B16A16_SFLOAT
-#define GBUFFER_GUIDE VK_FORMAT_R16G16B16A16_SFLOAT
-#define GBUFFER_MOTION VK_FORMAT_R16G16_SFLOAT
-#define GBUFFER_DEPTH VK_FORMAT_R32G32_SFLOAT
-#define GBUFFER_LAYER VK_FORMAT_R16G16B16A16_SFLOAT
-#define GBUFFER_PUFF_DEPTH VK_FORMAT_R32G32_SFLOAT
-#define GBUFFER_STARS VK_FORMAT_R8G8B8A8_UNORM
-
-#else
-
-#define GBUFFER_ALBEDO rgba16f
-#define GBUFFER_GUIDE rgba16f
-#define GBUFFER_MOTION rg16f
-#define GBUFFER_DEPTH rg32f
-#define GBUFFER_LAYER rgba16f
-#define GBUFFER_PUFF_DEPTH rg32f
-#define GBUFFER_STARS rgba8
-
-#endif
-
-// Which binding of set two each channel is.
+// Which binding of `SET_CHANNELS` each channel is.
 //
 // **The trace declares them and `GBuffer` writes them, and neither had a name for a single one.**
 // The shader spelled a number in each layout qualifier and the C++ built its layout and its writes

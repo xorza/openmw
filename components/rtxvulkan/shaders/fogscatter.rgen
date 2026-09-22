@@ -153,8 +153,8 @@ void main()
     // why the point is not the mean of the slice's own edges.
     const vec3 was = fogVolumeWas(middle.mDirection * froxelMiddle(slice));
     const bool reprojected = all(greaterThanEqual(was, vec3(0.0))) && all(lessThanEqual(was, vec3(1.0)));
-    const vec4 wasScatter = reprojected ? texture(fogWasScatter, was) : vec4(0.0);
-    const vec4 wasSunward = reprojected ? texture(fogWasSunward, was) : vec4(0.0);
+    const vec4 wasScatter = reprojected ? textureLod(fogWasScatter, was, 0.0) : vec4(0.0);
+    const vec4 wasSunward = reprojected ? textureLod(fogWasSunward, was, 0.0) : vec4(0.0);
 
     // **Every lamp reaching this froxel, integrated over the air it holds, and one of them traced
     // to.** The sum is the mean irradiance over the stretch and carries no draw at all; what carries

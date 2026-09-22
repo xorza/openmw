@@ -4,10 +4,10 @@
 #include "hosttypes.h"
 #include "portable.h"
 #include "sky.h"
+#include "storageformat.h"
 
 // What the fog volume's images are made of and where each one is bound, said once for both sides
-// that have to agree. `gbuffer.h` says why a format is a macro rather than a constant, and what a
-// channel costs when the two statements of it drift.
+// that have to agree. `gbuffer.h` says what a channel costs when its format and its image's drift.
 //
 // **Four formats and not one**, because two of these images hold a single channel: the sun's
 // transport is a product of transmittances and carries no colour, so the accumulated and the
@@ -19,23 +19,12 @@
 // the brightest pixel this game reaches is under nine, so a half has room to spare — and rounding
 // the term every froxel of a night reads would move the night's air for a megabyte at 1080p.
 
-#ifdef RTX_HOST
+#define FOG_VOLUME_FORMAT STORAGE_RGBA16F
+#define FOG_SUNWARD_FORMAT STORAGE_R16F
+#define FOG_DEPTH_FORMAT STORAGE_R32F
+#define FOG_MOONS_FORMAT STORAGE_RGBA32F
 
-#define FOG_VOLUME_FORMAT VK_FORMAT_R16G16B16A16_SFLOAT
-#define FOG_SUNWARD_FORMAT VK_FORMAT_R16_SFLOAT
-#define FOG_DEPTH_FORMAT VK_FORMAT_R32_SFLOAT
-#define FOG_MOONS_FORMAT VK_FORMAT_R32G32B32A32_SFLOAT
-
-#else
-
-#define FOG_VOLUME_FORMAT rgba16f
-#define FOG_SUNWARD_FORMAT r16f
-#define FOG_DEPTH_FORMAT r32f
-#define FOG_MOONS_FORMAT rgba32f
-
-#endif
-
-// Which binding of set three each image is, for the shaders that declare them and the owner that
+// Which binding of `SET_VOLUME` each image is, for the shaders that declare them and the owner that
 // writes them.
 //
 // **Ten images and seventeen bindings, seven of them named twice**, because Vulkan has no

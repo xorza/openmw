@@ -20,6 +20,7 @@
 #include <components/rtx/sprite.hpp>
 #include <components/rtx/texturedata.hpp>
 #include <components/rtx/upscale.hpp>
+#include <components/rtxvulkan/formats.hpp>
 #include <components/vfs/pathutil.hpp>
 
 #include "geometry.hpp"
@@ -209,12 +210,15 @@ namespace Rtx
             // The colour and the output are not the g-buffer's: `VulkanRenderer` makes both at full
             // float directly, and these follow that.
             const Image colour = Testing::makeTestImage(device, render, VK_FORMAT_R32G32B32A32_SFLOAT, "test-colour");
-            const Image diffuse = Testing::makeTestImage(device, render, GBUFFER_ALBEDO, "test-diffuse");
-            const Image specular = Testing::makeTestImage(device, render, GBUFFER_ALBEDO, "test-specular");
-            const Image normals = Testing::makeTestImage(device, render, GBUFFER_GUIDE, "test-normals");
-            const Image depth = Testing::makeTestImage(device, render, GBUFFER_DEPTH, "test-depth");
-            const Image motion = Testing::makeTestImage(device, render, GBUFFER_MOTION, "test-motion");
-            const Image reflections = Testing::makeTestImage(device, render, GBUFFER_MOTION, "test-reflections");
+            const Image diffuse
+                = Testing::makeTestImage(device, render, toVulkanFormat(GBUFFER_ALBEDO), "test-diffuse");
+            const Image specular
+                = Testing::makeTestImage(device, render, toVulkanFormat(GBUFFER_ALBEDO), "test-specular");
+            const Image normals = Testing::makeTestImage(device, render, toVulkanFormat(GBUFFER_GUIDE), "test-normals");
+            const Image depth = Testing::makeTestImage(device, render, toVulkanFormat(GBUFFER_DEPTH), "test-depth");
+            const Image motion = Testing::makeTestImage(device, render, toVulkanFormat(GBUFFER_MOTION), "test-motion");
+            const Image reflections
+                = Testing::makeTestImage(device, render, toVulkanFormat(GBUFFER_MOTION), "test-reflections");
             const Image output = Testing::makeTestImage(device, sOutput, VK_FORMAT_R32G32B32A32_SFLOAT, "test-output");
 
             // A frame with nothing in it to resolve: uniform radiance over a flat wall halfway down

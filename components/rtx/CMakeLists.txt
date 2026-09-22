@@ -193,6 +193,7 @@ set(RTX_SHADER_HEADERS
     shaders/spritebin.h
     shaders/spritelight.h
     shaders/spriteshade.h
+    shaders/storageformat.h
     shaders/stress.h
     shaders/tone.h
     shaders/visibility.h

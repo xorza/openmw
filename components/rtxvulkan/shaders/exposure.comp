@@ -8,15 +8,16 @@
 // dispatching it apart from the curve is what stops every one of the curve's workgroups redoing it.
 
 #include "exposure.h"
+#include "sets.h"
 
 layout(local_size_x = EXPOSURE_BINS) in;
 
-layout(set = 0, binding = EXPOSURE_BIND_HISTOGRAM, scalar) buffer Histogram
+layout(set = SET_PASS, binding = EXPOSURE_BIND_HISTOGRAM, scalar) buffer Histogram
 {
     uint bins[];
 };
 
-layout(set = 0, binding = EXPOSURE_BIND_EXPOSURE, scalar) buffer Exposure
+layout(set = SET_PASS, binding = EXPOSURE_BIND_EXPOSURE, scalar) buffer Exposure
 {
     float exposure;
 };

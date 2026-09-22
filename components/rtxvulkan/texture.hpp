@@ -35,11 +35,6 @@ namespace Rtx
     class ShadingPass;
     class SpriteLightPass;
 
-    /// The one place a `TextureFormat` becomes Vulkan's. Every case is sRGB: the files hold
-    /// display-encoded bytes and the hardware converts them in the filter. Throws for a format
-    /// `describeImage` refuses, because one arriving here is a contract broken and not a file.
-    VkFormat toVulkanFormat(TextureFormat format);
-
     /// The three dispatches a texture is made with as it arrives, which the renderer owns and
     /// every array is handed together: the chain a file did not carry, the light painted into it,
     /// and a sprite's own light bake.

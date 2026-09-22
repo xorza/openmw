@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <span>
@@ -7,6 +8,7 @@
 
 #include <vulkan/vulkan_core.h>
 
+#include <components/rtx/shaders/sets.h>
 #include <components/rtx/texturewrap.hpp>
 
 #include "owned.hpp"
@@ -57,19 +59,47 @@ namespace Rtx
     /// reads as still water beyond it.
     Sampler makeBorderSampler(const Device& device, std::string_view name);
 
-    /// A pass's own descriptor set layout and the pipeline layout that names it and the sets bound
-    /// after it — one statement for compute, trace and graphics pipelines, which differ in nothing
-    /// about how descriptors reach them. Set zero is always a push descriptor set: nothing in this
-    /// renderer wants a descriptor pool on the frame path.
+    // The pushed set first and the shared ones after it with no gap, because Vulkan wants a layout
+    // at every number below the highest a pipeline names and a set a pass does not read has none.
+    static_assert(Shaders::SET_PASS == 0, "the pass's own set is the first");
+
+    /// The sets a pipeline reads beside its own pushed one, each named for what it holds. A layout
+    /// and a bind put each at the number `shaders/sets.h` gives it, so no list's order has to agree
+    /// with another's. Null is a set the pipeline does not read.
+    template <class Handle>
+    struct SharedSets
+    {
+        Handle mTextures = VK_NULL_HANDLE;
+        Handle mChannels = VK_NULL_HANDLE;
+        Handle mVolume = VK_NULL_HANDLE;
+
+        /// Every set at its number, with null at `SET_PASS`, which is the pipeline's own.
+        std::array<Handle, Shaders::SET_COUNT> byNumber() const
+        {
+            std::array<Handle, Shaders::SET_COUNT> sets{};
+            sets[Shaders::SET_TEXTURES] = mTextures;
+            sets[Shaders::SET_CHANNELS] = mChannels;
+            sets[Shaders::SET_VOLUME] = mVolume;
+            return sets;
+        }
+    };
+
+    using SharedSetLayouts = SharedSets<VkDescriptorSetLayout>;
+    using SharedSetBinds = SharedSets<VkDescriptorSet>;
+
+    /// A pass's own descriptor set layout and the pipeline layout that names it and the shared sets
+    /// — one statement for compute, trace and graphics pipelines, which differ in nothing about how
+    /// descriptors reach them. `SET_PASS` is always a push descriptor set: nothing in this renderer
+    /// wants a descriptor pool on the frame path.
     class PipelineLayout
     {
     public:
-        /// Neither span outlives the call. `bindings` is set zero; `push` is the one push range,
+        /// Nothing passed outlives the call. `bindings` is `SET_PASS`; `push` is the one push range,
         /// whole at offset zero, and a size of nought declares none, because Vulkan takes no empty
-        /// range and a pass whose constants moved into a buffer asks for exactly that; `laterSets`
-        /// is every set the layout will ever be handed after set zero.
+        /// range and a pass whose constants moved into a buffer asks for exactly that; `shared` is
+        /// every other set the layout will ever be handed.
         PipelineLayout(const Device& device, std::span<const VkDescriptorSetLayoutBinding> bindings,
-            const VkPushConstantRange& push, std::span<const VkDescriptorSetLayout> laterSets);
+            const VkPushConstantRange& push, const SharedSetLayouts& shared);
 
         VkPipelineLayout getHandle() const { return mHandle.get(); }
 
@@ -77,13 +107,14 @@ namespace Rtx
         /// against the size it named.
         const VkPushConstantRange& getPushRange() const { return mPush; }
 
-        /// How many sets follow set zero, which is how many a bind has to hand over.
-        std::uint32_t getLaterSetCount() const { return mLaterSets; }
+        /// How many sets the layout names, its own among them: the shared ones are the numbers
+        /// between `SET_PASS` and this, which is what a bind has to hand over.
+        std::uint32_t getSetCount() const { return mSetCount; }
 
     private:
         SetLayout mSetLayout;
         Owned<VkPipelineLayout, vkDestroyPipelineLayout> mHandle;
         VkPushConstantRange mPush;
-        std::uint32_t mLaterSets;
+        std::uint32_t mSetCount = 0;
     };
 }

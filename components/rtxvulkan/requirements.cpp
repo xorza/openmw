@@ -4,6 +4,10 @@
 #include <cstddef>
 #include <string>
 
+#include <components/rtx/shaders/shadingmap.h>
+
+#include "formats.hpp"
+
 namespace Rtx
 {
     namespace
@@ -175,7 +179,8 @@ namespace Rtx
             // The shading estimate is written by a dispatch straight into the sixteen-bit map the
             // trace samples — `ShadingPass` — and a sixteen-bit unorm as a storage image is one of
             // the features Vulkan leaves optional.
-            RequiredFormat{ VK_FORMAT_R16_UNORM, VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT, "the shading map's dispatch" },
+            RequiredFormat{
+                toVulkanFormat(SHADING_MAP_FORMAT), VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT, "the shading map's dispatch" },
         };
     }
 

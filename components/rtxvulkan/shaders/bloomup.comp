@@ -9,16 +9,17 @@
 // coarser than it.
 
 #include "bloom.h"
+#include "sets.h"
 #include "lib/bloom.glsl"
 #include "lib/pixels.glsl"
 
 layout(local_size_x = BLOOM_WORKGROUP, local_size_y = BLOOM_WORKGROUP) in;
 
 /// The coarser level, sampled bilinearly and clamped at its edges.
-layout(set = 0, binding = BLOOM_BIND_SOURCE) uniform sampler2D coarser;
+layout(set = SET_PASS, binding = BLOOM_BIND_SOURCE) uniform sampler2D coarser;
 
 /// The finer level, holding its own halving of the frame until this runs.
-layout(set = 0, binding = BLOOM_BIND_LEVEL, BLOOM_LEVEL) uniform image2D level;
+layout(set = SET_PASS, binding = BLOOM_BIND_LEVEL, BLOOM_LEVEL) uniform image2D level;
 
 layout(push_constant, scalar) uniform Push
 {

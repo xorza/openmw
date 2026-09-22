@@ -9,15 +9,16 @@
 // says whose query this is.
 
 #include "glare.h"
+#include "sets.h"
 
 layout(local_size_x = 1) in;
 
-layout(set = 0, binding = SUN_GLARE_BIND_COUNT, scalar) readonly buffer Count
+layout(set = SET_PASS, binding = SUN_GLARE_BIND_COUNT, scalar) readonly buffer Count
 {
     SunGlareCount count;
 };
 
-layout(set = 0, binding = SUN_GLARE_BIND_SHARE, scalar) buffer Share
+layout(set = SET_PASS, binding = SUN_GLARE_BIND_SHARE, scalar) buffer Share
 {
     float share;
 };

@@ -7,6 +7,7 @@
 
 #include "barriers.hpp"
 #include "dispatch.hpp"
+#include "formats.hpp"
 #include "imageuse.hpp"
 
 namespace Rtx
@@ -15,34 +16,34 @@ namespace Rtx
     {
         /// Half floats, and `gbuffer.h` has the angles the width is derived from. A normal is
         /// compared against a neighbour's and thrown away, never summed.
-        constexpr VkFormat sGuide = GBUFFER_GUIDE;
+        constexpr VkFormat sGuide = toVulkanFormat(GBUFFER_GUIDE);
 
         /// Half floats, because an albedo is a fraction. The diffuse albedo takes it too, which
         /// needed measuring: quantising a per-pixel constant is a systematic error on the indirect
         /// term, but on a converged reference of a room the mean moves by a fiftieth of the
         /// tolerance the radiance channels are held to.
-        constexpr VkFormat sAlbedo = GBUFFER_ALBEDO;
+        constexpr VkFormat sAlbedo = toVulkanFormat(GBUFFER_ALBEDO);
 
         /// Two halves, for the reason `gbuffer.h` gives.
-        constexpr VkFormat sMotion = GBUFFER_MOTION;
+        constexpr VkFormat sMotion = toVulkanFormat(GBUFFER_MOTION);
 
         /// Two, and full floats rather than halves: a clip depth has little precision left at the
         /// far end of a Morrowind view, and the distance beside it runs past thirty thousand units
         /// where a half's steps are thirty-two units wide. NGX reads the first and is handed the
         /// pair, which costs it nothing measurable.
-        constexpr VkFormat sDepth = GBUFFER_DEPTH;
+        constexpr VkFormat sDepth = toVulkanFormat(GBUFFER_DEPTH);
 
         /// Half floats for the layer the eye sees through: nothing sums it, and a reference is
         /// built with the upscaler off.
-        constexpr VkFormat sLayer = GBUFFER_LAYER;
+        constexpr VkFormat sLayer = toVulkanFormat(GBUFFER_LAYER);
 
         /// A full float for how far along the ray the layer stood: a distance past thirty thousand
         /// units, where a half's steps are thirty-two units wide, and it orders the layer against
         /// the sprites.
-        constexpr VkFormat sPuffDepth = GBUFFER_PUFF_DEPTH;
+        constexpr VkFormat sPuffDepth = toVulkanFormat(GBUFFER_PUFF_DEPTH);
 
         /// Three bytes for three fractions, which is what `gbuffer.h` argues a modulation is.
-        constexpr VkFormat sStars = GBUFFER_STARS;
+        constexpr VkFormat sStars = toVulkanFormat(GBUFFER_STARS);
 
         /// `SAMPLED` on all of them, and it is not decoration. DLSS samples every input it is
         /// handed; one without the bit reads as zero, NGX returns success and the validation layers

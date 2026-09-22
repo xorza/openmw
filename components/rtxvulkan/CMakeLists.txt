@@ -193,6 +193,8 @@ set(RTX_VULKAN_FILES
     exposurepass.hpp
     fogvolume.cpp
     fogvolume.hpp
+    formats.cpp
+    formats.hpp
     framering.cpp
     framering.hpp
     frameslots.hpp

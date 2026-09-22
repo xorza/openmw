@@ -33,6 +33,7 @@
 
 #include "camera.h"
 #include "scene.h"
+#include "sets.h"
 
 #include "lib/bindings.glsl"
 #include "lib/fog.glsl"
@@ -42,7 +43,7 @@
 #include "lib/sprites.glsl"
 
 /// The frame as it will be shown, read and written in place.
-layout(set = 0, binding = BIND_SHOWN) uniform image2D shown;
+layout(set = SET_PASS, binding = BIND_SHOWN) uniform image2D shown;
 
 void main()
 {

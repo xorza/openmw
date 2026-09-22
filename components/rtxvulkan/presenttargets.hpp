@@ -5,6 +5,9 @@
 
 #include <vulkan/vulkan_core.h>
 
+#include <components/rtx/shaders/tone.h>
+
+#include "formats.hpp"
 #include "image.hpp"
 
 namespace Rtx
@@ -22,7 +25,7 @@ namespace Rtx
         /// What the finished picture is encoded into, and so what the GUI pass is compiled against.
         /// Not display-encoded by the hardware, because the tone curve ran already. Here, because
         /// `growViewTargets` makes an image the same pass draws over.
-        static constexpr VkFormat sFormat = VK_FORMAT_R8G8B8A8_UNORM;
+        static constexpr VkFormat sFormat = toVulkanFormat(TONE_TARGET_FORMAT);
 
         /// Makes both, black and in `VK_IMAGE_LAYOUT_GENERAL`, because the GUI is drawn over one
         /// whether or not a frame was traced into it.

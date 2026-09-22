@@ -10,6 +10,7 @@
 
 #include "barriers.hpp"
 #include "dispatch.hpp"
+#include "formats.hpp"
 #include "gbuffer.hpp"
 #include "imageuse.hpp"
 
@@ -52,8 +53,8 @@ namespace Rtx
     {
         // `SAMPLED` because a level reads what the level before it wrote, and it reads through
         // the texture unit. See `sBindings`.
-        return Image(device, width, height, ATROUS_CHANNEL, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-            "atrous-scratch");
+        return Image(device, width, height, toVulkanFormat(ATROUS_CHANNEL),
+            VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, "atrous-scratch");
     }
 
     const Image& AtrousPass::record(VkCommandBuffer commands, const GBuffer& buffer, const Image& blended,

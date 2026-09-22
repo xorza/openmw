@@ -10,6 +10,7 @@
 #include <components/rtx/shaders/gbuffer.h>
 
 #include "descriptorsets.hpp"
+#include "formats.hpp"
 #include "handles.hpp"
 #include "image.hpp"
 
@@ -33,7 +34,8 @@ namespace Rtx
     /// `Rtx::RadianceWidth` carries the argument for each.
     constexpr VkFormat radianceFormat(const RadianceWidth width)
     {
-        return width == RadianceWidth::Summed ? GBUFFER_RADIANCE_SUMMED : GBUFFER_RADIANCE_SHOWN;
+        return width == RadianceWidth::Summed ? toVulkanFormat(GBUFFER_RADIANCE_SUMMED)
+                                              : toVulkanFormat(GBUFFER_RADIANCE_SHOWN);
     }
 
     class GBuffer

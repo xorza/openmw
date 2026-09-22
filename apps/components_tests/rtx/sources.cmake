@@ -24,6 +24,7 @@ set(RTX_TEST_FILES
     rtx/extractor/stats.cpp
     rtx/extractor/walk.cpp
     rtx/fogbuilder.cpp
+    rtx/formats.cpp
     rtx/frameimage.cpp
     rtx/frameoptions.cpp
     rtx/frameworld.cpp

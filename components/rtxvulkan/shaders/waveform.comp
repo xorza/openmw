@@ -14,6 +14,7 @@
 // in the real part of the answer and the other in the imaginary part.
 
 #include "scene.h"
+#include "sets.h"
 #include "wave.h"
 
 #include "lib/pixels.glsl"
@@ -22,18 +23,18 @@ layout(local_size_x = WAVE_TILE_WORKGROUP, local_size_y = WAVE_TILE_WORKGROUP) i
 
 /// The amplitudes drawn for this sea state, and how fast each turns. Centred, so the entry at
 /// `(column, row)` carries the wavevector `TAU / mExtent * (column - n/2, row - n/2)`.
-layout(set = 0, binding = WAVE_FORM_BIND_AMPLITUDES, scalar) readonly buffer Amplitudes
+layout(set = SET_PASS, binding = WAVE_FORM_BIND_AMPLITUDES, scalar) readonly buffer Amplitudes
 {
     vec2 amplitudes[];
 };
 
-layout(set = 0, binding = WAVE_FORM_BIND_FREQUENCIES, scalar) readonly buffer Frequencies
+layout(set = SET_PASS, binding = WAVE_FORM_BIND_FREQUENCIES, scalar) readonly buffer Frequencies
 {
     float frequencies[];
 };
 
 /// The three packed spectra, laid end to end: a grid apart is the next pair.
-layout(set = 0, binding = WAVE_FORM_BIND_FIELD, scalar) writeonly buffer Field
+layout(set = SET_PASS, binding = WAVE_FORM_BIND_FIELD, scalar) writeonly buffer Field
 {
     vec2 field[];
 };

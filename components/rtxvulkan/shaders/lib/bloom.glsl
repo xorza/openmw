@@ -27,22 +27,22 @@ vec3 bloomHalved(sampler2D source, vec2 uv, vec2 texel)
 {
     const vec2 wide = 2.0 * texel;
 
-    const vec3 a = texture(source, uv + vec2(-wide.x, wide.y)).rgb;
-    const vec3 b = texture(source, uv + vec2(0.0, wide.y)).rgb;
-    const vec3 c = texture(source, uv + wide).rgb;
+    const vec3 a = textureLod(source, uv + vec2(-wide.x, wide.y), 0.0).rgb;
+    const vec3 b = textureLod(source, uv + vec2(0.0, wide.y), 0.0).rgb;
+    const vec3 c = textureLod(source, uv + wide, 0.0).rgb;
 
-    const vec3 d = texture(source, uv + vec2(-wide.x, 0.0)).rgb;
-    const vec3 e = texture(source, uv).rgb;
-    const vec3 f = texture(source, uv + vec2(wide.x, 0.0)).rgb;
+    const vec3 d = textureLod(source, uv + vec2(-wide.x, 0.0), 0.0).rgb;
+    const vec3 e = textureLod(source, uv, 0.0).rgb;
+    const vec3 f = textureLod(source, uv + vec2(wide.x, 0.0), 0.0).rgb;
 
-    const vec3 g = texture(source, uv - wide).rgb;
-    const vec3 h = texture(source, uv + vec2(0.0, -wide.y)).rgb;
-    const vec3 i = texture(source, uv + vec2(wide.x, -wide.y)).rgb;
+    const vec3 g = textureLod(source, uv - wide, 0.0).rgb;
+    const vec3 h = textureLod(source, uv + vec2(0.0, -wide.y), 0.0).rgb;
+    const vec3 i = textureLod(source, uv + vec2(wide.x, -wide.y), 0.0).rgb;
 
-    const vec3 j = texture(source, uv + vec2(-texel.x, texel.y)).rgb;
-    const vec3 k = texture(source, uv + texel).rgb;
-    const vec3 l = texture(source, uv - texel).rgb;
-    const vec3 m = texture(source, uv + vec2(texel.x, -texel.y)).rgb;
+    const vec3 j = textureLod(source, uv + vec2(-texel.x, texel.y), 0.0).rgb;
+    const vec3 k = textureLod(source, uv + texel, 0.0).rgb;
+    const vec3 l = textureLod(source, uv - texel, 0.0).rgb;
+    const vec3 m = textureLod(source, uv + vec2(texel.x, -texel.y), 0.0).rgb;
 
     // A partition of one: an eighth on the centre, an eighth spread over the four corners, a
     // quarter over the four edges, and a half over the inner square.
@@ -58,17 +58,17 @@ vec3 bloomHalved(sampler2D source, vec2 uv, vec2 texel)
 ///        span in the finer one.
 vec3 bloomSpread(sampler2D source, vec2 uv, vec2 texel)
 {
-    const vec3 a = texture(source, uv + vec2(-texel.x, texel.y)).rgb;
-    const vec3 b = texture(source, uv + vec2(0.0, texel.y)).rgb;
-    const vec3 c = texture(source, uv + texel).rgb;
+    const vec3 a = textureLod(source, uv + vec2(-texel.x, texel.y), 0.0).rgb;
+    const vec3 b = textureLod(source, uv + vec2(0.0, texel.y), 0.0).rgb;
+    const vec3 c = textureLod(source, uv + texel, 0.0).rgb;
 
-    const vec3 d = texture(source, uv + vec2(-texel.x, 0.0)).rgb;
-    const vec3 e = texture(source, uv).rgb;
-    const vec3 f = texture(source, uv + vec2(texel.x, 0.0)).rgb;
+    const vec3 d = textureLod(source, uv + vec2(-texel.x, 0.0), 0.0).rgb;
+    const vec3 e = textureLod(source, uv, 0.0).rgb;
+    const vec3 f = textureLod(source, uv + vec2(texel.x, 0.0), 0.0).rgb;
 
-    const vec3 g = texture(source, uv - texel).rgb;
-    const vec3 h = texture(source, uv + vec2(0.0, -texel.y)).rgb;
-    const vec3 i = texture(source, uv + vec2(texel.x, -texel.y)).rgb;
+    const vec3 g = textureLod(source, uv - texel, 0.0).rgb;
+    const vec3 h = textureLod(source, uv + vec2(0.0, -texel.y), 0.0).rgb;
+    const vec3 i = textureLod(source, uv + vec2(texel.x, -texel.y), 0.0).rgb;
 
     return (e * 4.0 + (b + d + f + h) * 2.0 + (a + c + g + i)) * (1.0 / 16.0);
 }

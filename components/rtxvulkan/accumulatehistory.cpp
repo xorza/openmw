@@ -7,6 +7,8 @@
 #include <components/rtx/shaders/accumulate.h>
 #include <components/rtx/shaders/atrous.h>
 
+#include "formats.hpp"
+
 namespace Rtx
 {
     namespace
@@ -29,15 +31,15 @@ namespace Rtx
 
         for (std::size_t i = 0; i < 2; ++i)
         {
-            mColour[i] = Image(mDevice, width, height, ACCUMULATE_COLOUR, sReadAndWrite,
+            mColour[i] = Image(mDevice, width, height, toVulkanFormat(ACCUMULATE_COLOUR), sReadAndWrite,
                 i == 0 ? "accumulate-colour-0" : "accumulate-colour-1");
-            mSurface[i] = Image(mDevice, width, height, ACCUMULATE_SURFACE, VK_IMAGE_USAGE_STORAGE_BIT,
+            mSurface[i] = Image(mDevice, width, height, toVulkanFormat(ACCUMULATE_SURFACE), VK_IMAGE_USAGE_STORAGE_BIT,
                 i == 0 ? "accumulate-surface-0" : "accumulate-surface-1");
-            mMoments[i] = Image(mDevice, width, height, ACCUMULATE_MOMENTS, sReadAndWrite,
+            mMoments[i] = Image(mDevice, width, height, toVulkanFormat(ACCUMULATE_MOMENTS), sReadAndWrite,
                 i == 0 ? "accumulate-moments-0" : "accumulate-moments-1");
         }
 
-        mBlended = Image(mDevice, width, height, ATROUS_CHANNEL, sReadAndWrite, "accumulate-blended");
+        mBlended = Image(mDevice, width, height, toVulkanFormat(ATROUS_CHANNEL), sReadAndWrite, "accumulate-blended");
 
         mCurrent = 0;
         mFresh = true;

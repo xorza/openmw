@@ -20,6 +20,8 @@
 // A level's worth of a sprite is a few thousand texels, and a texel's four walks are a few
 // hundred multiplies: a scan would save nothing anybody can measure and would sum in another order.
 
+#include "scene.h"
+#include "sets.h"
 #include "spritelight.h"
 
 #include "lib/pixels.glsl"
@@ -27,10 +29,10 @@
 layout(local_size_x = 16, local_size_y = 16) in;
 
 /// The sprite, every level, fetched by texel: the sampler is whichever the array binds.
-layout(set = 0, binding = SPRITE_LIGHT_BIND_SOURCE) uniform sampler2D source;
+layout(set = SET_PASS, binding = SPRITE_LIGHT_BIND_SOURCE) uniform sampler2D source;
 
 /// The level of the bake this dispatch writes.
-layout(set = 0, binding = SPRITE_LIGHT_BIND_BAKE, rgba8) uniform writeonly image2D bake;
+layout(set = SET_PASS, binding = SPRITE_LIGHT_BIND_BAKE, TEXTURE_WRITTEN_FORMAT) uniform writeonly image2D bake;
 
 layout(push_constant, scalar) uniform Push
 {

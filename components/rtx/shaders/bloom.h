@@ -4,6 +4,7 @@
 #include "hosttypes.h"
 #include "look.h"
 #include "portable.h"
+#include "storageformat.h"
 
 // What the lens does with the light the frame already has. Included verbatim by both sides, for the
 // reason `visibility.h` is.
@@ -65,16 +66,12 @@ namespace Rtx::Shaders
 }
 #endif
 
-// The pyramid's own format, as a macro for the reason `gbuffer.h` gives.
+// The pyramid's own format.
 //
 // **Half floats, where the frame is whole ones.** What the pyramid carries is a blurred copy mixed
 // back at a twentieth, so a step of one part in a thousand of it is one part in twenty thousand of
 // the picture — and the levels are read and written far more often than anything else in the frame,
 // which makes their bandwidth the only thing about them that costs.
-#ifdef RTX_HOST
-#define BLOOM_LEVEL VK_FORMAT_R16G16B16A16_SFLOAT
-#else
-#define BLOOM_LEVEL rgba16f
-#endif
+#define BLOOM_LEVEL STORAGE_RGBA16F
 
 #endif

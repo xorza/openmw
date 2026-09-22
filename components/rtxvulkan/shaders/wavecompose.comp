@@ -9,13 +9,14 @@
 // the elevation and its two slopes, the three curvatures the caustics differentiate, and the second
 // moments a mip chain turns into what a ray cone could not resolve.
 
+#include "sets.h"
 #include "wave.h"
 
 #include "lib/pixels.glsl"
 
 layout(local_size_x = WAVE_TILE_WORKGROUP, local_size_y = WAVE_TILE_WORKGROUP) in;
 
-layout(set = 0, binding = WAVE_COMPOSE_BIND_FIELD, scalar) readonly buffer Field
+layout(set = SET_PASS, binding = WAVE_COMPOSE_BIND_FIELD, scalar) readonly buffer Field
 {
     vec2 field[];
 };
@@ -30,10 +31,10 @@ layout(set = 0, binding = WAVE_COMPOSE_BIND_FIELD, scalar) readonly buffer Field
 /// **The elevation squared rides in the last channel**, where the coarsest level makes it the sea's
 /// own variance — the amplitude the whole spectrum is normalised to, and the one thing a test can
 /// hold the transform's scale to. Nothing shades from it.
-layout(set = 0, binding = WAVE_COMPOSE_BIND_SURFACE, WAVE_TILE_FORMAT) uniform writeonly image2D surface;
+layout(set = SET_PASS, binding = WAVE_COMPOSE_BIND_SURFACE, WAVE_TILE_FORMAT) uniform writeonly image2D surface;
 
 /// The three curvatures, which is what the caustic differentiates the height field twice for.
-layout(set = 0, binding = WAVE_COMPOSE_BIND_CURVATURE, WAVE_TILE_FORMAT) uniform writeonly image2D curvature;
+layout(set = SET_PASS, binding = WAVE_COMPOSE_BIND_CURVATURE, WAVE_TILE_FORMAT) uniform writeonly image2D curvature;
 
 layout(push_constant, scalar) uniform Push
 {

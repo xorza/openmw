@@ -5,6 +5,7 @@
 #include "hosttypes.h"
 #include "portable.h"
 #include "sky.h"
+#include "storageformat.h"
 
 // What the display pass needs. Included verbatim by both sides, for the reason `sky.h` is.
 
@@ -24,6 +25,10 @@ namespace Rtx::Shaders
     const uint TONE_BIND_SUN_GLARE = 5;
     const uint TONE_BIND_PUFFS_DEPTH = 6;
     const uint TONE_BINDINGS = 7;
+
+/// What the curve writes the picture as: bytes a display understands. `PresentTargets` makes its
+/// images in it.
+#define TONE_TARGET_FORMAT STORAGE_RGBA8
 
     /// Threads along each edge of the tone pass's workgroup.
     const uint TONE_WORKGROUP = 8;

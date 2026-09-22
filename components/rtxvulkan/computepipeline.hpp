@@ -60,18 +60,17 @@ namespace Rtx
     class ComputePipeline : public Pipeline
     {
     public:
-        /// Neither span outlives the call.
+        /// Nothing passed outlives the call.
         ///
         /// @param pushConstantBytes the whole range, at offset zero, visible to the compute stage.
-        /// @param laterSets layouts bound after set zero. A pipeline layout has to name every set
+        /// @param shared the shared sets the pipeline reads. A pipeline layout has to name every set
         ///        it will ever be handed.
         /// @param module the compiled SPIR-V the build wrote, by path.
         /// @param name what a capture calls the pipeline.
         /// @param specialization one word per specialization constant, `constant_id` `i` taking
         ///        `specialization[i]` — a `bool` reaches SPIR-V as a 32-bit value like a `uint`.
         ComputePipeline(const Device& device, std::span<const VkDescriptorSetLayoutBinding> bindings,
-            std::uint32_t pushConstantBytes, std::span<const VkDescriptorSetLayout> laterSets,
-            const std::filesystem::path& module, std::string_view name,
-            std::span<const std::uint32_t> specialization = {});
+            std::uint32_t pushConstantBytes, const SharedSetLayouts& shared, const std::filesystem::path& module,
+            std::string_view name, std::span<const std::uint32_t> specialization = {});
     };
 }

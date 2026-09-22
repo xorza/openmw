@@ -241,12 +241,12 @@ namespace Rtx
         // has no opinion about the sky. Made here rather than among the table below so that the
         // table stays one entry per tuple.
         mDepthPipeline = std::make_unique<TracePipeline>(
-            mDevice, sBindings, laterSets(textureLayout), TraceShaders{ .mRaygen = depth }, "fog depth");
+            mDevice, sBindings, sharedSets(textureLayout), TraceShaders{ .mRaygen = depth }, "fog depth");
         mIntegratePipeline = std::make_unique<ComputePipeline>(
-            mDevice, sBindings, 0, laterSets(textureLayout), integrate, "fog integrate");
-        mSpriteCompositePipeline = std::make_unique<TracePipeline>(mDevice, sBindings, laterSets(textureLayout),
+            mDevice, sBindings, 0, sharedSets(textureLayout), integrate, "fog integrate");
+        mSpriteCompositePipeline = std::make_unique<TracePipeline>(mDevice, sBindings, sharedSets(textureLayout),
             TraceShaders{ .mRaygen = spriteComposite }, "sprite composite");
-        mSpriteShelterPipeline = std::make_unique<TracePipeline>(mDevice, sBindings, laterSets(textureLayout),
+        mSpriteShelterPipeline = std::make_unique<TracePipeline>(mDevice, sBindings, sharedSets(textureLayout),
             TraceShaders{ .mRaygen = shaders / "spriteshelter.rgen.spv" }, "sprite shelter");
 
         /// One kernel to make: which tuple, and which of the two modules.
@@ -293,11 +293,11 @@ namespace Rtx
 
                 if (volume)
                     mScatterPipelines[variant.index()]
-                        = std::make_unique<TracePipeline>(mDevice, sBindings, laterSets(textureLayout),
+                        = std::make_unique<TracePipeline>(mDevice, sBindings, sharedSets(textureLayout),
                             TraceShaders{ .mRaygen = scatter }, variant.describe("fog scatter"), specialization);
                 else
                     mPipelines[variant.index()]
-                        = std::make_unique<TracePipeline>(mDevice, sBindings, laterSets(textureLayout),
+                        = std::make_unique<TracePipeline>(mDevice, sBindings, sharedSets(textureLayout),
                             TraceShaders{
                                 .mRaygen = raygen,
                                 .mMiss = miss,
@@ -345,9 +345,9 @@ namespace Rtx
         return *held;
     }
 
-    std::array<VkDescriptorSetLayout, 3> VisibilityPass::laterSets(VkDescriptorSetLayout textureLayout) const
+    SharedSetLayouts VisibilityPass::sharedSets(VkDescriptorSetLayout textureLayout) const
     {
-        return { textureLayout, mChannelLayout, mVolumeLayout };
+        return SharedSetLayouts{ .mTextures = textureLayout, .mChannels = mChannelLayout, .mVolume = mVolumeLayout };
     }
 
     void VisibilityPass::writeConstants(VkCommandBuffer commands, const Shaders::VisibilityConstants& described) const
@@ -428,9 +428,10 @@ namespace Rtx
         // The three sets nothing pushes: the bindless textures a scene brought, the channels the
         // trace writes, and the air in front of the camera. Each is written when what it names is
         // made, and bound as it is.
-        const std::array<VkDescriptorSet, 3> sets{ inputs.mTextures, buffer.getSet(),
-            inputs.mFogVolume->getSet(inputs.mTraceSlot) };
-        bindSets(commands, pipeline, sets);
+        bindSets(commands, pipeline,
+            SharedSetBinds{ .mTextures = inputs.mTextures,
+                .mChannels = buffer.getSet(),
+                .mVolume = inputs.mFogVolume->getSet(inputs.mTraceSlot) });
     }
 
     void VisibilityPass::writeFrame(VkCommandBuffer commands, const VisibilityInputs& inputs, const SpriteBin& bin,

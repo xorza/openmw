@@ -5,13 +5,16 @@
 //
 // **Its own file because a second pass samples them.** The trace has this by way of everything else
 // it is handed; the display pass draws the sky's own points at the resolution they are shown at, and
-// needs the sheet and none of the rest of `bindings.glsl`. A set number is a fact shared with
-// whichever passes bind it, so it is written once.
+// needs the sheet and none of the rest of `bindings.glsl`. The set and its two bindings are the
+// host's as well, so both sides read them from `sets.h` and `scene.h`.
 
 // **The extension travels with the declaration**, because what needs it is the indexing rather than
 // the pass: a shader that includes this and forgets the line fails to compile, which is the failure
 // worth having.
 #extension GL_EXT_nonuniform_qualifier : require
+
+#include "scene.h"
+#include "sets.h"
 
 /// Every texture the scene loaded, indexed by the slot a material, a layer or an emitter names —
 /// and at `TEXTURE_NEUTRAL` the one texel a material with no diffuse names instead.
@@ -23,7 +26,7 @@
 /// chain built inside the callee comes out bare, and the driver may then read one lane's descriptor
 /// for the whole wave. That is a wrong texture on some lanes of some waves, which looks like nothing
 /// at all until it does; `spirv-val` passes either way and the validation layers say nothing.
-layout(set = 1, binding = 0) uniform sampler2D textures[];
+layout(set = SET_TEXTURES, binding = TEXTURE_BIND_IMAGES) uniform sampler2D textures[];
 
 /// What each texture already has painted into it, `SHADING_EXTENT` squared, at the slot of the
 /// texture it was measured on and through the same sampler, which wraps as the texture does.
@@ -32,6 +35,6 @@ layout(set = 1, binding = 0) uniform sampler2D textures[];
 /// array it reads for the level a cone resolves, and a map interleaved with the textures is one it
 /// would measure. A slot with a texture always has a map, neutral where nothing could estimate one.
 /// Stored over the range `SHADING_FLOOR` to `SHADING_CEILING`, which `paintedLight` decodes.
-layout(set = 1, binding = 1) uniform sampler2D shadingMaps[];
+layout(set = SET_TEXTURES, binding = TEXTURE_BIND_SHADING) uniform sampler2D shadingMaps[];
 
 #endif

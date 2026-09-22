@@ -44,7 +44,7 @@ namespace Rtx
         /// one — a doll, a map tile, a frame too small to halve.
         const Image* mBloom = nullptr;
 
-        /// The scene's texture descriptor set, bound as set one.
+        /// The scene's texture descriptor set, bound at `SET_TEXTURES`.
         VkDescriptorSet mTextures = VK_NULL_HANDLE;
 
         /// The displayable image, in `VK_IMAGE_LAYOUT_GENERAL`.

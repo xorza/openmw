@@ -13,6 +13,7 @@
 // load is going to shared memory anyway. Nine stages at the largest grid, each a barrier apart.
 
 #include "scene.h"
+#include "sets.h"
 #include "wave.h"
 
 layout(local_size_x = WAVE_WORKGROUP) in;
@@ -20,7 +21,7 @@ layout(local_size_x = WAVE_WORKGROUP) in;
 /// The line, before and after. **In place**, because a pass reads a line, transforms it and writes
 /// the same line back — the two dimensions of the transform are separated by a dispatch, which is
 /// the only barrier wide enough to order them.
-layout(set = 0, binding = WAVE_LINE_BIND_FIELD, scalar) buffer Field
+layout(set = SET_PASS, binding = WAVE_LINE_BIND_FIELD, scalar) buffer Field
 {
     vec2 field[];
 };

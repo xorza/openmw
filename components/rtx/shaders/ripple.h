@@ -3,6 +3,7 @@
 
 #include "hosttypes.h"
 #include "portable.h"
+#include "storageformat.h"
 
 // What walked through the water: a height field around the eye, stepped by the wave equation and
 // stamped where an actor wades, a projectile lands or a spell strikes, and read by the sea as one
@@ -35,6 +36,10 @@ namespace Rtx::Shaders
     const uint RIPPLE_COMPOSE_BIND_SURFACE = 1;
     const uint RIPPLE_COMPOSE_BIND_CURVATURE = 2;
     const uint RIPPLE_COMPOSE_BINDINGS = 3;
+
+/// What the field the step writes and the compose reads is stored as: a texel is the height and the
+/// height a step before.
+#define RIPPLE_FIELD_FORMAT STORAGE_RG32F
 
     /// Texels along each axis of the field.
     const uint RIPPLE_GRID = 1024u;

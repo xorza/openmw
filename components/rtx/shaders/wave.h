@@ -3,6 +3,7 @@
 
 #include "hosttypes.h"
 #include "portable.h"
+#include "storageformat.h"
 
 // The sea as a set of transformed tiles rather than as a list of sinusoids.
 //
@@ -80,13 +81,6 @@ namespace Rtx::Shaders
     static_assert((1u << (WAVE_LEVELS - 1u)) == WAVE_GRID, "WAVE_LEVELS must be the widest grid's own chain");
 #endif
 
-    /// A level past the end of any tile's chain, which a sampler clamps to the last of it.
-    ///
-    /// **The last level is one texel, so it is the whole tile's mean.** That is where the surface's
-    /// own variance and the variance of its curvature are read from — both are properties of the
-    /// sea rather than of a place in it, and a mip chain has already summed them.
-    const float WAVE_COARSEST = 32.0f;
-
     /// The side of the square workgroup the form and compose passes run on, which is what their
     /// dispatches are counted in.
     const uint WAVE_TILE_WORKGROUP = 8u;
@@ -151,15 +145,11 @@ namespace Rtx::Shaders
 }
 #endif
 
-// What a tile is made of, as a macro for the reason `gbuffer.h` gives. Half floats: a slope is a
-// fraction and a curvature a small number, and both are read at every water pixel through a mip
-// chain the sampler filters. The elevation squared in the last channel is the sea's own variance
-// and stays within a half's range at any sea state the weather asks for.
-#ifdef RTX_HOST
-#define WAVE_TILE_FORMAT VK_FORMAT_R16G16B16A16_SFLOAT
-#else
-#define WAVE_TILE_FORMAT rgba16f
-#endif
+// What a tile is made of. Half floats: a slope is a fraction and a curvature a small number, and
+// both are read at every water pixel through a mip chain the sampler filters. The elevation squared
+// in the last channel is the sea's own variance and stays within a half's range at any sea state
+// the weather asks for.
+#define WAVE_TILE_FORMAT STORAGE_RGBA16F
 
 // What both shading languages read and nothing on this side calls.
 #ifndef RTX_HOST

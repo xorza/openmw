@@ -16,13 +16,14 @@
 // the same sums on every run. `shadingmap.comp` says what a cell is and which texels count.
 
 #include "colour.h"
+#include "sets.h"
 #include "shadingmap.h"
 
 layout(local_size_x = SHADING_EXTENT, local_size_y = SHADING_EXTENT) in;
 
-layout(set = 0, binding = SHADING_SUM_BIND_SOURCE) uniform sampler2D source;
+layout(set = SET_PASS, binding = SHADING_SUM_BIND_SOURCE) uniform sampler2D source;
 
-layout(set = 0, binding = SHADING_SUM_BIND_SUMS, scalar) writeonly buffer Sums
+layout(set = SET_PASS, binding = SHADING_SUM_BIND_SUMS, scalar) writeonly buffer Sums
 {
     ShadingSum sums[];
 };

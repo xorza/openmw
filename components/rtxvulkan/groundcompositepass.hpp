@@ -20,8 +20,8 @@ namespace Rtx
     class GroundCompositePass
     {
     public:
-        /// @param textures the layout of the scene's texture set, bound as set one — the layers'
-        ///        textures and their shading maps.
+        /// @param textures the layout of the scene's texture set, bound at `SET_TEXTURES` — the
+        ///        layers' textures and their shading maps.
         GroundCompositePass(
             const Device& device, const std::filesystem::path& shaderDirectory, VkDescriptorSetLayout textures);
 

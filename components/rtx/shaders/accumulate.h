@@ -5,6 +5,7 @@
 #include "hosttypes.h"
 #include "look.h"
 #include "portable.h"
+#include "storageformat.h"
 
 // What the wavelet's temporal half needs. Included verbatim by both sides, for the reason
 // `visibility.h` is.
@@ -33,24 +34,10 @@
 // **And the moments stay full floats whatever the other two do.** `E[l²] - E[l]²` is a difference of
 // two numbers that are nearly equal once a pixel has settled, and a format that rounds each of them
 // separately loses the whole of what is left.
-//
-// A macro rather than a constant, for the reason `gbuffer.h` gives: a layout qualifier is a token
-// GLSL reads before it parses anything, and `VK_FORMAT_*` is an enumerator, and the preprocessor is
-// the one thing both languages share.
 
-#ifdef RTX_HOST
-
-#define ACCUMULATE_COLOUR VK_FORMAT_R16G16B16A16_SFLOAT
-#define ACCUMULATE_SURFACE VK_FORMAT_R16G16B16A16_SFLOAT
-#define ACCUMULATE_MOMENTS VK_FORMAT_R32G32B32A32_SFLOAT
-
-#else
-
-#define ACCUMULATE_COLOUR rgba16f
-#define ACCUMULATE_SURFACE rgba16f
-#define ACCUMULATE_MOMENTS rgba32f
-
-#endif
+#define ACCUMULATE_COLOUR STORAGE_RGBA16F
+#define ACCUMULATE_SURFACE STORAGE_RGBA16F
+#define ACCUMULATE_MOMENTS STORAGE_RGBA32F
 
 #ifdef RTX_HOST
 namespace Rtx::Shaders

@@ -2,7 +2,6 @@
 
 #include <array>
 #include <cassert>
-#include <span>
 
 #include <osg/Vec2f>
 
@@ -11,6 +10,7 @@
 #include <components/rtx/shaders/tone.h>
 
 #include "dispatch.hpp"
+#include "formats.hpp"
 #include "image.hpp"
 #include "pipeline.hpp"
 
@@ -34,10 +34,10 @@ namespace Rtx
 
     TonePass::TonePass(
         const Device& device, VkDescriptorSetLayout textureLayout, const std::filesystem::path& shaderDirectory)
-        : mPipeline(device, sBindings, sizeof(Shaders::ToneConstants), std::span(&textureLayout, 1),
+        : mPipeline(device, sBindings, sizeof(Shaders::ToneConstants), SharedSetLayouts{ .mTextures = textureLayout },
             shaderDirectory / "tone.comp.spv", "tone")
         , mSampler(makeTargetSampler(device, "tone"))
-        , mNoBloom(makeStandIn(device, BLOOM_LEVEL, VK_IMAGE_USAGE_SAMPLED_BIT, "no-bloom"))
+        , mNoBloom(makeStandIn(device, toVulkanFormat(BLOOM_LEVEL), VK_IMAGE_USAGE_SAMPLED_BIT, "no-bloom"))
     {
     }
 
@@ -73,9 +73,9 @@ namespace Rtx
         writes.buffer(Shaders::TONE_BIND_SUN_GLARE, sunGlare.describe());
         writes.image(Shaders::TONE_BIND_PUFFS_DEPTH, puffsDepth.describeStorage());
 
-        // The scene's textures before the launch and beside set zero, which the two are
+        // The scene's textures before the launch and beside the pushed set, which the two are
         // independent of: a pushed set and a bound one only have to be in place by the dispatch.
-        bindSets(commands, mPipeline, std::span(&textures, 1));
+        bindSets(commands, mPipeline, SharedSetBinds{ .mTextures = textures });
 
         dispatch(commands, mPipeline, writes.get(), constants,
             groupsFor(constants.mCamera.mWidth, Shaders::TONE_WORKGROUP),

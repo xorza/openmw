@@ -13,13 +13,14 @@
 
 #include "gbuffer.h"
 #include "line.h"
+#include "sets.h"
 
 layout(push_constant, scalar) uniform Push
 {
     LineConstants frame;
 };
 
-layout(set = 0, binding = 0, GBUFFER_DEPTH) uniform readonly image2D depth;
+layout(set = SET_PASS, binding = 0, GBUFFER_DEPTH) uniform readonly image2D depth;
 
 layout(location = 0) in vec3 inOffset;
 layout(location = 1) in vec4 inColour;

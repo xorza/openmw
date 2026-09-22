@@ -24,6 +24,7 @@
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
+#include <components/rtx/shaders/composite.h>
 #include <components/rtx/shaders/digest.h>
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/shaders/visibility.h>
@@ -34,6 +35,7 @@
 #include <components/sdlutil/vsyncmode.hpp>
 
 #include "devicescene.hpp"
+#include "formats.hpp"
 #include "gbuffer.hpp"
 #include "graphicspipeline.hpp"
 #include "graveyard.hpp"
@@ -854,7 +856,7 @@ namespace Rtx
         // Made by the first frame that averages, and that frame is the one that fills it.
         const bool fresh = options.mAccumulate > 0 && mSum.isEmpty();
         if (fresh)
-            mSum = Image(mDevice, mFrame.getWidth(), mFrame.getHeight(), VK_FORMAT_R32G32B32A32_SFLOAT,
+            mSum = Image(mDevice, mFrame.getWidth(), mFrame.getHeight(), toVulkanFormat(COMPOSITE_SUM_FORMAT),
                 VK_IMAGE_USAGE_STORAGE_BIT, "sum");
 
         // A history is worthless after a jump no motion vector can describe: walking through a

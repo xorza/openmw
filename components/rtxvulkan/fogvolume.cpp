@@ -15,6 +15,7 @@
 #include "commands.hpp"
 #include "device.hpp"
 #include "dispatch.hpp"
+#include "formats.hpp"
 #include "imageuse.hpp"
 
 namespace Rtx
@@ -48,7 +49,7 @@ namespace Rtx
         /// Half floats, because nothing here holds a quantity that grows and nothing sums these:
         /// the sun's is a product of transmittances, and the integrated pair is bounded by the
         /// transmittance beside it.
-        constexpr VkFormat sFormat = FOG_VOLUME_FORMAT;
+        constexpr VkFormat sFormat = toVulkanFormat(FOG_VOLUME_FORMAT);
 
         /// `TRANSFER_DST` because the constructor empties every one of these, which is what a
         /// history read before anything has written it needs and what an image made over a departed
@@ -106,14 +107,14 @@ namespace Rtx
             Image(device, mColumns, mRows, sFormat, sUsage, "fog sunward 1", 1, Shaders::FOG_VOLUME_SLICES) }
         , mLamps(device, mColumns, mRows, sFormat, sUsage, "fog lamps", 1, Shaders::FOG_VOLUME_SLICES)
         , mAir(device, mColumns, mRows, sFormat, sUsage, "fog air", 1, Shaders::FOG_VOLUME_SLICES)
-        , mAirSunward(
-              device, mColumns, mRows, FOG_SUNWARD_FORMAT, sUsage, "fog air sunward", 1, Shaders::FOG_VOLUME_SLICES)
+        , mAirSunward(device, mColumns, mRows, toVulkanFormat(FOG_SUNWARD_FORMAT), sUsage, "fog air sunward", 1,
+              Shaders::FOG_VOLUME_SLICES)
         , mSlice(device, mColumns, mRows, sFormat, sUsage, "fog slice", 1, Shaders::FOG_VOLUME_SLICES)
-        , mSliceSunward(
-              device, mColumns, mRows, FOG_SUNWARD_FORMAT, sUsage, "fog slice sunward", 1, Shaders::FOG_VOLUME_SLICES)
-        , mColumnDepth(device, mColumns, mRows, FOG_DEPTH_FORMAT,
+        , mSliceSunward(device, mColumns, mRows, toVulkanFormat(FOG_SUNWARD_FORMAT), sUsage, "fog slice sunward", 1,
+              Shaders::FOG_VOLUME_SLICES)
+        , mColumnDepth(device, mColumns, mRows, toVulkanFormat(FOG_DEPTH_FORMAT),
               VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, "fog column depth")
-        , mColumnMoons(device, mColumns, mRows, FOG_MOONS_FORMAT,
+        , mColumnMoons(device, mColumns, mRows, toVulkanFormat(FOG_MOONS_FORMAT),
               VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, "fog column moons", 1, Shaders::MOON_COUNT)
         , mSampler(makeTargetSampler(device, "fog volume"))
         , mSets(device, sLayoutBindings, layout.get(), sParities)

@@ -426,11 +426,10 @@ Ray fogColumnRay(uvec2 column)
 /// asks of a read between two of them.
 FogSlice fogSliceAt(vec2 across, float depth)
 {
-    // **The level named and not derived, which a ray generation shader has no way to derive.** An
-    // implicit fetch takes its gradient from the lanes beside this one, and a launch does not promise
-    // those are neighbouring pixels — regrouped, the volume came back sampled against a neighbour
-    // that was somewhere else, and the picture changed everywhere. The volume has one level, so
-    // this is the level it always meant.
+    // **The level named, because no stage that reads the volume has derivatives to choose one.**
+    // GLSL gives an implicit fetch in such a stage the base level, so the other spelling compiles to
+    // this same read and leaves the level for the reader to know. The volume has one level, so the
+    // base is the level it always meant.
     return unpackFogSlice(textureLod(fogSlice, vec3(across, depth), 0.0),
         textureLod(fogSliceSunward, vec3(across, depth), 0.0).x);
 }

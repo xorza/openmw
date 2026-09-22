@@ -20,6 +20,7 @@
 #include <components/rtxvulkan/computepipeline.hpp>
 #include <components/rtxvulkan/device.hpp>
 #include <components/rtxvulkan/dispatch.hpp>
+#include <components/rtxvulkan/formats.hpp>
 #include <components/rtxvulkan/image.hpp>
 #include <components/rtxvulkan/imageuse.hpp>
 #include <components/rtxvulkan/pipeline.hpp>
@@ -105,8 +106,9 @@ namespace Rtx
             turning.write(frequencies);
 
             constexpr VkImageUsageFlags usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-            const Image surface(device, sCount, sCount, WAVE_TILE_FORMAT, usage, "test-wave-surface");
-            const Image curvature(device, sCount, sCount, WAVE_TILE_FORMAT, usage, "test-wave-curvature");
+            const Image surface(device, sCount, sCount, toVulkanFormat(WAVE_TILE_FORMAT), usage, "test-wave-surface");
+            const Image curvature(
+                device, sCount, sCount, toVulkanFormat(WAVE_TILE_FORMAT), usage, "test-wave-curvature");
 
             const auto buffer = [](std::uint32_t binding, const VkDescriptorBufferInfo& info) {
                 return VkWriteDescriptorSet{

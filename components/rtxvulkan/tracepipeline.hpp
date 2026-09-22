@@ -60,8 +60,8 @@ namespace Rtx
     public:
         /// Nothing passed outlives the call.
         ///
-        /// @param bindings set zero, which every binding declares every stage of this pipeline in.
-        /// @param laterSets layouts bound after set zero. A pipeline layout has to name every set it
+        /// @param bindings `SET_PASS`, which every binding declares every stage of this pipeline in.
+        /// @param shared the shared sets the pipeline reads. A pipeline layout has to name every set it
         ///        will ever be handed.
         /// @param shaders the compiled SPIR-V the build wrote, by path.
         /// @param name what a capture calls the pipeline.
@@ -69,7 +69,7 @@ namespace Rtx
         ///        them. Every stage is given the same words, and a closest-hit stage its own after
         ///        them.
         TracePipeline(const Device& device, std::span<const VkDescriptorSetLayoutBinding> bindings,
-            std::span<const VkDescriptorSetLayout> laterSets, const TraceShaders& shaders, std::string_view name,
+            const SharedSetLayouts& shared, const TraceShaders& shaders, std::string_view name,
             std::span<const std::uint32_t> specialization = {});
 
         /// Launches `width` by `height` by `depth` invocations of the ray generation stage.

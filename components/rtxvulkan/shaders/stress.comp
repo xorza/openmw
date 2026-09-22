@@ -14,11 +14,12 @@
 // so the loop leaves when the time it was told has passed, on the first frame as on every other.
 
 #include "counts.h"
+#include "sets.h"
 #include "stress.h"
 
 layout(local_size_x = STRESS_WORKGROUP) in;
 
-layout(set = 0, binding = STRESS_BIND_COUNTS, scalar) buffer Counted
+layout(set = SET_PASS, binding = STRESS_BIND_COUNTS, scalar) buffer Counted
 {
     FrameCounts counts;
 };

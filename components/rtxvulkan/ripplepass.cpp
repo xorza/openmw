@@ -16,6 +16,7 @@
 #include "commands.hpp"
 #include "device.hpp"
 #include "dispatch.hpp"
+#include "formats.hpp"
 #include "gputimer.hpp"
 #include "imageuse.hpp"
 #include "pipeline.hpp"
@@ -35,7 +36,7 @@ namespace Rtx
         constexpr std::array<VkDescriptorSetLayoutBinding, Shaders::RIPPLE_COMPOSE_BINDINGS> sComposeBindings
             = computeBindings<Shaders::RIPPLE_COMPOSE_BINDINGS>(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
 
-        constexpr VkFormat sFieldFormat = VK_FORMAT_R32G32_SFLOAT;
+        constexpr VkFormat sFieldFormat = toVulkanFormat(RIPPLE_FIELD_FORMAT);
 
         constexpr std::uint32_t sGrid = Shaders::RIPPLE_GRID;
 
@@ -77,8 +78,9 @@ namespace Rtx
 
         mFields[0] = Image(device, sGrid, sGrid, sFieldFormat, fieldUsage, "ripple field 0");
         mFields[1] = Image(device, sGrid, sGrid, sFieldFormat, fieldUsage, "ripple field 1");
-        mSurface = Image(device, sGrid, sGrid, WAVE_TILE_FORMAT, tileUsage, "ripple surface", levels);
-        mCurvature = Image(device, sGrid, sGrid, WAVE_TILE_FORMAT, tileUsage, "ripple curvature", levels);
+        mSurface = Image(device, sGrid, sGrid, toVulkanFormat(WAVE_TILE_FORMAT), tileUsage, "ripple surface", levels);
+        mCurvature
+            = Image(device, sGrid, sGrid, toVulkanFormat(WAVE_TILE_FORMAT), tileUsage, "ripple curvature", levels);
 
         mImpulseScratch.reserve(Shaders::RIPPLE_IMPULSES_MOST);
         mPending.reserve(Shaders::RIPPLE_IMPULSES_MOST);

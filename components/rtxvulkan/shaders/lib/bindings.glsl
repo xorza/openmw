@@ -36,6 +36,7 @@
 #include "gbuffer.h"
 #include "glare.h"
 #include "scene.h"
+#include "sets.h"
 #include "visibility.h"
 #include "wave.h"
 
@@ -43,7 +44,7 @@
 #include "spritelist.glsl"
 #include "texturearray.glsl"
 
-layout(set = 0, binding = BIND_SCENE) uniform accelerationStructureEXT sceneTop;
+layout(set = SET_PASS, binding = BIND_SCENE) uniform accelerationStructureEXT sceneTop;
 
 // Set two, in the order it is bound.
 
@@ -52,7 +53,7 @@ layout(set = 0, binding = BIND_SCENE) uniform accelerationStructureEXT sceneTop;
 /// **No format on this or the bounce below**, because a run decides how wide they are —
 /// `gbuffer.h` says which run gets which — and a store with no format converts to whatever the
 /// view holds.
-layout(set = 2, binding = CHANNEL_DIRECT) uniform writeonly image2D direct;
+layout(set = SET_CHANNELS, binding = CHANNEL_DIRECT) uniform writeonly image2D direct;
 
 /// One bounce with the albedo divided out, times whatever the path took off it on the way to the
 /// eye — the only channel a filter is allowed to touch.
@@ -66,14 +67,14 @@ layout(set = 2, binding = CHANNEL_DIRECT) uniform writeonly image2D direct;
 /// goes into `direct` and `a` belongs to whichever term it attenuated, which is this one. Putting
 /// it on the albedo instead made that channel a product of a surface and a path, and an upscaler
 /// asking what the surface is got the weather in the answer.
-layout(set = 2, binding = CHANNEL_INDIRECT) uniform writeonly image2D indirect;
+layout(set = SET_CHANNELS, binding = CHANNEL_INDIRECT) uniform writeonly image2D indirect;
 
 /// The surface's own diffuse albedo, and nothing else.
 ///
 /// What the composite multiplies the bounce back in by, and what Ray Reconstruction demodulates the
 /// diffuse half of a pixel by. Zero where there is no diffuse response at all — the sky, and the
 /// water, which answers a ray with a reflection and a refraction and no Lambert term.
-layout(set = 2, binding = CHANNEL_ALBEDO, GBUFFER_ALBEDO) uniform writeonly image2D albedo;
+layout(set = SET_CHANNELS, binding = CHANNEL_ALBEDO, GBUFFER_ALBEDO) uniform writeonly image2D albedo;
 
 /// The specular albedo, which is what an upscaler demodulates the mirrored half of a pixel by.
 ///
@@ -82,26 +83,27 @@ layout(set = 2, binding = CHANNEL_ALBEDO, GBUFFER_ALBEDO) uniform writeonly imag
 /// specular lobe except the water, so nothing else has a specular albedo to report. Half floats,
 /// because an albedo is a fraction that is never accumulated — the argument for full floats on the
 /// radiance channels does not reach here.
-layout(set = 2, binding = CHANNEL_SPECULAR, GBUFFER_ALBEDO) uniform writeonly image2D specular;
+layout(set = SET_CHANNELS, binding = CHANNEL_SPECULAR, GBUFFER_ALBEDO) uniform writeonly image2D specular;
 
 /// The shading normal in `xyz` and the surface's roughness in `w`.
 ///
 /// **The normal the shading actually used**, which for water is the wave's rather than the plane's
 /// — a rippled surface described as a flat one is reconstructed as a flat one. A ray that hit
 /// nothing writes a zero normal, which no surface can be mistaken for.
-layout(set = 2, binding = CHANNEL_GUIDE, GBUFFER_GUIDE) uniform writeonly image2D guide;
+layout(set = SET_CHANNELS, binding = CHANNEL_GUIDE, GBUFFER_GUIDE) uniform writeonly image2D guide;
 
 /// Where each surface stood on the previous frame's screen, less where it stands on this one.
-layout(set = 2, binding = CHANNEL_MOTION, GBUFFER_MOTION) uniform writeonly image2D motion;
+layout(set = SET_CHANNELS, binding = CHANNEL_MOTION, GBUFFER_MOTION) uniform writeonly image2D motion;
 
 /// Clip depth in `r`, for whatever upscales the frame, and the distance from the eye in `g`, for
 /// whatever filters it. Two questions, and one number cannot answer both. Read back by
 /// `spritecomposite.rgen` for where a sprite is hidden, which is why it is not `writeonly`.
-layout(set = 2, binding = CHANNEL_DEPTH, GBUFFER_DEPTH) uniform image2D depth;
+layout(set = SET_CHANNELS, binding = CHANNEL_DEPTH, GBUFFER_DEPTH) uniform image2D depth;
 
 /// Where what the water reflects stood on the previous frame's screen, in pixels. Nought everywhere
 /// that is not water reflecting a surface.
-layout(set = 2, binding = CHANNEL_REFLECTION_MOTION, GBUFFER_MOTION) uniform writeonly image2D reflectionMotion;
+layout(set = SET_CHANNELS, binding = CHANNEL_REFLECTION_MOTION, GBUFFER_MOTION)
+    uniform writeonly image2D reflectionMotion;
 
 /// How much of the star field this pixel still shows, per channel — everything the trace put between
 /// the field and the eye, multiplied together.
@@ -112,30 +114,30 @@ layout(set = 2, binding = CHANNEL_REFLECTION_MOTION, GBUFFER_MOTION) uniform wri
 /// the one number that carries all of them: `skyRadiance`'s `shown` times the path's own
 /// transmittance — the puffs' apart, which `spritecomposite.rgen` leaves in the frame's alpha
 /// for the same pass. Nought on every pixel that hit something, which is also how that pass knows.
-layout(set = 2, binding = CHANNEL_STARS_SHOWN, GBUFFER_STARS) uniform writeonly image2D starsShown;
+layout(set = SET_CHANNELS, binding = CHANNEL_STARS_SHOWN, GBUFFER_STARS) uniform writeonly image2D starsShown;
 
 /// The puffs in front of the surface, sprites and cloud shells as one layer: their straight colour
 /// lit where they stand and already fog-attenuated, and what the layer lets through in `a`. Read
 /// back by `spritecomposite.rgen`, which is why it is not `writeonly`.
-layout(set = 2, binding = CHANNEL_PUFFS, GBUFFER_LAYER) uniform image2D puffs;
+layout(set = SET_CHANNELS, binding = CHANNEL_PUFFS, GBUFFER_LAYER) uniform image2D puffs;
 
 /// How far along the ray that layer stood, coverage-weighted, in `r` — where the air is split
 /// when it is composited — and what the shells alone let through in `g`, because the composite
 /// marches the sprites' own shape again at the shown extent and the shells' it cannot.
-layout(set = 2, binding = CHANNEL_PUFFS_DEPTH, GBUFFER_PUFF_DEPTH) uniform image2D puffsDepth;
+layout(set = SET_CHANNELS, binding = CHANNEL_PUFFS_DEPTH, GBUFFER_PUFF_DEPTH) uniform image2D puffsDepth;
 
 // One atomic per hit on a single address, which looks like contention and costs nothing a subgroup
 // reduction in its place gives back: few rays hit, and the reduction would cost the device a
 // subgroup-arithmetic requirement it does not otherwise need. Measure again if a pass ever hits
 // most of its pixels.
-layout(set = 0, binding = BIND_COUNTS, scalar) buffer Counted
+layout(set = SET_PASS, binding = BIND_COUNTS, scalar) buffer Counted
 {
     FrameCounts counts;
 };
 
 /// The sun glare fader's query, as `glare.h` states it: two atomics, added to by every primary
 /// ray inside the quad's disc. Few rays, for the reason the hit counter gives.
-layout(set = 0, binding = BIND_SUN_GLARE, scalar) buffer SunGlare
+layout(set = SET_PASS, binding = BIND_SUN_GLARE, scalar) buffer SunGlare
 {
     SunGlareCount sunGlare;
 };
@@ -150,7 +152,7 @@ layout(set = 0, binding = BIND_SUN_GLARE, scalar) buffer SunGlare
 // push constant is, where a storage buffer is a memory read like any other.
 //
 // **Declared before the tables, because the tables are reached through it.**
-layout(set = 0, binding = BIND_FRAME, scalar) uniform Frame
+layout(set = SET_PASS, binding = BIND_FRAME, scalar) uniform Frame
 {
     VisibilityConstants frame;
 };
@@ -365,16 +367,16 @@ uint spriteTileListAt(uint slot)
 // `tr(H)` are different numbers, and their difference is the curvature the cone threw away.
 
 /// The two slopes, their own second moment, and the elevation squared.
-layout(set = 0, binding = BIND_WAVE_SURFACE) uniform sampler2D waveSurface[WAVE_CASCADES];
+layout(set = SET_PASS, binding = BIND_WAVE_SURFACE) uniform sampler2D waveSurface[WAVE_CASCADES];
 
 /// The three curvatures.
-layout(set = 0, binding = BIND_WAVE_CURVATURE) uniform sampler2D waveCurvature[WAVE_CASCADES];
+layout(set = SET_PASS, binding = BIND_WAVE_CURVATURE) uniform sampler2D waveCurvature[WAVE_CASCADES];
 
 /// The ripple field, in the wave tiles' own layout and read the same way, once: it is anchored to
 /// the world at `frame.mRippleOrigin` rather than repeating, and past its edge reads as still
 /// water through a sampler that clamps to nothing.
-layout(set = 0, binding = BIND_RIPPLE_SURFACE) uniform sampler2D rippleSurface;
-layout(set = 0, binding = BIND_RIPPLE_CURVATURE) uniform sampler2D rippleCurvature;
+layout(set = SET_PASS, binding = BIND_RIPPLE_SURFACE) uniform sampler2D rippleSurface;
+layout(set = SET_PASS, binding = BIND_RIPPLE_CURVATURE) uniform sampler2D rippleCurvature;
 
 /// The fog's fractal field, drawn once for the life of the device and read at three world scales.
 ///
@@ -386,7 +388,7 @@ layout(set = 0, binding = BIND_RIPPLE_CURVATURE) uniform sampler2D rippleCurvatu
 /// axis holds one value all the way up, so every bank in it is a column.
 ///
 /// `Rtx::bakeFogNoise` says what is in it, and why every level of the chain carries one spread.
-layout(set = 0, binding = BIND_FOG_FIELD) uniform sampler3D fogField;
+layout(set = SET_PASS, binding = BIND_FOG_FIELD) uniform sampler3D fogField;
 
 // The air in front of the eye, integrated once for a block of pixels rather than once per pixel.
 // `Rtx::FogVolume` says what each image holds and why there are three pairs of them.
@@ -403,47 +405,51 @@ layout(set = 0, binding = BIND_FOG_FIELD) uniform sampler3D fogField;
 /// previous frame left it — and beside it the three answers a ray each gave there: the sun's
 /// transport in `r`, the lamp's seeing in `g` and the ambient's in `b`. These are the quantities
 /// that reproject, so these are the ones a frame averages against.
-layout(set = 3, binding = BIND_FOG_WAS_SCATTER) uniform sampler3D fogWasScatter;
-layout(set = 3, binding = BIND_FOG_WAS_SUNWARD) uniform sampler3D fogWasSunward;
+layout(set = SET_VOLUME, binding = BIND_FOG_WAS_SCATTER) uniform sampler3D fogWasScatter;
+layout(set = SET_VOLUME, binding = BIND_FOG_WAS_SUNWARD) uniform sampler3D fogWasSunward;
 
 /// The same two as this frame's scatter pass wrote them, which is what its integrate pass reads —
 /// and what a puff of smoke reads at a point, `puffLight` being the one thing in the trace that
 /// wants a froxel's own answer rather than a column's integral of it.
-layout(set = 3, binding = BIND_FOG_SCATTER) uniform sampler3D fogScatter;
-layout(set = 3, binding = BIND_FOG_SUNWARD) uniform sampler3D fogSunward;
+layout(set = SET_VOLUME, binding = BIND_FOG_SCATTER) uniform sampler3D fogScatter;
+layout(set = SET_VOLUME, binding = BIND_FOG_SUNWARD) uniform sampler3D fogSunward;
 
 /// What every lamp puts into a froxel, per steradian and with nothing standing in the way — read by
 /// the integrate pass beside the seeing above it, and by a puff for the same product.
-layout(set = 3, binding = BIND_FOG_LAMPS) uniform sampler3D fogLamps;
+layout(set = SET_VOLUME, binding = BIND_FOG_LAMPS) uniform sampler3D fogLamps;
 
 /// Both accumulated front to back, which is what a pixel reads. `a` of the first is what is left of
 /// a ray at that depth; the second is the sun's transport alone, one channel.
-layout(set = 3, binding = BIND_FOG_AIR) uniform sampler3D fogVolumeAir;
-layout(set = 3, binding = BIND_FOG_AIR_SUNWARD) uniform sampler3D fogVolumeSunward;
+layout(set = SET_VOLUME, binding = BIND_FOG_AIR) uniform sampler3D fogVolumeAir;
+layout(set = SET_VOLUME, binding = BIND_FOG_AIR_SUNWARD) uniform sampler3D fogVolumeSunward;
 
 /// What each slice holds once everything that lights it is applied — `FogSlice`, as the two images
 /// it packs into — which is what a pixel steps through from the last edge it passed to where its
 /// surface stands.
-layout(set = 3, binding = BIND_FOG_SLICE) uniform sampler3D fogSlice;
-layout(set = 3, binding = BIND_FOG_SLICE_SUNWARD) uniform sampler3D fogSliceSunward;
+layout(set = SET_VOLUME, binding = BIND_FOG_SLICE) uniform sampler3D fogSlice;
+layout(set = SET_VOLUME, binding = BIND_FOG_SLICE_SUNWARD) uniform sampler3D fogSliceSunward;
 
 /// The same seven, as the pass that fills each one writes it.
-layout(set = 3, binding = BIND_FOG_SCATTER_TARGET, FOG_VOLUME_FORMAT) uniform writeonly image3D fogScatterTarget;
-layout(set = 3, binding = BIND_FOG_SUNWARD_TARGET, FOG_VOLUME_FORMAT) uniform writeonly image3D fogSunwardTarget;
-layout(set = 3, binding = BIND_FOG_LAMPS_TARGET, FOG_VOLUME_FORMAT) uniform writeonly image3D fogLampsTarget;
-layout(set = 3, binding = BIND_FOG_AIR_TARGET, FOG_VOLUME_FORMAT) uniform writeonly image3D fogVolumeAirTarget;
-layout(set = 3, binding = BIND_FOG_AIR_SUNWARD_TARGET, FOG_SUNWARD_FORMAT) uniform writeonly image3D fogVolumeSunwardTarget;
-layout(set = 3, binding = BIND_FOG_SLICE_TARGET, FOG_VOLUME_FORMAT) uniform writeonly image3D fogSliceTarget;
-layout(set = 3, binding = BIND_FOG_SLICE_SUNWARD_TARGET, FOG_SUNWARD_FORMAT) uniform writeonly image3D fogSliceSunwardTarget;
+layout(set = SET_VOLUME, binding = BIND_FOG_SCATTER_TARGET, FOG_VOLUME_FORMAT)
+    uniform writeonly image3D fogScatterTarget;
+layout(set = SET_VOLUME, binding = BIND_FOG_SUNWARD_TARGET, FOG_VOLUME_FORMAT)
+    uniform writeonly image3D fogSunwardTarget;
+layout(set = SET_VOLUME, binding = BIND_FOG_LAMPS_TARGET, FOG_VOLUME_FORMAT) uniform writeonly image3D fogLampsTarget;
+layout(set = SET_VOLUME, binding = BIND_FOG_AIR_TARGET, FOG_VOLUME_FORMAT) uniform writeonly image3D fogVolumeAirTarget;
+layout(set = SET_VOLUME, binding = BIND_FOG_AIR_SUNWARD_TARGET, FOG_SUNWARD_FORMAT)
+    uniform writeonly image3D fogVolumeSunwardTarget;
+layout(set = SET_VOLUME, binding = BIND_FOG_SLICE_TARGET, FOG_VOLUME_FORMAT) uniform writeonly image3D fogSliceTarget;
+layout(set = SET_VOLUME, binding = BIND_FOG_SLICE_SUNWARD_TARGET, FOG_SUNWARD_FORMAT)
+    uniform writeonly image3D fogSliceSunwardTarget;
 
 /// How far each column's ray runs before it meets a surface, which `fogdepth.rgen` writes and the
 /// scatter pass reads. **One storage binding for both**, because neither samples it: a column reads
 /// its own texel and nothing between texels.
-layout(set = 3, binding = BIND_FOG_COLUMN_DEPTH, FOG_DEPTH_FORMAT) uniform image2D fogColumnDepth;
+layout(set = SET_VOLUME, binding = BIND_FOG_COLUMN_DEPTH, FOG_DEPTH_FORMAT) uniform image2D fogColumnDepth;
 
 /// What each moon puts into the air along each column's ray, one layer a moon, which
 /// `fogdepth.rgen` writes and the scatter pass reads. `FogVolume::mColumnMoons` says why it is the
 /// column's and not the froxel's.
-layout(set = 3, binding = BIND_FOG_COLUMN_MOONS, FOG_MOONS_FORMAT) uniform image3D fogColumnMoons;
+layout(set = SET_VOLUME, binding = BIND_FOG_COLUMN_MOONS, FOG_MOONS_FORMAT) uniform image3D fogColumnMoons;
 
 #endif

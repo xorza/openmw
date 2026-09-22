@@ -36,6 +36,7 @@
 #include "camera.h"
 #include "colour.h"
 #include "gbuffer.h"
+#include "sets.h"
 
 #include "lib/pixels.glsl"
 
@@ -46,24 +47,24 @@ layout(local_size_x = ATROUS_WORKGROUP, local_size_y = ATROUS_WORKGROUP) in;
 /// **A sampled image and not a storage one, on every input this pass only reads.**
 /// `AtrousPass::sBindings` carries the measurement. A sampled declaration states no format, which
 /// is why these four name none where the target below does.
-layout(set = 0, binding = ATROUS_BIND_SOURCE) uniform texture2D source;
+layout(set = SET_PASS, binding = ATROUS_BIND_SOURCE) uniform texture2D source;
 
 /// Where this level puts what it made of it.
-layout(set = 0, binding = ATROUS_BIND_FILTERED, ATROUS_CHANNEL) uniform writeonly image2D filtered;
+layout(set = SET_PASS, binding = ATROUS_BIND_FILTERED, ATROUS_CHANNEL) uniform writeonly image2D filtered;
 
 /// The shading normal in `xyz`. A ray that hit nothing left a zero normal, which no surface can
 /// match, so the sky neither contributes nor gets filtered. `w` is roughness, which this does not
 /// read: the edge tests are about where a surface is, not what it is made of.
-layout(set = 0, binding = ATROUS_BIND_GUIDE) uniform texture2D guide;
+layout(set = SET_PASS, binding = ATROUS_BIND_GUIDE) uniform texture2D guide;
 
 /// Clip depth in `r` and the distance from the eye in `g`. This reads the second, in world units,
 /// because a tolerance against a clip value would mean something different at every distance.
-layout(set = 0, binding = ATROUS_BIND_DEPTH) uniform texture2D depth;
+layout(set = SET_PASS, binding = ATROUS_BIND_DEPTH) uniform texture2D depth;
 
 /// The estimator's own variance in `b`, written by the accumulator in front of this cascade. One
 /// where a pixel has no history to have measured a spread with, which reads as "trust the
 /// neighbours entirely" and is the honest answer for a single sample.
-layout(set = 0, binding = ATROUS_BIND_MOMENTS) uniform texture2D moments;
+layout(set = SET_PASS, binding = ATROUS_BIND_MOMENTS) uniform texture2D moments;
 
 layout(push_constant, scalar) uniform Push
 {

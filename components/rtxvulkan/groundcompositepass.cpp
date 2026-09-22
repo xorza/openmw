@@ -22,8 +22,8 @@ namespace Rtx
 
     GroundCompositePass::GroundCompositePass(
         const Device& device, const std::filesystem::path& shaderDirectory, const VkDescriptorSetLayout textures)
-        : mPipeline(device, sBindings, sizeof(Shaders::GroundCompositeConstants), std::array{ textures },
-            shaderDirectory / "groundcomposite.comp.spv", "ground composite")
+        : mPipeline(device, sBindings, sizeof(Shaders::GroundCompositeConstants),
+            SharedSetLayouts{ .mTextures = textures }, shaderDirectory / "groundcomposite.comp.spv", "ground composite")
     {
     }
 
@@ -38,9 +38,9 @@ namespace Rtx
         DescriptorWrites<Shaders::GROUND_COMPOSITE_BINDINGS> writes;
         writes.image(Shaders::GROUND_COMPOSITE_BIND_TARGET, composite.describeStorage());
 
-        // The scene's textures beside set zero, which the two are independent of: a pushed set
+        // The scene's textures beside the pushed set, which the two are independent of: a pushed set
         // and a bound one only have to be in place by the dispatch.
-        bindSets(commands, mPipeline, std::span(&textures, 1));
+        bindSets(commands, mPipeline, SharedSetBinds{ .mTextures = textures });
 
         constexpr std::uint32_t groups
             = groupsFor(Shaders::GROUND_COMPOSITE_EXTENT, Shaders::GROUND_COMPOSITE_WORKGROUP);

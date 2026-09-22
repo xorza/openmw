@@ -16,6 +16,7 @@
 #include "commands.hpp"
 #include "device.hpp"
 #include "dispatch.hpp"
+#include "formats.hpp"
 #include "imageuse.hpp"
 #include "pipeline.hpp"
 
@@ -77,8 +78,10 @@ namespace Rtx
             tile.mField = Buffer::deviceLocal(mDevice, fieldOf(sWaveTiles[index].mGrid) * 2 * sizeof(float),
                 VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, tileName("field", index));
 
-            tile.mSurface = Image(mDevice, grid, grid, WAVE_TILE_FORMAT, usage, tileName("surface", index), levels);
-            tile.mCurvature = Image(mDevice, grid, grid, WAVE_TILE_FORMAT, usage, tileName("curvature", index), levels);
+            tile.mSurface = Image(
+                mDevice, grid, grid, toVulkanFormat(WAVE_TILE_FORMAT), usage, tileName("surface", index), levels);
+            tile.mCurvature = Image(
+                mDevice, grid, grid, toVulkanFormat(WAVE_TILE_FORMAT), usage, tileName("curvature", index), levels);
         }
 
         describe(mSea);

@@ -5,6 +5,7 @@
 #include "hosttypes.h"
 #include "look.h"
 #include "portable.h"
+#include "storageformat.h"
 
 // What one wavelet level of the denoiser needs. Included verbatim by both sides, for the reason
 // `visibility.h` is.
@@ -26,15 +27,7 @@
 // `theFilterAndItsHistoryConvergeOnAGrazingSurface` is that scene, and it carries the pair of
 // figures.
 
-#ifdef RTX_HOST
-
-#define ATROUS_CHANNEL VK_FORMAT_R16G16B16A16_SFLOAT
-
-#else
-
-#define ATROUS_CHANNEL rgba16f
-
-#endif
+#define ATROUS_CHANNEL STORAGE_RGBA16F
 
 #ifdef RTX_HOST
 namespace Rtx::Shaders

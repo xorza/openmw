@@ -216,9 +216,9 @@ namespace Rtx
         /// of wall time cold, and `PipelineCache` outlives the process.
         void compileEvery(const std::filesystem::path& shaders, VkDescriptorSetLayout textureLayout);
 
-        /// The sets bound after the pushed one, in the order both kernels declare them. A pipeline
-        /// layout names every set it will ever be handed, and the two kernels are handed the same.
-        std::array<VkDescriptorSetLayout, 3> laterSets(VkDescriptorSetLayout textureLayout) const;
+        /// The shared sets every kernel of the pass reads. A pipeline layout names every set it will
+        /// ever be handed, and the kernels are handed the same.
+        SharedSetLayouts sharedSets(VkDescriptorSetLayout textureLayout) const;
 
         /// Writes the frame's own block into `mConstants`, barriered against both the dispatch
         /// before it and the one after.

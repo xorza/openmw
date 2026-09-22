@@ -12,6 +12,7 @@
 #include "barriers.hpp"
 #include "device.hpp"
 #include "dispatch.hpp"
+#include "formats.hpp"
 #include "imageuse.hpp"
 
 namespace Rtx
@@ -54,7 +55,7 @@ namespace Rtx
             // `TRANSFER_SRC` because the levels are the whole of what this pass produces and so the
             // only thing a reader can check it by — `GBuffer::sReadable` carries the bit for the
             // same reason, and it costs no memory either.
-            mLevels.emplace_back(mDevice, width, height, BLOOM_LEVEL,
+            mLevels.emplace_back(mDevice, width, height, toVulkanFormat(BLOOM_LEVEL),
                 VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
                 std::format("bloom level {}", level));
         }
