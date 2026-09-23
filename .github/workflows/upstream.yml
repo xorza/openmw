@@ -182,7 +182,11 @@ jobs:
             pull request anyway. Put what is unresolved in the first line of the body. A branch
             somebody can take over beats a run that threw its work away.
 
+          # `opus` is Claude Code's alias for the newest Opus, and not a pinned version: a merge
+          # that needs judgement gets the strongest model there is, where the account's default
+          # is whatever its plan names.
           claude_args: |
+            --model opus
             --max-turns 60
             --allowedTools "Bash(git:*),Bash(gh pr create:*),Bash(clang-format-14:*),Bash(CI/check_clang_format.sh:*),Read,Edit,Write,Grep,Glob"
 
