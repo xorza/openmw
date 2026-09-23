@@ -81,6 +81,28 @@ jobs:
           # with. What is kept is this job's own token, which is the three permissions above and
           # expires with the job.
 
+      # **The branches of merges that are over.** A merge `github-actions` made keeps its branch:
+      # "Automatically delete head branches" acts on a merge a user made, and an auto-merge is the
+      # merge of whoever turned it on. `upstream-cleanup.yml` cannot see one either, since a merge
+      # made with `GITHUB_TOKEN` starts no workflow. So every run starts by deleting each
+      # `upstream-merge/` branch no open pull request stands on — merged or closed, it is done.
+      - name: Delete the branches of finished merges
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          open=$(gh pr list --state open --limit 1000 --json headRefName,isCrossRepository \
+            --jq '[.[] | select(.isCrossRepository | not) | .headRefName]')
+
+          gh api --paginate "repos/$GH_REPO/git/matching-refs/heads/upstream-merge/" --jq '.[].ref' |
+            while read -r ref; do
+              branch=${ref#refs/heads/}
+              if ! jq -e --arg branch "$branch" 'index($branch)' <<< "$open" > /dev/null; then
+                gh api -X DELETE "repos/$GH_REPO/git/$ref"
+                echo "deleted $branch"
+              fi
+            done
+
       # Deterministic, so the shell does it and not the agent: fetching, counting, naming the
       # branch and asking whether there is already a merge to read need no judgement, and what is
       # not in the prompt is not a command the agent has to be trusted with. A run with nothing to
