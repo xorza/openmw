@@ -56,6 +56,7 @@ set(RTX_TEST_FILES
     rtx/shading.cpp
     rtx/shadingmap.cpp
     rtx/shapefold.cpp
+    rtx/sharedtexture.cpp
     rtx/skybuilder.cpp
     rtx/skylight.cpp
     rtx/slots.cpp

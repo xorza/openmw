@@ -13,8 +13,6 @@
 #include <components/rtx/guirenderer.hpp>
 #include <components/vfs/pathutil.hpp>
 
-#include "rgbarows.hpp"
-
 namespace MyGUIRtx
 {
     namespace
@@ -84,10 +82,7 @@ namespace MyGUIRtx
         const osg::ref_ptr<osg::Image> image = mImageManager->getImage(VFS::Path::Normalized(fname));
 
         createManual(image->s(), image->t(), MyGUI::TextureUsage::Static, MyGUI::PixelFormat::R8G8B8A8);
-
-        writeRgbaRows(*image, 0, image->t(), mRenderer.lendGuiTexture(getSlot(), whole()).data());
-
-        mRenderer.sendGuiTexture(getSlot());
+        sendImage(*image);
     }
 
     void Texture::destroy()

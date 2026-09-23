@@ -9,11 +9,16 @@
 #include <components/rtx/guirenderer.hpp>
 #include <components/rtx/slot.hpp>
 
+namespace osg
+{
+    class Image;
+}
+
 namespace MyGUIRtx
 {
     /// A picture the GUI draws with, held as a slot in the renderer's own table: what the two
     /// kinds of texture here share, which is the slot, its size and its name. `Texture` is one the
-    /// interface makes and writes; `SharedTexture` mirrors a picture the game holds.
+    /// interface makes and writes; a `MirrorTexture` mirrors a picture the game holds.
     class SlotTexture : public MyGUI::ITexture
     {
     public:
@@ -51,8 +56,14 @@ namespace MyGUIRtx
         /// Takes the slot back and forgets the size, so the next `take` starts clean.
         void drop();
 
-        /// The whole surface, which is what every write but the world map's covers.
+        /// The whole surface, which is what every write but a painted rectangle covers.
         Rtx::GuiRegion whole() const;
+
+        /// Sends `image`, the slot's size, as the whole of it at four bytes a pixel. One `memcpy`
+        /// where the image already is that, and a pixel at a time where it is not:
+        /// `osg::Image::getColor` is the only thing that reads every format OpenSceneGraph loads,
+        /// and it is a virtual call and a `Vec4f` per pixel.
+        void sendImage(const osg::Image& image);
 
         Rtx::GuiRenderer& mRenderer;
 

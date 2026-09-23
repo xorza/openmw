@@ -1,8 +1,5 @@
 #pragma once
 
-#include <cstdint>
-#include <vector>
-
 #include <osg/ref_ptr>
 
 #include <components/rtx/guirenderer.hpp>
@@ -17,12 +14,16 @@ namespace osg
 
 namespace MyGUIRtx
 {
-    /// A mirror of a picture the game holds as an `osg::Image`. A video frame, the world map's
-    /// base, a save's thumbnail and the frozen loading frame are written into images the game then
-    /// marks dirty or puts under the texture, which is how the rasterizer is handed them; this
-    /// backend cannot draw an OSG texture, so it reads the image again whenever its modified count
-    /// moves — `refresh`, from `doRender` — and sends the rows that changed. A picture whose
-    /// painter names what it painted, the fog of war and the map's overlay, is `PaintedMirror`.
+    /// A mirror of a picture the game holds as an `osg::Image`: a video frame, the world map's
+    /// base, a save's thumbnail and the frozen loading frame. This backend cannot draw an OSG
+    /// texture, so it reads the image again whenever another one is put under the texture or its
+    /// modified count moves — `refresh`, from `doRender` — and sends it whole.
+    ///
+    /// **Whole, because none of these is written in part.** A video puts each frame under the
+    /// texture as another image, and the other three are written once. A picture written in part
+    /// names the rectangle it painted, and is `PaintedMirror`: a comparison against a copy of what
+    /// was sent would find that rectangle at the price of the copy, which for the frozen frame is
+    /// the whole output held for the life of the game.
     class SharedTexture final : public MirrorTexture
     {
     public:
@@ -32,24 +33,17 @@ namespace MyGUIRtx
         /// Out of line, so a holder of one needs no more of OpenSceneGraph than a name.
         ~SharedTexture() override;
 
-        /// Brings the mirror up to date with its image.
-        ///
-        /// **Once per draw and not per write**, because a draw is where the picture is read. What
-        /// was seen last is kept, so what goes to the device is the run of rows that differ. A new
-        /// image under the texture goes whole.
+        /// Brings the mirror up to date with its image, once per draw and not per write, because a
+        /// draw is where the picture is read.
         void refresh() override;
 
     private:
-        /// The picture this mirrors.
         osg::ref_ptr<osg::Texture2D> mSource;
 
-        /// The image last sent and its modified count, so `refresh` can tell a frame with nothing
-        /// new from one with a row changed.
-        const osg::Image* mSeen = nullptr;
+        /// The image last sent and its modified count, so `refresh` can tell a draw with nothing
+        /// new from one with a new picture. Held, because an image the game let go of could be
+        /// followed by another at its address with the same count, which would then never be sent.
+        osg::ref_ptr<const osg::Image> mSeen;
         unsigned int mSeenCount = 0;
-
-        /// A copy of the image's own bytes as last sent, row by row, so a write of a few rows costs
-        /// a comparison and those rows. Empty until the first send.
-        std::vector<std::uint8_t> mLastSent;
     };
 }

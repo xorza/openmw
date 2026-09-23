@@ -23,7 +23,7 @@
 
 namespace Rtx::Testing
 {
-    /// A renderer that records which of the three calls it was given, and nothing else.
+    /// A renderer that records what it was given.
     ///
     /// **The decision is what is under test, so nothing here draws.** What `extendScene` and
     /// `setScene` do with the descriptions has its own tests against a real device
@@ -122,10 +122,15 @@ namespace Rtx::Testing
         std::optional<Rtx::FrameResult> collectFrame() override { return std::nullopt; }
         void presentFrame() override {}
 
-        /// The GUI is not what this counts. Slots go up and nothing is drawn.
+        /// Slots go up, what a texture is sent is kept for a test to read, and nothing is drawn.
         Rtx::GuiSlot addGuiTexture(std::uint32_t, std::uint32_t) override { return Rtx::GuiSlot::at(mGuiTextures++); }
-        std::span<std::uint8_t> lendGuiTexture(Rtx::GuiSlot, const Rtx::GuiRegion&) override { return {}; }
-        void sendGuiTexture(Rtx::GuiSlot) override {}
+        std::span<std::uint8_t> lendGuiTexture(Rtx::GuiSlot, const Rtx::GuiRegion& region) override
+        {
+            mLent.push_back(region);
+            mLending.assign(std::size_t{ region.mWidth } * region.mHeight * 4, 0);
+            return mLending;
+        }
+        void sendGuiTexture(Rtx::GuiSlot) override { ++mGuiSent; }
         void dropGuiTexture(Rtx::GuiSlot) override {}
         void drawGui(std::span<const Rtx::GuiVertex>, std::span<const Rtx::GuiBatch>) override {}
         void traceGuiTexture(
@@ -220,6 +225,12 @@ namespace Rtx::Testing
 
         /// What `getProfile` answers, which a test sets to say what the run decided.
         Rtx::RenderProfile mProfile;
+
+        /// Every rectangle of a GUI texture lent, in order, the bytes written into the last one,
+        /// and how many were sent back: what a mirror of a picture the game holds sent the device.
+        std::vector<Rtx::GuiRegion> mLent;
+        std::vector<std::uint8_t> mLending;
+        std::uint32_t mGuiSent = 0;
 
         /// The constants the last picture inside the interface was traced with, or nothing before
         /// the first: what says a picture was traced under the run's rules.

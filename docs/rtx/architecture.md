@@ -301,12 +301,12 @@ game wrote.
 | kind             | made by                                  | used for                                                          | how the pixels get in                                              |
 |------------------|------------------------------------------|-------------------------------------------------------------------|--------------------------------------------------------------------|
 | `Texture`        | `createTexture`, `takeTexture`           | fonts, skins, the 8 × 8 helper textures, and every traced picture   | MyGUI's `lock` and `unlock`, which are `lendGuiTexture` and `sendGuiTexture`. The buffer lent is the renderer's own staging memory, write-combined: write it, never read it. Fewer than four channels are widened on the way out. `loadFromFile` reads through the image manager |
-| `SharedTexture`  | `shareTexture(osg::Texture2D&)`           | video frames, the global map's base, a save's thumbnail, the frozen loading frame | `refresh` compares the image's modified count, then its rows against a kept copy, and sends the run of rows that differ. A new image under the texture goes whole |
+| `SharedTexture`  | `shareTexture(osg::Texture2D&)`           | video frames, the global map's base, a save's thumbnail, the frozen loading frame | `refresh` sends the whole image when another image is under the texture or its modified count moved, and nothing otherwise: none of these is written in part |
 | `PaintedMirror`  | `shareTexture(SceneUtil::PaintedTexture&)` | the fog of war, the world map overlay                             | the painter names the rectangle; `refresh` sends that rectangle and nothing else |
 
 `MirrorTexture` is the base of the two mirrors: `createManual`, `lock` and `loadFromFile`
-throw, because the picture is the game's. `rgbarows.hpp` turns any OSG image format into
-four bytes a pixel. `getRenderTarget` is null in both backends: nothing renders a widget tree
+throw, because the picture is the game's. `SlotTexture::sendImage` turns any OSG image format
+into four bytes a pixel. `getRenderTarget` is null in both backends: nothing renders a widget tree
 to a texture.
 
 ### 6.4 The backend's half

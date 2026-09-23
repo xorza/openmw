@@ -9,8 +9,6 @@ set(RTX_MYGUI_FILES
     additivelayer.hpp
     rendermanager.cpp
     rendermanager.hpp
-    rgbarows.cpp
-    rgbarows.hpp
     mirrortexture.cpp
     mirrortexture.hpp
     paintedmirror.cpp

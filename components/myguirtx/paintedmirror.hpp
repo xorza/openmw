@@ -16,9 +16,8 @@ namespace SceneUtil
 namespace MyGUIRtx
 {
     /// A mirror of a picture the game paints, `SceneUtil::PaintedTexture`: the fog of war and the
-    /// world map's overlay. Where `SharedTexture` compares every row of its image to find what
-    /// changed, this is told — the painter names the rectangle — and sends that rectangle and
-    /// nothing else.
+    /// world map's overlay. Where `SharedTexture` sends its picture whole, this is told what
+    /// changed — the painter names the rectangle — and sends that rectangle and nothing else.
     class PaintedMirror final : public MirrorTexture
     {
     public:

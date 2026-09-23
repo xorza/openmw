@@ -119,7 +119,7 @@ if (OPENMW_RTX)
     # Vulkan itself as well, because these tests reach into the backend's own headers, which a host
     # does not: `build.cmake` says where it is found and why.
     target_link_libraries(components-tests openmw-rtx openmw-rtx-bench
-                          openmw-rtx-vulkan openmw-rtxtool-lib Vulkan::Vulkan)
+                          openmw-rtx-vulkan openmw-rtx-mygui openmw-rtxtool-lib Vulkan::Vulkan)
 
     # Where the build wrote the shaders, for the tests that read a module or stage the resources
     # beside them. Told to the two test binaries and to nothing else: a path into the build tree is
