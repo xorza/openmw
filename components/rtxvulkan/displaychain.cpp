@@ -79,7 +79,8 @@ namespace Rtx
         assert(what.mInputs.mChannels != nullptr && "a display over a trace that left no channels");
         const GBuffer& channels = *what.mInputs.mChannels;
 
-        mPuffs.recordSpriteComposite(commands, what.mInputs, what.mExtent, what.mTimer);
+        mPuffs.recordSpriteComposite(commands, what.mInputs, what.mExtent,
+            VkExtent2D{ what.mSampled.mCamera.mWidth, what.mSampled.mCamera.mHeight }, what.mTimer);
         what.mShown.transition(commands, Use::sTraceReadWrite, Use::sComputeReadOrSample);
 
         // What the lens will spread, built here and applied by the curve. Nothing is written back

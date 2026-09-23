@@ -202,8 +202,9 @@ namespace Rtx
         ///        a frame's, and a picture's own size inside an image that may be larger. The
         ///        block is the one the trace wrote, so the traced camera and the bin are read
         ///        from there.
-        void recordSpriteComposite(
-            VkCommandBuffer commands, const VisibilityInputs& inputs, VkExtent2D shown, GpuTimer* timer) const;
+        /// @param traced the extent the trace ran at, its camera's, which the launch covers.
+        void recordSpriteComposite(VkCommandBuffer commands, const VisibilityInputs& inputs, VkExtent2D shown,
+            VkExtent2D traced, GpuTimer* timer) const;
 
         /// The longest any launch here took the driver to create, `TracePipeline::getCompileMs`,
         /// or nought where every one came out of a cache.

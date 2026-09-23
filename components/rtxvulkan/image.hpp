@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
+#include <span>
 #include <string_view>
 #include <vector>
 
@@ -133,11 +134,17 @@ namespace Rtx
         /// either side.
         void copyTo(VkCommandBuffer commands, const Image& into, VkImageLayout intoLayout, VkExtent2D extent) const;
 
-        /// Fills every level below the first by halving the one above it, in `VK_FILTER_LINEAR` —
-        /// a box filter, which is what a moment wants: a channel carrying a square averages to a
-        /// mean square. Takes and leaves the image in `VK_IMAGE_LAYOUT_GENERAL`, ordered against a
-        /// sampled read. Needs both transfer usage bits.
-        void buildMips(VkCommandBuffer commands) const;
+        /// Fills every level below the first of each of `images` by halving the one above it, in
+        /// `VK_FILTER_LINEAR` — a box filter, which is what a moment wants: a channel carrying a
+        /// square averages to a mean square. Takes and leaves each image in
+        /// `VK_IMAGE_LAYOUT_GENERAL`, ordered against a sampled read. Needs both transfer usage bits.
+        ///
+        /// **The chains in step, and one barrier a level for all of them.** A level waits on the
+        /// level above it in its own chain and on nothing else, so the same level of every chain is
+        /// blitted and the queue drained once. Built one image at a time, the sea's four chains
+        /// drained it forty-four times a frame, over levels most of which are a few texels wide and
+        /// cost nothing but the drain.
+        static void buildMips(VkCommandBuffer commands, std::span<const Image* const> images);
 
         /// Copies one level to host memory, one texel's bytes per pixel, tightly packed, row by row.
         /// Left in the layout it was handed. Submits and waits, so it belongs to a screenshot

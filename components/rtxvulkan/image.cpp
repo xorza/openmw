@@ -301,56 +301,66 @@ namespace Rtx
         barriers.flush();
     }
 
-    void Image::buildMips(VkCommandBuffer commands) const
+    void Image::buildMips(VkCommandBuffer commands, const std::span<const Image* const> images)
     {
-        assert(!isEmpty() && "a chain built on an image nobody made");
-
-        assert((mUsage & VK_IMAGE_USAGE_TRANSFER_SRC_BIT) != 0 && "a chain reads the level above it");
-        assert((mUsage & VK_IMAGE_USAGE_TRANSFER_DST_BIT) != 0 && "a chain writes the level below it");
-        assert(mDepth == 1 && "a volume's chain is uploaded rather than blitted");
-
-        if (mMipLevels <= 1)
-            return;
-
         // The written level becomes the first source; the rest hold whatever the last frame left,
-        // which every blit below overwrites whole. One command for both, so the queue drains the
-        // dispatch once and not twice.
+        // which every blit below overwrites whole. One command for every chain, so the queue drains
+        // the dispatches once.
+        std::uint32_t deepest = 1;
         Barriers opened(commands);
-        opened.add(describeLevels(0, 1, Use::sComputeWrite, Use::sBlitRead));
-        opened.add(describeLevels(1, mMipLevels - 1, Use::sUndefined, Use::sBlitWrite));
+        for (const Image* image : images)
+        {
+            assert(!image->isEmpty() && "a chain built on an image nobody made");
+            assert((image->mUsage & VK_IMAGE_USAGE_TRANSFER_SRC_BIT) != 0 && "a chain reads the level above it");
+            assert((image->mUsage & VK_IMAGE_USAGE_TRANSFER_DST_BIT) != 0 && "a chain writes the level below it");
+            assert(image->mDepth == 1 && "a volume's chain is uploaded rather than blitted");
+
+            if (image->mMipLevels <= 1)
+                continue;
+
+            deepest = std::max(deepest, image->mMipLevels);
+            opened.add(image->describeLevels(0, 1, Use::sComputeWrite, Use::sBlitRead));
+            opened.add(image->describeLevels(1, image->mMipLevels - 1, Use::sUndefined, Use::sBlitWrite));
+        }
         opened.flush();
 
-        std::uint32_t width = mWidth;
-        std::uint32_t height = mHeight;
-
-        for (std::uint32_t level = 1; level < mMipLevels; ++level)
+        for (std::uint32_t level = 1; level < deepest; ++level)
         {
-            // A level never falls below one texel, which is what makes the last of them the whole
-            // image's own mean.
-            const std::uint32_t halfWidth = std::max(width / 2, 1u);
-            const std::uint32_t halfHeight = std::max(height / 2, 1u);
+            Barriers written(commands);
+            for (const Image* image : images)
+            {
+                if (level >= image->mMipLevels)
+                    continue;
 
-            const VkImageBlit region{
-                .srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, level - 1, 0, 1 },
-                .srcOffsets = { {}, { static_cast<std::int32_t>(width), static_cast<std::int32_t>(height), 1 } },
-                .dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, level, 0, 1 },
-                .dstOffsets
-                = { {}, { static_cast<std::int32_t>(halfWidth), static_cast<std::int32_t>(halfHeight), 1 } },
-            };
-            vkCmdBlitImage(commands, mHandle.get(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, mHandle.get(),
-                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region, VK_FILTER_LINEAR);
+                // A level never falls below one texel, which is what makes the last of them the
+                // whole image's own mean.
+                const VkImageBlit region{
+                    .srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, level - 1, 0, 1 },
+                    .srcOffsets = { {},
+                        { static_cast<std::int32_t>(image->getWidthAt(level - 1)),
+                            static_cast<std::int32_t>(image->getHeightAt(level - 1)), 1 } },
+                    .dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, level, 0, 1 },
+                    .dstOffsets = { {},
+                        { static_cast<std::int32_t>(image->getWidthAt(level)),
+                            static_cast<std::int32_t>(image->getHeightAt(level)), 1 } },
+                };
+                vkCmdBlitImage(commands, image->mHandle.get(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                    image->mHandle.get(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region, VK_FILTER_LINEAR);
 
-            // What was just written is the next blit's source, which is the whole of the ordering:
-            // every level is written once and read once, by the step after it.
-            transitionLevels(commands, level, 1, Use::sBlitWrite, Use::sBlitRead);
-
-            width = halfWidth;
-            height = halfHeight;
+                // What was just written is the next blit's source, which is the whole of the
+                // ordering: every level is written once and read once, by the step after it.
+                written.add(image->describeLevels(level, 1, Use::sBlitWrite, Use::sBlitRead));
+            }
+            written.flush();
         }
 
         // Both stages, because the wave tiles are what has a chain: the fog volume samples them as
         // a dispatch and the trace as a launch.
-        transitionLevels(commands, 0, mMipLevels, Use::sBlitRead, Use::sShaderSample);
+        Barriers sampled(commands);
+        for (const Image* image : images)
+            if (image->mMipLevels > 1)
+                sampled.add(image->describeLevels(0, image->mMipLevels, Use::sBlitRead, Use::sShaderSample));
+        sampled.flush();
     }
 
     VkDeviceSize Image::getReadBytes(const std::uint32_t level) const

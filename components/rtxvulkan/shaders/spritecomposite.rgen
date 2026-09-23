@@ -27,6 +27,13 @@
 // **One pass for both denoisers.** Under the wavelet the shown extent is the traced one and this
 // runs at it; nothing else composites a puff anywhere in this renderer.
 //
+// **One invocation a traced pixel, for every shown pixel whose centre lands on it.** Whether a
+// puff can be there at all is a fact about the traced pixel — its tile's run of sprites and its
+// shells — and most of every frame holds none. Launched over the shown grid, each of the three
+// shown pixels over a traced one at `balanced` made the same test at the occupancy the full path's
+// registers allow: 0.30 ms of a 4K frame, where the traced grid takes 0.12. The shown pixels are
+// the run `shownPixelsFrom` gives, so each is composited exactly as it was.
+//
 // **A launch and not a dispatch**, for the reason `RtxSourceTreeTest` gives: the sprite march
 // reaches the fog, and the fog reaches the traversal, and a dispatch that can trace answers
 // differently under another process's preemption. Nothing here traces.
@@ -45,28 +52,15 @@
 /// The frame as it will be shown, read and written in place.
 layout(set = SET_PASS, binding = BIND_SHOWN) uniform image2D shown;
 
-void main()
+layout(push_constant, scalar) uniform Push
 {
-    // The launch is the picture's extent and not the image's, which a picture inside the
-    // interface uses a corner of.
-    const uvec2 pixel = gl_LaunchIDEXT.xy;
-    const uvec2 extent = gl_LaunchSizeEXT.xy;
-    const uvec2 tracedExtent = uvec2(frame.mCamera.mWidth, frame.mCamera.mHeight);
+    PuffConstants picture;
+};
 
-    // Where this pixel's centre lands on the traced grid.
+/// Composites the puffs over one shown pixel, whose centre falls in `traced`.
+void compositeAt(uvec2 pixel, uvec2 extent, uvec2 tracedExtent, uvec2 traced, vec3 stood)
+{
     const vec2 across = vec2(tracedExtent) / vec2(extent);
-    const uvec2 traced = tracedPixelUnder(pixel, extent, tracedExtent);
-
-    // What the trace left at that pixel: how far the puffs stand, what the shells let through, and
-    // which eye the ray was cast from — the arms' where the arms were found, so the march here runs
-    // along the same ray the trace lit them on.
-    const vec3 stood = imageLoad(puffsDepth, ivec2(traced)).xyz;
-
-    // **Nothing to draw and nothing to write.** The curve makes the same test and reads a one
-    // where this wrote nothing; `puffsCoverNothing` says what it saves.
-    if (puffsCoverNothing(SpriteTileList(frame.mTables.mSpriteTileList), frame.mCamera.mWidth, traced, stood.y,
-            frame.mAdditiveInFrame))
-        return;
 
     // The traced camera on this grid — `cameraOnGrid` says why it is the same basis.
     const Camera camera = cameraOnGrid(stood.z > 0.5 ? frame.mArms : frame.mCamera, extent.x, extent.y);
@@ -144,4 +138,28 @@ void main()
         = airBefore + layer.mColour * opacity + layer.mAdded + layer.mTransmittance * max(before.rgb - airBefore, vec3(0.0));
 
     imageStore(shown, ivec2(pixel), vec4(composited, coverAlpha ? layer.mTransmittance : before.a));
+}
+
+void main()
+{
+    const uvec2 traced = gl_LaunchIDEXT.xy;
+    const uvec2 tracedExtent = gl_LaunchSizeEXT.xy;
+    const uvec2 extent = uvec2(picture.mShownWidth, picture.mShownHeight);
+
+    // What the trace left at this pixel: how far the puffs stand, what the shells let through, and
+    // which eye the ray was cast from — the arms' where the arms were found, so the march here runs
+    // along the same ray the trace lit them on.
+    const vec3 stood = imageLoad(puffsDepth, ivec2(traced)).xyz;
+
+    // **Nothing to draw and nothing to write.** The curve makes the same test and reads a one
+    // where this wrote nothing; `puffsCoverNothing` says what it saves.
+    if (puffsCoverNothing(SpriteTileList(frame.mTables.mSpriteTileList), tracedExtent.x, traced, stood.y,
+            frame.mAdditiveInFrame))
+        return;
+
+    const uvec2 first = shownPixelsFrom(traced, extent, tracedExtent);
+    const uvec2 end = shownPixelsFrom(traced + 1u, extent, tracedExtent);
+    for (uint y = first.y; y < end.y; ++y)
+        for (uint x = first.x; x < end.x; ++x)
+            compositeAt(uvec2(x, y), extent, tracedExtent, traced, stood);
 }

@@ -245,7 +245,8 @@ namespace Rtx
         mIntegratePipeline = std::make_unique<ComputePipeline>(
             mDevice, sBindings, 0, sharedSets(textureLayout), integrate, "fog integrate");
         mSpriteCompositePipeline = std::make_unique<TracePipeline>(mDevice, sBindings, sharedSets(textureLayout),
-            TraceShaders{ .mRaygen = spriteComposite }, "sprite composite");
+            TraceShaders{ .mRaygen = spriteComposite, .mRaygenConstantBytes = sizeof(Shaders::PuffConstants) },
+            "sprite composite");
         mSpriteShelterPipeline = std::make_unique<TracePipeline>(mDevice, sBindings, sharedSets(textureLayout),
             TraceShaders{ .mRaygen = shaders / "spriteshelter.rgen.spv" }, "sprite shelter");
 
@@ -608,7 +609,7 @@ namespace Rtx
     }
 
     void VisibilityPass::recordSpriteComposite(const VkCommandBuffer commands, const VisibilityInputs& inputs,
-        const VkExtent2D shown, GpuTimer* const timer) const
+        const VkExtent2D shown, const VkExtent2D traced, GpuTimer* const timer) const
     {
         assert(inputs.mShown != nullptr && "a composite over no frame");
         assert(shown.width <= inputs.mShown->getWidth() && shown.height <= inputs.mShown->getHeight()
@@ -620,9 +621,12 @@ namespace Rtx
 
         bind(commands, *mSpriteCompositePipeline);
         pushInputs(commands, *mSpriteCompositePipeline, inputs);
+        pushConstants(commands, *mSpriteCompositePipeline,
+            Shaders::PuffConstants{ .mShownWidth = shown.width, .mShownHeight = shown.height });
 
-        // One invocation a pixel of the picture, whose extent the shader reads off the launch.
-        mSpriteCompositePipeline->traceRays(commands, shown.width, shown.height);
+        // One invocation a traced pixel, which composites the shown pixels over it —
+        // `spritecomposite.rgen` says why.
+        mSpriteCompositePipeline->traceRays(commands, traced.width, traced.height);
 
         closeZone(timer, commands);
     }

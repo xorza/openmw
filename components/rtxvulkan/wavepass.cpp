@@ -45,6 +45,11 @@ namespace Rtx
             return 3 * grid * grid;
         }
 
+        std::uint32_t gridOf(std::size_t cascade)
+        {
+            return static_cast<std::uint32_t>(sWaveTiles[cascade].mGrid);
+        }
+
         /// What a capture calls one of a cascade's objects, or nothing where no build names any:
         /// the formatting is a trip to the heap for a name that goes nowhere.
         std::string tileName([[maybe_unused]] std::string_view what, [[maybe_unused]] std::size_t cascade)
@@ -72,7 +77,7 @@ namespace Rtx
         for (std::size_t index = 0; index < Shaders::WAVE_CASCADES; ++index)
         {
             Tile& tile = mTiles[index];
-            const std::uint32_t grid = static_cast<std::uint32_t>(sWaveTiles[index].mGrid);
+            const std::uint32_t grid = gridOf(index);
             const std::uint32_t levels = levelsFor(sWaveTiles[index].mGrid);
 
             tile.mField = Buffer::deviceLocal(mDevice, fieldOf(sWaveTiles[index].mGrid) * 2 * sizeof(float),
@@ -122,49 +127,31 @@ namespace Rtx
                 VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT });
     }
 
-    void WavePass::transform(VkCommandBuffer commands, const Tile& tile, std::uint32_t count) const
-    {
-        // Bound and pushed once for the six dispatches below, which differ in their constants alone.
-        DescriptorWrites<Shaders::WAVE_LINE_BINDINGS> writes;
-        writes.buffer(Shaders::WAVE_LINE_BIND_FIELD, tile.mField.describe());
-
-        bind(commands, mLinePipeline);
-        pushDescriptors(commands, mLinePipeline, writes.get());
-
-        // Three packed fields, each transformed along its rows and then along its columns — which is
-        // the same shader with its two strides swapped, because a separable transform is the
-        // one-dimensional one run twice.
-        for (std::uint32_t pair = 0; pair < 3; ++pair)
-            for (int pass = 0; pass < 2; ++pass)
-            {
-                const Shaders::WaveConstants along{
-                    .mCount = count,
-                    .mStride = pass == 0 ? 1u : count,
-                    .mJump = pass == 0 ? count : 1u,
-                    .mOffset = pair * count * count,
-                };
-
-                pushConstants(commands, mLinePipeline, along);
-                vkCmdDispatch(commands, count, 1, 1);
-                handOver(commands);
-            }
-    }
-
     void WavePass::record(VkCommandBuffer commands, float seconds) const
     {
+        // **The cascades in step, one barrier a stage for both.** A cascade's stages wait on each
+        // other and never on the other cascade's, so each stage is dispatched for every tile before
+        // the queue drains: one tile at a time drained it after every dispatch of both.
+
+        // Every level is written whole below, so none needs what the last frame left in it. The
+        // last frame's trace may still be sampling it, and the head barrier `CommandPool::begin`
+        // recorded is what orders this buffer after that.
+        std::array<const Image*, 2 * Shaders::WAVE_CASCADES> images{};
+        for (std::size_t index = 0; index < Shaders::WAVE_CASCADES; ++index)
+        {
+            images[2 * index] = &mTiles[index].mSurface;
+            images[2 * index + 1] = &mTiles[index].mCurvature;
+        }
+
+        Barriers opened(commands);
+        for (const Image* image : images)
+            opened.add(image->describeTransition(Use::sUndefined, Use::sComputeWrite));
+        opened.flush();
+
         for (std::size_t index = 0; index < Shaders::WAVE_CASCADES; ++index)
         {
             const Tile& tile = mTiles[index];
-            const std::uint32_t grid = static_cast<std::uint32_t>(sWaveTiles[index].mGrid);
-
-            // Every level is written whole below, so none needs what the last frame left in it.
-            // The last frame's trace may still be sampling it, and the head barrier
-            // `CommandPool::begin` recorded is what orders this buffer after that.
-            Barriers opened(commands);
-            for (const Image* image : { &tile.mSurface, &tile.mCurvature })
-                opened.add(image->describeTransition(Use::sUndefined, Use::sComputeWrite));
-
-            opened.flush();
+            const std::uint32_t grid = gridOf(index);
 
             DescriptorWrites<Shaders::WAVE_FORM_BINDINGS> forms;
             forms.buffer(Shaders::WAVE_FORM_BIND_AMPLITUDES, tile.mAmplitudes.describe());
@@ -178,9 +165,40 @@ namespace Rtx
             };
             dispatch(commands, mFormPipeline, forms.get(), shaped, groupsFor(grid, Shaders::WAVE_TILE_WORKGROUP),
                 groupsFor(grid, Shaders::WAVE_TILE_WORKGROUP));
-            handOver(commands);
+        }
+        handOver(commands);
 
-            transform(commands, tile, grid);
+        // Three packed fields, each transformed along its rows and then along its columns — which is
+        // the same shader with its two strides swapped, because a separable transform is the
+        // one-dimensional one run twice.
+        bind(commands, mLinePipeline);
+        for (std::uint32_t pair = 0; pair < 3; ++pair)
+            for (int pass = 0; pass < 2; ++pass)
+            {
+                for (std::size_t index = 0; index < Shaders::WAVE_CASCADES; ++index)
+                {
+                    const std::uint32_t count = gridOf(index);
+
+                    DescriptorWrites<Shaders::WAVE_LINE_BINDINGS> writes;
+                    writes.buffer(Shaders::WAVE_LINE_BIND_FIELD, mTiles[index].mField.describe());
+                    pushDescriptors(commands, mLinePipeline, writes.get());
+
+                    const Shaders::WaveConstants along{
+                        .mCount = count,
+                        .mStride = pass == 0 ? 1u : count,
+                        .mJump = pass == 0 ? count : 1u,
+                        .mOffset = pair * count * count,
+                    };
+                    pushConstants(commands, mLinePipeline, along);
+                    vkCmdDispatch(commands, count, 1, 1);
+                }
+                handOver(commands);
+            }
+
+        for (std::size_t index = 0; index < Shaders::WAVE_CASCADES; ++index)
+        {
+            const Tile& tile = mTiles[index];
+            const std::uint32_t grid = gridOf(index);
 
             DescriptorWrites<Shaders::WAVE_COMPOSE_BINDINGS> composes;
             composes.buffer(Shaders::WAVE_COMPOSE_BIND_FIELD, tile.mField.describe());
@@ -190,9 +208,8 @@ namespace Rtx
             const Shaders::WaveComposeConstants unpacked{ .mCount = grid };
             dispatch(commands, mComposePipeline, composes.get(), unpacked,
                 groupsFor(grid, Shaders::WAVE_TILE_WORKGROUP), groupsFor(grid, Shaders::WAVE_TILE_WORKGROUP));
-
-            for (const Image* image : { &tile.mSurface, &tile.mCurvature })
-                image->buildMips(commands);
         }
+
+        Image::buildMips(commands, images);
     }
 }

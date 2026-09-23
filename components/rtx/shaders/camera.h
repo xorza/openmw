@@ -96,6 +96,35 @@ namespace Rtx::Shaders
         return shown;
     }
 
+    /// The traced pixel under a pixel of the shown extent, along one axis: the one its centre lands
+    /// on. Nearest and not filtered, because a depth is not a quantity that averages and a tile's
+    /// list is a list.
+    ///
+    /// **In integers, because two shaders ask it about one pixel and must land on the same traced
+    /// one**: the puff composite and the display curve — `puffsCoverNothing` says what they agree
+    /// about. The centre is at `(p + 1/2) * T / E`, which is `((2p + 1) * T) / (2E)` floored, and a
+    /// product of two extents fits a word with room to spare. As a float product it sat exactly on a
+    /// boundary for every third column at `quality`'s two to three, and which side it fell on was
+    /// the compiler's rounding — different in a launch and in a dispatch. Never past the traced
+    /// extent: `2p + 1 < 2E`, so the quotient is under `T`.
+    RTX_SHADER uint tracedPixelUnder(uint pixel, uint extent, uint tracedExtent)
+    {
+        return ((2u * pixel + 1u) * tracedExtent) / (2u * extent);
+    }
+
+    /// The first shown pixel `tracedPixelUnder` puts at `traced` or past it, so the shown pixels
+    /// whose centre lands on `traced` run from this of `traced` to this of `traced + 1`. A traced
+    /// pixel narrower than a shown one may hold none.
+    ///
+    /// **The floor above inverted, in the same integers.** `tracedPixelUnder(p)` is `t` exactly
+    /// where `2tE <= (2p + 1)T < 2(t + 1)E`, so the least `p` is `ceil((2tE - T) / 2T)`, which is
+    /// `floor((2tE + T - 1) / 2T)`: nought at `t = 0` and `E` at `t = T`, so the runs cover the
+    /// picture once.
+    RTX_SHADER uint shownPixelsFrom(uint traced, uint extent, uint tracedExtent)
+    {
+        return (2u * traced * extent + tracedExtent - 1u) / (2u * tracedExtent);
+    }
+
 #ifdef RTX_HOST
 }
 #endif

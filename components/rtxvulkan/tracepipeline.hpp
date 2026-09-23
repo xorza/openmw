@@ -49,6 +49,9 @@ namespace Rtx
         /// candidate to ask about. One and not one per group, because whether a candidate landed in
         /// a hole is a fact about the surface and not about what will shade it.
         std::filesystem::path mAnyHit;
+
+        /// How many bytes of constants the ray generation stage is pushed, at offset zero, or none.
+        std::uint32_t mRaygenConstantBytes = 0;
     };
 
     /// A ray tracing pipeline and the shader binding table a launch reads it out of. A launch and

@@ -8,6 +8,8 @@
 // descriptor set, which is what lets `wavecompose.comp` and `histogram.comp` read it beside
 // `fogintegrate.comp`.
 
+#include "camera.h"
+
 /// Whether this invocation fell off the edge of what the dispatch covers.
 ///
 /// **One spelling, because twelve passes had four.** A workgroup covers the picture in whole
@@ -25,19 +27,18 @@ bool outsideOf(ivec2 pixel, uvec2 extent)
     return any(lessThan(pixel, ivec2(0))) || any(greaterThanEqual(uvec2(pixel), extent));
 }
 
-/// The traced pixel under a pixel of the shown extent: the one its centre lands on. Nearest and not
-/// filtered, because a depth is not a quantity that averages and a tile's list is a list.
-///
-/// **In integers, because two shaders ask it about one pixel and must land on the same traced
-/// one**: the puff composite and the display curve — `puffsCoverNothing` says what they agree
-/// about. The centre is at `(p + 1/2) * T / E`, which is `((2p + 1) * T) / (2E)` floored, and a
-/// product of two extents fits a word with room to spare. As a float product it sat exactly on a
-/// boundary for every third column at `quality`'s two to three, and which side it fell on was the
-/// compiler's rounding — different in a launch and in a dispatch. Never past the traced extent:
-/// `2p + 1 < 2E`, so the quotient is under `T`.
+/// `tracedPixelUnder` along both axes.
 uvec2 tracedPixelUnder(uvec2 pixel, uvec2 extent, uvec2 tracedExtent)
 {
-    return ((2u * pixel + 1u) * tracedExtent) / (2u * extent);
+    return uvec2(
+        tracedPixelUnder(pixel.x, extent.x, tracedExtent.x), tracedPixelUnder(pixel.y, extent.y, tracedExtent.y));
+}
+
+/// `shownPixelsFrom` along both axes.
+uvec2 shownPixelsFrom(uvec2 traced, uvec2 extent, uvec2 tracedExtent)
+{
+    return uvec2(
+        shownPixelsFrom(traced.x, extent.x, tracedExtent.x), shownPixelsFrom(traced.y, extent.y, tracedExtent.y));
 }
 
 #endif

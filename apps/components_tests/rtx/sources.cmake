@@ -46,6 +46,7 @@ set(RTX_TEST_FILES
     rtx/pacing.cpp
     rtx/parallel.cpp
     rtx/physicaldevice.cpp
+    rtx/pixelgrid.cpp
     rtx/reconstruction.cpp
     rtx/refusals.cpp
     rtx/requirements.cpp

@@ -208,8 +208,7 @@ namespace Rtx
         pushDescriptors(commands, mComposePipeline, composes.get());
         vkCmdDispatch(commands, groups(), groups(), 1);
 
-        for (const Image* image : { &mSurface, &mCurvature })
-            image->buildMips(commands);
+        Image::buildMips(commands, std::array<const Image*, 2>{ &mSurface, &mCurvature });
 
         closeZone(timer, commands);
     }

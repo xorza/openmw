@@ -48,7 +48,7 @@ namespace Rtx
 
         // The chain, box filtered in light through the image's own format, which is the filter
         // the sum was made for; left where the array's sampler expects a texture.
-        composite.buildMips(commands);
+        Image::buildMips(commands, std::array<const Image*, 1>{ &composite });
         composite.transition(commands, Use::sShaderSample, Use::sTextureSample);
     }
 }

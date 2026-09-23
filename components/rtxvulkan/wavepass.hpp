@@ -89,12 +89,8 @@ namespace Rtx
             Image mCurvature;
         };
 
-        /// Orders the dispatch just recorded against the one about to read what it wrote.
+        /// Orders the dispatches just recorded against the ones about to read what they wrote.
         void handOver(VkCommandBuffer commands) const;
-
-        /// The inverse transform of a tile's three packed fields, each along its rows and then along
-        /// its columns.
-        void transform(VkCommandBuffer commands, const Tile& tile, std::uint32_t count) const;
 
         const Device& mDevice;
 

@@ -18,8 +18,11 @@ namespace Rtx
     TracePipeline::TracePipeline(const Device& device, std::span<const VkDescriptorSetLayoutBinding> bindings,
         const SharedSetLayouts& shared, const TraceShaders& shaders, std::string_view name,
         std::span<const std::uint32_t> specialization)
-        : Pipeline(
-            PipelineLayout(device, bindings, VkPushConstantRange{}, shared), VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR)
+        : Pipeline(PipelineLayout(device, bindings,
+                       VkPushConstantRange{
+                           .stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR, .size = shaders.mRaygenConstantBytes },
+                       shared),
+            VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR)
         , mDevice(device)
     {
         const bool anyHitWanted = !shaders.mAnyHit.empty();

@@ -531,6 +531,16 @@ namespace Rtx::Shaders
         GpuTables mTables;
     };
 
+    /// What the puffs' composite is pushed beside the frame block: the extent of the picture it
+    /// composites over — the output's past an upscaler, the traced one where nothing upscales, and
+    /// a picture's own inside an image that may be larger. Pushed, because the launch runs over
+    /// the traced grid and says only that extent: `spritecomposite.rgen` says why.
+    struct PuffConstants
+    {
+        uint mShownWidth;
+        uint mShownHeight;
+    };
+
 #ifdef RTX_HOST
     /// The sun as the frame carries it, with the one limb every sun is drawn from. The host's one
     /// spelling of `mSun`, so a frame assembled by hand cannot leave the cone at nought and cast a
