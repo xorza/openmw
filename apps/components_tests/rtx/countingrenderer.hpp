@@ -129,8 +129,9 @@ namespace Rtx::Testing
         void dropGuiTexture(Rtx::GuiSlot) override {}
         void drawGui(std::span<const Rtx::GuiVertex>, std::span<const Rtx::GuiBatch>) override {}
         void traceGuiTexture(
-            Rtx::GuiSlot, const Rtx::Shaders::VisibilityConstants&, const Rtx::GuiTraceOptions&) override
+            Rtx::GuiSlot, const Rtx::Shaders::VisibilityConstants& camera, const Rtx::GuiTraceOptions&) override
         {
+            mTraced = camera;
         }
         Rtx::SceneSlot addViewScene() override
         {
@@ -217,12 +218,18 @@ namespace Rtx::Testing
         /// What `getRefusals` answers, as a device short of room would after a hand-over.
         std::vector<Rtx::Refusal> mRefusing;
 
+        /// What `getProfile` answers, which a test sets to say what the run decided.
+        Rtx::RenderProfile mProfile;
+
+        /// The constants the last picture inside the interface was traced with, or nothing before
+        /// the first: what says a picture was traced under the run's rules.
+        std::optional<Rtx::Shaders::VisibilityConstants> mTraced;
+
     private:
         Rtx::SceneStats mStats;
         std::uint32_t mGuiTextures = 0;
 
         /// Whatever it was last told, since nothing here traces and no mode can be refused.
         Upscale mUpscale = Upscale::Off;
-        Rtx::RenderProfile mProfile;
     };
 }

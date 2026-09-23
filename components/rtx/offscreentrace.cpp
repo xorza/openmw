@@ -159,12 +159,12 @@ namespace Rtx
         camera->mAmbient = irradianceOf(mRequest.mLight.mAmbient);
         camera->mTransparentBackground = mRequest.mClear.a() < 1.f ? 1 : 0;
         camera->mRayMask = mRequest.mRayMask;
+        describeTexturing(mRenderer.getProfile(), *camera);
 
         return camera;
     }
 
-    bool OffscreenTrace::rebuildSubject(
-        const osg::FrameStamp& posing, std::size_t worldFrame, Resource::ImageManager& images)
+    bool OffscreenTrace::rebuildSubject(const osg::FrameStamp& posing, Resource::ImageManager& images)
     {
         if (mSubject == nullptr)
             return true;
@@ -203,11 +203,11 @@ namespace Rtx
         // The picture's own eye, for whatever in the subject turns to face one.
         subject.mExtractor->setEye(viewBasisOf(osg::Matrixd::inverse(osg::Matrixd(mView))));
 
-        // The world's frame and not a redraw count. The number handed to `extract` picks which
-        // of a `SceneUtil::LightSource`'s two buffers to read, which is a property of the frame the
-        // world is in. The pose the walk reads is what the update above left in the bones, and it
+        // The number the update above ran at, because that is what a semi-active skeleton compares
+        // the walk's `markReached` against: a skeleton told another number stops moving its bones
+        // three redraws on. The pose the walk reads is what the update left in the bones, and it
         // is handed to the device as rows: no cull runs here and no traversal number gates it.
-        subject.mExtractor->extract(*subject.mNode, osg::Matrixf::identity(), 0, worldFrame);
+        subject.mExtractor->extract(*subject.mNode, osg::Matrixf::identity(), 0, subject.mPosedFrame);
 
         // The sweep is what takes the parts that came off. It is sound for the same reason it is
         // sound for the world: this walk is the whole of what this picture is of.

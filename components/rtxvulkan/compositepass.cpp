@@ -7,6 +7,7 @@
 #include <components/rtx/shaders/composite.h>
 
 #include "dispatch.hpp"
+#include "formats.hpp"
 #include "gbuffer.hpp"
 #include "image.hpp"
 
@@ -22,7 +23,7 @@ namespace Rtx
     CompositePass::CompositePass(const Device& device, const std::filesystem::path& shaderDirectory)
         : mPipeline(device, sBindings, sizeof(Shaders::CompositeConstants), {}, shaderDirectory / "composite.comp.spv",
             "composite")
-        , mNoSum(makeStandIn(device, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_USAGE_STORAGE_BIT, "no-sum"))
+        , mNoSum(makeStandIn(device, toVulkanFormat(COMPOSITE_SUM_FORMAT), VK_IMAGE_USAGE_STORAGE_BIT, "no-sum"))
     {
     }
 

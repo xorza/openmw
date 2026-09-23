@@ -28,11 +28,11 @@ namespace Rtx
     /// How many cell boundaries a route crossed, and what the frames that crossed them cost.
     ///
     /// **A count and totals rather than a distribution**, because a run of six hundred frames
-    /// crosses a couple of dozen: percentiles over that say nothing, and the number worth reading is
-    /// the worst one — that is the frame a player feels. The whole cost is in `BenchPlace::mFrame`
-    /// too, which is where it belongs: a crossing is not a separate budget, it is the frame that
-    /// dropped. The whole frame and not a split into reading and building, because the game gives
-    /// none: the ring arrives on the loading threads.
+    /// crosses a couple of dozen: percentiles over that say nothing, and the number worth reading
+    /// is the worst one — that is the frame a player feels. The whole cost is in the place's
+    /// `Timing::Frame` row too, which is where it belongs: a crossing is not a separate budget, it
+    /// is the frame that dropped. The whole frame and not a split into reading and building,
+    /// because the game gives none: the ring arrives on the loading threads.
     struct Crossings
     {
         std::uint32_t mCount = 0;
@@ -59,10 +59,6 @@ namespace Rtx
         }
     };
 
-    /// How many frames the ring held at each submit over a run — `FrameResult::mInFlight`. The
-    /// least and the mean, because the figure is one or two: a place that stands still holds the
-    /// same number on every frame, and a route that drained the ring for an arrival holds one on
-    /// that frame and two on the rest.
     /// One frame of a run, kept for the report because it was among the worst: how long it took,
     /// how many meshes its upload built structures for, and where the time went.
     struct WorstFrame
@@ -100,6 +96,10 @@ namespace Rtx
         double getMeanMs() const { return mFrames == 0 ? 0.0 : mSumMs / mFrames; }
     };
 
+    /// How many frames the ring held at each submit over a run — `FrameResult::mInFlight`. The
+    /// least and the mean, because the figure is one or two: a place that stands still holds the
+    /// same number on every frame, and a route that drained the ring for an arrival holds one on
+    /// that frame and two on the rest.
     struct Overlap
     {
         std::uint32_t mLeast = 0;

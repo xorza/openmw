@@ -13,7 +13,7 @@
 // What each of the three histories is made of, said once for both sides that have to agree.
 //
 // **The pass's own, and not the G-buffer's.** A channel the trace writes and a history the denoiser
-// keeps share nothing but a number of bits, and a history built from `GBUFFER_RADIANCE` or
+// keeps share nothing but a number of bits, and a history built from a radiance channel's width or
 // `GBUFFER_GUIDE` is narrowed silently whenever a channel is narrowed for the trace's sake — with
 // the evidence for the history's width lying somewhere else entirely. The paragraph below is that
 // evidence.

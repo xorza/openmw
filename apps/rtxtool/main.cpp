@@ -278,11 +278,6 @@ namespace RtxTool
         /// where the game starts and the one place every player of it has stood.
         constexpr std::string_view sDefaultView = "seyda-neen-ship";
 
-        /// The view a run names, or null where it named none and gave a cell instead.
-        ///
-        /// Separated out because `Chosen` is built from it in one go below: an aggregate assembled
-        /// in two stages cannot name every field in its initialiser, and the compiler is right to
-        /// say so.
         /// Whether a run starts from a savegame, which is then what says where the player stands
         /// and what hour and weather it is — unless the line names a view or a cell over it.
         bool startsFromSave(const bpo::variables_map& variables)
@@ -290,6 +285,7 @@ namespace RtxTool
             return !variables["load-savegame"].as<Files::MaybeQuotedPath>().empty();
         }
 
+        /// The view a run names, or null where it named none and gave a cell instead.
         const Rtx::Stop* findChosenView(
             const bpo::variables_map& variables, const std::filesystem::path& resources, std::vector<Rtx::Stop>& views)
         {
@@ -318,7 +314,6 @@ namespace RtxTool
         /// from.
         constexpr std::string_view sShotHashes = "hashes.csv";
 
-        /// The one place a command renders, and what a window would write it down as.
         /// Holds `stop` still: warmed as the command line asks, then `frames` measured with the
         /// simulation stopped.
         ///

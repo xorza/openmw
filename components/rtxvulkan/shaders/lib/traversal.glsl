@@ -570,9 +570,9 @@ struct Surface
     /// same light on the near side. Nought for everything solid; `SHEET_TRANSMISSION` for a leaf.
     ///
     /// **Two facts and neither alone is a leaf.** The mesh says the content doubled it for its
-    /// back — `GpuMesh::mSheet` — and the material says it carries a mask. A tabard is doubled and
-    /// has none, and is cloth lit from the side it is seen from; a pane carries a mask and is not
-    /// doubled, and passes light by its opacity rather than by this.
+    /// back — `MESH_SHEET` in `GpuMesh::mShape` — and the material says it carries a mask. A
+    /// tabard is doubled and has none, and is cloth lit from the side it is seen from; a pane
+    /// carries a mask and is not doubled, and passes light by its opacity rather than by this.
     float mTransmission;
 };
 

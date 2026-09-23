@@ -144,8 +144,9 @@ namespace Rtx
     class VisibilityPass
     {
     public:
-        /// @param pool used once, to get the blue-noise tile onto the device. The pass owns the
-        ///        tile because it belongs to the sampler and not to the scene or the camera.
+        /// Uploads the blue-noise tile, which the pass owns because it belongs to the sampler and
+        /// not to the scene or the camera.
+        ///
         /// @param textureLayout the layout of the bindless array this will be handed at record
         ///        time, because a pipeline layout names every set it will ever see.
         /// @param channelLayout the same, for the set a `GBuffer` hands over.

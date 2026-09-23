@@ -122,6 +122,20 @@ namespace Rtx
         constexpr VkFormat sWrittenFormat = toVulkanFormat(TEXTURE_WRITTEN_FORMAT);
         constexpr VkFormat sWrittenEncoded = withCurve(sWrittenFormat);
 
+        /// What a texture made on the device is created as: the format its description states.
+        ///
+        /// **The description's, because whether the trace reads it through the curve is a fact
+        /// about the content** — a bake is lighting and a composite is albedo — and the core is
+        /// what states it. A dispatch stores through `sWrittenFormat`, the same bytes with the curve
+        /// off, so a description may name that or its twin under the curve and nothing else.
+        VkFormat writtenAs(const TextureFormat format)
+        {
+            const VkFormat image = toVulkanFormat(format);
+            contract(
+                withoutCurve(image) == sWrittenFormat, "a texture described in a format its dispatch does not store");
+            return image;
+        }
+
         /// Every stage that resolves a hit, and every dispatch. The trace reads these arrays from
         /// its closest-hit shaders, from the any-hit shader that tests a cutout and from the miss
         /// shader that draws the sky; the fog volume, the tone curve and the interface are
@@ -285,13 +299,13 @@ namespace Rtx
     }
 
     Result<Texture, std::string_view> Texture::bakeOf(const Device& device, Batch& batch, const TexturePasses& passes,
-        const VkSampler sampler, const Texture& source, std::string_view name)
+        const VkSampler sampler, const Texture& source, const TextureFormat format, std::string_view name)
     {
         assert(!source.isEmpty());
 
         const Image& from = source.mImage;
         Result<Image, std::string_view> image = Image::tryMake(MemoryUse::Texture, device, from.getWidth(),
-            from.getHeight(), sWrittenFormat, sWritten, name, from.getMipLevels());
+            from.getHeight(), writtenAs(format), sWritten, name, from.getMipLevels(), 1, sWrittenFormat);
         if (!image.isOk())
             return Err{ image.error() };
 
@@ -331,13 +345,14 @@ namespace Rtx
         mBytes = sizeof(texel) + sShadingBytes;
     }
 
-    Result<Texture, std::string_view> Texture::composite(const Device& device, Batch& batch, std::string_view name)
+    Result<Texture, std::string_view> Texture::composite(
+        const Device& device, Batch& batch, const TextureFormat format, std::string_view name)
     {
         // A chain to one texel, which the bake blits down from the level it writes; both transfer
-        // usages for that blit, and the `UNORM` view for the store.
+        // usages for that blit, and the view without the curve for the store.
         constexpr std::uint32_t extent = Shaders::GROUND_COMPOSITE_EXTENT;
         Result<Image, std::string_view> image = Image::tryMake(MemoryUse::Texture, device, extent, extent,
-            sWrittenEncoded, sWritten | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, name,
+            writtenAs(format), sWritten | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, name,
             levelsTo1x1(extent, extent), 1, sWrittenFormat);
         if (!image.isOk())
             return Err{ image.error() };
@@ -573,7 +588,7 @@ namespace Rtx
         switch (texture.mSource)
         {
             case TextureSource::GroundComposite:
-                return Texture::composite(mDevice, batch, name);
+                return Texture::composite(mDevice, batch, texture.mFormat, name);
 
             case TextureSource::SpriteBake:
             {
@@ -584,7 +599,8 @@ namespace Rtx
                 // baked as the stand-in, as it is drawn.
                 contract(texture.mFrom < mSlots.size() && !mSlots[texture.mFrom].isEmpty(),
                     "a sprite light bake names a source that does not stand");
-                return Texture::bakeOf(mDevice, batch, mPasses, sampler, standingIn(mSlots[texture.mFrom]), name);
+                return Texture::bakeOf(
+                    mDevice, batch, mPasses, sampler, standingIn(mSlots[texture.mFrom]), texture.mFormat, name);
             }
 
             case TextureSource::File:

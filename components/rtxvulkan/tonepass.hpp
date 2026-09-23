@@ -33,8 +33,8 @@ namespace Rtx
         const Buffer& mSunGlare;
 
         /// What the star field has to be drawn through, in `VK_IMAGE_LAYOUT_GENERAL`, at the
-        /// extent the trace ran at. `GBuffer::getStarsShown` says why this pass cannot work it
-        /// out for itself.
+        /// extent the trace ran at. `ToneConstants::mStars` says why this pass cannot work it out
+        /// for itself.
         const Image& mStarsShown;
 
         /// The trace's own depth of the puffs, at the same extent.
@@ -67,7 +67,6 @@ namespace Rtx
     public:
         /// @param textureLayout the scene's bindless textures, which this samples the star sheet
         ///        out of — `ToneConstants::mStars` says why the field is drawn here.
-        /// @param pool where the stand-in bound in place of a pyramid is put into its layout, once.
         TonePass(
             const Device& device, VkDescriptorSetLayout textureLayout, const std::filesystem::path& shaderDirectory);
 

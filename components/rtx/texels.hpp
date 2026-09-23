@@ -48,10 +48,6 @@ namespace Rtx
     /// Averages `image`, every texel and not a sample, because a mean of a sheet that is mostly
     /// empty cannot be sampled. Nothing where the image is in a format `describeImage` does not
     /// read.
-    ///
-    /// @param scratch what the reading is done in, which is the caller's, for one that averages
-    ///        many images: cleared and refilled here, and read by nothing afterwards. The
-    ///        overload without one makes its own.
     MeanTexel meanTexel(const osg::Image& image);
     MeanTexel meanTexel(const osg::Image& image, AlphaScratch& scratch);
 

@@ -51,7 +51,7 @@ namespace Rtx::Shaders
         uint64 mSpriteTileList;
         uint mAdditiveInFrame;
 
-        /// The trace's own extent, which is what `GBuffer::getStarsShown` is written at.
+        /// The trace's own extent, which is what `Channel::StarsShown` is written at.
         ///
         /// **Two extents because an upscaler stands between them**, and the other is the camera's.
         /// What this pass writes is one pixel of the picture; what it asks about a pixel — how much
@@ -78,10 +78,10 @@ namespace Rtx::Shaders
         ///
         /// **The lens is applied here because everything before this pass is the trace's own
         /// frame.** A veil written back over the radiance image would be a measurement nobody could
-        /// hand compute, and would make the composite (`Renderer::readComposite`) mean one thing
-        /// with an upscaler in the frame and another without one. `BloomPass` builds the pyramid
-        /// and this spreads its finest level over the picture — which also saves the
-        /// full-resolution pass a separate blend would cost.
+        /// hand compute, and would make the composite mean one thing with an upscaler in the frame
+        /// and another without one. `BloomPass` builds the pyramid and this spreads its finest
+        /// level over the picture — which also saves the full-resolution pass a separate blend
+        /// would cost.
         ///
         /// Nought is no lens, which is what a doll and a map tile are drawn with: the pyramid is the
         /// frame's and neither of those is a frame. The shader samples nothing at all where this is
@@ -96,7 +96,7 @@ namespace Rtx::Shaders
         /// to the resolution, and no guide buffer moves it: an eye-facing normal, the bias mask over
         /// every sky pixel, and the four before-and-after colour pairs all come out neutral or worse.
         /// So the field is drawn where it is shown, and the trace draws the rest of the sky — and
-        /// hands this pass `GBuffer::getStarsShown`, because a moon, a deck, a pane, the water and
+        /// hands this pass `Channel::StarsShown`, because a moon, a deck, a pane, the water and
         /// the air all stand between the field and the eye and none of them is here.
         StarField mStars;
 

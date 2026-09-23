@@ -1,15 +1,23 @@
 #pragma once
 
+#include <vector>
+
 #include <osg/Vec3f>
 
 #include <components/rtx/frameworld.hpp>
 #include <components/rtx/moonbuilder.hpp>
 #include <components/rtx/skybuilder.hpp>
 #include <components/sky/skyclock.hpp>
+#include <components/vfs/pathutil.hpp>
 
 namespace Resource
 {
     class SceneManager;
+}
+
+namespace VFS
+{
+    class Manager;
 }
 
 namespace Rtx
@@ -39,9 +47,12 @@ namespace MWRender
         /// sun glare fader's three numbers.
         SkyReader();
 
-        /// The sky's own meshes, as the settings name them: what `attach` reads and what the game
-        /// preloads. Read here so the two cannot name different files.
-        static Rtx::SkyMeshes meshes();
+        /// Every file `attach` reads that the game may load ahead of the first cell: the cloud
+        /// shell, the star sphere and the two moons' faces. Listed here, beside what reads them,
+        /// so the two cannot name different files. The second star sphere is an expansion's and is
+        /// listed only where `vfs` holds it, because a missing model aborts the whole preload.
+        static void listAssets(const VFS::Manager& vfs, std::vector<VFS::Path::Normalized>& models,
+            std::vector<VFS::Path::Normalized>& textures);
 
         /// Adds the moons' portraits and the sky's sheets to `scene` and holds them there for the
         /// life of the scene: a moon and a deck are drawn by a ray that reached nothing, so no
@@ -66,6 +77,9 @@ namespace MWRender
             float seconds, float reach) const;
 
     private:
+        /// The sky's own meshes, as the settings name them.
+        static Rtx::SkyMeshes meshes();
+
         /// The moons' portraits and the sky's own meshes, held from `attach` to `detach`.
         Rtx::MoonFaces mMoonFaces;
         Rtx::SkyContent mSkyContent;

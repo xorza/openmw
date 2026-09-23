@@ -163,8 +163,8 @@ namespace Rtx
         bool mJitter = false;
 
         /// The wavelet was wanted and did not run, because an upscaler denoises for itself. True of
-        /// nearly every upscaled frame, since `FrameOptions::mFilter` is on by default; worth saying
-        /// only to a caller that knows the switch was given outright.
+        /// nearly every upscaled frame, since `ReconstructionRequest::mFilter` is on by default;
+        /// worth saying only to a caller that knows the switch was given outright.
         bool mFilterSuppressed = false;
 
         /// The frame jittered although nothing asked it to, because an upscaler always jitters:

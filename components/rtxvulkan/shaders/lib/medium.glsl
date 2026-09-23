@@ -58,8 +58,6 @@ float mediumCrossing(float painted, float facing)
 
 /// One crossing of a walk that confirms nothing, read down to what the walk weighs it by: the rows
 /// the candidate names, the corner the texel is read at, and the texel.
-///
-/// @param coneWidth how wide the ray's cone is at the crossing, which picks the texel's level.
 struct Crossing
 {
     GpuInstance mInstance;
@@ -69,6 +67,9 @@ struct Crossing
     vec4 mTexel;
 };
 
+/// The crossing a candidate names.
+///
+/// @param coneWidth how wide the ray's cone is at the crossing, which picks the texel's level.
 Crossing crossingOf(uint instanceIndex, uint primitive, vec2 bary, vec3 crossed, vec3 direction, float coneWidth)
 {
     Crossing crossing;

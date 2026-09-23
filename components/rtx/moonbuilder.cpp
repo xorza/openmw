@@ -9,8 +9,6 @@
 #include <osg/Math>
 #include <osg/Quat>
 
-#include <components/vfs/pathutil.hpp>
-
 #include "refusals.hpp"
 #include "result.hpp"
 #include "scenedesc.hpp"
@@ -87,9 +85,6 @@ namespace Rtx
 
     MoonFaces addMoonFaces(SceneDesc& scene, const MoonSizes& sizes)
     {
-        constexpr VFS::Path::NormalizedView masser("textures/tx_masser_full.dds");
-        constexpr VFS::Path::NormalizedView secunda("textures/tx_secunda_full.dds");
-
         // A moon of a size that is no size is refused and not drawn.
         const auto drawnWidth = [&](Moon moon, float size) {
             const Result<float, std::string> radius = radiusOf(moon, size);
@@ -102,8 +97,8 @@ namespace Rtx
 
         // Clamped: a portrait is one image edge to edge, and a repeating tap at its limb would
         // blend the far edge's paint into the disc's antialiasing.
-        const MoonFaces faces{ .mMasser = scene.textures().add(masser, TextureWrap::Clamp),
-            .mSecunda = scene.textures().add(secunda, TextureWrap::Clamp),
+        const MoonFaces faces{ .mMasser = scene.textures().add(moonFaceOf(Moon::Masser), TextureWrap::Clamp),
+            .mSecunda = scene.textures().add(moonFaceOf(Moon::Secunda), TextureWrap::Clamp),
             .mMasserRadius = drawnWidth(Moon::Masser, sizes.mMasser),
             .mSecundaRadius = drawnWidth(Moon::Secunda, sizes.mSecunda) };
         scene.textures().hold(faces.mMasser);

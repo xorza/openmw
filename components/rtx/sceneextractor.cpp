@@ -139,7 +139,7 @@ namespace Rtx
 
         /// Runs one node of an `osgParticle` simulation, if that is what this node is. See below.
         ///
-        /// @param from the node's library, which `apply` has already asked for.
+        /// @param kind what `NodeKinds` answered for the node, which `enter` has already asked.
         bool stepParticles(osg::Node& node, NodeKind kind);
 
         /// Where the node being visited stands in the world, narrowed to single precision here and

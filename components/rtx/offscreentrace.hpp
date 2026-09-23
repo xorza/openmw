@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -130,9 +129,7 @@ namespace Rtx
         /// @param posing what the update traversal runs on — the caller's own drawing clock, because
         ///        a skeleton keeps the last number it saw and a clock that stood still would move the
         ///        doll's bones the first time and never again.
-        /// @param worldFrame which of a `SceneUtil::LightSource`'s two buffers update just wrote,
-        ///        which stops with the world when the game is paused; `posing` does not.
-        bool rebuildSubject(const osg::FrameStamp& posing, std::size_t worldFrame, Resource::ImageManager& images);
+        bool rebuildSubject(const osg::FrameStamp& posing, Resource::ImageManager& images);
 
         /// Traces the picture into `texture`, a slot from `Renderer::addGuiTexture`, and leaves a
         /// copy for `takeCopy` where `readBack` asks for one.
@@ -198,8 +195,8 @@ namespace Rtx
             /// with the subject.
             ViewScene mSlot;
 
-            /// The traversal number the subject's update last ran at. What `rebuildSubject` hands
-            /// the update traversal, and what a pick's own cull is dated after.
+            /// The traversal number the subject's update last ran at, which `rebuildSubject` hands
+            /// the update traversal and the walk after it. A pick's own cull is dated after it.
             unsigned int mPosedFrame = 0;
         };
 

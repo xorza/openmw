@@ -21,7 +21,6 @@ namespace Rtx
     class CompositePass
     {
     public:
-        /// @param pool used once, to lay out the stand-in below. Nothing here touches it again.
         CompositePass(const Device& device, const std::filesystem::path& shaderDirectory);
 
         /// @param buffer must have been handed over, so its writes are visible to this read. Its

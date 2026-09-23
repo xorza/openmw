@@ -60,6 +60,7 @@ namespace Rtx
     /// The map at a point, bilinear across it and wrapping with it — the shader's `paintedLight`.
     /// Wrapping because Morrowind's textures tile, and a clamp would seam every wall that repeats.
     ///
-    /// @param map `ShadingMap::sExtent` squared factors, which is what `TextureData::mShading` holds.
+    /// @param map `ShadingMap::sExtent` squared factors, which is what `ShadingMap::getValues`
+    ///        holds.
     float paintedLight(std::span<const float> map, float u, float v);
 }

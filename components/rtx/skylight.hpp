@@ -14,8 +14,8 @@
 
 namespace Rtx
 {
-    /// The sun: a direction and no position. Only `makeSkylight` and `OffscreenTrace::setLight`
-    /// fill it.
+    /// The sun: a direction and no position. Only `makeSkylight` fills it, and a room's light
+    /// leaves it at nothing.
     struct Sun
     {
         /// Where the sun stands, unit, so `-mPosition` is where its light travels.
@@ -32,7 +32,7 @@ namespace Rtx
     /// What a weather says about the sky at one hour, in the renderer's own units, for `makeSkylight`.
     struct SkyReading
     {
-        /// Where the disc stands, unit: `MWRender::WorldState::mSunPosition`.
+        /// Where the disc stands, unit: `MWRender::sunDiscOf`.
         osg::Vec3f mSunPosition = osg::Vec3f(0.0f, 0.0f, 1.0f);
 
         /// How much of the sun is over the horizon (`sunShareAt`), which alone answers "is there a
@@ -44,7 +44,7 @@ namespace Rtx
         osg::Vec3f mSunColour;
         osg::Vec3f mAmbient;
 
-        /// What the disc is painted with, linear: `MWRender::WorldState::mSunDiscColour`.
+        /// What the disc is painted with, linear: `MWRender::WeatherResult::mSunDiscColor`.
         osg::Vec3f mDiscColour = osg::Vec3f(1.0f, 1.0f, 1.0f);
 
         /// The weather's `Glare_View`: how much of the sun it lets through.

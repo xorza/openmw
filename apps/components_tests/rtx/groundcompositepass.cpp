@@ -81,7 +81,8 @@ namespace Rtx
                 const Index material = scene.addMaterial(chunk);
 
                 Batch setup(getPool());
-                const Texture composite = std::move(Texture::composite(device, setup, "ground composite test").value());
+                const Texture composite = std::move(
+                    Texture::composite(device, setup, TextureFormat::Rgba8Srgb, "ground composite test").value());
                 TextureArray array(device, setup, layout, passes.mPasses, 2);
                 std::vector<Refusal> refused;
                 array.write(setup, textures, refused);

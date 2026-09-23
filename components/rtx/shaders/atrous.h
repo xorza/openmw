@@ -18,8 +18,9 @@
 // reference is built through that channel and never through this one.
 //
 // **Half floats, because a filtered bounce is shown and never summed.** A reference is built with
-// the denoiser switched off, so nothing here reaches one — where the argument that holds
-// `GBUFFER_RADIANCE` at full width is entirely about a term added to a thousand others.
+// the denoiser switched off, so nothing here reaches one — where the argument that holds the
+// radiance at full width, `RadianceWidth::Summed`, is entirely about a term added to a thousand
+// others.
 //
 // **What it costs is a floor, and the floor is measured.** Five levels each round what they store,
 // which puts about 3e-4 of the value under the cascade's own error — visible only where the cascade

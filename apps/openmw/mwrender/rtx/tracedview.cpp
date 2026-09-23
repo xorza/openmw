@@ -132,7 +132,7 @@ namespace MWRender
     {
         if (!mTrace.isOfWorld())
         {
-            if (!mTrace.rebuildSubject(moment.mStamp, moment.mStamp.getFrameNumber(), moment.mImages))
+            if (!mTrace.rebuildSubject(moment.mStamp, moment.mImages))
                 return;
         }
 

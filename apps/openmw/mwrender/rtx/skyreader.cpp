@@ -19,6 +19,7 @@
 #include <components/rtx/skylight.hpp>
 #include <components/settings/values.hpp>
 #include <components/sky/moonstate.hpp>
+#include <components/vfs/manager.hpp>
 
 #include "../precipitation.hpp"
 #include "../sceneframe.hpp"
@@ -58,6 +59,19 @@ namespace MWRender
             .mStars = Settings::models().mSkynight02,
             .mStarsFallback = Settings::models().mSkynight01,
         };
+    }
+
+    void SkyReader::listAssets(const VFS::Manager& vfs, std::vector<VFS::Path::Normalized>& models,
+        std::vector<VFS::Path::Normalized>& textures)
+    {
+        const Rtx::SkyMeshes sky = meshes();
+        models.push_back(sky.mClouds);
+        if (vfs.exists(sky.mStars))
+            models.push_back(sky.mStars);
+        models.push_back(sky.mStarsFallback);
+
+        for (const Rtx::Moon moon : { Rtx::Moon::Masser, Rtx::Moon::Secunda })
+            textures.emplace_back(Rtx::moonFaceOf(moon));
     }
 
     void SkyReader::attach(Rtx::SceneDesc& scene, Resource::SceneManager& scenes)

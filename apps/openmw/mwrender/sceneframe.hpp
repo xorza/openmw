@@ -29,8 +29,8 @@ namespace MWRender
     /// What kind of place the player is standing in, as the cell record says. Three and not two,
     /// because a quasi-exterior — Vivec's cantons — is an interior cell with a sky and weather: the
     /// `isInterior` uniform counts it as inside, the shader chain's exterior mask as outside, and
-    /// `MWRender::readWorld` as neither, because it stands in a weather's air with no ring of cut
-    /// ground under it.
+    /// `MWRender::SkyReader::read` as neither, because it stands in a weather's air with no ring of
+    /// cut ground under it.
     enum class Location
     {
         Interior,

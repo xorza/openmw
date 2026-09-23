@@ -34,8 +34,8 @@ namespace Rtx
         WavePass(const Device& device, const std::filesystem::path& shaderDirectory);
 
         /// Draws the amplitudes for another sea, replacing whatever was drawn before. Submits and
-        /// waits, and frees the spectrum it replaces, so nothing may be in flight: `Renderer::setSea`
-        /// waits the frames out first.
+        /// waits, and frees the spectrum it replaces, so nothing may be in flight:
+        /// `VulkanRenderer::setSea` waits the frames out first.
         void describe(const SeaState& sea);
 
         /// What the amplitudes were last drawn for.

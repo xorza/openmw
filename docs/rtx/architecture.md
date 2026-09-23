@@ -585,7 +585,7 @@ order is construction order, and everything below the device is built on it.
 
 **The device.** `Instance`, `PhysicalDevice::select` (refuses a device missing anything in
 `DeviceFeatures`, each a `RequiredFeature`), `Device` (queue, command pool, `Timeline`, `Graveyard`, object names),
-`Validation` (a sink a test reads), `MemoryAllocator` (VMA), `PipelineCache` (a file in the
+`ValidationLog` (a sink a test reads), `MemoryAllocator` (VMA), `PipelineCache` (a file in the
 cache directory, for the played game only). The device takes the swapchain where the instance
 loaded a surface, which it does for a window and never headless, and each option
 (`getOptionalExtensions`: the fault report, the memory budget, present fences, checkpoints,
@@ -657,8 +657,8 @@ device took both extensions — which it does only with a window, the present id
 swapchain — and the surface paces the present mode in force (`PacedModes`,
 read off `VkLatencySurfaceCapabilitiesNV` once per surface), dormant otherwise, and every
 present is paced where it is live at all: `[RTX] reflex` moves two flags inside the sleep mode
-and the frame-rate limit is the interval the sleep enforces. [`reflex.md`](reflex.md) is the
-whole of it, with what the probe found.
+and the frame-rate limit is the interval the sleep enforces. `latencypacer.hpp` is the whole of
+it.
 
 **The upscaler.** `Upscaler` (`upscaler.hpp`) is the one seam to DLSS. The build links
 `DlssUpscaler` or `noupscaler.cpp`, whose `makeUpscaler` refuses every mode by name. The
@@ -1129,7 +1129,7 @@ draw one frame.
 | what a frame is on the device                  | `components/rtx/shaders/visibility.h`, `camera.h`, `scene.h`, `look.h`    |
 | the backend's frame                            | `components/rtxvulkan/vulkanrenderer.cpp`, `tracechain.cpp`, `displaychain.hpp` |
 | the frames in flight                           | `components/rtxvulkan/framering.hpp`, `timeline.hpp`, `graveyard.hpp`    |
-| the driver's frame pacing                      | `docs/rtx/reflex.md`, `components/rtx/pacing.hpp`, `components/rtxvulkan/latencypacer.hpp`, `presenter.hpp` |
+| the driver's frame pacing                      | `components/rtx/pacing.hpp`, `components/rtxvulkan/latencypacer.hpp`, `presenter.hpp` |
 | a scene on the device                          | `components/rtxvulkan/devicescene.hpp`, `sceneacceleration.hpp`, `scenebuffers.hpp` |
 | the light transport                            | `shaders/visibility.rgen`, `lib/shading.glsl`, `lib/traversal.glsl`, `lib/lights.glsl` |
 | the denoiser and the upscaler                  | `components/rtx/reconstruction.hpp`, `components/rtxvulkan/atrouspass.hpp`, `accumulatepass.hpp`, `upscaler.hpp` |

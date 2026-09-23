@@ -52,7 +52,6 @@
 #include <components/sdlutil/vsyncmode.hpp>
 #include <components/settings/categories.hpp>
 #include <components/settings/values.hpp>
-#include <components/vfs/manager.hpp>
 #include <components/vfs/pathutil.hpp>
 
 #include "../ground.hpp"
@@ -320,17 +319,7 @@ namespace MWRender
     void RtxRenderer::listAssetsToPreload(
         std::vector<VFS::Path::Normalized>& models, std::vector<VFS::Path::Normalized>& textures)
     {
-        // What `SkyReader::attach` reads for its sky: the cloud shell, the star sphere, the two
-        // moons' full faces. A missing model aborts the whole preload, and the second star sphere
-        // is an expansion's.
-        const Rtx::SkyMeshes sky = SkyReader::meshes();
-        models.push_back(sky.mClouds);
-        if (getResources().getVFS()->exists(sky.mStars))
-            models.push_back(sky.mStars);
-        models.push_back(sky.mStarsFallback);
-
-        textures.emplace_back("textures/tx_masser_full.dds");
-        textures.emplace_back("textures/tx_secunda_full.dds");
+        SkyReader::listAssets(*getResources().getVFS(), models, textures);
     }
 
     void RtxRenderer::attachWorld(RenderingManager& world, osg::Group& worldRoot)
@@ -919,14 +908,9 @@ namespace MWRender
         // sequence twice, and a game's frame number carries the loading screen's frames with it.
         constants->mFrame = mRun.getSampleFrame().value_or(static_cast<std::uint32_t>(frame.mWhen.getFrameNumber()));
 
-        // **Both hosts light the world by the profile's rules**, and the profile is the backend's:
-        // what it was made with, and then whatever a setting moved. `Rtx::makeCameraFromView`
-        // names every field it fills and leaves the rest value-initialised, and `texturing.glsl`
-        // short-circuits on a `mDelight` of nought, handing the trace Bethesda's textures with
-        // their painted lighting still in them.
-        const Rtx::RenderProfile& profile = mRenderer->getProfile();
-        constants->mDelight = profile.mDelight;
-        constants->mShowAlbedo = profile.mShowAlbedo ? 1u : 0u;
+        // **The profile's rules for the textures, read off the backend**, which holds the one copy:
+        // what it was made with, and then whatever a setting moved.
+        Rtx::describeTexturing(mRenderer->getProfile(), *constants);
 
         return constants;
     }

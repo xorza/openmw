@@ -133,7 +133,7 @@ namespace Rtx
         std::unique_ptr<GBuffer> mChannels;
         std::unique_ptr<FogVolume> mFogVolume;
 
-        /// One sprite bin per frame in flight — `TraceRecording::mTraceSlot` picks — so the frame
+        /// One sprite bin per frame in flight — `VisibilityInputs::mTraceSlot` picks — so the frame
         /// behind keeps the tables its trace reads while this frame's bin writes its own.
         PerSlot<SpriteBin> mBins;
 

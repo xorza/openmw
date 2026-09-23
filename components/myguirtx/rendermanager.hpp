@@ -72,8 +72,9 @@ namespace MyGUIRtx
         /// it. `AdditiveLayer` turns it on around the one layer that wants it and off again.
         void setAdditiveBlend(bool additive);
 
-        /// A mirror of the texture's image, read again whenever the game marks it dirty — `Texture`
-        /// says how. An `osg::Texture2D` itself is a name in a context this backend never made.
+        /// A mirror of the texture's image, read again whenever the game marks it dirty —
+        /// `SharedTexture` says how. An `osg::Texture2D` itself is a name in a context this
+        /// backend never made.
         std::unique_ptr<MyGUI::ITexture> shareTexture(osg::Texture2D& texture) override;
 
         /// A mirror told where its picture was painted, which sends that and no more.

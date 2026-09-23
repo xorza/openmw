@@ -21,6 +21,7 @@
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/slot.hpp>
 #include <components/rtx/viewscene.hpp>
+#include <components/sceneutil/offscreenframing.hpp>
 #include <components/vfs/manager.hpp>
 
 #include "countingrenderer.hpp"
@@ -94,6 +95,31 @@ namespace Rtx
             EXPECT_EQ(renderer.mViewDropped, (std::vector<std::uint32_t>{ 0 }));
         }
 
+        /// **A picture is traced under the run's texture rules, as the frame is.** The profile is
+        /// the renderer's, and two of them apart say the trace reads it rather than a default: a
+        /// picture that skips it is traced with a delight of nought and keeps the light painted
+        /// into its textures.
+        TEST(RtxOffscreenTraceTest, aPictureIsTracedUnderTheRunsTextureRules)
+        {
+            Testing::CountingRenderer renderer;
+            OffscreenTrace world(renderer,
+                ViewRequest{ .mWidth = 64,
+                    .mHeight = 64,
+                    .mRayMask = Shaders::MASK_EVERY_CLASS,
+                    .mFraming = { .mProjection = SceneUtil::Perspective{ .mFieldOfView = 60.f } } });
+
+            for (const auto& [delight, albedo] : { std::pair{ 0.25f, false }, std::pair{ 0.75f, true } })
+            {
+                renderer.mProfile.mDelight = delight;
+                renderer.mProfile.mShowAlbedo = albedo;
+                world.traceInto(GuiSlot::at(0), false);
+
+                ASSERT_TRUE(renderer.mTraced.has_value());
+                EXPECT_EQ(renderer.mTraced->mDelight, delight);
+                EXPECT_EQ(renderer.mTraced->mShowAlbedo, albedo ? 1u : 0u);
+            }
+        }
+
         /// **The slot is the handle's, and one handle gives it back.** Moved, the slot goes with the
         /// move and the emptied handle drops nothing; the one that holds it at the end drops it
         /// once. What `OffscreenTrace` paired by hand across a constructor and a destructor.
@@ -153,7 +179,7 @@ namespace Rtx
                     .mSubjectMask = sEveryNode });
             const SceneDesc& scene = *trace.getScene();
 
-            ASSERT_TRUE(trace.rebuildSubject(*stampAt(1), 1, images));
+            ASSERT_TRUE(trace.rebuildSubject(*stampAt(1), images));
 
             // Two quads of two triangles each: what a scene holding both looks like.
             EXPECT_EQ(scene.placements().getCounts().mPlaced, 2u);
@@ -164,7 +190,7 @@ namespace Rtx
             osg::ref_ptr<osg::Geometry> hat = makeQuad();
             subject->addChild(hat);
 
-            ASSERT_TRUE(trace.rebuildSubject(*stampAt(2), 2, images));
+            ASSERT_TRUE(trace.rebuildSubject(*stampAt(2), images));
 
             // **Still two placements and not three**, which is half the assertion: the hat was
             // placed and the shirt was swept. A mirror that kept what it no longer meets reads
@@ -181,7 +207,7 @@ namespace Rtx
             osg::ref_ptr<osg::Geometry> boots = makeQuad();
             subject->addChild(boots);
 
-            ASSERT_TRUE(trace.rebuildSubject(*stampAt(3), 3, images));
+            ASSERT_TRUE(trace.rebuildSubject(*stampAt(3), images));
 
             EXPECT_EQ(scene.placements().getCounts().mPlaced, 2u);
 
@@ -216,7 +242,7 @@ namespace Rtx
                     .mRayMask = Shaders::MASK_EVERY_CLASS,
                     .mSubject = subject.get(),
                     .mSubjectMask = sEveryNode });
-            EXPECT_FALSE(trace.rebuildSubject(*stampAt(1), 1, images));
+            EXPECT_FALSE(trace.rebuildSubject(*stampAt(1), images));
             EXPECT_EQ(trace.getScene()->placements().getCounts().mPlaced, 0u);
         }
 
@@ -249,7 +275,7 @@ namespace Rtx
                     .mRayMask = Shaders::MASK_EVERY_CLASS,
                     .mSubject = subject.get(),
                     .mSubjectMask = wanted });
-            ASSERT_TRUE(trace.rebuildSubject(*stampAt(1), 1, images));
+            ASSERT_TRUE(trace.rebuildSubject(*stampAt(1), images));
 
             // One of the two, and the same fixture with `wanted | other` would take both — which is
             // what says the mask is doing the choosing rather than the fixture.
@@ -261,7 +287,7 @@ namespace Rtx
                     .mRayMask = Shaders::MASK_EVERY_CLASS,
                     .mSubject = subject.get(),
                     .mSubjectMask = wanted | other });
-            ASSERT_TRUE(both.rebuildSubject(*stampAt(1), 1, images));
+            ASSERT_TRUE(both.rebuildSubject(*stampAt(1), images));
             EXPECT_EQ(both.getScene()->placements().getCounts().mPlaced, 2u);
         }
     }

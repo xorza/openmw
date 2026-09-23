@@ -17,11 +17,12 @@ namespace osg
 
 namespace MyGUIRtx
 {
-    /// A mirror of a picture the game holds as an `osg::Image`. The fog of war, the world map, a
-    /// save's thumbnail and a video frame are written into images the game then marks dirty, which
-    /// is how the rasterizer is handed them; this backend cannot draw an OSG texture, so it reads
-    /// the image again whenever its modified count moves — `refresh`, from `doRender` — and sends
-    /// the rows that changed. A picture whose painter names what it painted is `PaintedMirror`.
+    /// A mirror of a picture the game holds as an `osg::Image`. A video frame, the world map's
+    /// base, a save's thumbnail and the frozen loading frame are written into images the game then
+    /// marks dirty or puts under the texture, which is how the rasterizer is handed them; this
+    /// backend cannot draw an OSG texture, so it reads the image again whenever its modified count
+    /// moves — `refresh`, from `doRender` — and sends the rows that changed. A picture whose
+    /// painter names what it painted, the fog of war and the map's overlay, is `PaintedMirror`.
     class SharedTexture final : public MirrorTexture
     {
     public:
@@ -33,11 +34,9 @@ namespace MyGUIRtx
 
         /// Brings the mirror up to date with its image.
         ///
-        /// **Once per draw and not per write**, because the game writes the fog of war a texel at a
-        /// time and the interface draws it once. What was seen last is kept, so what goes to the
-        /// device is the run of rows that differ — the world map paints eighteen pixels square when a
-        /// cell arrives, and the whole picture is two megabytes. A new image under the texture is a
-        /// video frame, and goes whole.
+        /// **Once per draw and not per write**, because a draw is where the picture is read. What
+        /// was seen last is kept, so what goes to the device is the run of rows that differ. A new
+        /// image under the texture goes whole.
         void refresh() override;
 
     private:

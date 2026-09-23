@@ -78,13 +78,18 @@ namespace Rtx
         /// A sprite's light bake: shaped like `source`, made from its alpha by `passes.mBake` in
         /// the same batch, under the neutral map. `source` must stand, and its upload must be
         /// recorded ahead of this, in this batch or in one already submitted.
+        ///
+        /// @param format what the description says the bake is, which is its image's format.
         static Result<Texture, std::string_view> bakeOf(const Device& device, Batch& batch, const TexturePasses& passes,
-            VkSampler sampler, const Texture& source, std::string_view name);
+            VkSampler sampler, const Texture& source, TextureFormat format, std::string_view name);
 
         /// A chunk's flattened ground, stood empty under the neutral map: `GROUND_COMPOSITE_EXTENT`
-        /// square, display-encoded, with a chain to one texel and a `UNORM` view a dispatch stores
+        /// square, with a chain to one texel and a view without the curve a dispatch stores
         /// through. Written by `TextureArray::bakeComposites`, in the placement after it arrives.
-        static Result<Texture, std::string_view> composite(const Device& device, Batch& batch, std::string_view name);
+        ///
+        /// @param format what the description says the composite is, which is its image's format.
+        static Result<Texture, std::string_view> composite(
+            const Device& device, Batch& batch, TextureFormat format, std::string_view name);
 
         /// One texel of `colour`, whole floats so the value is the one named, under the neutral
         /// map: what `TEXTURE_NEUTRAL` stands, once, when the array is made.

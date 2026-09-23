@@ -3,6 +3,7 @@
 #include <osg/Vec3f>
 
 #include <components/sky/moonstate.hpp>
+#include <components/vfs/pathutil.hpp>
 
 #include "runs.hpp"
 #include "shaders/sky.h"
@@ -91,10 +92,18 @@ namespace Rtx
         float mSecunda = 0.0f;
     };
 
-    /// Adds `tx_masser_full.dds` and `tx_secunda_full.dds` to `scene` and holds them there until
-    /// `dropMoonFaces`, and how wide `sizes` draws each moon. A moon drawn from the mean of its
-    /// portrait is a coloured circle. A moon of size nought is not drawn, as the game draws none;
-    /// one whose size is below nought or not finite is refused to `scene`.
+    /// The painted face of `moon`, as the content files name it: what `addMoonFaces` reads and what
+    /// the game preloads, from this one answer.
+    constexpr VFS::Path::NormalizedView moonFaceOf(const Moon moon)
+    {
+        return moon == Moon::Masser ? VFS::Path::NormalizedView("textures/tx_masser_full.dds")
+                                    : VFS::Path::NormalizedView("textures/tx_secunda_full.dds");
+    }
+
+    /// Adds each moon's face, `moonFaceOf`, to `scene` and holds it there until `dropMoonFaces`,
+    /// and how wide `sizes` draws each moon. A moon drawn from the mean of its portrait is a
+    /// coloured circle. A moon of size nought is not drawn, as the game draws none; one whose size
+    /// is below nought or not finite is refused to `scene`.
     MoonFaces addMoonFaces(SceneDesc& scene, const MoonSizes& sizes);
 
     /// Gives both holds back, so a scene the world has left holds nothing of its moons.
