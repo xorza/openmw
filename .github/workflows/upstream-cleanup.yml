@@ -1,0 +1,52 @@
+# Deletes an upstream merge's branch when its pull request is closed without being merged.
+#
+# **Closed and not merged, because a merged branch is the repository's to delete.** The
+# "Automatically delete head branches" setting takes the branch of every merged pull request, the
+# ones `upstream.yml` merges included, and it has to be on for them: this could not see one, since
+# a merge made with `GITHUB_TOKEN` starts no workflow. What the setting leaves is a pull request
+# somebody closed, whose branch would otherwise stay until somebody deleted it by hand.
+#
+# **This repository's `upstream-merge/` branches and nothing else.** A fork's pull request can
+# carry any branch name, so the head repository is checked as well as the name, and a fork's
+# branch is never this repository's to delete.
+name: Upstream merge cleanup
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions: {}
+
+jobs:
+  delete-branch:
+    if: >-
+      !github.event.pull_request.merged
+      && github.event.pull_request.head.repo.full_name == github.repository
+      && startsWith(github.event.pull_request.head.ref, 'upstream-merge/')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+
+    # Deleting a branch is writing to the repository's contents, and nothing else is asked.
+    permissions:
+      contents: write
+
+    steps:
+      # Asked first, because a branch deleted by hand is what closes its pull request, and a
+      # delete of a ref that is gone fails. Only a 404 says it is gone: any other failure of the
+      # question is an error, not an answer.
+      - name: Delete the merge branch
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          if found=$(gh api "repos/$GH_REPO/git/ref/heads/$BRANCH" 2>&1); then
+            gh api -X DELETE "repos/$GH_REPO/git/refs/heads/$BRANCH"
+            echo "deleted $BRANCH"
+          elif [[ "$found" == *"(HTTP 404)"* ]]; then
+            echo "$BRANCH is already gone"
+          else
+            echo "::error::could not ask whether $BRANCH exists: $found"
+            exit 1
+          fi

@@ -186,9 +186,10 @@ jobs:
             pull request anyway. Put what is unresolved in the first line of the body. A branch
             somebody can take over beats a run that threw its work away.
 
-          # `opus` is Claude Code's alias for the newest Opus, and not a pinned version: a merge
-          # that needs judgement gets the strongest model there is, where the account's default
-          # is whatever its plan names.
+          # The newest Opus, where the account's default is whatever its plan names: a merge that
+          # needs judgement gets the strongest model. The alias is resolved by the Claude Code the
+          # pinned action carries, so it moves with the pin — under v1.0.231 it named
+          # `claude-opus-5`, a release behind the newest.
           claude_args: |
             --model opus
             --max-turns 60
