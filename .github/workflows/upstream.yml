@@ -95,6 +95,10 @@ jobs:
         id: upstream
         env:
           GH_TOKEN: ${{ github.token }}
+          # Named, because `gh` asks a checkout with a remote called `upstream` about that
+          # remote's repository and not `origin`'s: the count below read OpenMW's pull requests
+          # and found no merge waiting, every time.
+          GH_REPO: ${{ github.repository }}
         run: |
           # A merge commit needs an author, and a runner's git has none.
           git config user.name "github-actions[bot]"
@@ -207,6 +211,7 @@ jobs:
         if: steps.upstream.outputs.behind != '0' && steps.upstream.outputs.waiting == '0'
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           BRANCH: ${{ steps.upstream.outputs.branch }}
         run: |
           pull=$(gh pr list --state open --head "$BRANCH" \
