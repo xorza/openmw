@@ -18,8 +18,10 @@
 #include "mirrorpass.hpp"
 #include "runs.hpp"
 #include "scenedesc.hpp"
+#include "specularlayout.hpp"
 #include "surface.hpp"
 #include "texels.hpp"
+#include "textureencoding.hpp"
 
 namespace osg
 {
@@ -110,6 +112,9 @@ namespace Rtx
         /// identifies it.
         Resolved resolveWater();
 
+        /// What the `_spec` maps of materials described from here on mean, `Ignore` until told.
+        void setSpecularLayout(SpecularLayout layout) { mSpecularLayout = layout; }
+
         /// The state set `node` shades with where that is not simply the one it wears, or null
         /// where it is — which is nearly every node in a cell. One per node, rewritten in place, so
         /// a material keyed on its address is the same material next frame.
@@ -150,13 +155,16 @@ namespace Rtx
         }
 
     private:
-        /// What the scene knows one image as under each wrap, and whether its alpha ever reaches
-        /// solid, unset until something asks, because the walk over its texels is only worth doing
-        /// for a material that has to tell a wisp from a mask. `Known::mIndex` stays unset: the
-        /// slots are four, and the sweep reads the epoch and the holds alone.
+        /// What the scene knows one image as under each encoding and wrap, and whether its alpha
+        /// ever reaches solid, unset until something asks, because the walk over its texels is only
+        /// worth doing for a material that has to tell a wisp from a mask. `Known::mIndex` stays
+        /// unset: the slots are eight, and the sweep reads the epoch and the holds alone.
         struct HeldTexture : Known
         {
-            std::array<Index, sTextureWrapCount> mSlots{ sNoIndex, sNoIndex, sNoIndex, sNoIndex };
+            std::array<std::array<Index, sTextureWrapCount>, sTextureEncodingCount> mSlots{ {
+                { sNoIndex, sNoIndex, sNoIndex, sNoIndex },
+                { sNoIndex, sNoIndex, sNoIndex, sNoIndex },
+            } };
             std::optional<bool> mSolid;
 
             /// Its mean texel in the process's cache, `MeanTexels`, or null until an additive
@@ -229,11 +237,12 @@ namespace Rtx
         /// Gives back every hold `worn` took on the images it names.
         void releaseWorn(const Worn& worn);
 
-        /// The scene's slot for one image under one wrap, held for as long as this names it.
+        /// The scene's slot for one image under one wrap and one encoding, held for as long as this
+        /// names it.
         ///
         /// @param worn the material wearing it, where that material is rewritten by a controller,
         ///        which keeps the texture through the frames the controller shows another one.
-        Index takeTexture(const TextureUse& use, Worn* worn);
+        Index takeTexture(const TextureUse& use, Worn* worn, TextureEncoding encoding = TextureEncoding::Colour);
 
         /// Whether `image`'s alpha ever reaches solid — `reachesSolid`, read at the first material
         /// that asks and kept. Asked only for a translucent material's own diffuse map, because it
@@ -270,5 +279,7 @@ namespace Rtx
         /// The extractor's. The ring's reader has its own and hands its answers over in the
         /// reading.
         MeanTexels& mMeans;
+
+        SpecularLayout mSpecularLayout = SpecularLayout::Ignore;
     };
 }

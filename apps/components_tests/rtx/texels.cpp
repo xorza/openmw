@@ -14,6 +14,7 @@
 #include <components/rtx/meantexels.hpp>
 #include <components/rtx/texels.hpp>
 #include <components/rtx/texturedata.hpp>
+#include <components/rtx/textureencoding.hpp>
 
 namespace Rtx
 {
@@ -167,48 +168,65 @@ namespace Rtx
         struct FormatCase
         {
             GLenum mSpelling;
+            TextureEncoding mEncoding;
             TextureFormat mFormat;
             std::string_view mName;
         };
 
-        /// Every spelling OpenSceneGraph hands over, the format it reads as, and the name a report
-        /// prints for it.
+        /// Every spelling OpenSceneGraph hands over, the format it reads as under each encoding, and
+        /// the name a report prints for it.
         ///
         /// **Both DXT1 spellings are one format**, because the header's alpha flag decides nothing:
         /// a BC1 block carries its punch-through bit either way.
+        ///
+        /// **Data is the same blocks without the curve, and two channels are data alone**: a BC5
+        /// file bound as a colour has lost its blue, and is no format a colour slot takes.
         ///
         /// `GL_ALPHA` stands for the formats nothing here names. `ESMTerrain` builds its blend maps
         /// in it, which is a real format that reaches no uploader, so the count it lands in is the
         /// canary rather than a hole.
         TEST(RtxTextureFormatTest, everySpellingReadsAsItsFormatAndNamesItself)
         {
-            constexpr std::array<FormatCase, 10> sCases{ {
-                { GL_COMPRESSED_RGB_S3TC_DXT1_EXT, TextureFormat::Bc1RgbaSrgb, "BC1 (DXT1)" },
-                { GL_COMPRESSED_RGBA_S3TC_DXT1_EXT, TextureFormat::Bc1RgbaSrgb, "BC1 (DXT1)" },
-                { GL_COMPRESSED_RGBA_S3TC_DXT3_EXT, TextureFormat::Bc2Srgb, "BC2 (DXT3)" },
-                { GL_COMPRESSED_RGBA_S3TC_DXT5_EXT, TextureFormat::Bc3Srgb, "BC3 (DXT5)" },
-                { GL_RGB, TextureFormat::Rgb8, "RGB8" },
-                { GL_RGBA, TextureFormat::Rgba8Srgb, "RGBA8" },
-                { GL_BGRA, TextureFormat::Bgra8Srgb, "BGRA8" },
-                { GL_LUMINANCE, TextureFormat::Luminance, "L8" },
-                { GL_LUMINANCE_ALPHA, TextureFormat::LuminanceAlpha, "LA8" },
-                { GL_ALPHA, TextureFormat::Unnamed, "an unnamed pixel format" },
+            using enum TextureEncoding;
+            constexpr std::array<FormatCase, 19> sCases{ {
+                { GL_COMPRESSED_RGB_S3TC_DXT1_EXT, Colour, TextureFormat::Bc1RgbaSrgb, "BC1 (DXT1)" },
+                { GL_COMPRESSED_RGBA_S3TC_DXT1_EXT, Colour, TextureFormat::Bc1RgbaSrgb, "BC1 (DXT1)" },
+                { GL_COMPRESSED_RGBA_S3TC_DXT3_EXT, Colour, TextureFormat::Bc2Srgb, "BC2 (DXT3)" },
+                { GL_COMPRESSED_RGBA_S3TC_DXT5_EXT, Colour, TextureFormat::Bc3Srgb, "BC3 (DXT5)" },
+                { GL_COMPRESSED_RED_GREEN_RGTC2_EXT, Colour, TextureFormat::Unnamed, "an unnamed pixel format" },
+                { GL_RGB, Colour, TextureFormat::Rgb8, "RGB8" },
+                { GL_RGBA, Colour, TextureFormat::Rgba8Srgb, "RGBA8" },
+                { GL_BGRA, Colour, TextureFormat::Bgra8Srgb, "BGRA8" },
+                { GL_LUMINANCE, Colour, TextureFormat::Luminance, "L8" },
+                { GL_LUMINANCE_ALPHA, Colour, TextureFormat::LuminanceAlpha, "LA8" },
+                { GL_ALPHA, Colour, TextureFormat::Unnamed, "an unnamed pixel format" },
+                { GL_COMPRESSED_RGB_S3TC_DXT1_EXT, Data, TextureFormat::Bc1RgbaUnorm, "BC1 (DXT1, linear)" },
+                { GL_COMPRESSED_RGBA_S3TC_DXT1_EXT, Data, TextureFormat::Bc1RgbaUnorm, "BC1 (DXT1, linear)" },
+                { GL_COMPRESSED_RGBA_S3TC_DXT3_EXT, Data, TextureFormat::Bc2Unorm, "BC2 (DXT3, linear)" },
+                { GL_COMPRESSED_RGBA_S3TC_DXT5_EXT, Data, TextureFormat::Bc3Unorm, "BC3 (DXT5, linear)" },
+                { GL_COMPRESSED_RED_GREEN_RGTC2_EXT, Data, TextureFormat::Bc5Unorm, "BC5 (ATI2, linear)" },
+                { GL_RGBA, Data, TextureFormat::Rgba8Unorm, "RGBA8 (linear)" },
+                { GL_BGRA, Data, TextureFormat::Bgra8Unorm, "BGRA8 (linear)" },
+                { GL_RGB, Data, TextureFormat::Rgb8, "RGB8" },
             } };
 
             std::array<bool, sTextureFormatCount> met{};
             for (const FormatCase& one : sCases)
             {
-                EXPECT_EQ(readFormat(*makeImage(one.mSpelling)), one.mFormat);
+                EXPECT_EQ(readFormat(*makeImage(one.mSpelling), one.mEncoding), one.mFormat) << one.mName;
                 EXPECT_EQ(nameOf(one.mFormat), one.mName);
                 EXPECT_EQ(isUploadable(one.mFormat), one.mFormat < TextureFormat::Rgb8) << one.mName;
+                EXPECT_EQ(isSrgb(one.mFormat), one.mEncoding == Colour && isUploadable(one.mFormat)) << one.mName;
+                EXPECT_EQ(isBc1(one.mFormat),
+                    one.mSpelling == GL_COMPRESSED_RGB_S3TC_DXT1_EXT
+                        || one.mSpelling == GL_COMPRESSED_RGBA_S3TC_DXT1_EXT)
+                    << one.mName;
 
                 met[static_cast<std::size_t>(one.mFormat)] = true;
             }
 
-            // No file spells the linear format: it is what a test writes an exact texel into.
-            EXPECT_EQ(nameOf(TextureFormat::Rgba8Unorm), "RGBA8 (linear)");
-            EXPECT_TRUE(isUploadable(TextureFormat::Rgba8Unorm));
-            met[static_cast<std::size_t>(TextureFormat::Rgba8Unorm)] = true;
+            // Read with no encoding named, a file is a colour: every caller but a companion map's.
+            EXPECT_EQ(readFormat(*makeImage(GL_COMPRESSED_RGBA_S3TC_DXT5_EXT)), TextureFormat::Bc3Srgb);
 
             // A format added to the enum and left out of the table above is a failure here rather
             // than a count nothing can name.

@@ -51,7 +51,7 @@ namespace Rtx
         const Shaders::ShadingConstants constants{
             .mWidth = source.getWidth(),
             .mHeight = source.getHeight(),
-            .mPunchThrough = data.mFormat == TextureFormat::Bc1RgbaSrgb ? 1u : 0u,
+            .mPunchThrough = isBc1(data.mFormat) ? 1u : 0u,
         };
 
         DescriptorWrites<Shaders::SHADING_SUM_BINDINGS> summing;

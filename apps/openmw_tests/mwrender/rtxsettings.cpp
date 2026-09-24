@@ -3,6 +3,7 @@
 #include <components/rtx/error.hpp>
 #include <components/rtx/pacing.hpp>
 #include <components/rtx/reconstruction.hpp>
+#include <components/rtx/specularlayout.hpp>
 #include <components/rtx/upscale.hpp>
 
 #include "apps/openmw/mwrender/rtx/rtxsettings.hpp"
@@ -23,6 +24,7 @@ namespace MWRender
                 .mViewingDistance = 7168.0f,
                 .mObjectPaging = false,
                 .mObjectPagingMinSize = 0.025f,
+                .mSpecularMapLayout = "metal roughness",
             };
         }
 
@@ -48,6 +50,12 @@ namespace MWRender
                 values.mReflex = spelling;
                 EXPECT_EQ(RtxSettings::derive(values).mLatency, mode) << spelling;
             }
+            for (const auto& [layout, spelling] : Rtx::sSpecularLayoutNames.mNames)
+            {
+                RtxSettingValues values = valid();
+                values.mSpecularMapLayout = spelling;
+                EXPECT_EQ(RtxSettings::derive(values).mMirror.mSpecularLayout, layout) << spelling;
+            }
 
             const RtxSettings derived = RtxSettings::derive(valid());
             EXPECT_EQ(derived.mUpscaling.mMode, Rtx::Upscale::Balanced);
@@ -56,6 +64,7 @@ namespace MWRender
             EXPECT_EQ(derived.mMirror.mReach, 49152.0f) << "six cells of 8192 units";
             EXPECT_FALSE(derived.mMirror.mDistantStatics);
             EXPECT_EQ(derived.mMirror.mMinSize, 0.025f);
+            EXPECT_EQ(derived.mMirror.mSpecularLayout, Rtx::SpecularLayout::MetalRoughness);
 
             RtxSettingValues handedBack = valid();
             handedBack.mDistantLandCells = 0.0f;
@@ -78,6 +87,12 @@ namespace MWRender
             RtxSettingValues reflex = valid();
             reflex.mReflex = "fast";
             EXPECT_THROW(RtxSettings::derive(reflex), Rtx::InputError);
+
+            // The classic layout is the one a `_spec` file most often has, and it has no name here:
+            // its maps are what `ignore` is for.
+            RtxSettingValues layout = valid();
+            layout.mSpecularMapLayout = "classic";
+            EXPECT_THROW(RtxSettings::derive(layout), Rtx::InputError);
         }
     }
 }

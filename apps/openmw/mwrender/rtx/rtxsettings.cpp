@@ -1,6 +1,7 @@
 #include "rtxsettings.hpp"
 
 #include <components/rtx/cellgrid.hpp>
+#include <components/rtx/specularlayout.hpp>
 #include <components/rtx/upscale.hpp>
 #include <components/settings/values.hpp>
 
@@ -16,6 +17,7 @@ namespace MWRender
             .mViewingDistance = Settings::camera().mViewingDistance,
             .mObjectPaging = Settings::terrain().mObjectPaging,
             .mObjectPagingMinSize = Settings::terrain().mObjectPagingMinSize,
+            .mSpecularMapLayout = Settings::rtx().mSpecularMapLayout.get(),
         };
     }
 
@@ -31,6 +33,7 @@ namespace MWRender
                 .mReach = Rtx::distantLandReach(values.mDistantLandCells, values.mViewingDistance),
                 .mDistantStatics = values.mObjectPaging,
                 .mMinSize = values.mObjectPagingMinSize,
+                .mSpecularLayout = Rtx::sSpecularLayoutNames.require(values.mSpecularMapLayout, "a specular map layout"),
             },
         };
     }

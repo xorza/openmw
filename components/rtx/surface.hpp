@@ -99,19 +99,25 @@ namespace Rtx
     /// rather than an untextured surface.
     std::string_view textureRoleName(TextureRole role);
 
-    /// The maps a surface keeps: the four roles the trace reads. `TextureRole` names what the
-    /// content can bind, so a unit can be told from one that is no role at all; this names what
-    /// is recorded, because `Rtx::Material` declines the rest by decision and a fold that kept
-    /// them anyway paid a reference apiece for nothing.
+    /// The maps a surface keeps: the roles the trace reads. `TextureRole` names what the content
+    /// can bind, so a unit can be told from one that is no role at all; this names what is
+    /// recorded, because the detail, decal, gloss and bump roles occur in no shipped file, and a
+    /// fold that kept them anyway paid a reference apiece for nothing.
     enum class SurfaceMap : std::uint8_t
     {
         Diffuse,
         Emissive,
         Dark,
         Environment,
+
+        /// A tangent-space normal map, with or without height in its alpha.
+        Normal,
+
+        /// A specular map, whose channels `Rtx::SpecularLayout` says the meaning of.
+        Specular,
     };
 
-    inline constexpr std::size_t sSurfaceMapCount = 4;
+    inline constexpr std::size_t sSurfaceMapCount = 6;
 
     /// The map a role is kept as, or nothing for a role the trace declines to read.
     constexpr std::optional<SurfaceMap> mapOf(const TextureRole role)
@@ -128,7 +134,9 @@ namespace Rtx
                 return SurfaceMap::Environment;
             case TextureRole::Normal:
             case TextureRole::NormalHeight:
+                return SurfaceMap::Normal;
             case TextureRole::Specular:
+                return SurfaceMap::Specular;
             case TextureRole::Detail:
             case TextureRole::Decal:
             case TextureRole::Gloss:
@@ -260,8 +268,9 @@ namespace Rtx
         bool mTwoSided = false;
 
         /// Three of the four colours a `NiMaterialProperty` states for a surface, display-encoded.
-        /// The specular and the glossiness beside them are not read: `Rtx::Material` says why the
-        /// trace declines a specular it was never given a map for.
+        /// The specular and the glossiness beside them are not read: `NifOsg` sets the specular to
+        /// black on every Morrowind NIF, because the game had specular lighting disabled. A surface's
+        /// specular is its `SurfaceMap::Specular`, or none.
         EncodedColour mDiffuseColour{ 1.0f, 1.0f, 1.0f };
         EncodedColour mAmbientColour{ 1.0f, 1.0f, 1.0f };
         EncodedColour mEmissiveColour;

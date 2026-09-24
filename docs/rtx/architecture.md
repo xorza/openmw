@@ -545,9 +545,16 @@ the deck, the stars), `moonbuilder.hpp`, `cloudshell.hpp`, `nightsky.hpp`, `fogb
 Vanilla textures are pre-lit. `ShadingMap` (`shadingmap.hpp`) is the low-frequency brightness
 of a texture as a factor to divide out, normalised to one and clamped to two. `SpriteLightMap`
 bakes six-way lighting from a sprite's alpha. `MipChain` builds the levels a file did not
-carry. `Material` (`material.hpp`) has three kinds, `Surface`, `Terrain`, `Water`, and reads
-no normal or specular map by decision. The device makes the shading map and the sprite bake as
-each texture arrives; the host's versions are held to them by a test.
+carry. `Material` (`material.hpp`) has three kinds, `Surface`, `Terrain`, `Water`.
+
+Companion maps: a replacer's `_n`, `_nh` and `_spec` files sit beside the diffuse, and no NIF
+names them. `Shader::AutoMapVisitor` attaches them at load, on the loading threads, under the
+`[Shaders]` switches both renderers read (`Renderer::prepareResources`); the rasterizer's shader
+visitor runs the same step. They reach `Material::mNormal` and `mSpecular` as `TextureEncoding::Data`
+slots, which upload linearly and take no shading map. `SpecularLayout` (`[RTX] specular map
+layout`) says what a `_spec` map's channels mean, and under `Ignore` none is loaded or read. The
+device makes the shading map and the sprite bake as each texture arrives; the host's versions are
+held to them by a test.
 
 Lights: `Light` is the device's row; `lightbuilder.hpp` makes one from a graph `LightSource`,
 a `LIGH` record, or a `Glow` (one lamp per magic effect); `LightGrid` bins lamps into a
@@ -1123,6 +1130,7 @@ draw one frame.
 | the order of a frame                           | `renderFrame`, `traceWorld`, `trace` in `rtxrenderer.cpp`                |
 | the walk and the sweep                         | `mwrender/rtx/worldmirror.cpp`, `components/rtx/sceneextractor.hpp`, `mirroridentity.hpp` |
 | what the scene is                              | `components/rtx/scenedesc.hpp` and the five table headers                |
+| a replacer's companion maps                    | `components/shader/automaps.hpp`, `components/rtx/specularlayout.hpp`, `textureencoding.hpp` |
 | how a scene reaches the device                 | `components/rtx/sceneuploader.cpp`, `components/rtx/renderer.hpp`         |
 | the cells past the active grid                 | `components/rtx/cellring.hpp`, `cellsupply.hpp`, `cellreader.hpp`, `cellplacer.hpp` |
 | the sky, the air and the sea a frame is told   | `components/rtx/frameworld.hpp`, `skylight.hpp`, `mwrender/rtx/skyreader.hpp` |

@@ -53,6 +53,7 @@ namespace Rtx
                 case VK_FORMAT_BC2_UNORM_BLOCK:
                 case VK_FORMAT_BC3_SRGB_BLOCK:
                 case VK_FORMAT_BC3_UNORM_BLOCK:
+                case VK_FORMAT_BC5_UNORM_BLOCK:
                     return 0;
 
                 default:

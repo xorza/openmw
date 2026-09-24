@@ -18,6 +18,7 @@
 #include "sceneuploader.hpp"
 #include "shaders/visibility.h"
 #include "slot.hpp"
+#include "specularlayout.hpp"
 #include "viewscene.hpp"
 
 namespace osg
@@ -81,6 +82,9 @@ namespace Rtx
         /// otherwise be run by whichever got there first and frozen for the other. Left out, the
         /// walk keeps a sequence of its own.
         Traversals* mTraversals = nullptr;
+
+        /// What the subject's `_spec` maps mean — the world's, so a doll wears what the world does.
+        SpecularLayout mSpecularLayout = SpecularLayout::Ignore;
     };
 
     /// One picture traced from somewhere other than the eye: an inventory doll, a map tile. The

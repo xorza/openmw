@@ -4,6 +4,8 @@
 #include <osg/NodeVisitor>
 #include <osg/Program>
 
+#include "automaps.hpp"
+
 namespace Resource
 {
     class ImageManager;
@@ -35,15 +37,8 @@ namespace Shader
         /// submitted for rendering.
         void setAllowedToModifyStateSets(bool allowed);
 
-        /// Automatically use normal maps if a file with suitable name exists (see normal map pattern).
-        void setAutoUseNormalMaps(bool use);
-
-        void setNormalMapPattern(const std::string& pattern);
-        void setNormalHeightMapPattern(const std::string& pattern);
-
-        void setAutoUseSpecularMaps(bool use);
-
-        void setSpecularMapPattern(const std::string& pattern);
+        /// Automatically use the normal and specular maps a diffuse map's file name leads to.
+        void setAutoMaps(const AutoMapRules& rules);
 
         void setConvertAlphaTestToAlphaToCoverage(bool convert);
         void setAdjustCoverageForAlphaTest(bool adjustCoverage);
@@ -65,12 +60,7 @@ namespace Shader
     private:
         bool mAllowedToModifyStateSets;
 
-        bool mAutoUseNormalMaps;
-        std::string mNormalMapPattern;
-        std::string mNormalHeightMapPattern;
-
-        bool mAutoUseSpecularMaps;
-        std::string mSpecularMapPattern;
+        AutoMapRules mAutoMaps;
 
         bool mConvertAlphaTestToAlphaToCoverage;
         bool mAdjustCoverageForAlphaTest;

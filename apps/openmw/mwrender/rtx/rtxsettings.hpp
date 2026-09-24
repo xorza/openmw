@@ -24,6 +24,7 @@ namespace MWRender
         float mViewingDistance = 0.0f;
         bool mObjectPaging = true;
         float mObjectPagingMinSize = 0.0f;
+        std::string_view mSpecularMapLayout;
 
         /// `[RTX]`, `[Camera] viewing distance` and `[Terrain]`'s paging: the one place the game
         /// reads these settings.

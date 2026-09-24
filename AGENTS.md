@@ -14,7 +14,9 @@ the tree, `--help` or a commit already answers does not belong here.
 
 A 2002 game made to look astonishing on current hardware — ray-traced visibility, path-traced
 indirect light, materials recovered from pre-lit vanilla textures, DLSS Ray Reconstruction. Vanilla
-content, new light transport.
+content and the PBR replacers made for OpenMW, new light transport: what a replacer's companion
+maps add reaches the trace, and a vanilla picture does not change because the renderer can read
+them.
 
 ## Rules
 

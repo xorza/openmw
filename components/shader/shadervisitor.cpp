@@ -19,19 +19,16 @@
 
 #include <components/debug/debuglog.hpp>
 #include <components/misc/osguservalues.hpp>
-#include <components/misc/strings/algorithm.hpp>
-#include <components/resource/imagemanager.hpp>
 #include <components/sceneutil/glextensions.hpp>
 #include <components/sceneutil/material.hpp>
 #include <components/sceneutil/morphgeometry.hpp>
 #include <components/sceneutil/riggeometry.hpp>
 #include <components/sceneutil/riggeometryosgaextension.hpp>
-#include <components/sceneutil/texturetype.hpp>
 #include <components/sceneutil/util.hpp>
 #include <components/settings/settings.hpp>
 #include <components/stereo/stereomanager.hpp>
-#include <components/vfs/manager.hpp>
 
+#include "automaps.hpp"
 #include "removedalphafunc.hpp"
 #include "shadermanager.hpp"
 
@@ -164,8 +161,6 @@ namespace Shader
         ShaderManager& shaderManager, Resource::ImageManager& imageManager, const std::string& defaultShaderPrefix)
         : osg::NodeVisitor(TRAVERSE_ALL_CHILDREN)
         , mAllowedToModifyStateSets(true)
-        , mAutoUseNormalMaps(false)
-        , mAutoUseSpecularMaps(false)
         , mConvertAlphaTestToAlphaToCoverage(false)
         , mAdjustCoverageForAlphaTest(false)
         , mSupportsNormalsRT(false)
@@ -188,16 +183,6 @@ namespace Shader
         traverse(node);
         if (needPop)
             popRequirements();
-    }
-
-    osg::StateSet* getWritableStateSet(osg::Node& node)
-    {
-        if (!node.getStateSet())
-            return node.getOrCreateStateSet();
-
-        osg::ref_ptr<osg::StateSet> newStateSet = new osg::StateSet(*node.getStateSet(), osg::CopyOp::SHALLOW_COPY);
-        node.setStateSet(newStateSet);
-        return newStateSet.get();
     }
 
     osg::UserDataContainer* getWritableUserDataContainer(osg::Object& object)
@@ -247,19 +232,6 @@ namespace Shader
         addedState->setName("addedState");
     }
 
-    // This list is used both for detecting known texture types (including added normal maps etc.) and setting the
-    // shader defines. Normal maps and normal height maps both get sent to the shader as a normal map, so the latter
-    // must be detected separately.
-    const char* defaultTextures[] = { "diffuseMap", "normalMap", "emissiveMap", "darkMap", "detailMap", "envMap",
-        "specularMap", "decalMap", "bumpMap", "glossMap" };
-    bool isTextureNameRecognized(std::string_view name)
-    {
-        if (std::find(std::begin(defaultTextures), std::end(defaultTextures), name) != std::end(defaultTextures))
-            return true;
-        else
-            return name == "normalHeightMap";
-    }
-
     void ShaderVisitor::applyStateSet(osg::ref_ptr<osg::StateSet> stateset, osg::Node& node)
     {
         osg::StateSet* writableStateSet = nullptr;
@@ -288,9 +260,7 @@ namespace Shader
                     const osg::Texture* texture = attr->asTexture();
                     if (texture)
                     {
-                        std::string texName = SceneUtil::getTextureType(*stateset, *texture, unit);
-                        if ((texName.empty() || !isTextureNameRecognized(texName)) && unit == 0)
-                            texName = "diffuseMap";
+                        std::string texName(textureNameAt(*stateset, *texture, unit));
 
                         if (texName == "normalHeightMap")
                         {
@@ -330,56 +300,19 @@ namespace Shader
                 }
             }
 
-            if (mAutoUseNormalMaps && diffuseMap != nullptr && normalMap == nullptr && diffuseMap->getImage(0))
+            if (diffuseMap != nullptr)
             {
-                std::string normalMapFileName = diffuseMap->getImage(0)->getFileName();
-
-                osg::ref_ptr<osg::Image> image;
-                bool normalHeight = false;
-                std::string normalHeightMap = normalMapFileName;
-                Misc::StringUtils::replaceLast(normalHeightMap, ".", mNormalHeightMapPattern + ".");
-                const VFS::Path::Normalized normalHeightMapPath(normalHeightMap);
-                if (mImageManager.getVFS()->exists(normalHeightMapPath))
+                const AttachedMaps attached = attachAutoMaps(mAutoMaps, mImageManager, *diffuseMap, normalMap,
+                    specularMap, bumpMap, texAttributes, writableStateSet, node);
+                if (attached.mNormalMap != nullptr)
                 {
-                    image = mImageManager.getImage(normalHeightMapPath);
-                    normalHeight = true;
+                    normalMap = attached.mNormalMap;
+                    mRequirements.back().mTextures[attached.mNormalUnit] = "normalMap";
+                    mRequirements.back().mTexStageRequiringTangents = attached.mNormalUnit;
+                    mRequirements.back().mNormalHeight = attached.mNormalHeight;
                 }
-                else
-                {
-                    Misc::StringUtils::replaceLast(normalMapFileName, ".", mNormalMapPattern + ".");
-                    const VFS::Path::Normalized normalMapPath(normalMapFileName);
-                    if (mImageManager.getVFS()->exists(normalMapPath))
-                    {
-                        image = mImageManager.getImage(normalMapPath);
-                    }
-                }
-                // Avoid using the auto-detected normal map if it's already being used as a bump map.
-                // It's probably not an actual normal map.
-                bool hasNamesakeBumpMap = image && bumpMap && bumpMap->getImage(0)
-                    && image->getFileName() == bumpMap->getImage(0)->getFileName();
-
-                if (!hasNamesakeBumpMap && image)
-                {
-                    osg::ref_ptr<osg::Texture2D> normalMapTex(new osg::Texture2D(image));
-                    normalMapTex->setTextureSize(image->s(), image->t());
-                    normalMapTex->setWrap(osg::Texture::WRAP_S, diffuseMap->getWrap(osg::Texture::WRAP_S));
-                    normalMapTex->setWrap(osg::Texture::WRAP_T, diffuseMap->getWrap(osg::Texture::WRAP_T));
-                    normalMapTex->setFilter(osg::Texture::MIN_FILTER, diffuseMap->getFilter(osg::Texture::MIN_FILTER));
-                    normalMapTex->setFilter(osg::Texture::MAG_FILTER, diffuseMap->getFilter(osg::Texture::MAG_FILTER));
-                    normalMapTex->setMaxAnisotropy(diffuseMap->getMaxAnisotropy());
-                    normalMap = normalMapTex;
-
-                    int unit = static_cast<int>(texAttributes.size());
-                    if (!writableStateSet)
-                        writableStateSet = getWritableStateSet(node);
-                    writableStateSet->setTextureAttribute(unit, normalMapTex, osg::StateAttribute::ON);
-                    writableStateSet->setTextureAttribute(unit,
-                        new SceneUtil::TextureType(normalHeight ? "normalHeightMap" : "normalMap"),
-                        osg::StateAttribute::ON);
-                    mRequirements.back().mTextures[unit] = "normalMap";
-                    mRequirements.back().mTexStageRequiringTangents = unit;
-                    mRequirements.back().mNormalHeight = normalHeight;
-                }
+                if (attached.mSpecularUnit >= 0)
+                    mRequirements.back().mTextures[attached.mSpecularUnit] = "specularMap";
             }
 
             if (normalMap != nullptr && normalMap->getImage(0))
@@ -393,34 +326,6 @@ namespace Shader
                         mRequirements.back().mReconstructNormalZ = true;
                         mRequirements.back().mNormalHeight = false;
                     }
-                }
-            }
-
-            if (mAutoUseSpecularMaps && diffuseMap != nullptr && specularMap == nullptr && diffuseMap->getImage(0))
-            {
-                std::string specularMapFileName = diffuseMap->getImage(0)->getFileName();
-                Misc::StringUtils::replaceLast(specularMapFileName, ".", mSpecularMapPattern + ".");
-                const VFS::Path::Normalized specularMapPath(specularMapFileName);
-                if (mImageManager.getVFS()->exists(specularMapPath))
-                {
-                    osg::ref_ptr<osg::Image> image(mImageManager.getImage(specularMapPath));
-                    osg::ref_ptr<osg::Texture2D> specularMapTex(new osg::Texture2D(image));
-                    specularMapTex->setTextureSize(image->s(), image->t());
-                    specularMapTex->setWrap(osg::Texture::WRAP_S, diffuseMap->getWrap(osg::Texture::WRAP_S));
-                    specularMapTex->setWrap(osg::Texture::WRAP_T, diffuseMap->getWrap(osg::Texture::WRAP_T));
-                    specularMapTex->setFilter(
-                        osg::Texture::MIN_FILTER, diffuseMap->getFilter(osg::Texture::MIN_FILTER));
-                    specularMapTex->setFilter(
-                        osg::Texture::MAG_FILTER, diffuseMap->getFilter(osg::Texture::MAG_FILTER));
-                    specularMapTex->setMaxAnisotropy(diffuseMap->getMaxAnisotropy());
-
-                    int unit = static_cast<int>(texAttributes.size());
-                    if (!writableStateSet)
-                        writableStateSet = getWritableStateSet(node);
-                    writableStateSet->setTextureAttribute(unit, specularMapTex, osg::StateAttribute::ON);
-                    writableStateSet->setTextureAttribute(
-                        unit, new SceneUtil::TextureType("specularMap"), osg::StateAttribute::ON);
-                    mRequirements.back().mTextures[unit] = "specularMap";
                 }
             }
         }
@@ -529,10 +434,10 @@ namespace Shader
             previousAddedState = new AddedState;
 
         ShaderManager::DefineMap defineMap;
-        for (unsigned int i = 0; i < sizeof(defaultTextures) / sizeof(defaultTextures[0]); ++i)
+        for (const std::string_view name : sDefaultTextures)
         {
-            defineMap[defaultTextures[i]] = "0";
-            defineMap[std::string(defaultTextures[i]) + std::string("UV")] = "0";
+            defineMap[std::string(name)] = "0";
+            defineMap[std::string(name) + std::string("UV")] = "0";
         }
         for (std::map<int, std::string>::const_iterator texIt = reqs.mTextures.begin(); texIt != reqs.mTextures.end();
              ++texIt)
@@ -801,29 +706,9 @@ namespace Shader
         mAllowedToModifyStateSets = allowed;
     }
 
-    void ShaderVisitor::setAutoUseNormalMaps(bool use)
+    void ShaderVisitor::setAutoMaps(const AutoMapRules& rules)
     {
-        mAutoUseNormalMaps = use;
-    }
-
-    void ShaderVisitor::setNormalMapPattern(const std::string& pattern)
-    {
-        mNormalMapPattern = pattern;
-    }
-
-    void ShaderVisitor::setNormalHeightMapPattern(const std::string& pattern)
-    {
-        mNormalHeightMapPattern = pattern;
-    }
-
-    void ShaderVisitor::setAutoUseSpecularMaps(bool use)
-    {
-        mAutoUseSpecularMaps = use;
-    }
-
-    void ShaderVisitor::setSpecularMapPattern(const std::string& pattern)
-    {
-        mSpecularMapPattern = pattern;
+        mAutoMaps = rules;
     }
 
     void ShaderVisitor::setConvertAlphaTestToAlphaToCoverage(bool convert)

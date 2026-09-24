@@ -8,9 +8,10 @@
 
 namespace Rtx
 {
-    /// The one place a `TextureFormat` becomes Vulkan's. Every case is sRGB: the files hold
-    /// display-encoded bytes and the hardware converts them in the filter. Ends the process for a
-    /// format `describeImage` refuses, because one arriving here is a contract broken and not a file.
+    /// The one place a `TextureFormat` becomes Vulkan's. A colour's cases are sRGB, because the files
+    /// hold display-encoded bytes and the hardware converts them in the filter; data's are UNORM.
+    /// Ends the process for a format `describeImage` refuses, because one arriving here is a
+    /// contract broken and not a file.
     VkFormat toVulkanFormat(TextureFormat format);
 
     /// The one place a shader's declared layout becomes Vulkan's: the format of the Vulkan

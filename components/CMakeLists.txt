@@ -133,7 +133,7 @@ add_component_dir (resource
     )
 
 add_component_dir (shader
-    shadermanager shadervisitor removedalphafunc
+    automaps shadermanager shadervisitor removedalphafunc
     )
 
 add_component_dir (sceneutil

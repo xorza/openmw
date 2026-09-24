@@ -45,6 +45,7 @@
 #include <components/rtx/sceneuploader.hpp>
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/shaders/visibility.h>
+#include <components/rtx/specularlayout.hpp>
 #include <components/rtx/upscale.hpp>
 #include <components/rtxvulkan/createrenderer.hpp>
 #include <components/sceneutil/screencapture.hpp>
@@ -52,6 +53,7 @@
 #include <components/sdlutil/vsyncmode.hpp>
 #include <components/settings/categories.hpp>
 #include <components/settings/values.hpp>
+#include <components/shader/automaps.hpp>
 #include <components/vfs/pathutil.hpp>
 
 #include "../ground.hpp"
@@ -276,7 +278,14 @@ namespace MWRender
 
     void RtxRenderer::configureResources(Resource::ResourceSystem& resources)
     {
-        resources.getSceneManager()->setShadersEnabled(false);
+        Resource::SceneManager& scene = *resources.getSceneManager();
+        scene.setShadersEnabled(false);
+
+        // A `_spec` map this renderer does not read is not loaded either: a classic one is refused
+        // by the layout, and a pack of three thousand would sit in memory for nothing.
+        Shader::AutoMapRules maps = scene.getAutoMaps();
+        maps.mSpecularMaps = maps.mSpecularMaps && mMirror.getSpecularLayout() == Rtx::SpecularLayout::MetalRoughness;
+        scene.setAutoMaps(maps);
     }
 
     osg::ref_ptr<osg::Group> RtxRenderer::createSceneRoot()
@@ -520,14 +529,15 @@ namespace MWRender
     std::unique_ptr<OffscreenView> RtxRenderer::createWorldView(const OffscreenViewSpec& spec)
     {
         assert(mGui != nullptr && "a view before the interface was made");
-        return std::make_unique<TracedView>(spec, ViewKind::World, *mRenderer, mViews, *mGui, mMirror.getTraversals());
+        return std::make_unique<TracedView>(
+            spec, ViewKind::World, *mRenderer, mViews, *mGui, mMirror.getTraversals(), mMirror.getSpecularLayout());
     }
 
     std::unique_ptr<SubjectView> RtxRenderer::createSubjectView(const OffscreenViewSpec& spec)
     {
         assert(mGui != nullptr && "a view before the interface was made");
         return std::make_unique<TracedView>(
-            spec, ViewKind::Subject, *mRenderer, mViews, *mGui, mMirror.getTraversals());
+            spec, ViewKind::Subject, *mRenderer, mViews, *mGui, mMirror.getTraversals(), mMirror.getSpecularLayout());
     }
 
     std::unique_ptr<MapOverlay> RtxRenderer::createMapOverlay(const MapOverlaySpec& spec)

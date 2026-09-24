@@ -50,8 +50,7 @@ namespace Rtx
         // their alpha in front of it and BC1 has none.
         const std::uint32_t columns = (level.mWidth + 3) / 4;
         const std::size_t at = level.mOffset + (std::size_t{ y / 4 } * columns + x / 4) * bytes + (bytes - 8);
-        const ColourBlock block
-            = ColourBlock::read(texture.mBytes.subspan(at).first<8>(), texture.mFormat == TextureFormat::Bc1RgbaSrgb);
+        const ColourBlock block = ColourBlock::read(texture.mBytes.subspan(at).first<8>(), isBc1(texture.mFormat));
 
         return block.mPalette[block.indexAt(std::size_t{ y % 4 } * 4 + x % 4)];
     }
@@ -121,8 +120,10 @@ namespace Rtx
         };
     }
 
-    TextureFormat readFormat(const osg::Image& image)
+    TextureFormat readFormat(const osg::Image& image, const TextureEncoding encoding)
     {
+        const bool colour = encoding == TextureEncoding::Colour;
+
         switch (image.getPixelFormat())
         {
             // One format for both spellings: whether the file's header claimed alpha decides
@@ -131,20 +132,24 @@ namespace Rtx
             // `DDPF_ALPHAPIXELS`, so believing the header would leave every canopy a solid card.
             case GL_COMPRESSED_RGB_S3TC_DXT1_EXT:
             case GL_COMPRESSED_RGBA_S3TC_DXT1_EXT:
-                return TextureFormat::Bc1RgbaSrgb;
+                return colour ? TextureFormat::Bc1RgbaSrgb : TextureFormat::Bc1RgbaUnorm;
             case GL_COMPRESSED_RGBA_S3TC_DXT3_EXT:
-                return TextureFormat::Bc2Srgb;
+                return colour ? TextureFormat::Bc2Srgb : TextureFormat::Bc2Unorm;
             case GL_COMPRESSED_RGBA_S3TC_DXT5_EXT:
-                return TextureFormat::Bc3Srgb;
+                return colour ? TextureFormat::Bc3Srgb : TextureFormat::Bc3Unorm;
+            // Two channels are no colour: MVR PBR ships three neck diffuse maps as BC5, with their
+            // blue gone, and a colour slot refuses them by name rather than drawing them yellow.
+            case GL_COMPRESSED_RED_GREEN_RGTC2_EXT:
+                return colour ? TextureFormat::Unnamed : TextureFormat::Bc5Unorm;
             case GL_RGB:
                 return TextureFormat::Rgb8;
             // Not every file the game ships is a block. The sky's cloud decks are plain 32-bit
             // `DDPF_RGB`, which is what a texture painted for a full-screen dome would be, and
             // taking only the compressed formats would draw every weather's clouds grey.
             case GL_RGBA:
-                return TextureFormat::Rgba8Srgb;
+                return colour ? TextureFormat::Rgba8Srgb : TextureFormat::Rgba8Unorm;
             case GL_BGRA:
-                return TextureFormat::Bgra8Srgb;
+                return colour ? TextureFormat::Bgra8Srgb : TextureFormat::Bgra8Unorm;
             case GL_LUMINANCE:
                 return TextureFormat::Luminance;
             case GL_LUMINANCE_ALPHA:
@@ -172,6 +177,16 @@ namespace Rtx
                 return "RGBA8";
             case TextureFormat::Bgra8Srgb:
                 return "BGRA8";
+            case TextureFormat::Bc1RgbaUnorm:
+                return "BC1 (DXT1, linear)";
+            case TextureFormat::Bc2Unorm:
+                return "BC2 (DXT3, linear)";
+            case TextureFormat::Bc3Unorm:
+                return "BC3 (DXT5, linear)";
+            case TextureFormat::Bgra8Unorm:
+                return "BGRA8 (linear)";
+            case TextureFormat::Bc5Unorm:
+                return "BC5 (ATI2, linear)";
             case TextureFormat::Luminance:
                 return "L8";
             case TextureFormat::LuminanceAlpha:

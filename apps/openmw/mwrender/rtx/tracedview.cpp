@@ -34,7 +34,8 @@ namespace MWRender
 
         /// The spec as the trace takes it. Bottom row first, which is what
         /// `OffscreenView::getTexture` promises and what the widgets showing one invert V for.
-        Rtx::ViewRequest requestFor(const OffscreenViewSpec& spec, ViewKind kind, Rtx::Traversals& traversals)
+        Rtx::ViewRequest requestFor(
+            const OffscreenViewSpec& spec, ViewKind kind, Rtx::Traversals& traversals, Rtx::SpecularLayout layout)
         {
             osg::Node* const subject = kind == ViewKind::Subject ? &spec.mScene : nullptr;
             return Rtx::ViewRequest{
@@ -48,6 +49,7 @@ namespace MWRender
                 .mSubject = subject,
                 .mSubjectMask = spec.mMask,
                 .mTraversals = &traversals,
+                .mSpecularLayout = layout,
             };
         }
 
@@ -60,9 +62,9 @@ namespace MWRender
     }
 
     TracedView::TracedView(const OffscreenViewSpec& spec, ViewKind kind, Rtx::Renderer& backend, ViewQueue& views,
-        MyGUIRtx::RenderManager& gui, Rtx::Traversals& traversals)
+        MyGUIRtx::RenderManager& gui, Rtx::Traversals& traversals, Rtx::SpecularLayout layout)
         : mViews(views)
-        , mTrace(backend, requestFor(spec, kind, traversals))
+        , mTrace(backend, requestFor(spec, kind, traversals, layout))
         , mTexture(gui.takeTexture(nextViewName()))
     {
         const int width = static_cast<int>(mTrace.getWidth());

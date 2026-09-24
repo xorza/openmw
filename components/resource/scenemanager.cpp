@@ -522,31 +522,6 @@ namespace Resource
         node->accept(*reinstateRemovedStateVisitor);
     }
 
-    void SceneManager::setAutoUseNormalMaps(bool use)
-    {
-        mAutoUseNormalMaps = use;
-    }
-
-    void SceneManager::setNormalMapPattern(const std::string& pattern)
-    {
-        mNormalMapPattern = pattern;
-    }
-
-    void SceneManager::setNormalHeightMapPattern(const std::string& pattern)
-    {
-        mNormalHeightMapPattern = pattern;
-    }
-
-    void SceneManager::setAutoUseSpecularMaps(bool use)
-    {
-        mAutoUseSpecularMaps = use;
-    }
-
-    void SceneManager::setSpecularMapPattern(const std::string& pattern)
-    {
-        mSpecularMapPattern = pattern;
-    }
-
     void SceneManager::setSupportsClusteredLighting(bool supported)
     {
         mSupportsClusteredLighting = supported;
@@ -1030,6 +1005,11 @@ namespace Resource
                 osg::ref_ptr<Shader::ShaderVisitor> shaderVisitor(createShaderVisitor());
                 loaded->accept(*shaderVisitor);
             }
+            else if (mAutoMaps.any())
+            {
+                Shader::AutoMapVisitor autoMaps(mAutoMaps, *mImageManager);
+                loaded->accept(autoMaps);
+            }
 
             if (canOptimize(path.value()))
             {
@@ -1256,11 +1236,7 @@ namespace Resource
     {
         osg::ref_ptr<Shader::ShaderVisitor> shaderVisitor(
             new Shader::ShaderVisitor(*mShaderManager.get(), *mImageManager, shaderPrefix));
-        shaderVisitor->setAutoUseNormalMaps(mAutoUseNormalMaps);
-        shaderVisitor->setNormalMapPattern(mNormalMapPattern);
-        shaderVisitor->setNormalHeightMapPattern(mNormalHeightMapPattern);
-        shaderVisitor->setAutoUseSpecularMaps(mAutoUseSpecularMaps);
-        shaderVisitor->setSpecularMapPattern(mSpecularMapPattern);
+        shaderVisitor->setAutoMaps(mAutoMaps);
         shaderVisitor->setConvertAlphaTestToAlphaToCoverage(mConvertAlphaTestToAlphaToCoverage);
         shaderVisitor->setAdjustCoverageForAlphaTest(mAdjustCoverageForAlphaTest);
         shaderVisitor->setSupportsNormalsRT(mSupportsNormalsRT);

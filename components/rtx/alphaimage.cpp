@@ -74,6 +74,7 @@ namespace Rtx
             switch (format)
             {
                 case TextureFormat::Bc1RgbaSrgb:
+                case TextureFormat::Bc1RgbaUnorm:
                 {
                     // BC1 has no alpha channel — it has a fourth palette entry that means
                     // "nothing here", and only when the endpoints are stored ascending.
@@ -83,9 +84,11 @@ namespace Rtx
                     break;
                 }
                 case TextureFormat::Bc2Srgb:
+                case TextureFormat::Bc2Unorm:
                     bc2Alpha(bytes, into);
                     break;
                 case TextureFormat::Bc3Srgb:
+                case TextureFormat::Bc3Unorm:
                     bc3Alpha(bytes, into);
                     break;
                 default:

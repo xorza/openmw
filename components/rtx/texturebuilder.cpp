@@ -70,9 +70,9 @@ namespace Rtx
         };
     }
 
-    Result<void, std::string> checkUploadable(const osg::Image& image)
+    Result<void, std::string> checkUploadable(const osg::Image& image, const TextureEncoding encoding)
     {
-        const TextureFormat format = readFormat(image);
+        const TextureFormat format = readFormat(image, encoding);
         if (!isUploadable(format))
             return Err{ "its format is " + std::string(nameOf(format)) + " (" + std::to_string(image.getPixelFormat())
                 + "), which this renderer does not upload" };
@@ -84,12 +84,13 @@ namespace Rtx
         return {};
     }
 
-    Result<TextureData, std::string> describeImage(const osg::Image& image, std::vector<MipLevel>& levels)
+    Result<TextureData, std::string> describeImage(
+        const osg::Image& image, std::vector<MipLevel>& levels, const TextureEncoding encoding)
     {
-        if (const Result<void, std::string> uploadable = checkUploadable(image); !uploadable.isOk())
+        if (const Result<void, std::string> uploadable = checkUploadable(image, encoding); !uploadable.isOk())
             return Err{ uploadable.error() };
 
-        const TextureFormat format = readFormat(image);
+        const TextureFormat format = readFormat(image, encoding);
         const auto width = static_cast<std::uint32_t>(image.s());
         const auto height = static_cast<std::uint32_t>(image.t());
 
@@ -106,6 +107,7 @@ namespace Rtx
 
         return TextureData{
             .mFormat = format,
+            .mEncoding = encoding,
             .mWidth = width,
             .mHeight = height,
             .mBytes
@@ -145,9 +147,9 @@ namespace Rtx
 
             // A slot this renderer made rather than opened has no file to be asked for, and the
             // entry still has to exist because the description below is built from it.
-            Kept kept{ .mSlot = slot };
-
             const TextureRow& row = scene.textures().getRows()[slot];
+            Kept kept{ .mSlot = slot, .mEncoding = row.mEncoding };
+
             if (row.mKind == TextureKind::File)
                 kept.mImage = openImage(images, row.mPath);
             else if (const std::optional<VFS::Path::Normalized> source = SpriteLightMap::sourceOf(row.mBaked))
@@ -215,7 +217,7 @@ namespace Rtx
 
         if (const osg::Image* image = kept.mImage.value().get())
         {
-            const Result<TextureData, std::string> read = describeImage(*image, mLevels);
+            const Result<TextureData, std::string> read = describeImage(*image, mLevels, kept.mEncoding);
             if (!read.isOk())
                 return read;
 

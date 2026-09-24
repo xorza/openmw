@@ -115,6 +115,7 @@ namespace MWRender
     WorldMirror::WorldMirror(const Rtx::MirrorKnobs& knobs)
         : mExtractor(mScene, &mTraversals)
         , mReach(knobs.mReach)
+        , mSpecularLayout(knobs.mSpecularLayout)
     {
         mRing.setStaticsEnabled(knobs.mDistantStatics);
         mRing.setMinSize(knobs.mMinSize);
@@ -133,6 +134,7 @@ namespace MWRender
         // What is left of the two is the sea, which this renderer stands: upstream's plane, as
         // `MWRender::Water` makes it, on a transform a frame moves.
         mExtractor.setWaterMask(Mask_Water);
+        mExtractor.setSpecularLayout(mSpecularLayout);
 
         osg::ref_ptr<osg::Geometry> sea = SceneUtil::createWaterGeometry(Constants::CellSizeInUnits * 150, 40, 900);
         sea->setNodeMask(Mask_Water);

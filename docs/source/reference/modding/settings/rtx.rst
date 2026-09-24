@@ -109,3 +109,19 @@ also follow the settings window while the game runs.
    Mark the frame a left click landed in for the driver's latency analyser, which draws a square
    on that frame. A measurement aid, for a monitor that can time the square against the click,
    and nothing a player wants on.
+
+.. omw-setting::
+   :title: specular map layout
+   :type: string
+   :range: ignore, metal roughness
+   :default: ignore
+
+   What the content's :code:`_spec` maps mean. The file cannot say, and two layouts are in use:
+   OpenMW's own, with a highlight colour in RGB and glossiness in alpha, and the one of the PBR
+   packs, with metalness in red, roughness in green, ambient occlusion in blue and one less
+   subsurface scattering in alpha. :code:`ignore` reads no specular map, which is right for the
+   first and for content with none. :code:`metal roughness` reads the second.
+
+   The maps are found by name as :ref:`auto use object specular maps` finds them, and loaded with
+   the models, so a change requires a restart. A name this does not know is refused rather than
+   quietly defaulted.

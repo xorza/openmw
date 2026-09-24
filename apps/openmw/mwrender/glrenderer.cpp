@@ -388,11 +388,6 @@ namespace MWRender
         Resource::SceneManager& scene = *resources.getSceneManager();
         scene.getShaderManager().setMaxTextureUnits(mMaxTextureUnits);
 
-        scene.setAutoUseNormalMaps(Settings::shaders().mAutoUseObjectNormalMaps);
-        scene.setNormalMapPattern(Settings::shaders().mNormalMapPattern);
-        scene.setNormalHeightMapPattern(Settings::shaders().mNormalHeightMapPattern);
-        scene.setAutoUseSpecularMaps(Settings::shaders().mAutoUseObjectSpecularMaps);
-        scene.setSpecularMapPattern(Settings::shaders().mSpecularMapPattern);
         scene.setConvertAlphaTestToAlphaToCoverage(shouldAddMSAAIntermediateTarget());
         scene.setAdjustCoverageForAlphaTest(Settings::shaders().mAdjustCoverageForAlphaTest);
         scene.setWeatherParticleOcclusion(Settings::shaders().mWeatherParticleOcclusion);

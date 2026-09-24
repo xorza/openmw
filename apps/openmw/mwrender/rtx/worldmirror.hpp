@@ -23,6 +23,7 @@
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneextractor.hpp>
 #include <components/rtx/sceneuploader.hpp>
+#include <components/rtx/specularlayout.hpp>
 
 namespace Resource
 {
@@ -143,6 +144,10 @@ namespace MWRender
         /// Where every walk that can reach one graph takes its traversal numbers from.
         Rtx::Traversals& getTraversals() { return mTraversals; }
 
+        /// What the content's `_spec` maps mean, as the mirror was made with — for the scene
+        /// manager, which loads them, and for the pictures inside the interface, which read them.
+        Rtx::SpecularLayout getSpecularLayout() const { return mSpecularLayout; }
+
         // Read by the tests and by nothing else.
         osg::Node::NodeMask getTraversalMask() const { return mExtractor.getTraversalMask(); }
 
@@ -195,5 +200,6 @@ namespace MWRender
 
         float mReach;
         osg::Vec3f mEye;
+        Rtx::SpecularLayout mSpecularLayout;
     };
 }

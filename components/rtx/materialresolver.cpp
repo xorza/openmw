@@ -255,7 +255,7 @@ namespace Rtx
         return Resolved{ .mIndex = added->second.mIndex, .mKey = own.mStateSet };
     }
 
-    Index MaterialResolver::takeTexture(const TextureUse& use, Worn* const worn)
+    Index MaterialResolver::takeTexture(const TextureUse& use, Worn* const worn, const TextureEncoding encoding)
     {
         ExtractionStats& stats = mPass.getStats();
 
@@ -266,9 +266,7 @@ namespace Rtx
         // Outside the cache, because what this counts is what the walk met and not what it
         // added. `openmw-rtxtool scene` reads these off a second walk of one graph, and a
         // count that only rose on an arrival would report nothing there.
-        stats.mFormats.count(*image);
-
-        const auto wrap = static_cast<std::size_t>(use.mWrap);
+        stats.mFormats.count(*image, encoding);
 
         auto known = mTextureOf.find(image);
         if (known != mTextureOf.end())
@@ -276,10 +274,10 @@ namespace Rtx
         else
             known = mTextureOf.add(image, HeldTexture{});
 
-        Index& slot = known->second.mSlots[wrap];
+        Index& slot = known->second.mSlots[static_cast<std::size_t>(encoding)][static_cast<std::size_t>(use.mWrap)];
         if (slot == sNoIndex)
         {
-            slot = mScene.textures().add(VFS::Path::Normalized(image->getFileName()), use.mWrap);
+            slot = mScene.textures().add(VFS::Path::Normalized(image->getFileName()), use.mWrap, encoding);
 
             // Held, because this entry is the reference. `mTextureOf` says why a slot the map names
             // has to be one nothing else can hand out.
@@ -399,6 +397,13 @@ namespace Rtx
         material.mDark = takeTexture(described->getTextureUse(SurfaceMap::Dark), worn);
         material.mDarkUnit = described->mDarkUnit;
 
+        // The companion maps are data, and a specular map is read only in the layout the player
+        // named: a classic one read as metalness and roughness is wrong, so none is read.
+        material.mNormal = takeTexture(described->getTextureUse(SurfaceMap::Normal), worn, TextureEncoding::Data);
+        if (mSpecularLayout == SpecularLayout::MetalRoughness)
+            material.mSpecular
+                = takeTexture(described->getTextureUse(SurfaceMap::Specular), worn, TextureEncoding::Data);
+
         material.mAlphaRef = described->mAlphaRef;
         material.mAlphaMode = described->mAlphaMode;
         material.mBlend = described->mBlend;
@@ -467,8 +472,9 @@ namespace Rtx
         // Most are met once and go stale on the frame after they arrived; what settles here is the
         // animated materials.
         mTextureOf.retire([this](const HeldTexture& held) {
-            for (const Index slot : held.mSlots)
-                mScene.textures().drop(slot);
+            for (const auto& slots : held.mSlots)
+                for (const Index slot : slots)
+                    mScene.textures().drop(slot);
         });
 
         // What `animate` keeps. Swept beside everything else because it is keyed on a node the graph

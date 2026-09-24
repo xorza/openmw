@@ -14,6 +14,7 @@
 #include "runs.hpp"
 #include "shaders/scene.h"
 #include "slots.hpp"
+#include "textureencoding.hpp"
 #include "texturewrap.hpp"
 
 namespace Rtx
@@ -40,6 +41,9 @@ namespace Rtx
         VFS::Path::Normalized mPath;
         std::string mBaked;
         TextureWrap mWrap = TextureWrap::Repeat;
+
+        /// What the slot is read as. A bake is a colour.
+        TextureEncoding mEncoding = TextureEncoding::Colour;
     };
 
     /// Every texture the scene names, what still names each one, and which slots changed. A slot
@@ -48,9 +52,10 @@ namespace Rtx
     /// one table: a slot is a file the content named or a key this renderer made for something it
     /// baked, never both. A slot that is freed keeps its index.
     ///
-    /// **A slot is a file and its wrap.** The same file bound clamped and bound repeating is two
-    /// slots, because a sampler is per slot and the wrap is the sampler's; a file names up to
-    /// four, one per `TextureWrap`.
+    /// **A slot is a file, its wrap and its encoding.** The same file bound clamped and bound
+    /// repeating is two slots, because a sampler is per slot and the wrap is the sampler's; the
+    /// same file bound as a colour and as data is two, because the encoding is the image's format.
+    /// A file names up to eight, one per `TextureWrap` and `TextureEncoding`.
     class TextureTable
     {
     public:
@@ -59,10 +64,11 @@ namespace Rtx
         /// stops: an arrival that would take one more slot is refused and counted.
         static constexpr std::size_t sCapacity = Shaders::TEXTURE_NEUTRAL;
 
-        /// The slot for `path` under `wrap`, taking one where this has not met the pair. Live from
-        /// here, before anything names it, and until the last thing that named it lets go.
-        /// `sNoIndex` where the pair is new and `sCapacity` slots already stand.
-        Index add(VFS::Path::NormalizedView path, TextureWrap wrap = TextureWrap::Repeat);
+        /// The slot for `path` under `wrap` and `encoding`, taking one where this has not met the
+        /// three. Live from here, before anything names it, and until the last thing that named it
+        /// lets go. `sNoIndex` where they are new and `sCapacity` slots already stand.
+        Index add(VFS::Path::NormalizedView path, TextureWrap wrap = TextureWrap::Repeat,
+            TextureEncoding encoding = TextureEncoding::Colour);
 
         /// The slot for a texture this renderer made — a composite baked for a distant chunk —
         /// keyed by `key` rather than by a file, taking one where `key` is not known. Two chunks
@@ -71,9 +77,9 @@ namespace Rtx
         /// bake is one image whose coordinates run edge to edge. `sNoIndex` as `add` answers it.
         Index addBaked(std::string_view key);
 
-        /// The slot `path` stands in under any wrap, or `sNoIndex` where it stands in none. What a
-        /// bake made from a file's alpha finds its source by: the alpha is the same under every
-        /// wrap, and the bake's key carries the file and not the wrap.
+        /// The slot `path` stands in as a colour under any wrap, or `sNoIndex` where it stands in
+        /// none. What a bake made from a file's alpha finds its source by: the alpha is the same
+        /// under every wrap, and the bake's key carries the file and not the wrap.
         Index findFile(VFS::Path::NormalizedView path) const;
 
         /// Takes and gives back one name on a slot. A slot this never hands out — `sNoIndex`, and
@@ -120,8 +126,8 @@ namespace Rtx
         /// arrival.
         Index takeSlot(TextureRow row);
 
-        /// The slot a file holds under each wrap, `sNoIndex` where it holds none.
-        using WrapSlots = std::array<Index, sTextureWrapCount>;
+        /// The slot a file holds under each encoding and wrap, `sNoIndex` where it holds none.
+        using FileSlots = std::array<std::array<Index, sTextureWrapCount>, sTextureEncodingCount>;
 
         SlotRows<TextureRow> mRows;
 
@@ -137,8 +143,8 @@ namespace Rtx
 
         /// The two lookups, so that naming a texture again is the slot it already has, where a scan
         /// was O(materials x textures): a cell is a hundred of each and paid it on every material
-        /// it resolved. A file's entry leaves the first map when its last wrap's slot is freed.
-        std::unordered_map<VFS::Path::Normalized, WrapSlots, VFS::Path::Hash, std::equal_to<>> mPathIndex;
+        /// it resolved. A file's entry leaves the first map when its last slot is freed.
+        std::unordered_map<VFS::Path::Normalized, FileSlots, VFS::Path::Hash, std::equal_to<>> mPathIndex;
         std::unordered_map<std::string, Index, BakedHash, std::equal_to<>> mBakedIndex;
 
         std::uint64_t mRevision = 0;

@@ -12,6 +12,7 @@
 #include <components/vfs/pathutil.hpp>
 
 #include "result.hpp"
+#include "specularlayout.hpp"
 
 namespace Terrain
 {
@@ -82,6 +83,10 @@ namespace Rtx
 
         /// `object paging min size`: the size rule's constant.
         float mMinSize = 0.0f;
+
+        /// `[RTX] specular map layout`: what the content's `_spec` maps mean, for every scene the
+        /// mirror and the pictures inside the interface read materials into.
+        SpecularLayout mSpecularLayout = SpecularLayout::Ignore;
     };
 
     /// Where the eye stands and how much world there is around it, as one value the ring reads.

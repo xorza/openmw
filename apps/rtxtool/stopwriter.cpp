@@ -202,6 +202,8 @@ namespace RtxTool
         std::uint32_t media = 0;
         std::uint32_t glowing = 0;
         std::uint32_t flattened = 0;
+        std::uint32_t normalMapped = 0;
+        std::uint32_t specularMapped = 0;
         for (const Rtx::Material& material : scene.materials().getRows())
         {
             cutouts += material.isCutout() ? 1 : 0;
@@ -210,6 +212,8 @@ namespace RtxTool
             media += material.isMedium() ? 1 : 0;
             glowing += material.mEmissiveColour.length2() > 0.0f || material.mEmissive != Rtx::sNoIndex ? 1 : 0;
             flattened += material.mFlatten ? 1 : 0;
+            normalMapped += material.mNormal != Rtx::sNoIndex ? 1 : 0;
+            specularMapped += material.mSpecular != Rtx::sNoIndex ? 1 : 0;
         }
 
         std::uint32_t sheets = 0;
@@ -221,12 +225,13 @@ namespace RtxTool
                         "  translucent:          {}, which a cutoff cannot answer for\n"
                         "  media:                {} of those are nowhere opaque\n"
                         "  emissive materials:   {}\n"
+                        "  companion maps:       {} materials wear a normal map, {} a specular map\n"
                         "  lights:               {} casting\n"
                         "  deforming drawables:  {}\n"
                         "  flattened ground:     {} cells outside the active grid\n"
                         "  emitters:             {} holding {} live particles\n",
-                cutouts, tested, translucent, media, glowing, scene.lights().size(), stats.mDeformed, flattened,
-                stats.mEmitters, stats.mSprites));
+                cutouts, tested, translucent, media, glowing, normalMapped, specularMapped, scene.lights().size(),
+                stats.mDeformed, flattened, stats.mEmitters, stats.mSprites));
 
         into.mRecord.note(
             std::format("\nnot placed\n"

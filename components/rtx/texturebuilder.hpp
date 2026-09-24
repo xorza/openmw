@@ -16,6 +16,7 @@
 #include "result.hpp"
 #include "runs.hpp"
 #include "texturedata.hpp"
+#include "textureencoding.hpp"
 
 namespace Resource
 {
@@ -32,17 +33,19 @@ namespace Rtx
     /// for every slot that draws it and a contact sheet draws as it is.
     TextureData describeStandIn();
 
-    /// Whether this renderer uploads `image` as it stands, and why not where it does not: a format
+    /// Whether this renderer uploads `image` as `encoding`, and why not where it does not: a format
     /// Morrowind does not produce, or an image of no size or no texels. The name is left to
     /// whoever reports it.
-    Result<void, std::string> checkUploadable(const osg::Image& image);
+    Result<void, std::string> checkUploadable(
+        const osg::Image& image, TextureEncoding encoding = TextureEncoding::Colour);
 
     /// Describes one image for a backend's uploader without copying a byte of it. Levels are
     /// appended to `levels`, and the returned description spans the ones it added, so `levels`
     /// must not grow again while the description is alive. The levels are the file's own; a
     /// backend completes a chain the file did not carry, on the device. An error, adding no level,
     /// where `checkUploadable` answers one.
-    Result<TextureData, std::string> describeImage(const osg::Image& image, std::vector<MipLevel>& levels);
+    Result<TextureData, std::string> describeImage(
+        const osg::Image& image, std::vector<MipLevel>& levels, TextureEncoding encoding = TextureEncoding::Colour);
 
     /// The image at `path`, or why nothing reads there — an error and not an exception, because a
     /// live scene graph names textures that were never files and a renderer that fell over on one
@@ -94,6 +97,9 @@ namespace Rtx
         struct Kept
         {
             Index mSlot = sNoIndex;
+
+            /// What the scene's table binds the slot as, which the file's bytes are read as.
+            TextureEncoding mEncoding = TextureEncoding::Colour;
 
             /// For a bake, the slot of the sprite texture it is made from on the device, or
             /// `sNoIndex` where the table no longer holds that. Nothing for a slot that is no bake.

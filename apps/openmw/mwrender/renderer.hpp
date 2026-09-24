@@ -365,10 +365,10 @@ namespace MWRender
         /// or the camera the ray tracer walks from.
         virtual void adoptTraversalRoot(osg::Group& root) = 0;
 
-        /// `prepareResources`'s hook, with the resource system already kept. The rasterizer sets
-        /// how many textures a shader may sample and the switches its shader visitor reads; the ray
-        /// tracer turns that visitor off, because it compiles no GLSL and reads a model's state as
-        /// the loader left it.
+        /// `prepareResources`'s hook, with the resource system already kept and the companion-map
+        /// switches already set. The rasterizer sets how many textures a shader may sample and the
+        /// switches its shader visitor reads; the ray tracer turns that visitor off, because it
+        /// compiles no GLSL and reads a model's state as the loader left it.
         virtual void configureResources(Resource::ResourceSystem& resources) = 0;
 
         /// What `prepareResources` kept, for a subclass that resolves a picture, a GUI or a preload

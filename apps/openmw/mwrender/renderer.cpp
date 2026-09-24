@@ -16,8 +16,11 @@
 #include <osg/Stats>
 
 #include <components/misc/frameratelimiter.hpp>
+#include <components/resource/resourcesystem.hpp>
+#include <components/resource/scenemanager.hpp>
 #include <components/sceneutil/screencapture.hpp>
 #include <components/settings/values.hpp>
+#include <components/shader/automaps.hpp>
 
 #include "glrenderer.hpp"
 
@@ -33,6 +36,18 @@ namespace MWRender
     void Renderer::prepareResources(Resource::ResourceSystem& resources)
     {
         mResources = &resources;
+
+        // What the content's companion maps are called and whether to look for them, which both
+        // renderers read the same way: the files are the content's, whoever draws them.
+        const Settings::ShadersCategory& shaders = Settings::shaders();
+        resources.getSceneManager()->setAutoMaps(Shader::AutoMapRules{
+            .mNormalMaps = shaders.mAutoUseObjectNormalMaps,
+            .mNormalMapPattern = shaders.mNormalMapPattern,
+            .mNormalHeightMapPattern = shaders.mNormalHeightMapPattern,
+            .mSpecularMaps = shaders.mAutoUseObjectSpecularMaps,
+            .mSpecularMapPattern = shaders.mSpecularMapPattern,
+        });
+
         configureResources(resources);
     }
 

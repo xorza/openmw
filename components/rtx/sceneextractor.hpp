@@ -27,6 +27,7 @@
 #include "sceneadopter.hpp"
 #include "scenedesc.hpp"
 #include "shading.hpp"
+#include "specularlayout.hpp"
 #include "stepped.hpp"
 
 namespace osg
@@ -88,6 +89,10 @@ namespace Rtx
         /// drawable is water when its own mask carries no bit outside this one, because a node
         /// mask defaults to all ones. The harness places an analytic sea of its own (`addWater`).
         void setWaterMask(osg::Node::NodeMask mask) { mWaterMask = mask; }
+
+        /// What the `_spec` maps of materials met from here on mean — `[RTX] specular map layout`,
+        /// told rather than read, so this library reads no settings. `Ignore` until told.
+        void setSpecularLayout(SpecularLayout layout) { mMaterials.setSpecularLayout(layout); }
 
         /// Names the node mask the game puts on the root of a class of thing — an actor, an effect,
         /// the player's own arms in first person — by the same rule as the water's: a node whose

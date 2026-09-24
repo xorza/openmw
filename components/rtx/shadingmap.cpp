@@ -80,8 +80,7 @@ namespace Rtx
                         // The block's own centre decides where it lands, so a block straddling a
                         // boundary is not split between two.
                         sink(column * 4 + 2, row * 4 + 2,
-                            blockSum(texture.mBytes.subspan(at).first<8>(),
-                                texture.mFormat == TextureFormat::Bc1RgbaSrgb, srgb));
+                            blockSum(texture.mBytes.subspan(at).first<8>(), isBc1(texture.mFormat), srgb));
                     }
                 return;
             }

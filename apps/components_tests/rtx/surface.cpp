@@ -108,21 +108,41 @@ namespace Rtx
             EXPECT_EQ(material.getTexture(SurfaceMap::Emissive), glow.get());
             EXPECT_EQ(material.getTexture(SurfaceMap::Dark), nullptr);
             EXPECT_EQ(material.getTexture(SurfaceMap::Environment), nullptr);
+            EXPECT_EQ(material.getTexture(SurfaceMap::Normal), normal.get()) << "named by its sampler";
+            EXPECT_EQ(material.getTexture(SurfaceMap::Specular), nullptr);
 
-            // The normal map was a role — it named the surface as one — and is kept nowhere: the
-            // trace declines it, and a description that held it paid a reference for nothing.
-            EXPECT_EQ(normal->referenceCount(), 2) << "the image and its texture, and no description";
-            osg::ref_ptr<osg::StateSet> onlyNormal = new osg::StateSet;
-            onlyNormal->setTextureAttributeAndModes(0, new osg::Texture2D(normal));
-            onlyNormal->addUniform(new osg::Uniform("normalMap", 0));
+            // **The companion maps are kept under the type `Shader::AutoMapVisitor` gives them**: a
+            // normal map with height and one without are one map, and the specular map its own.
+            osg::ref_ptr<osg::Image> height = new osg::Image;
+            osg::ref_ptr<osg::Image> specular = new osg::Image;
+            osg::ref_ptr<osg::StateSet> companions = new osg::StateSet;
+            companions->setTextureAttributeAndModes(0, new osg::Texture2D(diffuse));
+            companions->setTextureAttribute(0, new SceneUtil::TextureType("diffuseMap"));
+            companions->setTextureAttributeAndModes(1, new osg::Texture2D(height));
+            companions->setTextureAttribute(1, new SceneUtil::TextureType("normalHeightMap"));
+            companions->setTextureAttributeAndModes(2, new osg::Texture2D(specular));
+            companions->setTextureAttribute(2, new SceneUtil::TextureType("specularMap"));
+            SurfaceDescription kept;
+            EXPECT_TRUE(describeStateSet(*companions, kept));
+            EXPECT_EQ(kept.getTexture(SurfaceMap::Normal), height.get());
+            EXPECT_EQ(kept.getTexture(SurfaceMap::Specular), specular.get());
+
+            // What stays declined is what no shipped file binds, and it is kept nowhere: a
+            // description that held it paid a reference for nothing.
+            EXPECT_EQ(mapOf(TextureRole::Normal), SurfaceMap::Normal);
+            EXPECT_EQ(mapOf(TextureRole::NormalHeight), SurfaceMap::Normal);
+            EXPECT_EQ(mapOf(TextureRole::Specular), SurfaceMap::Specular);
+            osg::ref_ptr<osg::Image> detail = new osg::Image;
+            osg::ref_ptr<osg::StateSet> onlyDetail = new osg::StateSet;
+            onlyDetail->setTextureAttributeAndModes(0, new osg::Texture2D(detail));
+            onlyDetail->setTextureAttribute(0, new SceneUtil::TextureType("detailMap"));
             SurfaceDescription declined;
-            EXPECT_TRUE(describeStateSet(*onlyNormal, declined)) << "a normal map alone still says a surface";
-            for (const SurfaceMap map :
-                { SurfaceMap::Diffuse, SurfaceMap::Emissive, SurfaceMap::Dark, SurfaceMap::Environment })
-                EXPECT_EQ(declined.getTexture(map), nullptr);
+            EXPECT_TRUE(describeStateSet(*onlyDetail, declined)) << "a detail map alone still says a surface";
+            EXPECT_EQ(detail->referenceCount(), 2) << "the image and its texture, and no description";
+            for (std::size_t map = 0; map < sSurfaceMapCount; ++map)
+                EXPECT_EQ(declined.getTexture(static_cast<SurfaceMap>(map)), nullptr) << map;
             for (const TextureRole declinedRole :
-                { TextureRole::Normal, TextureRole::NormalHeight, TextureRole::Specular, TextureRole::Detail,
-                    TextureRole::Decal, TextureRole::Gloss, TextureRole::Bump })
+                { TextureRole::Detail, TextureRole::Decal, TextureRole::Gloss, TextureRole::Bump })
                 EXPECT_FALSE(mapOf(declinedRole).has_value()) << textureRoleName(declinedRole);
         }
 

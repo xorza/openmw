@@ -154,19 +154,17 @@ delight. A normal map alone does not mean that, so a material with only `_n` kee
   rasterizer does.
 - New: `[RTX] specular map layout = ignore | metal roughness`. The default is `ignore`, because
   OpenMW's documented `_spec` layout is the classic one, and section 2.3 shows it in real content.
-  The PBR profile sets `metal roughness`. The key needs the settings page and its translations.
-- Harness: `--material-maps=false` turns the lookup off for an A/B run, like `--delight=0`.
+  The PBR profile sets `metal roughness`. It is in `settings-default.cfg` and `rtx.rst`, and not yet
+  in the launcher.
 
 ### 5.3 Data flow
 
 ```
-state set chain ──describeSurface──▶ SurfaceDescription   (+ Normal and Specular maps, when bound)
+model load (OpenMW's loading threads) ──Shader::AutoMapVisitor──▶ state set + normalMap / specularMap units
                                           │
-diffuse file name ──MapFinder──▶ companion paths           (VFS lookup, once per diffuse path)
+state set chain ──describeSurface──▶ SurfaceDescription (+ Normal, Specular)
                                           │
-        reader thread: open the images, lend them          walk: ask the reader, wait for them
-                                          ▼
-                         Material (+ mNormal, mSpecular, flags)
+MaterialResolver::describe ──▶ Material (+ mNormal, mSpecular; the specular map only under metal roughness)
                                           │
         TextureTable (file, wrap, encoding) ──▶ SceneTextures ──▶ backend (UNORM views, no painted-light map)
                                           ▼
@@ -179,33 +177,39 @@ diffuse file name ──MapFinder──▶ companion paths           (VFS lookup
 
 ### 5.4 Maps: lookup, threads, slots
 
+Built in phase 1. This replaces the `MapFinder` and the async reader requests of the first design.
+
+- **The maps are attached at model load, where OpenMW attaches them.** `ShaderVisitor` already
+  looks up `_nh`, `_n` and `_spec` beside each diffuse map (`shadervisitor.cpp:333-424` before
+  phase 1) and binds them with a `SceneUtil::TextureType`. That step moved to
+  `components/shader/automaps.{hpp,cpp}` (`attachAutoMaps`), and `ShaderVisitor` calls it with no
+  change of behaviour. When shaders are off, as under RTX, `SceneManager` runs
+  `Shader::AutoMapVisitor`, which does that step and nothing else. So the maps load on the threads
+  that load the models (the cell preloader, and the ring's reader through
+  `ContentSource::getTemplate`), and the frame walk, the ring and the doll views all find them in
+  the state sets. There is no new thread, no pending rewrite and no pop. A model loaded on the frame
+  thread pays for its maps as it pays for its diffuse maps, which is also true in GL.
+- **Why not the whole `ShaderVisitor`.** It also moves the alpha test and the blend into removed
+  state, builds GL programs and adds tangent arrays. The RTX renderer reads a model's state as the
+  loader left it.
+- **One switch record for both renderers.** `Shader::AutoMapRules` replaces five `SceneManager`
+  setters, and `Renderer::prepareResources` fills it from `[Shaders]` for both renderers.
+  `RtxRenderer::configureResources` then clears the specular switch under `ignore`, so a map that
+  nothing reads is not loaded.
 - **`SurfaceMap` gains `Normal` and `Specular`.** `mapOf` keeps `Normal` and `NormalHeight` as
-  `Normal`, with a height flag on the description. A map that a state set binds (a NIF with a
-  shader property) then arrives by the same path as a companion.
-- **`MapFinder` (new, `components/rtx/`).** It takes the diffuse file name and answers the
-  companion paths that exist in the VFS, with the rasterizer's rule: `_nh` before `_n`, then
-  `_spec`. The switches and the patterns come in one conventions record. It keeps its answers in a
-  flat table sorted by path, reserved once, so each diffuse path costs one lookup for the life of
-  the run. It decodes nothing.
-- **The companion images load off the frame thread.** An image decode is a file read of up to a
-  few megabytes, and a frame must not pay for it. For ring cells, `CellReader` opens the companion
-  images when it reads the model, and lends them as it lends ground textures. For a walk arrival
-  (interiors, actors, new items), `MaterialResolver` sends the paths to the same reader thread. The
-  material is adopted without the maps, and it is rewritten through `setMaterial` when the images
-  arrive. The ground composite already works this way (`Material::mFlatten`). The surface shows
-  vanilla shading for a few frames and then changes. That is a pop, and it is the price of
-  uniform frames.
-- **The resolver keeps the companion slots on the diffuse image's entry.** `HeldTexture` gains the
-  normal and specular slots for each wrap. A companion takes the diffuse's wrap, as in
-  `ShaderVisitor`. `Material::forEachTexture` names the two new maps, so the material table holds
-  them while a material names them.
-- **A slot is a file, its wrap and its encoding.** `TextureRow` gains `TextureEncoding { Colour,
-  Data }`. A data slot gets UNORM formats: `Bc1RgbaUnorm`, `Bc3Unorm`, `Bc5Unorm`, and
-  `Rgba8Unorm`, which exists already. A data slot gets the neutral painted-light map
-  (`TextureData::hasNeutralShading`) and no mean texel.
-- **Flags come from the image.** A two-channel normal map (BC5, RG8) sets a flag for Z
-  reconstruction. `_nh` sets the height flag. A PBR `_spec` sets the authored-albedo flag. All
-  three are known when the images are open, which is before the material takes the slots.
+  `Normal`, and `Specular` as `Specular`. A NIF that binds its own maps arrives the same way.
+- **The layout reaches every resolver.** `MirrorKnobs::mSpecularLayout` comes from `RtxSettings`,
+  `WorldMirror` hands it to its extractor, and `ViewRequest::mSpecularLayout` hands it to each
+  picture inside the interface. The core reads no settings.
+- **A slot is a file, its wrap and its encoding.** `TextureRow` has a `TextureEncoding { Colour,
+  Data }`, and `HeldTexture` keeps a slot for each encoding and wrap. A data slot uploads as
+  `Bc1RgbaUnorm`, `Bc2Unorm`, `Bc3Unorm`, `Bc5Unorm`, `Rgba8Unorm` or `Bgra8Unorm`, and takes the
+  neutral painted-light map (`TextureData::hasNeutralShading`). BC5 is refused as a colour.
+- **The scene digest names the new fields only where they are set**, and a data encoding only
+  where it is data. So a vanilla scene digests as it did before phase 1, and `shot --against`
+  still reports "the same" for vanilla.
+- **Flags come later.** The two-channel, height and authored-albedo flags have no reader until
+  phase 3, so phase 1 does not store them.
 
 ### 5.5 Tangents
 
@@ -342,8 +346,8 @@ reaches it.
 3. **Decided: vanilla F0 is 0.** It is the content's statement, it is exact, and it is free of a
    guess. The standard dielectric (0.04 at roughness 1) would change every vanilla picture.
 4. **AO.** Recommendation: not read, then an A/B.
-5. **Walk arrivals.** Recommendation: load the companions on the reader thread and accept the pop.
-   The alternative is a decode on the frame thread and a spike when an actor equips armor.
+5. **Settled in phase 1: the maps load with the models**, on OpenMW's loading threads, as they do
+   in GL. There is no pop and no new thread (section 5.4).
 6. **Specular bounce channel.** Recommendation: the direct channel now, a separate channel with
    the non-RR denoiser.
 
@@ -371,26 +375,25 @@ Done at 711f4b27c6 (release). Everything is in `build-release/pbr-baseline/`:
 - The PBR profile refuses 1 or 2 textures in six views, and vanilla refuses none. Section 2.2
   says why.
 
-**Phase 1 — maps reach the scene (no picture change).**
-- `surface.hpp/.cpp`: `SurfaceMap::Normal` and `Specular`, `mapOf`, the height flag.
-- `mapfinder.hpp/.cpp` (new): the conventions record and the sorted table.
-- `texturetable.hpp/.cpp`: `TextureEncoding` in the row and the key.
-- `texturedata.hpp`, `texels.cpp`, `texturebuilder.cpp`: UNORM formats, `readFormat` by encoding,
-  neutral painted light for data.
-- `rtxvulkan/formats.cpp`, `texture.cpp`: the Vulkan formats, and no `ShadingPass` for data slots.
-- `material.hpp`: `mNormal`, `mSpecular`, three flags, `forEachTexture`. Rewrite the "by decision"
-  comment. `materialresolver.hpp/.cpp`: companion slots on `HeldTexture`.
-- `cellreader`, `prepared.hpp`, `cellsupply`: lend companion images, and take path requests from
-  the walk. `materialresolver`: the pending list and the rewrite on arrival.
-- `apps/openmw/mwrender/rtx/rtxsettings`, `worldmirror`, `components/settings/categories/rtx.hpp`,
-  `files/settings-default.cfg`, the settings layout and its translations: the layout key and the
-  conventions record. `apps/rtxtool/options.cpp`: `--material-maps`.
-- `scene` report: companion maps found, by role and format, and their bytes.
-- Tests: `MapFinder` (the `_nh` order, the switches off, a missing file), the texture key by
-  encoding, the formats, the hold and drop of the new slots (the extractor `materials` test), the
-  pending rewrite.
-- Exit: the PBR `scene` shows the maps, nothing refused. The vanilla pictures do not change,
-  because no shader reads the new rows yet.
+**Phase 1 — maps reach the scene (no picture change).** Done (see section 5.4 for what was built).
+- Tests: `ShaderAutoMapsTest` (the `_nh` order, `_n`, no file, the switches, a map the state set
+  binds, the bump-map namesake, a drawable's state set, the diffuse's addressing and filtering),
+  the format table by encoding, the Vulkan formats, a slot per encoding, the hold and drop of the
+  new slots, the data description, the kept roles, the companion maps in the extractor under both
+  layouts, and the layout's spellings.
+- `rtx debug test`: 535 component, 296 GPU and 20 game tests pass.
+- Vanilla against `pbr-baseline/vanilla`: all 23 views, all 184 frame hashes (the scene digest
+  included) and all 46 pictures are the same.
+- PBR against `pbr-baseline/pbr`: the trace and the pictures are the same on every frame, and all
+  46 pictures and map tiles are the same pixel for pixel. The scene differs, because the materials
+  name the new slots. From `island-crossing` on the layout also differs between two runs of one
+  build, with or without the maps, and `.notes/ISSUES.md` records that.
+- Ship view, PBR profile: 1400 textures in 1723 MiB (606 in 860 before), 453 materials wear a
+  normal map and 453 a specular map, nothing refused. A debug run under the validation layers
+  reports nothing.
+- Not built: a `--material-maps` harness switch (a profile with the auto-use switches off is the
+  same A/B), and the layout in the launcher and the settings window. The layout is read at load,
+  so it needs a restart, and the launcher is where it belongs.
 
 **Phase 2 — tangents (no picture change).**
 - `tangentspace.hpp/.cpp` (new): the `osgUtil` algorithm over scratch buffers, and the packing.

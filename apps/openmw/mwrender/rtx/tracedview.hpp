@@ -10,6 +10,7 @@
 #include <components/myguirtx/rendermanager.hpp>
 #include <components/rtx/mirrorpass.hpp>
 #include <components/rtx/offscreentrace.hpp>
+#include <components/rtx/specularlayout.hpp>
 
 #include "../offscreenview.hpp"
 
@@ -79,8 +80,9 @@ namespace MWRender
         /// @param backend what the trace is recorded into.
         /// @param views the list this joins and asks to be drawn on, which outlives it.
         /// @param gui whose texture the trace writes into, and which draws it.
+        /// @param layout what a subject's `_spec` maps mean: the world's.
         TracedView(const OffscreenViewSpec& spec, ViewKind kind, Rtx::Renderer& backend, ViewQueue& views,
-            MyGUIRtx::RenderManager& gui, Rtx::Traversals& traversals);
+            MyGUIRtx::RenderManager& gui, Rtx::Traversals& traversals, Rtx::SpecularLayout layout);
         ~TracedView() override;
 
         void setView(const osg::Matrixf& view) override { mTrace.setView(view); }

@@ -9,6 +9,7 @@
 #include <osg/Vec3f>
 
 #include "texturedata.hpp"
+#include "textureencoding.hpp"
 
 namespace osg
 {
@@ -51,9 +52,9 @@ namespace Rtx
     MeanTexel meanTexel(const osg::Image& image);
     MeanTexel meanTexel(const osg::Image& image, AlphaScratch& scratch);
 
-    /// Which format `image` arrived in — the one place a `GLenum` decides anything, so the
-    /// uploader and the report cannot disagree.
-    TextureFormat readFormat(const osg::Image& image);
+    /// Which format `image` arrived in, read as `encoding` — the one place a `GLenum` decides
+    /// anything, so the uploader and the report cannot disagree.
+    TextureFormat readFormat(const osg::Image& image, TextureEncoding encoding = TextureEncoding::Colour);
 
     /// What `format` is called, for a report to print.
     std::string_view nameOf(TextureFormat format);

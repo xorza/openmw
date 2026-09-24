@@ -36,7 +36,9 @@
 #include <components/rtx/spritelight.hpp>
 #include <components/rtx/surface.hpp>
 #include <components/rtx/texturebuilder.hpp>
+#include <components/rtx/textureencoding.hpp>
 #include <components/rtx/texturetable.hpp>
+#include <components/rtx/texturewrap.hpp>
 #include <components/vfs/manager.hpp>
 #include <components/vfs/pathutil.hpp>
 
@@ -186,6 +188,29 @@ namespace Rtx
             EXPECT_EQ(scene.textures().add(wood), 1u);
             EXPECT_EQ(scene.textures().add(stone), 0u);
             EXPECT_EQ(scene.textures().getRows().size(), 2u);
+
+            // **One file bound as data is another slot**, because the encoding is the image's
+            // format, and asking again is that slot. A bake finds its source among the colours alone.
+            const Index stoneData = scene.textures().add(stone, TextureWrap::Repeat, TextureEncoding::Data);
+            EXPECT_EQ(stoneData, 2u);
+            EXPECT_EQ(scene.textures().add(stone, TextureWrap::Repeat, TextureEncoding::Data), stoneData);
+            EXPECT_EQ(scene.textures().getRows()[stoneData].mEncoding, TextureEncoding::Data);
+            EXPECT_EQ(scene.textures().getRows()[0].mEncoding, TextureEncoding::Colour);
+            EXPECT_EQ(scene.textures().findFile(stone), 0u);
+
+            constexpr VFS::Path::NormalizedView normal("textures/tx_stone_01_n.dds");
+            const Index normalOnly = scene.textures().add(normal, TextureWrap::Repeat, TextureEncoding::Data);
+            EXPECT_EQ(scene.textures().findFile(normal), sNoIndex) << "data is no bake's source";
+
+            // The file leaves the lookup with its last slot of either encoding, and not before.
+            scene.textures().hold(0);
+            scene.textures().hold(stoneData);
+            scene.textures().hold(normalOnly);
+            scene.textures().drop(0);
+            EXPECT_EQ(scene.textures().add(stone, TextureWrap::Repeat, TextureEncoding::Data), stoneData);
+            scene.textures().drop(stoneData);
+            EXPECT_TRUE(scene.textures().isFree(stoneData));
+            EXPECT_TRUE(scene.textures().isFree(0));
         }
 
         /// **A table with every slot standing refuses the next texture, and takes it once a slot
@@ -1695,8 +1720,16 @@ namespace Rtx
             const Index shared = scene.textures().add(VFS::Path::NormalizedView("textures/tx_stone.dds"));
             const Index lone = scene.textures().add(VFS::Path::NormalizedView("textures/tx_sand.dds"));
 
+            // The companion maps are held as every other map is: `Material::forEachTexture` names
+            // them, and a slot missing from it would be freed under the material that wears it.
+            const Index normal = scene.textures().add(
+                VFS::Path::NormalizedView("textures/tx_stone_n.dds"), TextureWrap::Repeat, TextureEncoding::Data);
+            const Index specular = scene.textures().add(
+                VFS::Path::NormalizedView("textures/tx_stone_spec.dds"), TextureWrap::Repeat, TextureEncoding::Data);
+
             scene.addMaterial(Material{ .mDiffuse = shared });
-            const Index second = scene.addMaterial(Material{ .mDiffuse = shared, .mEmissive = lone });
+            const Index second = scene.addMaterial(
+                Material{ .mDiffuse = shared, .mEmissive = lone, .mNormal = normal, .mSpecular = specular });
 
             const std::array meshes{ mesh };
             const std::array keepSecond{ second };
@@ -1708,9 +1741,11 @@ namespace Rtx
             const std::array<Index, 0> none{};
             ASSERT_TRUE(scene.release(meshes, none));
 
-            EXPECT_EQ(sorted(scene.textures().getFreed()), (std::vector<Index>{ shared, lone }));
+            EXPECT_EQ(sorted(scene.textures().getFreed()), (std::vector<Index>{ shared, lone, normal, specular }));
             EXPECT_TRUE(scene.textures().getRows()[shared].mPath.value().empty());
             EXPECT_TRUE(scene.textures().getRows()[lone].mPath.value().empty());
+            EXPECT_TRUE(scene.textures().getRows()[normal].mPath.value().empty());
+            EXPECT_TRUE(scene.textures().getRows()[specular].mPath.value().empty());
         }
 
 #ifndef NDEBUG

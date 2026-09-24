@@ -28,6 +28,7 @@
 #include <components/rtx/spritelight.hpp>
 #include <components/rtx/texturebuilder.hpp>
 #include <components/rtx/texturedata.hpp>
+#include <components/rtx/textureencoding.hpp>
 #include <components/rtx/texturewrap.hpp>
 #include <components/vfs/manager.hpp>
 #include <components/vfs/pathutil.hpp>
@@ -114,6 +115,32 @@ namespace Rtx
                 Rtx::TextureFormat::Bc2Srgb);
             EXPECT_EQ(describeImage(*makeBlock(GL_COMPRESSED_RGBA_S3TC_DXT5_EXT), levels).value().mFormat,
                 Rtx::TextureFormat::Bc3Srgb);
+        }
+
+        /// **A companion map is described as data: its blocks without the curve, and no painted light
+        /// taken out of it**, because a normal map is no picture of anything lit. A two-channel file is
+        /// taken as data and refused as a colour, where it has lost its blue.
+        TEST(RtxTextureBuilderTest, dataIsDescribedWithoutTheCurveAndWithNeutralShading)
+        {
+            std::vector<Rtx::MipLevel> levels;
+
+            const Rtx::TextureData normal
+                = describeImage(*makeBlock(GL_COMPRESSED_RGBA_S3TC_DXT5_EXT), levels, Rtx::TextureEncoding::Data)
+                      .value();
+            EXPECT_EQ(normal.mFormat, Rtx::TextureFormat::Bc3Unorm);
+            EXPECT_EQ(normal.mEncoding, Rtx::TextureEncoding::Data);
+            EXPECT_TRUE(normal.hasNeutralShading());
+
+            const Rtx::TextureData colour = describeImage(*makeBlock(GL_COMPRESSED_RGBA_S3TC_DXT5_EXT), levels).value();
+            EXPECT_EQ(colour.mEncoding, Rtx::TextureEncoding::Colour);
+            EXPECT_FALSE(colour.hasNeutralShading()) << "a colour file's painted light is estimated";
+
+            EXPECT_EQ(describeImage(*makeBlock(GL_COMPRESSED_RED_GREEN_RGTC2_EXT), levels, Rtx::TextureEncoding::Data)
+                          .value()
+                          .mFormat,
+                Rtx::TextureFormat::Bc5Unorm);
+            EXPECT_FALSE(describeImage(*makeBlock(GL_COMPRESSED_RED_GREEN_RGTC2_EXT), levels).isOk())
+                << "two channels are no colour";
         }
 
         /// Two images into one level table, each description still naming only its own.

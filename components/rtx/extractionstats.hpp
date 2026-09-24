@@ -4,6 +4,7 @@
 #include <cstdint>
 
 #include "texturedata.hpp"
+#include "textureencoding.hpp"
 
 namespace osg
 {
@@ -32,8 +33,8 @@ namespace Rtx
         /// next step is to look this one up.
         std::uint32_t mUnnamed = 0;
 
-        /// Counts `image` under its format, and its mips beside it.
-        void count(const osg::Image& image);
+        /// Counts `image` under its format as `encoding`, and its mips beside it.
+        void count(const osg::Image& image, TextureEncoding encoding = TextureEncoding::Colour);
 
         FormatCensus& operator+=(const FormatCensus& other);
     };

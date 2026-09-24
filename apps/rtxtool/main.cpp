@@ -209,7 +209,9 @@ namespace RtxTool
             // measured run's, the file's default — but for the upscaler, whose default for a run is
             // the harness's own (`sUpscaleByDefault`), and the Reflex mode, off for the reason
             // `RunSetup::mLatency` gives. The size rule's constant is the player's own, since no
-            // option names it, and the viewing distance only decides where the cells say nought.
+            // option names it, and the viewing distance only decides where the cells say nought. The
+            // specular map layout is the player's in every run: it says what the content's files mean,
+            // as the `[Shaders]` switches beside it say whether to look for them.
             const MWRender::RtxSettings derived = MWRender::RtxSettings::derive(MWRender::RtxSettingValues{
                 .mUpscale = typed("upscale") ? spelled("upscale") : Settings::rtx().mUpscale.get(),
                 .mPreset = typed("preset") ? spelled("preset") : Settings::rtx().mPreset.get(),
@@ -224,6 +226,7 @@ namespace RtxTool
                     : watched                             ? Settings::terrain().mObjectPaging.get()
                               : shippedDefault(command.mConfig, "Terrain", "object paging") == "true",
                 .mObjectPagingMinSize = Settings::terrain().mObjectPagingMinSize,
+                .mSpecularMapLayout = Settings::rtx().mSpecularMapLayout.get(),
             });
             framed.mLatency = derived.mLatency;
             framed.mMirror = derived.mMirror;

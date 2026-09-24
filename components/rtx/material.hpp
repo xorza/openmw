@@ -66,13 +66,11 @@ namespace Rtx
     /// How a surface is shaded, as the file says it. Vanilla textures are pre-lit, so `mDiffuse` is
     /// not an albedo yet.
     ///
-    /// **No normal map and no specular map, by decision.** A Morrowind NIF has no slot for either,
-    /// so every one in the content arrives as an `_n`, `_nh` or `_spec` file beside the diffuse — a
-    /// replacer pack's contract with the rasterizer, and mod compatibility is what this renderer
-    /// does not rank. The trace's normal is the geometry's; a finer one is read off the relief the
-    /// artist painted into the diffuse, never off a second map. `Rtx::Surface` still names the
-    /// roles, because it describes what the content states; this is where the renderer declines to
-    /// read them.
+    /// **The normal and specular maps are the content's companions, found by name.** A Morrowind
+    /// NIF has no slot for either, so every one arrives as an `_n`, `_nh` or `_spec` file beside the
+    /// diffuse, which `Shader::AutoMapVisitor` attaches at load under the same `[Shaders]` switches
+    /// the rasterizer reads. A surface that has none is vanilla, and vanilla pictures do not change:
+    /// that is the rule these maps enter under.
     struct Material
     {
         MaterialKind mKind = MaterialKind::Surface;
@@ -92,6 +90,12 @@ namespace Rtx
         /// which set a unit reads is the mesh's to say — `GpuMesh::mUnitStreams`.
         Index mDark = sNoIndex;
         std::uint8_t mDarkUnit = 0;
+
+        /// The companion maps, in the texture table's data encoding: a tangent-space normal, and a
+        /// specular map in `SpecularLayout::MetalRoughness`. `sNoIndex` where the content has none,
+        /// or, for the specular map, where the layout is `Ignore`.
+        Index mNormal = sNoIndex;
+        Index mSpecular = sNoIndex;
 
         /// What the texture is tinted by, in linear light. Three channels and not the record's
         /// four: the alpha beside it is `mOpacity` and is not a colour.
@@ -201,6 +205,8 @@ namespace Rtx
             visit(mEmissive);
             visit(mEnvironment);
             visit(mDark);
+            visit(mNormal);
+            visit(mSpecular);
         }
 
         /// Whether traversal has to stop and ask this material whether a hit is a hole — the one

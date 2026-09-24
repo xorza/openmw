@@ -36,9 +36,9 @@ namespace Rtx
         };
     }
 
-    void FormatCensus::count(const osg::Image& image)
+    void FormatCensus::count(const osg::Image& image, const TextureEncoding encoding)
     {
-        const TextureFormat format = readFormat(image);
+        const TextureFormat format = readFormat(image, encoding);
 
         FormatCount& met = mMet[static_cast<std::size_t>(format)];
         ++met.mMet;

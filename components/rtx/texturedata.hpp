@@ -12,6 +12,7 @@
 
 #include "contract.hpp"
 #include "runs.hpp"
+#include "textureencoding.hpp"
 #include "texturewrap.hpp"
 
 namespace Rtx
@@ -73,9 +74,10 @@ namespace Rtx
 
     /// Every format OpenSceneGraph decodes a texture into: the ones this renderer uploads first,
     /// then the ones it only counts, because a file the uploader refuses is still a file the report
-    /// has to name. The content formats are sRGB, because the files hold display-encoded bytes and
-    /// the hardware converts inside the filter. Nothing uploads under `Unnamed`: `describeImage`
-    /// refuses every format past `Bgra8Srgb` with the file's name in the message.
+    /// has to name. A colour's formats are sRGB, because the files hold display-encoded bytes and
+    /// the hardware converts inside the filter; data's are the same blocks read linearly
+    /// (`TextureEncoding`). Nothing uploads under `Unnamed`: `describeImage` refuses every format
+    /// past `Bgra8Unorm` with the file's name in the message.
     enum class TextureFormat : std::uint8_t
     {
         /// BC1 with its punch-through alpha bit read. Both DXT1 spellings land here, and
@@ -84,9 +86,9 @@ namespace Rtx
         Bc2Srgb,
         Bc3Srgb,
 
-        /// Uncompressed, and deliberately not sRGB. No content file holds this — it is what a test
-        /// asserting an exact texel needs, because a block cannot express an arbitrary value and an
-        /// sRGB format would land the assertion on the far side of a transfer function.
+        /// Uncompressed, and not sRGB: a data map stored loose, and what a test asserting an exact
+        /// texel needs, because a block cannot express an arbitrary value and an sRGB format would
+        /// land the assertion on the far side of a transfer function.
         Rgba8Unorm,
 
         /// Uncompressed and display-encoded, in the two channel orders a `.dds` states them in. The
@@ -95,6 +97,16 @@ namespace Rtx
         /// owning a copy of a buffer this type is defined by not owning.
         Rgba8Srgb,
         Bgra8Srgb,
+
+        /// The same blocks and orders as data. A companion map is BC1 or BC3 nearly always.
+        Bc1RgbaUnorm,
+        Bc2Unorm,
+        Bc3Unorm,
+        Bgra8Unorm,
+
+        /// Two channels, as OpenMW takes a normal map with its Z left out. Data only: a two-channel
+        /// file bound as a colour has lost its blue, and is refused as a colour.
+        Bc5Unorm,
 
         /// Read by the census and never uploaded. Three-channel and single-channel spellings are
         /// refused deliberately: uploading one would need the missing channels written in, which
@@ -109,7 +121,7 @@ namespace Rtx
 
     inline constexpr std::size_t sTextureFormatCount = static_cast<std::size_t>(TextureFormat::Unnamed) + 1;
 
-    /// Whether this renderer uploads a format at all — the first six — or only counts it.
+    /// Whether this renderer uploads a format at all — every one before `Rgb8` — or only counts it.
     inline bool isUploadable(const TextureFormat format)
     {
         return format < TextureFormat::Rgb8;
@@ -123,13 +135,18 @@ namespace Rtx
         switch (format)
         {
             case TextureFormat::Bc1RgbaSrgb:
+            case TextureFormat::Bc1RgbaUnorm:
                 return 8;
             case TextureFormat::Bc2Srgb:
             case TextureFormat::Bc3Srgb:
+            case TextureFormat::Bc2Unorm:
+            case TextureFormat::Bc3Unorm:
+            case TextureFormat::Bc5Unorm:
                 return 16;
             case TextureFormat::Rgba8Unorm:
             case TextureFormat::Rgba8Srgb:
             case TextureFormat::Bgra8Srgb:
+            case TextureFormat::Bgra8Unorm:
             case TextureFormat::Rgb8:
             case TextureFormat::Luminance:
             case TextureFormat::LuminanceAlpha:
@@ -140,12 +157,40 @@ namespace Rtx
         broken("unknown texture format");
     }
 
-    /// Whether a format's bytes are display-encoded, which every content format's are. The one
-    /// that is not exists for tests: a value written into an `Rgba8Unorm` texture is the value
-    /// light transport sees, with no transfer function between the expectation and the answer.
+    /// Whether a format's bytes are display-encoded, which every colour format's are. A data format
+    /// is not, and neither is `Rgba8Unorm`, which a test also uses: a value written into it is the
+    /// value light transport sees, with no transfer function between the expectation and the answer.
     inline bool isSrgb(TextureFormat format)
     {
-        return format != TextureFormat::Rgba8Unorm;
+        switch (format)
+        {
+            case TextureFormat::Bc1RgbaSrgb:
+            case TextureFormat::Bc2Srgb:
+            case TextureFormat::Bc3Srgb:
+            case TextureFormat::Rgba8Srgb:
+            case TextureFormat::Bgra8Srgb:
+                return true;
+            case TextureFormat::Rgba8Unorm:
+            case TextureFormat::Bc1RgbaUnorm:
+            case TextureFormat::Bc2Unorm:
+            case TextureFormat::Bc3Unorm:
+            case TextureFormat::Bgra8Unorm:
+            case TextureFormat::Bc5Unorm:
+            case TextureFormat::Rgb8:
+            case TextureFormat::Luminance:
+            case TextureFormat::LuminanceAlpha:
+            case TextureFormat::Unnamed:
+                return false;
+        }
+
+        broken("unknown texture format");
+    }
+
+    /// Whether a format is BC1, whose blocks carry a punch-through alpha in their endpoint order,
+    /// in either encoding.
+    inline bool isBc1(TextureFormat format)
+    {
+        return format == TextureFormat::Bc1RgbaSrgb || format == TextureFormat::Bc1RgbaUnorm;
     }
 
     /// What stands in a texture slot, which decides what a description carries and how a backend
@@ -199,6 +244,10 @@ namespace Rtx
         Index mFrom = sNoIndex;
 
         TextureFormat mFormat = TextureFormat::Bc1RgbaSrgb;
+
+        /// What the slot's texels are, which the scene's table says per slot and `mFormat` follows.
+        TextureEncoding mEncoding = TextureEncoding::Colour;
+
         std::uint32_t mWidth = 0;
         std::uint32_t mHeight = 0;
 
@@ -219,10 +268,10 @@ namespace Rtx
 
         /// Whether the shading map beside it is the neutral one rather than an estimate made off
         /// its texels — a composite, whose painted light came off per tile in the bake and would
-        /// come off twice; a bake, which nothing divides; and the stand-in, which is one grey. A
-        /// file's is estimated on the device as it arrives, `ShadingPass`. Derived, because it is
-        /// the source and nothing else that decides it.
-        bool hasNeutralShading() const { return mSource != TextureSource::File; }
+        /// come off twice; a bake, which nothing divides; the stand-in, which is one grey; and data,
+        /// which is no picture of anything lit. A colour file's is estimated on the device as it
+        /// arrives, `ShadingPass`. Derived, because the source and the encoding decide it.
+        bool hasNeutralShading() const { return mSource != TextureSource::File || mEncoding == TextureEncoding::Data; }
 
         /// The first level no wider and no taller than `side`, or nothing where every level is
         /// larger: where a texture held to that side begins. The levels halve, so every level

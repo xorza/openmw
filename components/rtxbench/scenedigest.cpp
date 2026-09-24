@@ -29,6 +29,8 @@
 #include <components/rtx/shaders/skinning.h>
 #include <components/rtx/shapefold.hpp>
 #include <components/rtx/sprite.hpp>
+#include <components/rtx/textureencoding.hpp>
+#include <components/rtx/texturetable.hpp>
 #include <components/vfs/pathutil.hpp>
 
 namespace Rtx
@@ -61,6 +63,11 @@ namespace Rtx
             const std::string_view path = row.mPath.value();
             digest.add(std::span<const char>(path.data(), path.size()));
             digest.add(row.mWrap);
+
+            // Only where it is not a colour, so a scene of colours digests as it did before a slot had
+            // an encoding.
+            if (row.mEncoding != TextureEncoding::Colour)
+                digest.add(row.mEncoding);
         }
 
         /// Hands every field of `material` to one of three callables.
@@ -79,15 +86,28 @@ namespace Rtx
         template <class Texture, class Layers, class Value>
         void forEachMaterialField(const Material& material, Texture texture, Layers layers, Value value)
         {
-            const auto& [kind, diffuse, emissive, environment, environmentColour, dark, darkUnit, diffuseColour,
-                emissiveColour, opacity, alphaRef, alphaMode, blend, vertexColour, twoSided, textureTransform, run,
-                flatten, animated, neverSolid, diffuseMean]
+            const auto& [kind, diffuse, emissive, environment, environmentColour, dark, darkUnit, normal, specular,
+                diffuseColour, emissiveColour, opacity, alphaRef, alphaMode, blend, vertexColour, twoSided,
+                textureTransform, run, flatten, animated, neverSolid, diffuseMean]
                 = material;
 
             texture(diffuse);
             texture(emissive);
             texture(environment);
             texture(dark);
+
+            // The companion maps only where there are any, each behind its own tag, so a scene with
+            // none digests as it did before a material could have them.
+            if (normal != sNoIndex)
+            {
+                value(std::uint8_t{ 1 });
+                texture(normal);
+            }
+            if (specular != sNoIndex)
+            {
+                value(std::uint8_t{ 2 });
+                texture(specular);
+            }
 
             layers(run);
 

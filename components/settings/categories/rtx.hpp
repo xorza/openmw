@@ -58,6 +58,11 @@ namespace Settings
         /// Whether a left click marks its frame for the driver's latency analyser, which draws a
         /// square on it. A measurement aid and never on by default.
         SettingValue<bool> mReflexFlash{ mIndex, "RTX", "reflex flash" };
+
+        /// What the content's `_spec` maps mean, as `Rtx::sSpecularLayoutNames` spells the layouts:
+        /// `ignore` or `metal roughness`. Read where the renderer is made, because the maps are
+        /// loaded with the models.
+        SettingValue<std::string> mSpecularMapLayout{ mIndex, "RTX", "specular map layout" };
     };
 }
 

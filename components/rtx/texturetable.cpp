@@ -35,13 +35,15 @@ namespace Rtx
         return index;
     }
 
-    Index TextureTable::add(const VFS::Path::NormalizedView path, const TextureWrap wrap)
+    Index TextureTable::add(
+        const VFS::Path::NormalizedView path, const TextureWrap wrap, const TextureEncoding encoding)
     {
+        const auto as = static_cast<std::size_t>(encoding);
         const auto at = static_cast<std::size_t>(wrap);
 
         auto known = mPathIndex.find(path);
-        if (known != mPathIndex.end() && known->second[at] != sNoIndex)
-            return known->second[at];
+        if (known != mPathIndex.end() && known->second[as][at] != sNoIndex)
+            return known->second[as][at];
 
         if (!hasRoom())
             return sNoIndex;
@@ -50,15 +52,17 @@ namespace Rtx
             .mKind = TextureKind::File,
             .mPath = VFS::Path::Normalized(path),
             .mWrap = wrap,
+            .mEncoding = encoding,
         });
 
         if (known == mPathIndex.end())
         {
-            WrapSlots none;
-            none.fill(sNoIndex);
+            FileSlots none;
+            for (auto& slots : none)
+                slots.fill(sNoIndex);
             known = mPathIndex.emplace(path, none).first;
         }
-        known->second[at] = index;
+        known->second[as][at] = index;
 
         return index;
     }
@@ -69,7 +73,7 @@ namespace Rtx
         if (known == mPathIndex.end())
             return sNoIndex;
 
-        for (const Index slot : known->second)
+        for (const Index slot : known->second[static_cast<std::size_t>(TextureEncoding::Colour)])
             if (slot != sNoIndex)
                 return slot;
 
@@ -123,9 +127,11 @@ namespace Rtx
             {
                 const auto known = mPathIndex.find(row.mPath);
                 contract(known != mPathIndex.end(), "a file slot the path index does not know");
-                WrapSlots& held = known->second;
-                held[static_cast<std::size_t>(row.mWrap)] = sNoIndex;
-                if (std::ranges::all_of(held, [](const Index slot) { return slot == sNoIndex; }))
+                FileSlots& held = known->second;
+                held[static_cast<std::size_t>(row.mEncoding)][static_cast<std::size_t>(row.mWrap)] = sNoIndex;
+                if (std::ranges::all_of(held, [](const auto& slots) {
+                        return std::ranges::all_of(slots, [](const Index slot) { return slot == sNoIndex; });
+                    }))
                     mPathIndex.erase(known);
                 break;
             }

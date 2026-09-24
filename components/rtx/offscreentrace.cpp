@@ -109,6 +109,7 @@ namespace Rtx
 
         held.mExtractor = std::make_unique<SceneExtractor>(*held.mScene, request.mTraversals);
         held.mExtractor->setTraversalMask(request.mSubjectMask);
+        held.mExtractor->setSpecularLayout(request.mSpecularLayout);
         held.mPose->setFrameStamp(held.mPoseStamp);
     }
 

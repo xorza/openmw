@@ -35,7 +35,10 @@
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneextractor.hpp>
 #include <components/rtx/shaders/scene.h>
+#include <components/rtx/specularlayout.hpp>
 #include <components/rtx/surface.hpp>
+#include <components/rtx/textureencoding.hpp>
+#include <components/rtx/texturetable.hpp>
 #include <components/rtx/texturewrap.hpp>
 #include <components/sceneutil/material.hpp>
 #include <components/sceneutil/statesetupdater.hpp>
@@ -364,6 +367,45 @@ namespace Rtx::Testing
             EXPECT_EQ(mScene.textures().getRows()[material.mDiffuse].mWrap, TextureWrap::Repeat);
             EXPECT_EQ(mScene.textures().getRows()[material.mEmissive].mWrap, TextureWrap::Clamp);
             EXPECT_EQ(mScene.textures().getRows().size(), 4u);
+        }
+
+        /// **The companion maps reach the material as data, and the specular map only in the layout
+        /// that names what its channels mean.** A normal map with height and one without are one map.
+        /// A walk told nothing reads no specular map: the classic layout is the one OpenMW documents,
+        /// and read as metalness and roughness it is wrong.
+        TEST_F(RtxSceneExtractorTest, theCompanionMapsReachTheMaterialAsDataAndTheSpecularMapOnlyInItsLayout)
+        {
+            const auto extractOne = [](SpecularLayout layout, TextureRole normalRole) {
+                osg::ref_ptr<osg::Geometry> quad = makeQuad();
+                osg::StateSet& state = *quad->getOrCreateStateSet();
+                paint(state, "textures/tx_a_steel.dds");
+                paint(state, "textures/tx_a_steel_nh.dds", normalRole);
+                paint(state, "textures/tx_a_steel_spec.dds", TextureRole::Specular);
+
+                Rtx::SceneDesc scene;
+                SceneExtractor extractor(scene);
+                extractor.setSpecularLayout(layout);
+                extractor.extract(*quad, osg::Matrixf::identity(), 0);
+
+                EXPECT_EQ(scene.materials().getRows().size(), 1u);
+                return std::pair{ scene.materials().getRows().front(),
+                    std::vector<TextureRow>(scene.textures().getRows().begin(), scene.textures().getRows().end()) };
+            };
+
+            const auto [ignored, ignoredRows] = extractOne(SpecularLayout::Ignore, TextureRole::NormalHeight);
+            ASSERT_NE(ignored.mNormal, sNoIndex);
+            EXPECT_EQ(ignoredRows[ignored.mNormal].mPath, VFS::Path::NormalizedView("textures/tx_a_steel_nh.dds"));
+            EXPECT_EQ(ignoredRows[ignored.mNormal].mEncoding, TextureEncoding::Data);
+            EXPECT_EQ(ignoredRows[ignored.mDiffuse].mEncoding, TextureEncoding::Colour);
+            EXPECT_EQ(ignored.mSpecular, sNoIndex);
+            EXPECT_EQ(ignoredRows.size(), 2u) << "a specular map read by nothing takes no slot";
+
+            const auto [read, readRows] = extractOne(SpecularLayout::MetalRoughness, TextureRole::Normal);
+            ASSERT_NE(read.mNormal, sNoIndex);
+            ASSERT_NE(read.mSpecular, sNoIndex);
+            EXPECT_EQ(readRows[read.mSpecular].mPath, VFS::Path::NormalizedView("textures/tx_a_steel_spec.dds"));
+            EXPECT_EQ(readRows[read.mSpecular].mEncoding, TextureEncoding::Data);
+            EXPECT_EQ(readRows.size(), 3u);
         }
 
         /// A controller that shows a different sheet every frame, out of `mSheets`, on the unit

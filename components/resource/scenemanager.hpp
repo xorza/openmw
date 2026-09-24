@@ -11,6 +11,8 @@
 
 #include "resourcemanager.hpp"
 
+#include <components/shader/automaps.hpp>
+
 #include <components/sceneutil/lightmanager.hpp>
 #include <filesystem>
 
@@ -72,18 +74,11 @@ namespace Resource
         /// afterwards.
         void reinstateRemovedState(osg::ref_ptr<osg::Node> node);
 
-        /// @see ShaderVisitor::setAutoUseNormalMaps
-        void setAutoUseNormalMaps(bool use);
-
-        /// @see ShaderVisitor::setNormalMapPattern
-        void setNormalMapPattern(const std::string& pattern);
-
-        /// @see ShaderVisitor::setNormalHeightMapPattern
-        void setNormalHeightMapPattern(const std::string& pattern);
-
-        void setAutoUseSpecularMaps(bool use);
-
-        void setSpecularMapPattern(const std::string& pattern);
+        /// Which companion maps a loaded model's diffuse maps lead to. Attached at load whether or not
+        /// shaders are enabled: by the shader visitor, or by `Shader::AutoMapVisitor` alone where
+        /// shaders are off.
+        void setAutoMaps(const Shader::AutoMapRules& rules) { mAutoMaps = rules; }
+        const Shader::AutoMapRules& getAutoMaps() const { return mAutoMaps; }
 
         void setSupportsClusteredLighting(bool supported);
         bool isClusteredLightingSupported() const;
@@ -192,7 +187,8 @@ namespace Resource
         /// a renderer that compiles no GLSL: the visitor runs createProgram on every drawable and
         /// moves the material into its removedState, and that state is what such a renderer reads
         /// as the loader left it. Nothing outside this class can stop the visitor, which is built
-        /// here from this manager's own shader manager, so the flag is the one way to say so.
+        /// here from this manager's own shader manager, so the flag is the one way to say so. The
+        /// companion maps of `setAutoMaps` are attached either way.
         void setShadersEnabled(bool enabled) { mShadersEnabled = enabled; }
 
     private:
@@ -203,9 +199,7 @@ namespace Resource
         mutable std::mutex mSharedStateMutex;
 
         std::unique_ptr<Shader::ShaderManager> mShaderManager;
-        std::string mNormalMapPattern;
-        std::string mNormalHeightMapPattern;
-        std::string mSpecularMapPattern;
+        Shader::AutoMapRules mAutoMaps;
         std::array<osg::ref_ptr<osg::Texture>, 2> mOpaqueDepthTex;
         std::array<osg::ref_ptr<osg::Texture>, 2> mOpaqueColorTex;
 
@@ -224,8 +218,6 @@ namespace Resource
 
         unsigned int mParticleSystemMask;
         bool mSupportsClusteredLighting = false;
-        bool mAutoUseNormalMaps = false;
-        bool mAutoUseSpecularMaps = false;
         bool mConvertAlphaTestToAlphaToCoverage = false;
         bool mAdjustCoverageForAlphaTest = false;
         bool mSupportsNormalsRT = false;
