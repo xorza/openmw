@@ -54,6 +54,13 @@ name them.
   not copy those compensations. The fix for that is in the content (57486).
 - 185 of the 3390 `_spec` maps carry an SSS alpha. The rest are BC1, so their A is 1 because of
   the format, not because of a choice.
+- **Three MVR PBR diffuse maps are broken.** `TX_B_N_Argonian_M_N.dds`, `TX_B_N_Argonian_F_N.dds`
+  and `tx_b_vivec_n.dds` are the vanilla neck diffuses (`_n` means "neck" there). The mod ships
+  them as BC5, which has two channels. Their mean R and G are 0.58 and 0.38, so they hold colour
+  and not normals, and blue is lost. The mod ships the real neck normal maps as `…_N_n.dds`. The
+  author's tool probably compressed every `*_n.dds` as a normal map. The RTX renderer refuses the
+  three (format 36285) and draws grey. These are the only BC5 files in the mods, so no real normal
+  map is BC5. Phase 1 must keep BC5 refused in a colour slot.
 
 ### 2.3 A second `_spec` layout exists
 
@@ -325,16 +332,15 @@ for the dark map, the emissive map and the environment sheet. The branch is unif
 
 ## 6. Decisions
 
-Each item has a recommendation. Items 1–3 must be answered before phase 1.
+Items 1–3 are decided. Items 4–6 are recommendations, and each is settled in the phase that
+reaches it.
 
-1. **Reverse the recorded decision.** `material.hpp`, `surface.hpp` and the AGENTS.md posture
-   ("Vanilla content, new light transport") say that the renderer does not rank mod
-   compatibility. Recommendation: reverse it in phase 1, and keep "vanilla pictures do not change"
-   as the new rule.
-2. **Default of `[RTX] specular map layout`.** Recommendation: `ignore`, for section 2.3.
-3. **Vanilla F0.** Recommendation: 0, which is the content's statement, exact, and free of a guess.
-   The alternative, 0.04 at roughness 1, is the standard dielectric, and it changes every vanilla
-   picture.
+1. **Decided: reverse the recorded decision.** `material.hpp`, `surface.hpp` and the AGENTS.md
+   posture ("Vanilla content, new light transport") say that the renderer does not rank mod
+   compatibility. Phase 1 reverses that, and "vanilla pictures do not change" is the new rule.
+2. **Decided: `[RTX] specular map layout` defaults to `ignore`**, for section 2.3.
+3. **Decided: vanilla F0 is 0.** It is the content's statement, it is exact, and it is free of a
+   guess. The standard dielectric (0.04 at roughness 1) would change every vanilla picture.
 4. **AO.** Recommendation: not read, then an A/B.
 5. **Walk arrivals.** Recommendation: load the companions on the reader thread and accept the pop.
    The alternative is a decode on the frame thread and a spike when an actor equips armor.
@@ -350,6 +356,20 @@ on both profiles. `rtx debug gate` runs once at the end of each phase.
 
 **Phase 0 — baseline.** Record the vanilla baseline pictures (`shot --views=all`) and a vanilla
 `bench`. Record the PBR profile `scene` census. Answer decisions 1–3.
+
+Done at 711f4b27c6 (release). Everything is in `build-release/pbr-baseline/`:
+- `vanilla/` and `pbr/`: `shot --views=all --map` of the two profiles, 23 views each. The later
+  checks are `shot --views=all --map --against=build-release/pbr-baseline/vanilla` and the same
+  with `--replace=config --config=$HOME/.config/openmw-pbr --against=…/pbr`. A second vanilla
+  run against the first found all 46 pictures and all 184 frame hashes the same.
+- `census.txt` and `census/`: one `scene` process per view and profile. The PBR diffuse maps
+  alone take 3 to 10 times the vanilla texture memory: 1085 against 149 MiB at `balmora`, 860
+  against 116 at the ship. The largest slot count is 737 at `balmora`, far under 4096.
+- `bench/`: the 2026-09-24 entry of `.notes/bench.txt` has the figures. The PBR diffuse maps
+  alone cost the trace 0.06–0.10 ms at the ship (5.21–5.31 against 5.31–5.37 ms), and nothing
+  measurable in the guild or at Balmora. Phases 3 and 4 compare against these legs.
+- The PBR profile refuses 1 or 2 textures in six views, and vanilla refuses none. Section 2.2
+  says why.
 
 **Phase 1 — maps reach the scene (no picture change).**
 - `surface.hpp/.cpp`: `SurfaceMap::Normal` and `Specular`, `mapOf`, the height flag.
@@ -433,7 +453,9 @@ task "RTX: seyda-neen-ship, PBR mods (release)" does this.
   | `_spec` | BC1 3204, BC3 186 | BC1 114, BC3 1 |
   | `_diffusespec` | BC3 165 | — |
 
-  No BC7 anywhere.
+  No BC7 anywhere. The three BC5 `_n` files are the broken neck diffuses of section 2.2, not
+  normal maps. BC5 stays in phase 1 because OpenMW documents two-channel normal maps, and other
+  content can ship them.
 - Ship view (`scene --view=seyda-neen-ship`): 606 textures in 860 MiB, against 116 MiB for
   vanilla, before any `_n` or `_spec` map is read. None refused.
 - GL reference: `resources-wareya/` beside `mods/` links to `build-release/resources` and has
