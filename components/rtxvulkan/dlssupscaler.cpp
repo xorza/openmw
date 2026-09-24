@@ -1,8 +1,10 @@
 #include "dlssupscaler.hpp"
 
 #include <cassert>
+#include <cstring>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <components/rtx/error.hpp>
 
@@ -103,6 +105,20 @@ namespace Rtx
 
     std::span<const char* const> upscalerDeviceExtensions()
     {
-        return Dlss::getDeviceExtensions();
+        // `VK_EXT_buffer_device_address` is left out, and not because it is missing: the feature it
+        // provides is Vulkan 1.2 core here, enabled through `VkPhysicalDeviceVulkan12Features`, and
+        // the spec forbids asking for both. NGX names the pre-1.2 spelling because it supports
+        // drivers older than this one does. Left out here and not where the device is made, so a
+        // device is refused for lacking exactly what it would be asked to enable.
+        static const std::vector<const char*> enabled = [] {
+            std::vector<const char*> names;
+            for (const char* const name : Dlss::getDeviceExtensions())
+                if (std::strcmp(name, VK_EXT_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME) != 0)
+                    names.push_back(name);
+
+            return names;
+        }();
+
+        return enabled;
     }
 }

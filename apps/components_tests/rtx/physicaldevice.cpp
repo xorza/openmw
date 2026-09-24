@@ -10,6 +10,7 @@
 
 #include <components/rtxvulkan/physicaldevice.hpp>
 #include <components/rtxvulkan/requirements.hpp>
+#include <components/rtxvulkan/upscaler.hpp>
 
 namespace Rtx
 {
@@ -22,12 +23,15 @@ namespace Rtx
             .timestampValidBits = 64,
         };
 
-        /// The extensions this renderer requires, as a device would list them back.
+        /// The extensions this build requires — the trace's and its upscaler's — as a device would
+        /// list them back.
         std::vector<std::string> everyRequiredExtension()
         {
             std::vector<std::string> names;
             for (const RequiredExtension& required : getRequiredDeviceExtensions())
                 names.emplace_back(required.mName);
+            for (const char* const needed : upscalerDeviceExtensions())
+                names.emplace_back(needed);
 
             return names;
         }
@@ -209,6 +213,28 @@ namespace Rtx
                 // NVIDIA's releases say nothing of another vendor's driver on the same card.
                 dated.mProperties.mVulkan12.driverID = VK_DRIVER_ID_MESA_NVK;
                 EXPECT_EQ(dated.profile().mObstacle, "missing extensions: VK_EXT_ray_tracing_invocation_reorder");
+            }
+            {
+                // What a Radeon or an Arc lists — reports 51246 and 51371: everything the trace needs
+                // and neither of the NVIDIA extensions NGX asks for. A build with DLSS cannot make a
+                // device of it, and a build without one traces on it.
+                Card foreign(&describeTuring);
+                foreign.mProperties.mVulkan12.driverID = VK_DRIVER_ID_AMD_PROPRIETARY;
+                std::erase(foreign.mExtensions, VK_NVX_BINARY_IMPORT_EXTENSION_NAME);
+                std::erase(foreign.mExtensions, VK_NVX_IMAGE_VIEW_HANDLE_EXTENSION_NAME);
+#ifdef OPENMW_RTX_DLSS
+                EXPECT_EQ(foreign.profile().mObstacle,
+                    "missing extensions DLSS Ray Reconstruction needs: VK_NVX_binary_import, VK_NVX_image_view_handle");
+#else
+                EXPECT_EQ(foreign.profile().mObstacle, "");
+#endif
+            }
+            {
+                // NGX names the buffer address extension, whose feature is core here and which the
+                // spec forbids beside it: a device need not list what it is never asked to enable.
+                Card core(&describeTuring);
+                std::erase(core.mExtensions, VK_EXT_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
+                EXPECT_EQ(core.profile().mObstacle, "");
             }
             {
                 Card short_(&describeTuring);

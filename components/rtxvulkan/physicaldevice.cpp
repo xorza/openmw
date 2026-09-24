@@ -16,6 +16,7 @@
 
 #include "memory.hpp"
 #include "result.hpp"
+#include "upscaler.hpp"
 
 namespace Rtx
 {
@@ -49,6 +50,13 @@ namespace Rtx
             return std::find(names.begin(), names.end(), name) != names.end();
         }
 
+        void appendListed(std::string& list, std::string_view item)
+        {
+            if (!list.empty())
+                list += ", ";
+            list += item;
+        }
+
         /// @param driver what the device says of its driver: an extension an NVIDIA driver is only
         ///        too old for is named with the release that has it and the one that does not.
         std::string listMissingExtensions(
@@ -60,9 +68,7 @@ namespace Rtx
             for (const RequiredExtension& required : getRequiredDeviceExtensions())
                 if (!has(offered, required.mName))
                 {
-                    if (!missing.empty())
-                        missing += ", ";
-                    missing += required.mName;
+                    appendListed(missing, required.mName);
                     if (nvidia && !required.mNvidiaDriver.empty())
                         missing += std::format(
                             " (NVIDIA driver {} or later; this one is {})", required.mNvidiaDriver, driver.driverInfo);
@@ -78,11 +84,17 @@ namespace Rtx
 
             std::string missing;
             for (const std::string_view feature : lacking)
-            {
-                if (!missing.empty())
-                    missing += ", ";
-                missing += feature;
-            }
+                appendListed(missing, feature);
+
+            return missing;
+        }
+
+        std::string listMissingUpscalerExtensions(std::span<const std::string> offered)
+        {
+            std::string missing;
+            for (const char* const needed : upscalerDeviceExtensions())
+                if (!has(offered, needed))
+                    appendListed(missing, needed);
 
             return missing;
         }
@@ -96,11 +108,7 @@ namespace Rtx
             std::string missing;
             for (std::size_t at = 0; at < required.size(); ++at)
                 if ((offered[at].optimalTilingFeatures & required[at].mFeatures) != required[at].mFeatures)
-                {
-                    if (!missing.empty())
-                        missing += ", ";
-                    missing += required[at].mFor;
-                }
+                    appendListed(missing, required[at].mFor);
 
             return missing;
         }
@@ -221,6 +229,16 @@ namespace Rtx
         if (profile.mHostWrittenBytes == 0)
         {
             profile.mObstacle = "no memory type the host writes into and the device reads";
+            return profile;
+        }
+
+        // Last, because what the trace needs is the more fundamental answer. `Device` enables these
+        // beside the required list, so a device without them cannot be made — and asked here, a
+        // GPU that lacks them is passed over for the next one rather than chosen and then failing
+        // at `vkCreateDevice`.
+        if (const std::string missing = listMissingUpscalerExtensions(extensions); !missing.empty())
+        {
+            profile.mObstacle = "missing extensions DLSS Ray Reconstruction needs: " + missing;
             return profile;
         }
 

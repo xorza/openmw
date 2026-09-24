@@ -109,7 +109,8 @@ namespace Rtx
     std::string describeUpscaling(const Device& device, VkInstance instance);
 
     /// What the runtime needs enabled on the instance and on the device, asked before either
-    /// exists. Empty in a build without one.
+    /// exists. Empty in a build without one. The device's list is what `Device` enables beside the
+    /// required extensions, so `PhysicalDevice::profileOf` refuses a device that lacks any of it.
     std::span<const char* const> upscalerInstanceExtensions();
     std::span<const char* const> upscalerDeviceExtensions();
 }

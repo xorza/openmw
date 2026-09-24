@@ -124,17 +124,8 @@ namespace Rtx
         // than added to the required list because that list is what this renderer needs to trace
         // at all, and a build without an upscaler must not fail on a device that lacks them.
         for (const char* const name : upscalerDeviceExtensions())
-        {
-            // `VK_EXT_buffer_device_address` cannot come along, and not because it is missing:
-            // the feature it provides is Vulkan 1.2 core here, enabled through
-            // `VkPhysicalDeviceVulkan12Features`, and the spec forbids asking for both. NGX names
-            // the pre-1.2 spelling because it supports drivers older than this one does.
-            if (std::strcmp(name, VK_EXT_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME) == 0)
-                continue;
-
             if (!listed(name))
                 extensions.push_back(name);
-        }
 
         DeviceFeatures features;
         requestRequiredFeatures(features);
