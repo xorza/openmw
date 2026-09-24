@@ -111,11 +111,11 @@ namespace Rtx
                 EXPECT_TRUE(options[static_cast<std::size_t>(alone)].mNeeds.empty())
                     << "an option core 1.4 carries alone names a need";
 
-            const std::span<const char* const> required = getRequiredDeviceExtensions();
+            const std::span<const RequiredExtension> required = getRequiredDeviceExtensions();
             for (const OptionalExtensions& option : options)
                 for (const char* const name : option.mExtensions)
                     EXPECT_EQ(std::find_if(required.begin(), required.end(),
-                                  [&](const char* const held) { return std::string_view(held) == name; }),
+                                  [&](const RequiredExtension& held) { return std::string_view(held.mName) == name; }),
                         required.end())
                         << name << " is both required and optional";
         }

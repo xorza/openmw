@@ -53,6 +53,9 @@ Requirements
   extensions and on DLSS, so no AMD or Intel GPU runs it.
 * Vulkan 1.4 with ray tracing pipelines, ray queries, position fetch and shader invocation
   reorder. A device missing any of them refuses to start rather than falling back.
+* NVIDIA driver 595 or later, on Windows or Linux. It is the first to offer
+  `VK_EXT_ray_tracing_invocation_reorder` on RTX cards, Turing included, so an RTX 20 card on an
+  older driver is refused for that extension and runs once the driver is updated.
 * DLSS Ray Reconstruction as the denoiser and upscaler (NGX, on by default at build time)
 
 Tested on one machine so far: a laptop RTX 4090 at 150 W, which is about a desktop RTX 4070.

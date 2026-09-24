@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <format>
 #include <optional>
 #include <sstream>
 #include <string_view>
@@ -48,15 +49,23 @@ namespace Rtx
             return std::find(names.begin(), names.end(), name) != names.end();
         }
 
-        std::string listMissingExtensions(std::span<const std::string> offered)
+        /// @param driver what the device says of its driver: an extension an NVIDIA driver is only
+        ///        too old for is named with the release that has it and the one that does not.
+        std::string listMissingExtensions(
+            std::span<const std::string> offered, const VkPhysicalDeviceVulkan12Properties& driver)
         {
+            const bool nvidia = driver.driverID == VK_DRIVER_ID_NVIDIA_PROPRIETARY;
+
             std::string missing;
-            for (const char* const required : getRequiredDeviceExtensions())
-                if (!has(offered, required))
+            for (const RequiredExtension& required : getRequiredDeviceExtensions())
+                if (!has(offered, required.mName))
                 {
                     if (!missing.empty())
                         missing += ", ";
-                    missing += required;
+                    missing += required.mName;
+                    if (nvidia && !required.mNvidiaDriver.empty())
+                        missing += std::format(
+                            " (NVIDIA driver {} or later; this one is {})", required.mNvidiaDriver, driver.driverInfo);
                 }
 
             return missing;
@@ -183,7 +192,7 @@ namespace Rtx
             return profile;
         }
 
-        if (const std::string missing = listMissingExtensions(extensions); !missing.empty())
+        if (const std::string missing = listMissingExtensions(extensions, properties.mVulkan12); !missing.empty())
         {
             profile.mObstacle = "missing extensions: " + missing;
             return profile;

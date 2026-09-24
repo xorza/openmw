@@ -89,8 +89,8 @@ namespace Rtx
         : mPhysicalDevice(std::move(physicalDevice))
     {
         std::vector<const char*> extensions;
-        for (const char* const name : getRequiredDeviceExtensions())
-            extensions.push_back(name);
+        for (const RequiredExtension& required : getRequiredDeviceExtensions())
+            extensions.push_back(required.mName);
 
         // The swapchain rests on the surface, which the instance loads for a window and never
         // headless: one fact, stated where the instance was made, and read here rather than said

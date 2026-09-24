@@ -21,28 +21,31 @@ namespace Rtx
         }
 
         constexpr std::array sRequiredDeviceExtensions{
-            VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
-            VK_KHR_RAY_QUERY_EXTENSION_NAME,
-            VK_KHR_RAY_TRACING_POSITION_FETCH_EXTENSION_NAME,
-            VK_KHR_RAY_TRACING_MAINTENANCE_1_EXTENSION_NAME,
-            VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
+            RequiredExtension{ VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME, {} },
+            RequiredExtension{ VK_KHR_RAY_QUERY_EXTENSION_NAME, {} },
+            RequiredExtension{ VK_KHR_RAY_TRACING_POSITION_FETCH_EXTENSION_NAME, {} },
+            RequiredExtension{ VK_KHR_RAY_TRACING_MAINTENANCE_1_EXTENSION_NAME, {} },
+            RequiredExtension{ VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME, {} },
             // The launch, and what it is for. The trace calls `traceRayEXT` nowhere and still has to
             // be a ray tracing pipeline, because a hit object may only be traced from the ray
             // generation stage, and the shader it names may only be run from there.
-            VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
+            RequiredExtension{ VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME, {} },
             // A driver floor and not a hardware one: hit objects are this extension's and no launch
-            // here sorts, but the shaders compile to `SPV_EXT_shader_invocation_reorder`, which
-            // arrives around driver 595 on Turing and 582 on Ada. The `NV` extension carries the
-            // `NV` SPIR-V capability, so taking it would mean a second binary of every shader.
-            VK_EXT_RAY_TRACING_INVOCATION_REORDER_EXTENSION_NAME,
+            // here sorts, but the shaders compile to `SPV_EXT_shader_invocation_reorder`. Every
+            // Windows and Linux report in the Vulkan Hardware Database lists it from 595.44 on, RTX
+            // 20 to 50 alike, and none at 591.86 or before. The exceptions are pre-releases: 595.02
+            // without it, a few from 580.94 with it — so a refusal names the branch, 595. Older
+            // drivers offer the `NV` extension instead, which carries the `NV` SPIR-V capability,
+            // so taking it would mean a second binary of each shader that holds a hit object.
+            RequiredExtension{ VK_EXT_RAY_TRACING_INVOCATION_REORDER_EXTENSION_NAME, "595" },
             // Occupancy is a register count the driver's own compiler owns and no offline tool has.
             // Required, because a renderer that quietly reported nothing would be a fallback path.
-            VK_KHR_PIPELINE_EXECUTABLE_PROPERTIES_EXTENSION_NAME,
+            RequiredExtension{ VK_KHR_PIPELINE_EXECUTABLE_PROPERTIES_EXTENSION_NAME, {} },
             // A clock a shader reads that runs at one rate whatever the card is clocked at, which
             // is what `stress.comp` holds a queue against. Required and not optional, because a
             // hold that fell back to a count would be the one that misses on the first frames of
             // every run — the frames the hold is for.
-            VK_KHR_SHADER_CLOCK_EXTENSION_NAME,
+            RequiredExtension{ VK_KHR_SHADER_CLOCK_EXTENSION_NAME, {} },
         };
 
         constexpr std::array sFaultReport{ VK_EXT_DEVICE_FAULT_EXTENSION_NAME };
@@ -218,7 +221,7 @@ namespace Rtx
         chain(next, mProperties2, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2);
     }
 
-    std::span<const char* const> getRequiredDeviceExtensions()
+    std::span<const RequiredExtension> getRequiredDeviceExtensions()
     {
         return sRequiredDeviceExtensions;
     }

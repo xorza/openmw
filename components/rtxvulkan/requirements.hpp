@@ -104,7 +104,17 @@ namespace Rtx
         std::string_view mFor;
     };
 
-    std::span<const char* const> getRequiredDeviceExtensions();
+    /// An extension the renderer will not start without, and the NVIDIA driver that first offers it
+    /// on every RTX card where that driver is later than the first to report Vulkan 1.4 — empty where
+    /// it is not. A card refused for such an extension is a driver update from running, and the
+    /// refusal says so rather than reading as a limit of the hardware.
+    struct RequiredExtension
+    {
+        const char* mName;
+        std::string_view mNvidiaDriver;
+    };
+
+    std::span<const RequiredExtension> getRequiredDeviceExtensions();
 
     /// The table itself, in the order `PhysicalDevice::profileOf` reads the device's answers in.
     std::span<const RequiredFormat> getRequiredFormats();
