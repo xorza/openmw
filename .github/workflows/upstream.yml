@@ -151,7 +151,14 @@ jobs:
       # Pinned to a commit like every other action here. This one ships most days, so the
       # version beside it is what says how old the pin has grown.
       - uses: anthropics/claude-code-action@cfc3eb22bfed5c26ef66e3223c982af27e4524de # v1.0.231
+        id: agent
         if: steps.upstream.outputs.behind != '0' && steps.upstream.outputs.waiting == '0'
+        # Named for the agent as for the steps around it: `gh` in a checkout with a remote called
+        # `upstream` takes that remote's repository, so a `gh pr create` without `--repo` asks
+        # OpenMW's repository for the pull request and not this one. The action hands its own
+        # environment to the agent whole (`base-action/src/parse-sdk-options.ts`).
+        env:
+          GH_REPO: ${{ github.repository }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
@@ -216,6 +223,26 @@ jobs:
             --model opus
             --max-turns 60
             --allowedTools "Bash(git:*),Bash(gh pr create:*),Bash(clang-format-14:*),Bash(CI/check_clang_format.sh:*),Read,Edit,Write,Grep,Glob"
+
+      # **What the agent said last, and every call it was refused**, because the action hides its
+      # transcript: the run of 2026-09-24 pushed its branch, opened no pull request and left
+      # nothing to say why. Those two and not the transcript, which a public repository would
+      # publish whole. Printed with workflow commands stopped, under a token nobody can guess:
+      # the text is the agent's, written after reading upstream, and no line of it may be read
+      # as a command to the runner.
+      - name: What the agent reported
+        if: always() && steps.agent.outputs.execution_file != ''
+        env:
+          EXECUTION_FILE: ${{ steps.agent.outputs.execution_file }}
+        run: |
+          stop=$(cat /proc/sys/kernel/random/uuid)
+          echo "::stop-commands::$stop"
+          jq -r '.[] | select(.type == "result")
+            | (.result // "no last message: \(.subtype)"),
+              (.permission_denials[]?
+                | "refused \(.tool_name): \(.tool_input.command // .tool_input.file_path // (.tool_input | tostring))")' \
+            "$EXECUTION_FILE"
+          echo "::$stop::"
 
       # **Auto-merge, from the shell and not from the agent**: which pull request, and whether it
       # may land with nobody reading it, are facts a script establishes. The pull request is the
