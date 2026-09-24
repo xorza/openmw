@@ -159,6 +159,10 @@ jobs:
         # environment to the agent whole (`base-action/src/parse-sdk-options.ts`).
         env:
           GH_REPO: ${{ github.repository }}
+          # Here and not on the command line, where the allowlist refuses it: a command that
+          # starts with an assignment is not one `Bash(CI/check_clang_format.sh:*)` matches, and
+          # run 35993449718 had each such form the agent tried refused.
+          CLANG_FORMAT: clang-format-14
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
@@ -196,9 +200,11 @@ jobs:
                usually have to survive: upstream's change to a line and this fork's reason for
                having moved that line. Where a resolution is a judgement rather than a mechanical
                merge, keep a note of it for the body.
-            3. Run `CLANG_FORMAT=clang-format-14 CI/check_clang_format.sh` and fix what it
-               names. That is the tree's own check and exactly what the format job of `rtx.yml`
-               runs, so a branch that passes it here passes it there.
+            3. Run `CI/check_clang_format.sh` and fix what it names. Run it bare, with nothing
+               before it and no pipe after it: that is the one form your allowed tools admit, and
+               `CLANG_FORMAT` in your environment already names `clang-format-14`. That is the
+               tree's own check and exactly what the format job of `rtx.yml` runs, so a branch
+               that passes it here passes it there.
             4. Push the branch. Open a pull request against master with `gh pr create`, not a
                draft, titled "Merge upstream/master". Write the body to a file and pass
                `--body-file`: it is long, and a shell argument that long is a shell argument that
