@@ -21,9 +21,6 @@
 #include <components/misc/osguservalues.hpp>
 #include <components/sceneutil/glextensions.hpp>
 #include <components/sceneutil/material.hpp>
-#include <components/sceneutil/morphgeometry.hpp>
-#include <components/sceneutil/riggeometry.hpp>
-#include <components/sceneutil/riggeometryosgaextension.hpp>
 #include <components/sceneutil/util.hpp>
 #include <components/settings/settings.hpp>
 #include <components/stereo/stereomanager.hpp>
@@ -625,7 +622,8 @@ namespace Shader
                 osg::ref_ptr<osgUtil::TangentSpaceGenerator> generator(new osgUtil::TangentSpaceGenerator);
                 generator->generate(&sourceGeometry, reqs.mTexStageRequiringTangents);
 
-                sourceGeometry.setTexCoordArray(7, generator->getTangentArray(), osg::Array::BIND_PER_VERTEX);
+                sourceGeometry.setTexCoordArray(
+                    sTangentUnit, generator->getTangentArray(), osg::Array::BIND_PER_VERTEX);
                 changed = true;
             }
         }
@@ -674,28 +672,8 @@ namespace Shader
         const ShaderRequirements& reqs = mRequirements.back();
         createProgram(reqs);
 
-        if (auto rig = dynamic_cast<SceneUtil::RigGeometry*>(&drawable))
-        {
-            osg::ref_ptr<osg::Geometry> sourceGeometry = rig->getSourceGeometry();
-            if (sourceGeometry && adjustGeometry(*sourceGeometry, reqs))
-                rig->setSourceGeometry(std::move(sourceGeometry));
-        }
-        else if (auto morph = dynamic_cast<SceneUtil::MorphGeometry*>(&drawable))
-        {
-            osg::ref_ptr<osg::Geometry> sourceGeometry = morph->getSourceGeometry();
-            if (sourceGeometry && adjustGeometry(*sourceGeometry, reqs))
-                morph->setSourceGeometry(std::move(sourceGeometry));
-        }
-        else if (auto osgaRig = dynamic_cast<SceneUtil::RigGeometryHolder*>(&drawable))
-        {
-            osg::ref_ptr<SceneUtil::OsgaRigGeometry> sourceOsgaRigGeometry = osgaRig->getSourceRigGeometry();
-            osg::ref_ptr<osg::Geometry> sourceGeometry = sourceOsgaRigGeometry->getSourceGeometry();
-            if (sourceGeometry && adjustGeometry(*sourceGeometry, reqs))
-            {
-                sourceOsgaRigGeometry->setSourceGeometry(std::move(sourceGeometry));
-                osgaRig->setSourceRigGeometry(std::move(sourceOsgaRigGeometry));
-            }
-        }
+        adjustSourceGeometry(
+            drawable, [&](osg::Geometry& sourceGeometry) { return adjustGeometry(sourceGeometry, reqs); });
 
         if (needPop)
             popRequirements();

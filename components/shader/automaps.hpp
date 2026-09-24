@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <functional>
 #include <string>
 #include <string_view>
 
@@ -9,6 +10,8 @@
 
 namespace osg
 {
+    class Drawable;
+    class Geometry;
     class Texture;
 }
 
@@ -44,8 +47,6 @@ namespace Shader
 
         bool mSpecularMaps = false;
         std::string mSpecularMapPattern;
-
-        bool any() const { return mNormalMaps || mSpecularMaps; }
     };
 
     /// What `attachAutoMaps` added, with the unit of each map, or -1 where it added none.
@@ -75,22 +76,44 @@ namespace Shader
         const osg::Texture* bumpMap, const osg::StateSet::TextureAttributeList& units, osg::StateSet*& writable,
         osg::Node& node);
 
-    /// Attaches the companion maps and changes nothing else, for a renderer that runs no
-    /// `ShaderVisitor`. It visits the state sets the shader visitor visits and applies the same rule,
-    /// so both renderers find the same maps.
-    class AutoMapVisitor : public osg::NodeVisitor
+    /// Runs `adjust` on the geometry a skinned or morphed `drawable` is drawn from, and sets that
+    /// geometry again where `adjust` answers that it changed it: the copies the drawable draws from
+    /// are made when it is set. False where `drawable` is neither, and `adjust` did not run.
+    bool adjustSourceGeometry(osg::Drawable& drawable, const std::function<bool(osg::Geometry&)>& adjust);
+
+    /// The texture unit whose coordinate array holds a geometry's tangents, which is where
+    /// `ShaderVisitor` puts them and where `SceneUtil::RigGeometry` poses them from.
+    inline constexpr unsigned int sTangentUnit = 7;
+
+    /// What a renderer that runs no `ShaderVisitor` still needs of it, and nothing else: the
+    /// companion maps, and the tangents a normal map is read through. It visits the state sets the
+    /// shader visitor visits and applies the same rules, so both renderers find the same maps and
+    /// read them through the same tangents.
+    class MapVisitor : public osg::NodeVisitor
     {
     public:
         /// @param rules held by reference, for the one traversal this is made for.
-        AutoMapVisitor(const AutoMapRules& rules, Resource::ImageManager& images);
+        MapVisitor(const AutoMapRules& rules, Resource::ImageManager& images);
 
         void apply(osg::Node& node) override;
         void apply(osg::Drawable& drawable) override;
 
     private:
+        /// Attaches what `node`'s own state set leads to, and notes its normal map where it has
+        /// one, bound or attached.
         void attach(osg::Node& node);
+
+        /// Builds `geometry`'s tangents at `sTangentUnit` with `osgUtil::TangentSpaceGenerator`,
+        /// from the coordinates the normal map in force reads, as `ShaderVisitor::adjustGeometry`
+        /// does. Answers whether it built any.
+        bool buildTangents(osg::Geometry& geometry) const;
 
         const AutoMapRules& mRules;
         Resource::ImageManager& mImages;
+
+        /// The unit of the normal map in force at the node being visited, or -1 where there is
+        /// none: set by the nearest state set that binds one and carried down to what it shades, as
+        /// the shader visitor carries its requirements.
+        int mNormalUnit = -1;
     };
 }

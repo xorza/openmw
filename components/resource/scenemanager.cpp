@@ -1005,10 +1005,10 @@ namespace Resource
                 osg::ref_ptr<Shader::ShaderVisitor> shaderVisitor(createShaderVisitor());
                 loaded->accept(*shaderVisitor);
             }
-            else if (mAutoMaps.any())
+            else
             {
-                Shader::AutoMapVisitor autoMaps(mAutoMaps, *mImageManager);
-                loaded->accept(autoMaps);
+                Shader::MapVisitor maps(mAutoMaps, *mImageManager);
+                loaded->accept(maps);
             }
 
             if (canOptimize(path.value()))

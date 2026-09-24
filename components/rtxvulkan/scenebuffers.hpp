@@ -78,6 +78,9 @@ namespace Rtx
         /// both — so nothing here is owed by a pose.
         SlotBlocks& getNormals() { return mNormalTable; }
 
+        /// The tangents, which the same dispatch poses beside the normals.
+        SlotBlocks& getTangents() { return mTangentTable; }
+
         /// Where every table this owns is, for the frame's block: those of `GpuTables` that are
         /// the scene's, with `slot`'s copy wherever a table has one per frame in flight. Addresses
         /// and never handles, because a shader constructs a reference from the block and reads; for
@@ -90,7 +93,7 @@ namespace Rtx
 
     private:
         /// What a frame writes whole, once per frame in flight. What is written by the row keeps
-        /// its own account: `mInstanceTable`, `mMaterialTable` and `mNormalTable`.
+        /// its own account: `mInstanceTable`, `mMaterialTable`, `mNormalTable` and `mTangentTable`.
         struct Tables
         {
             Buffer mLights;
@@ -170,6 +173,10 @@ namespace Rtx
         /// are recomputed every frame — by `SkinPass`, into the copy the frame traces; the rest of a
         /// cell's are written once into every copy.
         SlotBlocks mNormalTable{ Shaders::VERTEX_BLOCK, sizeof(osg::Vec3f) };
+
+        /// The tangents, `Rtx::packTangent`'s words, blocked and copied as the normals are and for
+        /// the same reason: a skinned body's are posed with its normals.
+        SlotBlocks mTangentTable{ Shaders::VERTEX_BLOCK, sizeof(std::uint32_t) };
 
         /// Kept because the pass writes its geometry into the frame's block, which no table carries.
         LightGrid mLightGrid;

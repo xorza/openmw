@@ -19,8 +19,9 @@ namespace Rtx
     class GpuTimer;
     class SceneDesc;
 
-    /// What one scene's posing is done into. A record and not an argument list, because `mPoses`
-    /// and `mNormals` are the same type and the two tables they name are not interchangeable.
+    /// What one scene's posing is done into. A record and not an argument list, because `mPoses`,
+    /// `mNormals` and `mTangents` are the same type and the tables they name are not
+    /// interchangeable.
     struct Skinning
     {
         const SceneDesc& mScene;
@@ -36,6 +37,9 @@ namespace Rtx
         /// and never a position.
         SlotBlocks& mPoses;
         SlotBlocks& mNormals;
+
+        /// Where the posed tangents go, indexed as the normals are.
+        SlotBlocks& mTangents;
 
         /// Null where the run is not being timed, and never read by `recordArrived`.
         GpuTimer* mTimer = nullptr;
@@ -77,10 +81,10 @@ namespace Rtx
 
         /// One mesh's dispatch, binding whichever of the two pipelines it needs where `bound` is
         /// not already it. The mesh deforms and has vertices, which the caller asked first.
-        /// `into` and `normalsInto` are `what`'s two tables at its own slot, taken once by the
-        /// caller rather than per mesh.
+        /// `into`, `normalsInto` and `tangentsInto` are `what`'s three tables at its own slot, taken
+        /// once by the caller rather than per mesh.
         void pose(VkCommandBuffer commands, const Skinning& what, Index mesh, Rows rows, BlockedBuffer& into,
-            BlockedBuffer& normalsInto, const ComputePipeline*& bound) const;
+            BlockedBuffer& normalsInto, BlockedBuffer& tangentsInto, const ComputePipeline*& bound) const;
 
         ComputePipeline mSkin;
         ComputePipeline mMorph;

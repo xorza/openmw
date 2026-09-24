@@ -57,6 +57,7 @@ namespace Rtx
         const BlockedValues<osg::Vec2f>& getTexCoords() const { return mTexCoords; }
         const BlockedValues<osg::Vec2f>& getSecondTexCoords() const { return mSecondTexCoords; }
         const BlockedValues<osg::Vec3f>& getColours() const { return mColours; }
+        const BlockedValues<std::uint32_t>& getTangents() const { return mTangents; }
         const BlockedValues<std::uint32_t>& getIndices() const { return mIndices; }
 
         std::span<const osg::Vec3f> getMeshPositions(Index mesh) const;
@@ -79,7 +80,7 @@ namespace Rtx
         void clearArrivals();
 
     private:
-        /// Makes the four vertex buffers as long as the vertex runs reach and writes `range`'s run
+        /// Makes the five vertex buffers as long as the vertex runs reach and writes `range`'s run
         /// of each. Fills one the mesh did not bring with what stands for nothing there, because a
         /// reused slot still holds its last tenant's.
         void writeVertices(const MeshRange& range, const MeshArrays& arrays);
@@ -89,7 +90,7 @@ namespace Rtx
 
         /// Where a mesh's vertices and its indices live — runs and not slots, because the geometry
         /// behind a row is as long as the model. One vertex run names the same elements of the
-        /// four vertex buffers (`writeVertices`); the second texture coordinates are in runs of
+        /// five vertex buffers (`writeVertices`); the second texture coordinates are in runs of
         /// their own — `MeshRange::mSecondTexCoords`. In the device's blocks, which is what lets
         /// the host's buffers grow without moving either.
         RunAllocator mVertexRuns{ sVertexBlock };
@@ -104,6 +105,9 @@ namespace Rtx
         /// hit multiplies by it whatever the content said and no shader branches on whether there
         /// is one. `MeshArrays::mColours` says why it is linear here.
         BlockedValues<osg::Vec3f> mColours{ sVertexBlock };
+
+        /// One word a vertex, `Rtx::packTangent`'s, and nought where the mesh brought none.
+        BlockedValues<std::uint32_t> mTangents{ sVertexBlock };
 
         BlockedValues<std::uint32_t> mIndices{ sIndexBlock };
         BlockedValues<osg::Vec2f> mSecondTexCoords{ sVertexBlock };

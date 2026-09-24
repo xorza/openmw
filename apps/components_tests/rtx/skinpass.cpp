@@ -11,6 +11,7 @@
 #include <osg/BoundingBox>
 #include <osg/Matrixf>
 #include <osg/Vec3f>
+#include <osg/Vec4f>
 #include <vulkan/vulkan_core.h>
 
 #include <components/rtx/deformertable.hpp>
@@ -20,6 +21,7 @@
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/shaders/skinning.h>
+#include <components/rtx/tangent.hpp>
 #include <components/rtxvulkan/barriers.hpp>
 #include <components/rtxvulkan/buffer.hpp>
 #include <components/rtxvulkan/commands.hpp>
@@ -42,12 +44,12 @@ namespace Rtx
             return (first << Shaders::RUN_COUNT_BITS) | count;
         }
 
-        /// The vector at `vertex` of a block copied back whole.
-        osg::Vec3f readVector(const Buffer& copied, std::uint32_t vertex)
+        /// The element at `vertex` of a block copied back whole.
+        template <class T>
+        T readAt(const Buffer& copied, std::uint32_t vertex)
         {
-            osg::Vec3f value;
-            std::memcpy(
-                &value, static_cast<const std::byte*>(copied.map()) + vertex * sizeof(osg::Vec3f), sizeof(value));
+            T value;
+            std::memcpy(&value, static_cast<const std::byte*>(copied.map()) + vertex * sizeof(T), sizeof(T));
             return value;
         }
 
@@ -62,7 +64,9 @@ namespace Rtx
         /// every vertex of every posed run is asserted, and the static quad stands between two of
         /// them: it holds a run among the normals and none at all among the poses. Every expected
         /// value is exact in float: translations, a quarter-and-three-quarters blend of two of
-        /// them, a rotation of nought-and-one entries, and a half of a unit offset.
+        /// them, a rotation of nought-and-one entries, and a half of a unit offset. The tangents
+        /// are exact as well, because a quarter turn moves a packed tangent from one step of the
+        /// octahedron to another, and the host's packing of it is the device's to the bit.
         TEST_F(RtxSkinPassTest, theKernelsPoseEachMeshIntoItsOwnRunAndLeaveTheRestAlone)
         {
             Device& device = getDevice();
@@ -104,6 +108,15 @@ namespace Rtx
                 osg::Vec3f(0.0f, 0.0f, 1.0f),
             };
 
+            // Along x either way round, one off every axis and below the octahedron's equator, and
+            // none: what the generator leaves where a triangle's texture coordinates are degenerate.
+            const std::array alongX{
+                osg::Vec4f(1.0f, 0.0f, 0.0f, 1.0f),
+                osg::Vec4f(1.0f, 0.0f, 0.0f, -1.0f),
+                osg::Vec4f(1.0f, 2.0f, -4.0f, -1.0f),
+                osg::Vec4f(),
+            };
+
             // Each rig with the first mesh on it, and the second mesh on the one-bone rig by its
             // index: the slots come out as they would have with the rigs made first.
             const DeformedMesh onOneBone = scene.addMesh(
@@ -116,8 +129,10 @@ namespace Rtx
                 MeshArrays{ .mPositions = Testing::sUnitQuad, .mNormals = upward, .mIndices = Testing::sQuadIndices },
                 {}, twoBones);
             const Index blended = onTwoBones.mMesh;
-            const Index turned = scene.addMesh(
-                MeshArrays{ .mPositions = Testing::sUnitQuad, .mNormals = sideways, .mIndices = Testing::sQuadIndices },
+            const Index turned = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad,
+                                                   .mNormals = sideways,
+                                                   .mTangents = alongX,
+                                                   .mIndices = Testing::sQuadIndices },
                 {}, Deform::Rig, onOneBone.mDeformer);
             const Index lifted = scene
                                      .addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad,
@@ -161,20 +176,24 @@ namespace Rtx
 
             SlotBlocks poses{ Shaders::VERTEX_BLOCK, sizeof(osg::Vec3f) };
             SlotBlocks normals{ Shaders::VERTEX_BLOCK, sizeof(osg::Vec3f) };
+            SlotBlocks tangents{ Shaders::VERTEX_BLOCK, sizeof(std::uint32_t) };
             poses.open(device, 2, readable, "posed positions");
             normals.open(device, 2, readable, "posed normals");
+            tangents.open(device, 2, readable, "posed tangents");
             // Its own scope, because the blocks are device memory: the fills have to reach the
             // queue before the dispatch below reads what they left.
             {
                 Batch setup(pool);
                 poses.reserve(setup, posedVertices);
                 normals.reserve(setup, vertices);
+                tangents.reserve(setup, vertices);
                 setup.flush();
             }
             for (std::uint32_t slot = 0; slot < 2; ++slot)
             {
                 poses.settle(FrameSlot{ slot });
                 normals.settle(FrameSlot{ slot });
+                tangents.settle(FrameSlot{ slot });
             }
 
             Batch tableSetup(pool);
@@ -186,20 +205,28 @@ namespace Rtx
             const VkDeviceSize normalBytes = VkDeviceSize{ vertices } * sizeof(osg::Vec3f);
             const Buffer readPositions = Buffer::readBack(device, poseBytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT, "test");
             const Buffer readNormals = Buffer::readBack(device, normalBytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT, "test");
+            const VkDeviceSize tangentBytes = VkDeviceSize{ vertices } * sizeof(std::uint32_t);
+            const Buffer readTangents
+                = Buffer::readBack(device, tangentBytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT, "test");
 
             /// Poses what `slot` owes and copies its whole first block back.
             const auto poseAndRead = [&](FrameSlot slot) {
                 bool recorded = false;
                 pool.submitAndWait([&](VkCommandBuffer commands) {
                     recorded = pass.record(commands,
-                        Skinning{
-                            .mScene = scene, .mSlot = slot, .mTables = tables, .mPoses = poses, .mNormals = normals });
+                        Skinning{ .mScene = scene,
+                            .mSlot = slot,
+                            .mTables = tables,
+                            .mPoses = poses,
+                            .mNormals = normals,
+                            .mTangents = tangents });
 
                     handOver(commands, Use::sBufferComputeWrite,
                         BufferUse{ VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT });
 
                     poses.at(slot).getBlock(0).copyTo(commands, readPositions, poseBytes);
                     normals.at(slot).getBlock(0).copyTo(commands, readNormals, normalBytes);
+                    tangents.at(slot).getBlock(0).copyTo(commands, readTangents, tangentBytes);
                 });
 
                 return recorded;
@@ -208,10 +235,13 @@ namespace Rtx
             EXPECT_TRUE(poseAndRead(FrameSlot{ 0 })) << "four meshes owed and nothing recorded";
 
             const auto positionOf = [&](Index mesh, std::uint32_t vertex) {
-                return readVector(readPositions, scene.meshes().getRows()[mesh].mBindOffset + vertex);
+                return readAt<osg::Vec3f>(readPositions, scene.meshes().getRows()[mesh].mBindOffset + vertex);
             };
             const auto normalOf = [&](Index mesh, std::uint32_t vertex) {
-                return readVector(readNormals, scene.meshes().getRows()[mesh].mVertices.mOffset + vertex);
+                return readAt<osg::Vec3f>(readNormals, scene.meshes().getRows()[mesh].mVertices.mOffset + vertex);
+            };
+            const auto tangentOf = [&](Index mesh, std::uint32_t vertex) {
+                return readAt<std::uint32_t>(readTangents, scene.meshes().getRows()[mesh].mVertices.mOffset + vertex);
             };
 
             // One bone at five: every corner five up, and an upward normal left as it was.
@@ -238,19 +268,36 @@ namespace Rtx
             EXPECT_EQ(positionOf(turned, 3), osg::Vec3f(-1.0f, 0.0f, 0.0f));
             EXPECT_EQ(normalOf(turned, 0), osg::Vec3f(0.0f, 1.0f, 0.0f));
 
+            // The tangent along x to along y as well, its handedness kept. Along y is the square's
+            // `(0, 1)`: steps `0 + 16383 = 0x3FFF` and `16383 + 16383 = 32766 = 0x7FFE`, the second
+            // fifteen bits up, which is `0x3FFF0000`, and the present bit over them.
+            EXPECT_EQ(tangentOf(turned, 0), 0xBFFF3FFFu);
+            EXPECT_EQ(tangentOf(turned, 1), 0xFFFF3FFFu) << "the handedness was lost";
+
+            // Off the axes, below the equator: the device's word is the host's for the same turn of
+            // the same stored tangent, `(x, y, z)` to `(-y, x, z)`.
+            const osg::Vec4f stored = unpackTangent(packTangent(alongX[2]));
+            EXPECT_EQ(tangentOf(turned, 2), packTangent(osg::Vec4f(-stored.y(), stored.x(), stored.z(), stored.w())));
+            EXPECT_EQ(tangentOf(turned, 3), 0u) << "no tangent posed into one";
+
             // The morph: half of a unit lift on every corner, and a normal a morph never touches
             // still holding whatever the block held — nothing, because the pass wrote no normal.
             for (std::uint32_t vertex = 0; vertex < 4; ++vertex)
                 EXPECT_EQ(positionOf(lifted, vertex), Testing::sUnitQuad[vertex] + osg::Vec3f(0.0f, 0.0f, 0.5f))
                     << vertex;
             EXPECT_EQ(normalOf(lifted, 0), osg::Vec3f()) << "a morph moved a normal";
+            EXPECT_EQ(tangentOf(lifted, 0), 0u) << "a morph moved a tangent";
 
             // **And the quad between them is untouched among the normals.** Its run holds what the
             // block was made with, which is nothing: a kernel that wrote past its mesh would have
             // landed here. It has no run among the poses at all, which the bind count above says,
             // and the sixteen that are there are each asserted exactly.
             for (std::uint32_t vertex = 0; vertex < 4; ++vertex)
+            {
                 EXPECT_EQ(normalOf(still, vertex), osg::Vec3f()) << "a pose landed in a static neighbour at " << vertex;
+                EXPECT_EQ(tangentOf(still, vertex), 0u) << "a pose landed in a static neighbour at " << vertex;
+                EXPECT_EQ(tangentOf(raised, vertex), 0u) << "a mesh with no tangents was posed some at " << vertex;
+            }
 
             // **The account: what one copy was paid the other still owes.** A frame that poses
             // nothing new still has to bring the second copy level, and a copy that is level
@@ -307,7 +354,8 @@ namespace Rtx
                         .mSlot = FrameSlot{ 0 },
                         .mTables = tables,
                         .mPoses = poses,
-                        .mNormals = normals },
+                        .mNormals = normals,
+                        .mTangents = tangents },
                     scene.meshes().getArrived()))
                     << "an arrival with nothing to pose";
 
@@ -370,8 +418,10 @@ namespace Rtx
 
             SlotBlocks poses{ Shaders::VERTEX_BLOCK, sizeof(osg::Vec3f) };
             SlotBlocks normals{ Shaders::VERTEX_BLOCK, sizeof(osg::Vec3f) };
+            SlotBlocks tangents{ Shaders::VERTEX_BLOCK, sizeof(std::uint32_t) };
             poses.open(device, 2, readable, "posed positions");
             normals.open(device, 2, readable, "posed normals");
+            tangents.open(device, 2, readable, "posed tangents");
 
             const SkinPass pass(device, Testing::getShaderDirectory());
 
@@ -379,12 +429,14 @@ namespace Rtx
             Batch load(pool);
             poses.reserve(load, 4);
             normals.reserve(load, 4);
+            tangents.reserve(load, 4);
             SkinTables tables(device, load, scene, 2);
             load.flush();
             for (std::uint32_t slot = 0; slot < 2; ++slot)
             {
                 poses.settle(FrameSlot{ slot });
                 normals.settle(FrameSlot{ slot });
+                tangents.settle(FrameSlot{ slot });
             }
 
             // The arrival: a second quad on the same rig, its rows staged into the first copy and
@@ -402,13 +454,15 @@ namespace Rtx
                 Batch arrival(pool);
                 poses.reserve(arrival, 8);
                 normals.reserve(arrival, 8);
+                tangents.reserve(arrival, 8);
                 tables.extend(arrival, scene);
                 EXPECT_TRUE(pass.recordArrived(arrival.getCommands(),
                     Skinning{ .mScene = scene,
                         .mSlot = FrameSlot{ 0 },
                         .mTables = tables,
                         .mPoses = poses,
-                        .mNormals = normals },
+                        .mNormals = normals,
+                        .mTangents = tangents },
                     scene.meshes().getArrived()));
                 arrival.defer();
             }
@@ -445,7 +499,8 @@ namespace Rtx
                         .mSlot = FrameSlot{ 0 },
                         .mTables = tables,
                         .mPoses = poses,
-                        .mNormals = normals }));
+                        .mNormals = normals,
+                        .mTangents = tangents }));
 
                 handOver(commands, Use::sBufferComputeWrite,
                     BufferUse{ VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT });
@@ -453,7 +508,7 @@ namespace Rtx
             });
 
             const auto positionOf = [&](Index mesh, std::uint32_t vertex) {
-                return readVector(read, scene.meshes().getRows()[mesh].mBindOffset + vertex);
+                return readAt<osg::Vec3f>(read, scene.meshes().getRows()[mesh].mBindOffset + vertex);
             };
             for (std::uint32_t vertex = 0; vertex < 4; ++vertex)
             {

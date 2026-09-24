@@ -47,7 +47,8 @@ namespace Rtx
     }
 
     void SkinPass::pose(VkCommandBuffer commands, const Skinning& what, const Index index, const Rows rows,
-        BlockedBuffer& into, BlockedBuffer& normalsInto, const ComputePipeline*& bound) const
+        BlockedBuffer& into, BlockedBuffer& normalsInto, BlockedBuffer& tangentsInto,
+        const ComputePipeline*& bound) const
     {
         const SceneDesc& scene = what.mScene;
         SkinTables& tables = what.mTables;
@@ -55,11 +56,12 @@ namespace Rtx
         const MeshRange& mesh = scene.meshes().getRows()[index];
         assert(posable(mesh) && "a pose of a mesh with nothing to pose");
 
-        // The pose table is indexed by the bind offset and the normals by the scene's own. A hit
-        // reads a normal out of the shared table, so every mesh has a run there; nothing reads a
-        // position at a hit, so only the bodies have one here.
+        // The pose table is indexed by the bind offset and the normals and tangents by the scene's
+        // own. A hit reads a normal out of the shared table, so every mesh has a run there; nothing
+        // reads a position at a hit, so only the bodies have one here.
         const VkDeviceAddress posed = into.addressOf(mesh.mBindOffset);
         const VkDeviceAddress shaded = normalsInto.addressOf(mesh.mVertices.mOffset);
+        const VkDeviceAddress turned = tangentsInto.addressOf(mesh.mVertices.mOffset);
 
         // The pose, whichever kind: the bones as rows or the weights four to a word, as
         // `Rtx::PoseWord` lays them, at the one address either kernel reads from nought.
@@ -72,11 +74,13 @@ namespace Rtx
             const Shaders::SkinConstants push{
                 .mBindPositions = tables.getBindPositions(mesh),
                 .mBindNormals = tables.getBindNormals(mesh),
+                .mBindTangents = tables.getBindTangents(mesh),
                 .mRuns = tables.getRuns(deformer),
                 .mInfluences = tables.getInfluences(deformer),
                 .mBones = pose,
                 .mPositions = posed,
                 .mNormals = shaded,
+                .mTangents = turned,
                 .mCount = mesh.mVertices.mCount,
                 .mPadding = 0,
             };
@@ -124,6 +128,7 @@ namespace Rtx
         bool recorded = false;
 
         BlockedBuffer& normalsInto = what.mNormals.at(what.mSlot);
+        BlockedBuffer& tangentsInto = what.mTangents.at(what.mSlot);
         what.mPoses.sync(what.mSlot, [&](const Index index, BlockedBuffer& into) {
             if (!posable(what.mScene.meshes().getRows()[index]))
                 return;
@@ -134,7 +139,7 @@ namespace Rtx
                 recorded = true;
             }
 
-            pose(commands, what, index, Rows::Written, into, normalsInto, bound);
+            pose(commands, what, index, Rows::Written, into, normalsInto, tangentsInto, bound);
         });
 
         if (!recorded)
@@ -153,12 +158,13 @@ namespace Rtx
 
         BlockedBuffer& into = what.mPoses.at(what.mSlot);
         BlockedBuffer& normalsInto = what.mNormals.at(what.mSlot);
+        BlockedBuffer& tangentsInto = what.mTangents.at(what.mSlot);
         for (const Index index : arrived)
         {
             if (!posable(what.mScene.meshes().getRows()[index]))
                 continue;
 
-            pose(commands, what, index, Rows::Staged, into, normalsInto, bound);
+            pose(commands, what, index, Rows::Staged, into, normalsInto, tangentsInto, bound);
             recorded = true;
         }
 

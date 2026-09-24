@@ -134,6 +134,7 @@ set(RTX_FILES
     slot.hpp
     slots.cpp
     slots.hpp
+    specularlayout.hpp
     sprite.hpp
     spritelight.cpp
     spritelight.hpp
@@ -142,6 +143,8 @@ set(RTX_FILES
     stepped.hpp
     surface.cpp
     surface.hpp
+    tangent.cpp
+    tangent.hpp
     templatewalk.cpp
     templatewalk.hpp
     texels.cpp
@@ -150,6 +153,7 @@ set(RTX_FILES
     texturebuilder.hpp
     texturedata.cpp
     texturedata.hpp
+    textureencoding.hpp
     texturetable.cpp
     texturetable.hpp
     viewscene.cpp

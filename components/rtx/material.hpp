@@ -68,7 +68,7 @@ namespace Rtx
     ///
     /// **The normal and specular maps are the content's companions, found by name.** A Morrowind
     /// NIF has no slot for either, so every one arrives as an `_n`, `_nh` or `_spec` file beside the
-    /// diffuse, which `Shader::AutoMapVisitor` attaches at load under the same `[Shaders]` switches
+    /// diffuse, which `Shader::MapVisitor` attaches at load under the same `[Shaders]` switches
     /// the rasterizer reads. A surface that has none is vanilla, and vanilla pictures do not change:
     /// that is the rule these maps enter under.
     struct Material

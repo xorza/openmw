@@ -75,8 +75,8 @@ namespace Resource
         void reinstateRemovedState(osg::ref_ptr<osg::Node> node);
 
         /// Which companion maps a loaded model's diffuse maps lead to. Attached at load whether or not
-        /// shaders are enabled: by the shader visitor, or by `Shader::AutoMapVisitor` alone where
-        /// shaders are off.
+        /// shaders are enabled: by the shader visitor, or by `Shader::MapVisitor` where shaders are
+        /// off, which builds the tangents a normal map is read through as well.
         void setAutoMaps(const Shader::AutoMapRules& rules) { mAutoMaps = rules; }
         const Shader::AutoMapRules& getAutoMaps() const { return mAutoMaps; }
 

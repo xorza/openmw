@@ -10,17 +10,18 @@
 // normal, and one matrix at the end is three dot products against a normal instead of many. The
 // bones already carry the skin transform, composed on the host, so the blend is the whole pose.
 //
-// The normal takes the linear part and is not normalised, because the rasterizer does not: what
-// a hit reads is what it would have read. Morrowind scales uniformly, so the plain matrix stands in
-// for the inverse transpose there as well.
+// The normal and the tangent take the linear part and are not normalised, because the rasterizer
+// does not: what a hit reads is what it would have read. Morrowind scales uniformly, so the plain
+// matrix stands in for the inverse transpose there as well.
 //
 // Source and destination are different tables: the bind pose stays where it arrived and the pose
-// lands in the slot's copy of the positions and the normals, at the mesh's own run — which is what
-// the structure is refitted from and what a hit reads its shading normal out of.
+// lands in the slot's copy of the positions, the normals and the tangents, at the mesh's own run —
+// which is what the structure is refitted from and what a hit reads its shading frame out of.
 
 #include "skinning.h"
 
 #include "lib/runs.glsl"
+#include "lib/tangent.glsl"
 
 layout(local_size_x = SKIN_WORKGROUP) in;
 
@@ -57,4 +58,11 @@ void main()
     Vec3Written(skin.mPositions).at[vertex] = vec3(dot(rows[0], point), dot(rows[1], point), dot(rows[2], point));
     Vec3Written(skin.mNormals).at[vertex]
         = vec3(dot(rows[0].xyz, normal), dot(rows[1].xyz, normal), dot(rows[2].xyz, normal));
+
+    // `RigGeometry::cull`'s tangent: the linear part, the handedness as it was, and no tangent left
+    // as none — a body no normal map is read through carries none.
+    const vec4 tangent = unpackTangent(UintRun(skin.mBindTangents).at[vertex]);
+    UintWritten(skin.mTangents).at[vertex] = packTangent(
+        vec3(dot(rows[0].xyz, tangent.xyz), dot(rows[1].xyz, tangent.xyz), dot(rows[2].xyz, tangent.xyz)),
+        tangent.w < 0.0);
 }

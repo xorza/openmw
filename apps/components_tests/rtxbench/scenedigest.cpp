@@ -14,6 +14,7 @@
 #include <osg/Matrixf>
 #include <osg/Vec2f>
 #include <osg/Vec3f>
+#include <osg/Vec4f>
 
 #include <components/rtx/deformertable.hpp>
 #include <components/rtx/instancerecord.hpp>
@@ -34,9 +35,9 @@ namespace Rtx
         /// An eight-cornered box, mirrored in x where `mirrored`, which is the pair of sibling shapes
         /// the host hands over in heap order. `shuffled` stores the same vertices in reverse and
         /// spells the same triangles from another corner, which is what the host's geometry merge
-        /// does to a shape.
-        Rtx::Index addBox(
-            Rtx::SceneDesc& scene, const bool mirrored, const float lift = 0.0f, const bool shuffled = false)
+        /// does to a shape. `tangents` is none or one per corner, and is not shuffled.
+        Rtx::Index addBox(Rtx::SceneDesc& scene, const bool mirrored, const float lift = 0.0f,
+            const bool shuffled = false, std::span<const osg::Vec4f> tangents = {})
         {
             std::vector<osg::Vec3f> positions;
             std::vector<osg::Vec3f> normals;
@@ -58,9 +59,11 @@ namespace Rtx
                 indices = { 7, 6, 5, 5, 6, 4 };
             }
 
-            return scene.addMesh(
-                MeshArrays{
-                    .mPositions = positions, .mNormals = normals, .mTexCoords = texCoords, .mIndices = indices },
+            return scene.addMesh(MeshArrays{ .mPositions = positions,
+                                     .mNormals = normals,
+                                     .mTexCoords = texCoords,
+                                     .mTangents = tangents,
+                                     .mIndices = indices },
                 {}, Rtx::Deform::None, Rtx::sNoIndex);
         }
 
@@ -178,6 +181,49 @@ namespace Rtx
                 EXPECT_NE(scene, movedScene) << what;
                 EXPECT_NE(layout, movedLayout) << what;
             }
+        }
+
+        /// One box under one placement, its corners carrying `tangents`, digested whole and part by
+        /// part.
+        std::pair<std::string, ScenePartDigests> digestsOfTangents(std::span<const osg::Vec4f> tangents)
+        {
+            Rtx::SceneDesc scene;
+            Rtx::MeshInstance instance;
+            instance.mMesh = addBox(scene, false, 0.0f, false, tangents);
+            scene.addInstance(instance);
+            return { spellHash(digestScene(scene)), digestParts(scene) };
+        }
+
+        /// **A tangent moves the normals column and the scene, and no tangent moves nothing.** The
+        /// words are hashed only where a vertex has one, so a box whose tangents all packed to none
+        /// digests as the box that brought none — which is every vanilla scene, and so the
+        /// baselines on record hold.
+        TEST(RtxSceneDigestTest, aTangentMovesTheNormalsColumnAndNoTangentMovesNothing)
+        {
+            const auto [bare, bareParts] = digestsOfTangents({});
+
+            std::array<osg::Vec4f, 8> none{};
+            const auto [nothing, nothingParts] = digestsOfTangents(none);
+            EXPECT_EQ(nothing, bare) << "tangents of no length moved the scene";
+            EXPECT_EQ(nothingParts, bareParts) << "tangents of no length moved a column";
+
+            std::array<osg::Vec4f, 8> alongX;
+            alongX.fill(osg::Vec4f(1.0f, 0.0f, 0.0f, 1.0f));
+            const auto [tangent, tangentParts] = digestsOfTangents(alongX);
+            EXPECT_NE(tangent, bare);
+            for (std::size_t at = 0; at < bareParts.size(); ++at)
+            {
+                const auto part = static_cast<ScenePart>(at);
+                EXPECT_EQ(tangentParts[at] != bareParts[at], part == ScenePart::Normals) << nameOf(part);
+            }
+
+            // The handedness alone is a change as well.
+            std::array<osg::Vec4f, 8> flipped;
+            flipped.fill(osg::Vec4f(1.0f, 0.0f, 0.0f, -1.0f));
+            const auto [other, otherParts] = digestsOfTangents(flipped);
+            EXPECT_NE(other, tangent);
+            EXPECT_NE(otherParts[static_cast<std::size_t>(ScenePart::Normals)],
+                tangentParts[static_cast<std::size_t>(ScenePart::Normals)]);
         }
 
         /// One sprite under one emitter that adds where `additive` and falls where `falls`,

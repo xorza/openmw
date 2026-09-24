@@ -217,21 +217,29 @@ namespace RtxTool
         }
 
         std::uint32_t sheets = 0;
+        std::uint32_t tangentMeshes = 0;
         for (const Rtx::MeshRange& mesh : scene.meshes().getRows())
+        {
             sheets += mesh.mShape.mSheet ? 1 : 0;
+            tangentMeshes += std::ranges::any_of(mesh.mVertices.in(scene.meshes().getTangents()),
+                                 [](const std::uint32_t word) { return word != 0; })
+                ? 1
+                : 0;
+        }
 
         into.mRecord.note(
             std::format("  cutout materials:     {}, {} of them alpha-tested outright\n"
                         "  translucent:          {}, which a cutoff cannot answer for\n"
                         "  media:                {} of those are nowhere opaque\n"
                         "  emissive materials:   {}\n"
-                        "  companion maps:       {} materials wear a normal map, {} a specular map\n"
+                        "  companion maps:       {} materials wear a normal map, {} a specular map; {} meshes "
+                        "carry tangents\n"
                         "  lights:               {} casting\n"
                         "  deforming drawables:  {}\n"
                         "  flattened ground:     {} cells outside the active grid\n"
                         "  emitters:             {} holding {} live particles\n",
-                cutouts, tested, translucent, media, glowing, normalMapped, specularMapped, scene.lights().size(),
-                stats.mDeformed, flattened, stats.mEmitters, stats.mSprites));
+                cutouts, tested, translucent, media, glowing, normalMapped, specularMapped, tangentMeshes,
+                scene.lights().size(), stats.mDeformed, flattened, stats.mEmitters, stats.mSprites));
 
         into.mRecord.note(
             std::format("\nnot placed\n"

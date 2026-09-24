@@ -2,7 +2,10 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cstdint>
 #include <string>
+
+#include "tangent.hpp"
 
 namespace Rtx
 {
@@ -60,6 +63,7 @@ namespace Rtx
         assert((arrays.mUnitStreams == 0 || !arrays.mSecondTexCoords.empty())
             && "a unit reads a second set the mesh did not bring");
         assert(arrays.mColours.empty() || arrays.mColours.size() == positions.size());
+        assert(arrays.mTangents.empty() || arrays.mTangents.size() == positions.size());
         assert(indices.size() % 3 == 0);
         assert(std::all_of(indices.begin(), indices.end(), [&](std::uint32_t i) { return i < positions.size(); }));
         assert((deform == Deform::None) == (deformer == sNoIndex) && "a deforming mesh names what poses it");
@@ -107,7 +111,7 @@ namespace Rtx
 
     void MeshTable::writeVertices(const MeshRange& range, const MeshArrays& arrays)
     {
-        // As far as the runs reach and no further. All four are indexed by one vertex id, and the
+        // As far as the runs reach and no further. All five are indexed by one vertex id, and the
         // blocks decide where a run may go rather than how much is uploaded — so reaching a whole
         // block would upload the tail of the last one as well.
         const std::uint32_t reach = mVertexRuns.getEnd();
@@ -115,6 +119,7 @@ namespace Rtx
         mNormals.reach(reach);
         mTexCoords.reach(reach);
         mColours.reach(reach);
+        mTangents.reach(reach);
 
         // Filled where the mesh brought none, or a reused slot lights a surface by its last
         // tenant's normals. A zero normal says "use the triangle's plane" and a white colour says
@@ -131,6 +136,13 @@ namespace Rtx
         fill(mNormals, arrays.mNormals, osg::Vec3f());
         fill(mTexCoords, arrays.mTexCoords, osg::Vec2f());
         fill(mColours, arrays.mColours, osg::Vec3f(1.0f, 1.0f, 1.0f));
+
+        // Packed where they are copied, and nought — no tangent — where the mesh brought none.
+        const auto tangents = mTangents.in(range.mVertices).begin();
+        if (arrays.mTangents.empty())
+            std::fill_n(tangents, range.mVertices.mCount, 0u);
+        else
+            std::transform(arrays.mTangents.begin(), arrays.mTangents.end(), tangents, packTangent);
     }
 
     void MeshTable::notePosed(Index mesh, const osg::BoundingBoxf& bounds)
@@ -203,6 +215,7 @@ namespace Rtx
     {
         return std::size_t{ mPositions.size() } * sizeof(osg::Vec3f)
             + std::size_t{ mNormals.size() } * sizeof(osg::Vec3f)
+            + std::size_t{ mTangents.size() } * sizeof(std::uint32_t)
             + std::size_t{ mTexCoords.size() } * sizeof(osg::Vec2f)
             + std::size_t{ mSecondTexCoords.size() } * sizeof(osg::Vec2f)
             + std::size_t{ mColours.size() } * sizeof(osg::Vec3f)

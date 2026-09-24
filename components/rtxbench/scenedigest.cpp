@@ -253,11 +253,12 @@ namespace Rtx
             osg::Vec3f mNormal;
             osg::Vec2f mTexCoord;
             osg::Vec3f mColour;
+            std::uint32_t mTangent = 0;
 
             bool operator<(const Corner& other) const
             {
-                return std::tie(mPosition, mNormal, mTexCoord, mColour)
-                    < std::tie(other.mPosition, other.mNormal, other.mTexCoord, other.mColour);
+                return std::tie(mPosition, mNormal, mTexCoord, mColour, mTangent)
+                    < std::tie(other.mPosition, other.mNormal, other.mTexCoord, other.mColour, other.mTangent);
             }
         };
 
@@ -267,6 +268,10 @@ namespace Rtx
             digest.add(corner.mNormal);
             digest.add(corner.mTexCoord);
             digest.add(corner.mColour);
+
+            // Only where there is one, so a corner with none digests to the words on record.
+            if (corner.mTangent != 0)
+                digest.add(corner.mTangent);
         }
 
         /// A shape as the multiset of its triangles, each turned to start at its least corner so
@@ -281,9 +286,9 @@ namespace Rtx
                 for (std::size_t corner = 0; corner < 3; ++corner)
                 {
                     const std::uint32_t vertex = mesh.mVertices.mOffset + indices[at + corner];
-                    corners[corner]
-                        = Corner{ scene.meshes().getPositions()[vertex], scene.meshes().getNormals()[vertex],
-                              scene.meshes().getTexCoords()[vertex], scene.meshes().getColours()[vertex] };
+                    corners[corner] = Corner{ scene.meshes().getPositions()[vertex],
+                        scene.meshes().getNormals()[vertex], scene.meshes().getTexCoords()[vertex],
+                        scene.meshes().getColours()[vertex], scene.meshes().getTangents()[vertex] };
                 }
 
                 const std::size_t least
@@ -385,7 +390,18 @@ namespace Rtx
             return;
 
         take(ScenePart::Positions, wordsOf(meshes.getPositions()));
-        take(ScenePart::Normals, wordsOf(meshes.getNormals()));
+
+        // **The tangents are the normals' part, and only where a mesh has any**, so a scene where
+        // no vertex has one digests to the words on record, and a report keeps its columns.
+        Digest normals;
+        addBlocks(normals, meshes.getNormals());
+        bool tangents = false;
+        meshes.getTangents().forEachBlock([&](const std::span<const std::uint32_t> block) {
+            tangents = tangents || std::ranges::any_of(block, [](const std::uint32_t word) { return word != 0; });
+        });
+        if (tangents)
+            addBlocks(normals, meshes.getTangents());
+        take(ScenePart::Normals, normals.getWords());
 
         Digest texCoords;
         addBlocks(texCoords, meshes.getTexCoords());

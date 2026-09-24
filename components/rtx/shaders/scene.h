@@ -514,6 +514,20 @@ namespace Rtx::Shaders
     /// A mesh with no second set of texture coordinates.
     const uint NO_STREAM = 0xFFFFFFFFu;
 
+    /// A vertex's tangent as one word: the direction folded onto the octahedron, each of its two
+    /// coordinates stepped to `2 * TANGENT_STEPS + 1` values in fifteen bits, the handedness of the
+    /// bitangent, and whether the vertex has a tangent at all. Nought is none, which is every vertex
+    /// of a mesh no normal map is read through. `Rtx::packTangent` writes it and `unpackTangent`
+    /// reads it on either side.
+    ///
+    /// **An odd count of steps**, so that nought, one and minus one are exact: an axis-aligned
+    /// tangent, which a quad mapped square to its texture has, comes back as the axis it was.
+    const uint TANGENT_PRESENT = 0x80000000u;
+    const uint TANGENT_FLIPPED = 0x40000000u;
+    const uint TANGENT_COORDINATE_BITS = 15u;
+    const uint TANGENT_COORDINATE_MASK = 0x7FFFu;
+    const uint TANGENT_STEPS = 16383u;
+
     struct GpuInstance
     {
         uint mMesh;

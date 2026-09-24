@@ -25,6 +25,7 @@
 #include <components/rtx/result.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
+#include <components/shader/automaps.hpp>
 
 #include "extractor/fixture.hpp"
 
@@ -178,7 +179,13 @@ namespace Rtx::Testing
             osg::ref_ptr<osg::Geometry> tripleColours = makeQuad();
             tripleColours->setColorArray(new osg::Vec3Array(4), osg::Array::BIND_PER_VERTEX);
 
-            const std::array<std::pair<osg::ref_ptr<osg::Geometry>, std::string_view>, 7> broken{ {
+            osg::ref_ptr<osg::Geometry> shortTangents = makeQuad();
+            shortTangents->setTexCoordArray(Shader::sTangentUnit, new osg::Vec4Array(3));
+
+            osg::ref_ptr<osg::Geometry> tripleTangents = makeQuad();
+            tripleTangents->setTexCoordArray(Shader::sTangentUnit, new osg::Vec3Array(4));
+
+            const std::array<std::pair<osg::ref_ptr<osg::Geometry>, std::string_view>, 9> broken{ {
                 { shortNormals, "it has 3 normals for 4 vertices" },
                 { doubleNormals, "its normals are not three floats each" },
                 { shortCoords, "it has 2 texture coordinates for 4 vertices" },
@@ -186,6 +193,8 @@ namespace Rtx::Testing
                 { shortSecond, "it has 3 texture coordinates for 4 vertices" },
                 { shortColours, "it has 2 colours for 4 vertices" },
                 { tripleColours, "its colours are neither four floats nor four bytes each" },
+                { shortTangents, "it has 3 tangents for 4 vertices" },
+                { tripleTangents, "its tangents are not four floats each" },
             } };
 
             MeshReader reader;
@@ -205,7 +214,42 @@ namespace Rtx::Testing
             whole->setTexCoordArray(0, pairs(4));
             whole->setTexCoordArray(1, pairs(4));
             whole->setColorArray(new osg::Vec4Array(4), osg::Array::BIND_PER_VERTEX);
+            whole->setTexCoordArray(Shader::sTangentUnit, new osg::Vec4Array(4));
             EXPECT_TRUE(reader.read(readDrawable(*whole, NodeKinds{}.of(*whole)), reading).value());
+        }
+
+        /// The tangents `Shader::MapVisitor` builds are read as they are, and their unit is not
+        /// taken for a second set: four floats a vertex there would otherwise refuse the face as
+        /// coordinates of the wrong type. Unit one binds unit nought's own array and unit two a
+        /// second, so only unit two reads the second set.
+        TEST(RtxMeshReaderTest, theTangentUnitIsReadAsTangentsAndNotAsASecondSet)
+        {
+            osg::ref_ptr<osg::Geometry> quad = makeQuad();
+            osg::ref_ptr<osg::Vec2Array> first = new osg::Vec2Array(4);
+            osg::ref_ptr<osg::Vec2Array> second = new osg::Vec2Array(4);
+            quad->setTexCoordArray(0, first);
+            quad->setTexCoordArray(1, first);
+            quad->setTexCoordArray(2, second);
+
+            MeshReader reader;
+            MeshReading reading;
+            ASSERT_TRUE(reader.read(readDrawable(*quad, NodeKinds{}.of(*quad)), reading).value());
+            EXPECT_TRUE(reading.mArrays.mTangents.empty()) << "a quad no normal map is read through";
+
+            osg::ref_ptr<osg::Vec4Array> tangents = new osg::Vec4Array;
+            tangents->push_back(osg::Vec4f(1.0f, 0.0f, 0.0f, 1.0f));
+            tangents->push_back(osg::Vec4f(0.0f, 1.0f, 0.0f, -1.0f));
+            tangents->push_back(osg::Vec4f(0.0f, 0.0f, 2.0f, 1.0f));
+            tangents->push_back(osg::Vec4f());
+            quad->setTexCoordArray(Shader::sTangentUnit, tangents, osg::Array::BIND_PER_VERTEX);
+
+            ASSERT_TRUE(reader.read(readDrawable(*quad, NodeKinds{}.of(*quad)), reading).value());
+            ASSERT_EQ(reading.mArrays.mTangents.size(), 4u);
+            for (std::size_t vertex = 0; vertex < 4; ++vertex)
+                EXPECT_EQ(reading.mArrays.mTangents[vertex], (*tangents)[vertex]) << vertex;
+
+            EXPECT_EQ(reading.mArrays.mSecondTexCoords.data(), second->asVector().data());
+            EXPECT_EQ(reading.mArrays.mUnitStreams, 1u << 2);
         }
 
         /// The two halves land on one row: a mesh adopted from a reading is the mesh `resolve`

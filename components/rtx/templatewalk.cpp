@@ -150,6 +150,7 @@ namespace Rtx
         part.mSecondTexCoords = appended(into.mSecondTexCoords, reading.mArrays.mSecondTexCoords);
         part.mUnitStreams = reading.mArrays.mUnitStreams;
         part.mColours = appended(into.mColours, reading.mArrays.mColours);
+        part.mTangents = appended(into.mTangents, reading.mArrays.mTangents);
         part.mIndices = appended(into.mIndices, reading.mArrays.mIndices);
 
         into.mParts.push_back(std::move(part));

@@ -67,6 +67,7 @@ set(RTX_TEST_FILES
     rtx/stepped.cpp
     rtx/sun.cpp
     rtx/surface.cpp
+    rtx/tangent.cpp
     rtx/templatewalk.cpp
     rtx/texels.cpp
     rtx/texturebuilder.cpp

@@ -28,6 +28,11 @@ layout(buffer_reference, buffer_reference_align = TABLE_ALIGN_ROWS, scalar) read
     uint at[];
 };
 
+layout(buffer_reference, buffer_reference_align = TABLE_ALIGN_ROWS, scalar) writeonly buffer UintWritten
+{
+    uint at[];
+};
+
 layout(buffer_reference, buffer_reference_align = TABLE_ALIGN_ROWS, scalar) readonly buffer FloatRun
 {
     float at[];

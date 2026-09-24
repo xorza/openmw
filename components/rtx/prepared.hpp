@@ -128,6 +128,9 @@ namespace Rtx
         Run mTexCoords;
         Run mColours;
 
+        /// Empty for every part no normal map is read through — `MeshArrays::mTangents`.
+        Run mTangents;
+
         /// Empty for every part but the few that bind a second set — `MeshArrays::mSecondTexCoords`.
         Run mSecondTexCoords;
         std::uint32_t mUnitStreams = 0;
@@ -160,6 +163,7 @@ namespace Rtx
         std::vector<osg::Vec2f> mTexCoords;
         std::vector<osg::Vec2f> mSecondTexCoords;
         std::vector<osg::Vec3f> mColours;
+        std::vector<osg::Vec4f> mTangents;
         std::vector<std::uint32_t> mIndices;
 
         /// Why its walk refused the template, or empty. A refused model holds no part and is filed
@@ -178,6 +182,7 @@ namespace Rtx
                     .mSecondTexCoords = part.mSecondTexCoords.in(std::span<const osg::Vec2f>(mSecondTexCoords)),
                     .mUnitStreams = part.mUnitStreams,
                     .mColours = part.mColours.in(std::span<const osg::Vec3f>(mColours)),
+                    .mTangents = part.mTangents.in(std::span<const osg::Vec4f>(mTangents)),
                     .mIndices = part.mIndices.in(std::span<const std::uint32_t>(mIndices)),
                 },
                 .mShape = part.mShape,
@@ -189,7 +194,8 @@ namespace Rtx
         {
             reuseKeeping(*this, &PreparedModel::mPath, &PreparedModel::mParts, &PreparedModel::mPositions,
                 &PreparedModel::mNormals, &PreparedModel::mTexCoords, &PreparedModel::mSecondTexCoords,
-                &PreparedModel::mColours, &PreparedModel::mIndices, &PreparedModel::mRefused);
+                &PreparedModel::mColours, &PreparedModel::mTangents, &PreparedModel::mIndices,
+                &PreparedModel::mRefused);
         }
     };
 

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
+#include <cstdint>
 
 #include <osg/Vec3f>
 
@@ -50,9 +51,11 @@ namespace Rtx
         // arrivals are what a frame with an actor walking in costs; a table made again is what a
         // cell full of them costs, once per doubling.
         const VkDeviceSize bind = VkDeviceSize{ deformers.getBindVertexCount() } * sizeof(osg::Vec3f);
+        const VkDeviceSize bindWords = VkDeviceSize{ deformers.getBindVertexCount() } * sizeof(std::uint32_t);
         const bool bindMoved
             = outgrow(mBindPositions, device, BufferKind::DeviceLocal, bind, sTableFilledUsage, "bind positions")
-            | outgrow(mBindNormals, device, BufferKind::DeviceLocal, bind, sTableFilledUsage, "bind normals");
+            | outgrow(mBindNormals, device, BufferKind::DeviceLocal, bind, sTableFilledUsage, "bind normals")
+            | outgrow(mBindTangents, device, BufferKind::DeviceLocal, bindWords, sTableFilledUsage, "bind tangents");
         writeBind(batch, scene, scene.meshes().getArrived(), bindMoved);
 
         const Moved moved{
@@ -88,6 +91,8 @@ namespace Rtx
             const VkDeviceSize at = VkDeviceSize{ mesh.mBindOffset } * sizeof(osg::Vec3f);
             stageInto(batch, mBindPositions, at, std::as_bytes(scene.meshes().getMeshPositions(index)));
             stageInto(batch, mBindNormals, at, std::as_bytes(mesh.mVertices.in(scene.meshes().getNormals())));
+            stageInto(batch, mBindTangents, VkDeviceSize{ mesh.mBindOffset } * sizeof(std::uint32_t),
+                std::as_bytes(mesh.mVertices.in(scene.meshes().getTangents())));
         }
     }
 
@@ -167,6 +172,11 @@ namespace Rtx
         return mBindNormals.addressFor() + VkDeviceSize{ mesh.mBindOffset } * sizeof(osg::Vec3f);
     }
 
+    VkDeviceAddress SkinTables::getBindTangents(const MeshRange& mesh) const
+    {
+        return mBindTangents.addressFor() + VkDeviceSize{ mesh.mBindOffset } * sizeof(std::uint32_t);
+    }
+
     VkDeviceAddress SkinTables::getRuns(const Deformer& rig) const
     {
         return mRuns.addressFor() + VkDeviceSize{ rig.mRuns.mOffset } * sizeof(std::uint32_t);
@@ -184,8 +194,8 @@ namespace Rtx
 
     VkDeviceSize SkinTables::getBytes() const
     {
-        VkDeviceSize total = mBindPositions.getSize() + mBindNormals.getSize() + mRuns.getSize() + mInfluences.getSize()
-            + mMorphOffsets.getSize();
+        VkDeviceSize total = mBindPositions.getSize() + mBindNormals.getSize() + mBindTangents.getSize()
+            + mRuns.getSize() + mInfluences.getSize() + mMorphOffsets.getSize();
         for (const Buffer& poses : mPoses.live())
             total += poses.getSize();
 

@@ -1,6 +1,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include <gtest/gtest.h>
 
@@ -9,9 +10,13 @@
 #include <osg/Group>
 #include <osg/Image>
 #include <osg/Texture2D>
+#include <osg/Vec2f>
+#include <osg/Vec3f>
+#include <osg/Vec4f>
 #include <osg/ref_ptr>
 
 #include <components/resource/imagemanager.hpp>
+#include <components/sceneutil/riggeometry.hpp>
 #include <components/sceneutil/texturetype.hpp>
 #include <components/sceneutil/util.hpp>
 #include <components/shader/automaps.hpp>
@@ -120,7 +125,7 @@ namespace Shader
             diffuse->setFilter(osg::Texture::MIN_FILTER, osg::Texture::NEAREST);
             stateSet->setTextureAttributeAndModes(0, diffuse);
 
-            AutoMapVisitor visitor(sEverything, content.mImages);
+            MapVisitor visitor(sEverything, content.mImages);
             node->accept(visitor);
 
             ASSERT_EQ(node->getStateSet(), stateSet) << "a loader's state set is added to in place";
@@ -163,7 +168,7 @@ namespace Shader
                     stateSet->setTextureAttribute(1, new SceneUtil::TextureType(boundType));
                 }
 
-                AutoMapVisitor visitor(rules, content.mImages);
+                MapVisitor visitor(rules, content.mImages);
                 geode->accept(visitor);
 
                 std::string types;
@@ -186,7 +191,6 @@ namespace Shader
             AutoMapRules nothing = sEverything;
             nothing.mNormalMaps = false;
             nothing.mSpecularMaps = false;
-            EXPECT_FALSE(nothing.any());
             EXPECT_EQ(attached(nothing, "textures/stone.dds"), "");
 
             EXPECT_EQ(attached(sEverything, "textures/stone.dds", "normalMap", "textures/own_normal.dds"),
@@ -198,6 +202,162 @@ namespace Shader
             EXPECT_EQ(attached(sEverything, "textures/stone.dds", "bumpMap", "textures/stone_nh.dds"),
                 "specularMap=textures/stone_spec.dds ")
                 << "a normal map that is the bump map's own file is not added";
+        }
+
+        /// A unit square in the plane of x and y, facing up, its two triangles counter-clockwise.
+        osg::ref_ptr<osg::Geometry> makeSquare()
+        {
+            osg::ref_ptr<osg::Vec3Array> positions = new osg::Vec3Array;
+            positions->push_back(osg::Vec3f(0.0f, 0.0f, 0.0f));
+            positions->push_back(osg::Vec3f(1.0f, 0.0f, 0.0f));
+            positions->push_back(osg::Vec3f(1.0f, 1.0f, 0.0f));
+            positions->push_back(osg::Vec3f(0.0f, 1.0f, 0.0f));
+
+            osg::ref_ptr<osg::DrawElementsUShort> triangles = new osg::DrawElementsUShort(GL_TRIANGLES);
+            for (const unsigned short index : { 0, 1, 2, 0, 2, 3 })
+                triangles->push_back(index);
+
+            osg::ref_ptr<osg::Vec3Array> normals = new osg::Vec3Array;
+            normals->resize(4, osg::Vec3f(0.0f, 0.0f, 1.0f));
+
+            osg::ref_ptr<osg::Geometry> geometry = new osg::Geometry;
+            geometry->setVertexArray(positions);
+            geometry->setNormalArray(normals, osg::Array::BIND_PER_VERTEX);
+            geometry->addPrimitiveSet(triangles);
+            return geometry;
+        }
+
+        /// The square's corners as texture coordinates, `u` along x — or against it, `mirrored`,
+        /// which is a texture flipped across the face.
+        osg::ref_ptr<osg::Vec2Array> squareCoordinates(bool mirrored)
+        {
+            osg::ref_ptr<osg::Vec2Array> coordinates = new osg::Vec2Array;
+            for (const osg::Vec2f corner : { osg::Vec2f(0, 0), osg::Vec2f(1, 0), osg::Vec2f(1, 1), osg::Vec2f(0, 1) })
+                coordinates->push_back(mirrored ? osg::Vec2f(1.0f - corner.x(), corner.y()) : corner);
+            return coordinates;
+        }
+
+        /// What `geometry` carries at the tangents' unit, as text: one tangent per vertex, or
+        /// `none`.
+        std::string tangentsOf(const osg::Geometry& geometry)
+        {
+            const auto* tangents = dynamic_cast<const osg::Vec4Array*>(geometry.getTexCoordArray(sTangentUnit));
+            if (tangents == nullptr)
+                return "none";
+
+            std::string text;
+            for (const osg::Vec4f& tangent : *tangents)
+                text += "(" + std::to_string(static_cast<int>(tangent.x())) + " "
+                    + std::to_string(static_cast<int>(tangent.y())) + " "
+                    + std::to_string(static_cast<int>(tangent.z())) + " "
+                    + std::to_string(static_cast<int>(tangent.w())) + ")";
+            return text;
+        }
+
+        /// **A drawable a normal map is read through gains the tangents the rasterizer's shader
+        /// visitor would build, and no other drawable gains any.** The square's `u` runs along x
+        /// and `v` along y, so its tangent is x at every corner and `cross(N, T) = cross(z, x) = y`
+        /// is its bitangent: the handedness is one. Mirrored, `u` runs against x, the tangent is
+        /// minus x, and `cross(z, -x) = -y` is against `v`, which is what a handedness of minus one
+        /// turns back. Every value is exact, because every sum the generator takes is of whole
+        /// numbers.
+        ///
+        /// The coordinates are the normal map's own unit's where it has some, and unit nought's
+        /// where it has none. A normal map is in force below the state set that binds it and not
+        /// beside it, and a skinned drawable carries its tangents on the source geometry it is
+        /// posed from.
+        TEST(ShaderAutoMapsTest, aNormalMapBringsTheTangentsItIsReadThrough)
+        {
+            Content content;
+
+            const std::string alongX = "(1 0 0 1)(1 0 0 1)(1 0 0 1)(1 0 0 1)";
+            const std::string againstX = "(-1 0 0 -1)(-1 0 0 -1)(-1 0 0 -1)(-1 0 0 -1)";
+
+            /// The square under a node whose state set holds `diffuse`, with `normalMap` bound at
+            /// unit one where it is named, and coordinates at unit one where `atOne` is not null.
+            const auto visited = [&](const AutoMapRules& rules, const std::string& diffuse,
+                                     const std::string& normalMap, bool mirrored, osg::ref_ptr<osg::Vec2Array> atOne) {
+                osg::ref_ptr<osg::Geode> geode = new osg::Geode;
+                osg::StateSet* const stateSet = geode->getOrCreateStateSet();
+                stateSet->setTextureAttributeAndModes(0, named(diffuse));
+                if (!normalMap.empty())
+                {
+                    stateSet->setTextureAttributeAndModes(1, named(normalMap));
+                    stateSet->setTextureAttribute(1, new SceneUtil::TextureType("normalMap"));
+                }
+
+                osg::ref_ptr<osg::Geometry> square = makeSquare();
+                square->setTexCoordArray(0, squareCoordinates(mirrored));
+                if (atOne != nullptr)
+                    square->setTexCoordArray(1, atOne);
+                geode->addDrawable(square);
+
+                MapVisitor visitor(rules, content.mImages);
+                geode->accept(visitor);
+                return tangentsOf(*square);
+            };
+
+            EXPECT_EQ(visited(sEverything, "textures/stone.dds", {}, false, nullptr), alongX);
+            EXPECT_EQ(visited(sEverything, "textures/stone.dds", {}, true, nullptr), againstX);
+            EXPECT_EQ(visited(sEverything, "textures/sand.dds", {}, false, nullptr), "none")
+                << "a drawable no normal map is read through gained tangents";
+
+            // A normal map the content binds, found with every rule off, and read through unit
+            // one's coordinates, which are mirrored where unit nought's are not.
+            AutoMapRules nothing = sEverything;
+            nothing.mNormalMaps = false;
+            nothing.mSpecularMaps = false;
+            EXPECT_EQ(
+                visited(nothing, "textures/sand.dds", "textures/sand_n.dds", false, squareCoordinates(true)), againstX);
+            EXPECT_EQ(visited(nothing, "textures/sand.dds", "textures/sand_n.dds", false, nullptr), alongX)
+                << "unit one has no coordinates, so unit nought's are read";
+
+            // No coordinates at all: nothing to build from, and nothing is built.
+            {
+                osg::ref_ptr<osg::Geode> geode = new osg::Geode;
+                geode->getOrCreateStateSet()->setTextureAttributeAndModes(0, named("textures/stone.dds"));
+                osg::ref_ptr<osg::Geometry> square = makeSquare();
+                geode->addDrawable(square);
+                MapVisitor visitor(sEverything, content.mImages);
+                geode->accept(visitor);
+                EXPECT_EQ(tangentsOf(*square), "none") << "tangents from no coordinates";
+            }
+
+            // Two siblings: the first's normal map is not the second's.
+            {
+                osg::ref_ptr<osg::Group> group = new osg::Group;
+                osg::ref_ptr<osg::Geode> mapped = new osg::Geode;
+                mapped->getOrCreateStateSet()->setTextureAttributeAndModes(0, named("textures/stone.dds"));
+                osg::ref_ptr<osg::Geometry> first = makeSquare();
+                first->setTexCoordArray(0, squareCoordinates(false));
+                mapped->addDrawable(first);
+                osg::ref_ptr<osg::Geode> plain = new osg::Geode;
+                osg::ref_ptr<osg::Geometry> second = makeSquare();
+                second->setTexCoordArray(0, squareCoordinates(false));
+                plain->addDrawable(second);
+                group->addChild(mapped);
+                group->addChild(plain);
+
+                MapVisitor visitor(sEverything, content.mImages);
+                group->accept(visitor);
+                EXPECT_EQ(tangentsOf(*first), alongX);
+                EXPECT_EQ(tangentsOf(*second), "none") << "a normal map reached past its own subtree";
+            }
+
+            // A skinned square: the tangents on the source geometry it is posed from.
+            {
+                osg::ref_ptr<osg::Geode> geode = new osg::Geode;
+                geode->getOrCreateStateSet()->setTextureAttributeAndModes(0, named("textures/stone.dds"));
+                osg::ref_ptr<osg::Geometry> source = makeSquare();
+                source->setTexCoordArray(0, squareCoordinates(true));
+                osg::ref_ptr<SceneUtil::RigGeometry> rig = new SceneUtil::RigGeometry;
+                rig->setSourceGeometry(source);
+                geode->addDrawable(rig);
+
+                MapVisitor visitor(sEverything, content.mImages);
+                geode->accept(visitor);
+                EXPECT_EQ(tangentsOf(*rig->getSourceGeometry()), againstX);
+            }
         }
     }
 }

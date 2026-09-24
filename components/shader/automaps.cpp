@@ -4,12 +4,18 @@
 #include <string>
 
 #include <osg/Drawable>
+#include <osg/Geometry>
 #include <osg/Image>
 #include <osg/Node>
 #include <osg/Texture2D>
 
+#include <osgUtil/TangentSpaceGenerator>
+
 #include <components/misc/strings/algorithm.hpp>
 #include <components/resource/imagemanager.hpp>
+#include <components/sceneutil/morphgeometry.hpp>
+#include <components/sceneutil/riggeometry.hpp>
+#include <components/sceneutil/riggeometryosgaextension.hpp>
 #include <components/sceneutil/texturetype.hpp>
 #include <components/sceneutil/util.hpp>
 #include <components/vfs/manager.hpp>
@@ -143,25 +149,72 @@ namespace Shader
         return attached;
     }
 
-    AutoMapVisitor::AutoMapVisitor(const AutoMapRules& rules, Resource::ImageManager& images)
+    bool adjustSourceGeometry(osg::Drawable& drawable, const std::function<bool(osg::Geometry&)>& adjust)
+    {
+        if (auto* rig = dynamic_cast<SceneUtil::RigGeometry*>(&drawable))
+        {
+            osg::ref_ptr<osg::Geometry> source = rig->getSourceGeometry();
+            if (source != nullptr && adjust(*source))
+                rig->setSourceGeometry(std::move(source));
+            return true;
+        }
+
+        if (auto* morph = dynamic_cast<SceneUtil::MorphGeometry*>(&drawable))
+        {
+            osg::ref_ptr<osg::Geometry> source = morph->getSourceGeometry();
+            if (source != nullptr && adjust(*source))
+                morph->setSourceGeometry(std::move(source));
+            return true;
+        }
+
+        if (auto* holder = dynamic_cast<SceneUtil::RigGeometryHolder*>(&drawable))
+        {
+            osg::ref_ptr<SceneUtil::OsgaRigGeometry> rigged = holder->getSourceRigGeometry();
+            osg::ref_ptr<osg::Geometry> source = rigged->getSourceGeometry();
+            if (source != nullptr && adjust(*source))
+            {
+                rigged->setSourceGeometry(std::move(source));
+                holder->setSourceRigGeometry(std::move(rigged));
+            }
+            return true;
+        }
+
+        return false;
+    }
+
+    MapVisitor::MapVisitor(const AutoMapRules& rules, Resource::ImageManager& images)
         : osg::NodeVisitor(TRAVERSE_ALL_CHILDREN)
         , mRules(rules)
         , mImages(images)
     {
     }
 
-    void AutoMapVisitor::apply(osg::Node& node)
+    void MapVisitor::apply(osg::Node& node)
     {
+        const int above = mNormalUnit;
         attach(node);
         traverse(node);
+        mNormalUnit = above;
     }
 
-    void AutoMapVisitor::apply(osg::Drawable& drawable)
+    void MapVisitor::apply(osg::Drawable& drawable)
     {
+        const int above = mNormalUnit;
         attach(drawable);
+
+        // A skinned or morphed drawable's tangents belong on its source geometry: `RigGeometry`
+        // poses them from there.
+        if (mNormalUnit >= 0
+            && !adjustSourceGeometry(drawable, [this](osg::Geometry& source) { return buildTangents(source); }))
+        {
+            if (osg::Geometry* geometry = drawable.asGeometry())
+                buildTangents(*geometry);
+        }
+
+        mNormalUnit = above;
     }
 
-    void AutoMapVisitor::attach(osg::Node& node)
+    void MapVisitor::attach(osg::Node& node)
     {
         osg::StateSet* const stateSet = node.getStateSet();
         if (stateSet == nullptr)
@@ -171,6 +224,7 @@ namespace Shader
         const osg::Texture* normalMap = nullptr;
         const osg::Texture* specularMap = nullptr;
         const osg::Texture* bumpMap = nullptr;
+        int normalUnit = -1;
 
         const osg::StateSet::TextureAttributeList& units = stateSet->getTextureAttributeList();
         for (unsigned int unit = 0; unit < units.size(); ++unit)
@@ -184,18 +238,52 @@ namespace Shader
             if (name == "diffuseMap")
                 diffuseMap = texture;
             else if (name == "normalMap" || name == "normalHeightMap")
+            {
                 normalMap = texture;
+                normalUnit = static_cast<int>(unit);
+            }
             else if (name == "specularMap")
                 specularMap = texture;
             else if (name == "bumpMap")
                 bumpMap = texture;
         }
 
-        if (diffuseMap == nullptr)
-            return;
+        if (diffuseMap != nullptr)
+        {
+            // Loading is the one time the state set is only the loader's, so it is added to in place.
+            osg::StateSet* writable = stateSet;
+            const AttachedMaps attached
+                = attachAutoMaps(mRules, mImages, *diffuseMap, normalMap, specularMap, bumpMap, units, writable, node);
+            if (attached.mNormalMap != nullptr)
+                normalUnit = attached.mNormalUnit;
+        }
 
-        // Loading is the one time the state set is only the loader's, so it is added to in place.
-        osg::StateSet* writable = stateSet;
-        attachAutoMaps(mRules, mImages, *diffuseMap, normalMap, specularMap, bumpMap, units, writable, node);
+        if (normalUnit >= 0)
+            mNormalUnit = normalUnit;
+    }
+
+    bool MapVisitor::buildTangents(osg::Geometry& geometry) const
+    {
+        // The coordinates the normal map is read through: its own unit's, or unit nought's where it
+        // has none, or the first array there is where unit nought has none either — which is what
+        // `ShaderVisitor::adjustGeometry` binds at the normal map's unit before it builds from it.
+        unsigned int unit = static_cast<unsigned int>(mNormalUnit);
+        if (geometry.getTexCoordArray(unit) == nullptr)
+            unit = 0;
+        if (geometry.getTexCoordArray(unit) == nullptr)
+        {
+            const osg::Geometry::ArrayList& arrays = geometry.getTexCoordArrayList();
+            unsigned int found = 0;
+            while (found < arrays.size() && (found == sTangentUnit || arrays[found] == nullptr))
+                ++found;
+            if (found == arrays.size())
+                return false;
+            unit = found;
+        }
+
+        osg::ref_ptr<osgUtil::TangentSpaceGenerator> generator(new osgUtil::TangentSpaceGenerator);
+        generator->generate(&geometry, static_cast<int>(unit));
+        geometry.setTexCoordArray(sTangentUnit, generator->getTangentArray(), osg::Array::BIND_PER_VERTEX);
+        return true;
     }
 }

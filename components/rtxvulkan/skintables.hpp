@@ -61,9 +61,10 @@ namespace Rtx
         /// Where `mesh`'s pose sits in `slot`'s copy, for a dispatch over a pose `extend` staged.
         VkDeviceAddress getPose(const MeshRange& mesh, FrameSlot slot) const;
 
-        /// Where `mesh`'s bind pose starts, in each of the two bind tables.
+        /// Where `mesh`'s bind pose starts, in each of the three bind tables.
         VkDeviceAddress getBindPositions(const MeshRange& mesh) const;
         VkDeviceAddress getBindNormals(const MeshRange& mesh) const;
+        VkDeviceAddress getBindTangents(const MeshRange& mesh) const;
 
         /// Where a rig's runs and influences start, and where a morph's offsets do.
         VkDeviceAddress getRuns(const Deformer& rig) const;
@@ -97,6 +98,7 @@ namespace Rtx
 
         Buffer mBindPositions;
         Buffer mBindNormals;
+        Buffer mBindTangents;
         Buffer mRuns;
         Buffer mInfluences;
         Buffer mMorphOffsets;

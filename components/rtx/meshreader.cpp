@@ -4,6 +4,7 @@
 #include <cassert>
 #include <chrono>
 #include <cstddef>
+#include <span>
 #include <string>
 #include <string_view>
 
@@ -11,9 +12,11 @@
 #include <osg/Drawable>
 #include <osg/Geometry>
 #include <osg/TriangleIndexFunctor>
+#include <osg/Vec4f>
 
 #include <components/sceneutil/morphgeometry.hpp>
 #include <components/sceneutil/riggeometry.hpp>
+#include <components/shader/automaps.hpp>
 
 #include "colour.hpp"
 #include "framespend.hpp"
@@ -145,6 +148,26 @@ namespace Rtx
                 return Err{ matched.error() };
 
             return coords;
+        }
+
+        /// The tangents `Shader::MapVisitor` built at `Shader::sTangentUnit`, or none where it built
+        /// none. An error where they do not match the vertices — `checkLength`.
+        Result<std::span<const osg::Vec4f>, std::string> readTangents(
+            const osg::Geometry& geometry, std::size_t vertices)
+        {
+            const osg::Array* named = geometry.getTexCoordArray(Shader::sTangentUnit);
+            if (named == nullptr || named->getNumElements() == 0)
+                return std::span<const osg::Vec4f>();
+
+            if (named->getType() != osg::Array::Vec4ArrayType)
+                return Err{ "its tangents are not four floats each" };
+
+            const auto* tangents = static_cast<const osg::Vec4Array*>(named);
+            if (const Result<void, std::string> matched = checkLength("tangents", tangents->size(), vertices);
+                !matched.isOk())
+                return Err{ matched.error() };
+
+            return std::span<const osg::Vec4f>(tangents->asVector());
         }
 
         /// A geometry's per-vertex colours, decoded into `scratch` and spanned from it. Empty where
@@ -287,11 +310,15 @@ namespace Rtx
         // the units that bind it are noted for the material to look up its dark map's stream by.
         // `NifOsg` binds a shape's UV sets one per texture unit, in the order the texturing
         // property names them, so a unit that reads another array than unit nought's is reading
-        // the shape's second set. No vanilla shape carries a third.
+        // the shape's second set. No vanilla shape carries a third, and the unit the tangents are
+        // at carries no coordinates.
         const osg::Vec2Array* second = nullptr;
         std::uint32_t unitStreams = 0;
         for (unsigned int unit = 1; unit < geometry.getNumTexCoordArrays() && unit < 32; ++unit)
         {
+            if (unit == Shader::sTangentUnit)
+                continue;
+
             const Result<const osg::Vec2Array*, std::string> bound = readTexCoords(geometry, unit, count);
             if (!bound.isOk())
                 return Err{ bound.error() };
@@ -308,6 +335,10 @@ namespace Rtx
         const Result<std::span<const osg::Vec3f>, std::string> colours = readColours(geometry, count, mColourScratch);
         if (!colours.isOk())
             return Err{ colours.error() };
+
+        const Result<std::span<const osg::Vec4f>, std::string> tangents = readTangents(geometry, count);
+        if (!tangents.isOk())
+            return Err{ tangents.error() };
 
         // Folded before the mesh is written, so the copy the content drew for a card's back never
         // reaches a structure. Once per drawable and never for a pose: a rig moves the two copies
@@ -331,6 +362,7 @@ namespace Rtx
             .mSecondTexCoords = second != nullptr ? std::span(second->asVector()) : std::span<const osg::Vec2f>(),
             .mUnitStreams = unitStreams,
             .mColours = colours.value(),
+            .mTangents = tangents.value(),
             .mIndices = mIndexScratch,
         };
 

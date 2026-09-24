@@ -66,6 +66,7 @@ namespace Rtx
             .mTables = mSkinTables,
             .mPoses = mAcceleration.getPoses(),
             .mNormals = mBuffers.getNormals(),
+            .mTangents = mBuffers.getTangents(),
             .mTimer = timer,
         };
     }

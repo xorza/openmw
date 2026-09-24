@@ -138,6 +138,7 @@ set(RTX_SHADER_LIB
     shaders/lib/spritelist.glsl
     shaders/lib/sprites.glsl
     shaders/lib/starfield.glsl
+    shaders/lib/tangent.glsl
     shaders/lib/texturearray.glsl
     shaders/lib/texturing.glsl
     shaders/lib/traversal.glsl

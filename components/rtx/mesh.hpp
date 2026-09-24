@@ -7,6 +7,7 @@
 #include <osg/Matrixf>
 #include <osg/Vec2f>
 #include <osg/Vec3f>
+#include <osg/Vec4f>
 
 #include "runs.hpp"
 #include "shaders/scene.h"
@@ -41,6 +42,12 @@ namespace Rtx
         /// where it is used, because a blend of display-encoded bytes is not the encoding of the
         /// blend and a hit interpolates across a triangle.
         std::span<const osg::Vec3f> mColours;
+
+        /// The tangent a normal map is read through, with the bitangent's handedness in `w`:
+        /// `osgUtil::TangentSpaceGenerator`'s, which `Shader::MapVisitor` builds under a normal map
+        /// at load, as the rasterizer's shader visitor does. Empty for a mesh no normal map is read
+        /// through.
+        std::span<const osg::Vec4f> mTangents;
 
         std::span<const std::uint32_t> mIndices;
     };

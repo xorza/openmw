@@ -111,7 +111,7 @@ namespace Rtx
             EXPECT_EQ(material.getTexture(SurfaceMap::Normal), normal.get()) << "named by its sampler";
             EXPECT_EQ(material.getTexture(SurfaceMap::Specular), nullptr);
 
-            // **The companion maps are kept under the type `Shader::AutoMapVisitor` gives them**: a
+            // **The companion maps are kept under the type `Shader::MapVisitor` gives them**: a
             // normal map with height and one without are one map, and the specular map its own.
             osg::ref_ptr<osg::Image> height = new osg::Image;
             osg::ref_ptr<osg::Image> specular = new osg::Image;

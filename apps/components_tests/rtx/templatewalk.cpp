@@ -1,3 +1,4 @@
+#include <cstddef>
 #include <initializer_list>
 #include <string>
 #include <utility>
@@ -5,6 +6,7 @@
 
 #include <gtest/gtest.h>
 
+#include <osg/Array>
 #include <osg/Drawable>
 #include <osg/Geometry>
 #include <osg/Group>
@@ -18,14 +20,17 @@
 #include <osg/StateSet>
 #include <osg/Switch>
 #include <osg/Vec3f>
+#include <osg/Vec4f>
 #include <osg/ref_ptr>
 
+#include <components/rtx/meshreader.hpp>
 #include <components/rtx/meshtable.hpp>
 #include <components/rtx/prepared.hpp>
 #include <components/rtx/result.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/surface.hpp>
 #include <components/rtx/templatewalk.hpp>
+#include <components/shader/automaps.hpp>
 
 #include "extractor/fixture.hpp"
 
@@ -78,6 +83,13 @@ namespace Rtx::Testing
             levels->addChild(near, 0.0f, 100.0f);
             moved->addChild(levels);
 
+            // The near level carries tangents, and the only ones: its part's run of them starts the
+            // model's.
+            osg::ref_ptr<osg::Vec4Array> tangents = new osg::Vec4Array;
+            for (const float handedness : { 1.0f, -1.0f, 1.0f, -1.0f })
+                tangents->push_back(osg::Vec4f(1.0f, 0.0f, 0.0f, handedness));
+            near->setTexCoordArray(Shader::sTangentUnit, tangents, osg::Array::BIND_PER_VERTEX);
+
             // What the loader hid, under a mask the walk is told to keep out of.
             constexpr osg::Node::NodeMask hidden = 0x1;
             osg::ref_ptr<osg::Geometry> collision = makeQuad();
@@ -105,6 +117,13 @@ namespace Rtx::Testing
             EXPECT_EQ(model.mParts[1].mVertices, (Rtx::Run{ .mOffset = 4, .mCount = 4 }));
 
             EXPECT_EQ(model.mParts[2].mDrawable, near.get());
+            EXPECT_EQ(model.mParts[0].mTangents.mCount, 0u);
+            EXPECT_EQ(model.mParts[1].mTangents.mCount, 0u);
+            EXPECT_EQ(model.mParts[2].mTangents, (Rtx::Run{ .mOffset = 0, .mCount = 4 }));
+            const MeshReading nearReading = model.readingOf(model.mParts[2]);
+            ASSERT_EQ(nearReading.mArrays.mTangents.size(), 4u);
+            for (std::size_t vertex = 0; vertex < 4; ++vertex)
+                EXPECT_EQ(nearReading.mArrays.mTangents[vertex], (*tangents)[vertex]) << vertex;
 
             for (const PreparedPart& part : model.mParts)
             {

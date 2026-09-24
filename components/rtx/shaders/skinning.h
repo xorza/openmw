@@ -10,9 +10,10 @@
 //
 // **The arithmetic is `SceneUtil::RigGeometry::cull`'s and `MorphGeometry::cull`'s, and nothing
 // else.** A skin is `p · Σ w_i B_i` with `B_i` the bone's inverse bind, its skeleton-space matrix and
-// the skin transform composed on the host; a normal takes the linear part of the same sum and is not
-// normalised, because the rasterizer does not. A morph is the base plus every target's offset at its
-// weight, positions only. What the game draws is the target, and these are its numbers.
+// the skin transform composed on the host; a normal and a tangent take the linear part of the same
+// sum and are not normalised, because the rasterizer does not. A morph is the base plus every
+// target's offset at its weight, positions only. What the game draws is the target, and these are
+// its numbers.
 
 #ifdef RTX_HOST
 namespace Rtx::Shaders
@@ -73,11 +74,16 @@ namespace Rtx::Shaders
     {
         uint64 mBindPositions;
         uint64 mBindNormals;
+
+        /// `Rtx::packTangent`'s words: posed as the normals are, the handedness kept, and nought
+        /// kept nought.
+        uint64 mBindTangents;
         uint64 mRuns;
         uint64 mInfluences;
         uint64 mBones;
         uint64 mPositions;
         uint64 mNormals;
+        uint64 mTangents;
         uint mCount;
 
         /// Explicit, so the range a pipeline declares and the struct a host writes are one size.
@@ -100,7 +106,7 @@ namespace Rtx::Shaders
 
     static_assert(sizeof(GpuInfluence) == 8, "GpuInfluence must be scalar-packed on every side");
     static_assert(sizeof(GpuBone) == 48, "GpuBone must be scalar-packed on every side");
-    static_assert(sizeof(SkinConstants) == 64, "SkinConstants must be scalar-packed on every side");
+    static_assert(sizeof(SkinConstants) == 80, "SkinConstants must be scalar-packed on every side");
     static_assert(sizeof(MorphConstants) == 40, "MorphConstants must be scalar-packed on every side");
 }
 

@@ -184,7 +184,7 @@ Built in phase 1. This replaces the `MapFinder` and the async reader requests of
   phase 1) and binds them with a `SceneUtil::TextureType`. That step moved to
   `components/shader/automaps.{hpp,cpp}` (`attachAutoMaps`), and `ShaderVisitor` calls it with no
   change of behaviour. When shaders are off, as under RTX, `SceneManager` runs
-  `Shader::AutoMapVisitor`, which does that step and nothing else. So the maps load on the threads
+  `Shader::MapVisitor`, which does that step and the tangents of section 5.5, and nothing else. So the maps load on the threads
   that load the models (the cell preloader, and the ring's reader through
   `ContentSource::getTemplate`), and the frame walk, the ring and the doll views all find them in
   the state sets. There is no new thread, no pending rewrite and no pop. A model loaded on the frame
@@ -213,21 +213,33 @@ Built in phase 1. This replaces the `MapFinder` and the async reader requests of
 
 ### 5.5 Tangents
 
-- **Per vertex, with the `osgUtil::TangentSpaceGenerator` algorithm.** For each triangle it takes
-  dP/du and dP/dv from the UVs, projects both onto each corner's normal plane, and adds them to
-  the corner. At the end it normalizes, and it stores the handedness `w = sign((T × B) · N)`. The
-  mod authors checked their normal maps against this code in OpenMW, so the renderer matches it,
-  not MikkTSpace.
-- **One word per vertex.** The tangent is octahedral in 2 × 15 bits, with the handedness in one
-  bit. At the ship view that is about 2.6 MB (658 thousand vertices, from the vertex-colour bytes).
-  Every mesh gets the stream, because it is small, and because a mesh does not know its material
-  when it is read.
-- **Made where the arrays are made.** `MeshReader` fills a persistent scratch per drawable, and
-  `PreparedModel` carries the result for ring models. The work is a few operations per triangle,
-  and it runs once at load.
-- **Posed with the normals.** `skin.comp` takes the tangent through the same blended matrix and
-  writes it beside the posed normal. `morph.comp` leaves it, as it leaves the normal. Worn armor is
-  skinned, and the Tamrielic maps are armor, so this is not optional.
+Built in phase 2. This replaces the host copy of the `osgUtil` algorithm of the first design.
+
+- **`osgUtil::TangentSpaceGenerator` itself, at model load.** `Shader::MapVisitor` carries the unit
+  of the normal map in force down the graph, as `ShaderVisitor` carries its requirements. At each
+  drawable under a normal map it runs the generator on the coordinates the map reads (its own
+  unit's, else unit 0's, else the first array), and puts the result at texture unit 7
+  (`Shader::sTangentUnit`), which is where `ShaderVisitor::adjustGeometry` puts it. A skinned or
+  morphed drawable gets them on its source geometry, which is then set again. So both renderers
+  use the same code, the same coordinates and the same drawables, and the mod authors checked
+  their maps against that code. The generator stores `w = sign((T × B) · N)`, and the GL shader
+  takes the bitangent as `cross(N, T) * w`.
+- **Only under a normal map.** The visitor knows the state set in force, so a mesh no normal map
+  is read through gets no tangents, as in GL. The first design gave every mesh tangents because
+  the reader did not know the material.
+- **One word per vertex.** `MeshReader` reads the `Vec4Array` at unit 7 into
+  `MeshArrays::mTangents` (and no longer takes unit 7 for a second UV set), `PreparedModel`
+  carries it for ring models, and `MeshTable` packs it (`tangent.hpp`): the direction octahedral
+  in 2 × 15 bits with an odd step count, so that 0 and ±1 are exact, one bit for the handedness,
+  and one bit for "present". 0 is no tangent, which every vanilla vertex has. Every vertex has a
+  word, so the stream stays parallel to the others.
+- **Posed with the normals.** `SceneBuffers` keeps a copy of the words per frame slot beside the
+  normals (`mTangentTable`), and `SkinTables` keeps the bind words. `skin.comp` unpacks, applies
+  the linear part of the blend, and packs again with the handedness kept, and 0 stays 0.
+  `morph.comp` leaves the words, as it leaves the normals. The hit does not read them before
+  phase 3, which adds the block table's address to the frame beside `mNormalBlocks`.
+- **The scene digest** adds the words to the normals part only where a word is not 0, so a vanilla
+  scene digests as the baselines on record.
 - **Rejected: a tangent per triangle from the posed positions.** It needs no storage and no skin
   work (pbrt uses it when a mesh has no tangents). But the tangent then jumps at each triangle
   edge, and Morrowind's meshes have few triangles, so the normal-mapped light shows facets.
@@ -395,13 +407,32 @@ Done at 711f4b27c6 (release). Everything is in `build-release/pbr-baseline/`:
   same A/B), and the layout in the launcher and the settings window. The layout is read at load,
   so it needs a restart, and the launcher is where it belongs.
 
-**Phase 2 — tangents (no picture change).**
-- `tangentspace.hpp/.cpp` (new): the `osgUtil` algorithm over scratch buffers, and the packing.
-- `meshreader`, `prepared.hpp`, `meshtable`, `scene.h` (a tangent block like `NormalBlock`),
-  `scenebuffers`: the stream. `skin.comp`, `skinpass`, `skintables`: posed tangents.
-- Tests: compare with `osgUtil::TangentSpaceGenerator` on the same geometry (a mirrored seam, a
-  degenerate UV, a quad), the pack round trip, and the posed tangent against the host pose (the
-  `skinning` extractor test).
+**Phase 2 — tangents (no picture change).** Done (see section 5.5 for what was built).
+- Tests: `RtxTangentTest` (the six axes exact with both handedness values and one packed word by
+  hand, no length and NaN as none, and every whole direction from −3 to 3 within the bound
+  `sqrt(4.5) / 16383` of the steps), `ShaderAutoMapsTest` (the tangents by hand for a square and
+  its mirror, a NIF-bound normal map with the rules off read through its own unit, a unit with no
+  coordinates, no coordinates at all, a sibling outside the subtree, a rig's source geometry),
+  `RtxMeshReaderTest` (unit 7 read as tangents and not as a second set, and the two refusals),
+  `RtxSceneDescTest` (the packed word, the zero fill of a reused slot, the byte count),
+  `RtxTemplateWalkTest` (a prepared part's run), `RtxSceneDigestTest` (a tangent moves the normals
+  column only, zero tangents move nothing), and `RtxSkinPassTest` (the posed word on the device
+  for a quarter turn, both handedness values, a direction below the equator against the host's
+  packing to the bit, none kept none, and nothing written into a static mesh or by a morph).
+- `rtx debug test`: 540 component, 296 GPU and 20 game tests pass.
+- Vanilla against `pbr-baseline/vanilla`: every run on a warm pipeline cache has all 184 frame
+  hashes and all 46 pictures the same (eleven runs, one of them under 24 busy threads). The first
+  run after each change to the ray-tracing shaders primes the cache, starts again, and has a
+  different trace at one or two views with the same scene. `.notes/ISSUES.md` records it. The
+  kernel with and without the tangent write poses 30 000 random vertices on up to four bones to
+  the same position and normal bits.
+- PBR against `pbr-baseline/phase1-pbr`: the trace is the same on every frame, and all 46
+  pictures and map tiles are the same pixel for pixel. Through `dagoth-ur-caldera` the scene
+  differs only in the normals part, which now holds the tangents. From `island-crossing` on, the
+  layout nondeterminism of phase 1 also shows.
+- Ship view, PBR profile: 2576 meshes carry tangents (none in vanilla). Vertex and index bytes go
+  from 40670 to 43275 KiB, and live device memory from 2265.7 to 2284.0 MiB. A vanilla scene
+  pays the 4 bytes per vertex too, as zeros, in the host table and in each slot's copy.
 
 **Phase 3 — the model in direct light and in the hit.**
 - `shaders/brdf.h` (new, shared by host and device like `look.h`): GGX D, height-correlated V,

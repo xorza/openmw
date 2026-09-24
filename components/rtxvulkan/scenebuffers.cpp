@@ -120,6 +120,7 @@ namespace Rtx
         mInstanceTable.open(device, slots, sTableUsage, "instance rows");
         mMaterialTable.open(device, slots, sTableUsage, "materials");
         mNormalTable.open(device, slots, sTableUsage, "normals");
+        mTangentTable.open(device, slots, sTableUsage, "tangents");
 
         // Every mesh the scene holds, which is the same path an arrival takes with a shorter list.
         std::vector<Index> every(scene.meshes().getRows().size());
@@ -130,10 +131,13 @@ namespace Rtx
         writeMaterialRuns(batch, scene);
         orderStagedWrites(batch);
 
-        // Every copy of the normals holds every mesh from here, so what a copy owes from now on is
-        // the poses it missed.
+        // Every copy of the normals and the tangents holds every mesh from here, so what a copy owes
+        // from now on is the poses it missed.
         for (std::uint32_t slot = 0; slot < mNormalTable.count(); ++slot)
+        {
             mNormalTable.settle(FrameSlot{ slot });
+            mTangentTable.settle(FrameSlot{ slot });
+        }
 
         // The frame tables come from `place`, which is also where they are written when a material
         // changes. Every copy is empty here, so the first write of each makes its buffer and fills
@@ -161,6 +165,7 @@ namespace Rtx
         mSecondTexCoords.reserve(batch, static_cast<std::uint32_t>(scene.meshes().getSecondTexCoords().size()));
         mColours.reserve(batch, static_cast<std::uint32_t>(scene.meshes().getColours().size()));
         mNormalTable.reserve(batch, static_cast<std::uint32_t>(scene.meshes().getNormals().size()));
+        mTangentTable.reserve(batch, static_cast<std::uint32_t>(scene.meshes().getTangents().size()));
 
         for (const Index mesh : meshes)
         {
@@ -169,8 +174,12 @@ namespace Rtx
                 continue;
 
             const std::span<const osg::Vec3f> normals = range.mVertices.in(scene.meshes().getNormals());
+            const std::span<const std::uint32_t> tangents = range.mVertices.in(scene.meshes().getTangents());
             for (std::uint32_t slot = 0; slot < mNormalTable.count(); ++slot)
+            {
                 mNormalTable.at(FrameSlot{ slot }).writeAt(batch, range.mVertices.mOffset, normals);
+                mTangentTable.at(FrameSlot{ slot }).writeAt(batch, range.mVertices.mOffset, tangents);
+            }
 
             mTexCoords.writeAt(batch, range.mVertices.mOffset, range.mVertices.in(scene.meshes().getTexCoords()));
             mColours.writeAt(batch, range.mVertices.mOffset, range.mVertices.in(scene.meshes().getColours()));
@@ -410,7 +419,7 @@ namespace Rtx
         // its own size.
         VkDeviceSize total = mTexCoords.getBytes() + mSecondTexCoords.getBytes() + mColours.getBytes()
             + mMeshes.getSize() + mLayers.getSize() + mMasks.getSize() + mInstanceTable.getBytes()
-            + mMaterialTable.getBytes() + mNormalTable.getBytes();
+            + mMaterialTable.getBytes() + mNormalTable.getBytes() + mTangentTable.getBytes();
         for (const Tables& tables : mTables.live())
             total += tables.getBytes();
 

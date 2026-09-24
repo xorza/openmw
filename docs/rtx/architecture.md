@@ -548,13 +548,18 @@ bakes six-way lighting from a sprite's alpha. `MipChain` builds the levels a fil
 carry. `Material` (`material.hpp`) has three kinds, `Surface`, `Terrain`, `Water`.
 
 Companion maps: a replacer's `_n`, `_nh` and `_spec` files sit beside the diffuse, and no NIF
-names them. `Shader::AutoMapVisitor` attaches them at load, on the loading threads, under the
+names them. `Shader::MapVisitor` attaches them at load, on the loading threads, under the
 `[Shaders]` switches both renderers read (`Renderer::prepareResources`); the rasterizer's shader
 visitor runs the same step. They reach `Material::mNormal` and `mSpecular` as `TextureEncoding::Data`
 slots, which upload linearly and take no shading map. `SpecularLayout` (`[RTX] specular map
-layout`) says what a `_spec` map's channels mean, and under `Ignore` none is loaded or read. The
-device makes the shading map and the sprite bake as each texture arrives; the host's versions are
-held to them by a test.
+layout`) says what a `_spec` map's channels mean, and under `Ignore` none is loaded or read.
+Where a normal map is in force, `MapVisitor` also builds the drawable's tangents at texture unit 7
+with `osgUtil::TangentSpaceGenerator`, as the shader visitor does, on the source geometry of a
+skinned or morphed drawable. `MeshReader` reads them into `MeshArrays::mTangents`, and `MeshTable`
+keeps one word per vertex (`tangent.hpp`: octahedral, 15 bits a coordinate, the handedness, and
+nought for none). The device keeps a copy per frame slot beside the normals, and `skin.comp` poses
+them with the linear part of the blend. The device makes the shading map and the sprite bake as
+each texture arrives; the host's versions are held to them by a test.
 
 Lights: `Light` is the device's row; `lightbuilder.hpp` makes one from a graph `LightSource`,
 a `LIGH` record, or a `Glow` (one lamp per magic effect); `LightGrid` bins lamps into a
@@ -1131,6 +1136,7 @@ draw one frame.
 | the walk and the sweep                         | `mwrender/rtx/worldmirror.cpp`, `components/rtx/sceneextractor.hpp`, `mirroridentity.hpp` |
 | what the scene is                              | `components/rtx/scenedesc.hpp` and the five table headers                |
 | a replacer's companion maps                    | `components/shader/automaps.hpp`, `components/rtx/specularlayout.hpp`, `textureencoding.hpp` |
+| a vertex's tangent                             | `components/rtx/tangent.hpp`, `components/rtxvulkan/shaders/lib/tangent.glsl`, `skin.comp` |
 | how a scene reaches the device                 | `components/rtx/sceneuploader.cpp`, `components/rtx/renderer.hpp`         |
 | the cells past the active grid                 | `components/rtx/cellring.hpp`, `cellsupply.hpp`, `cellreader.hpp`, `cellplacer.hpp` |
 | the sky, the air and the sea a frame is told   | `components/rtx/frameworld.hpp`, `skylight.hpp`, `mwrender/rtx/skyreader.hpp` |

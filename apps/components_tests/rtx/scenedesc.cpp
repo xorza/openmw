@@ -171,6 +171,7 @@ namespace Rtx
             const Rtx::MeshTable& meshes = scene.meshes();
             ASSERT_EQ(meshes.getNormals().size(), meshes.getPositions().size());
             ASSERT_EQ(meshes.getTexCoords().size(), meshes.getPositions().size());
+            ASSERT_EQ(meshes.getTangents().size(), meshes.getPositions().size());
 
             const MeshRange& range = scene.meshes().getRows()[withNormals];
             EXPECT_EQ(scene.meshes().getNormals()[range.mVertices.mOffset], osg::Vec3f(0.0f, 0.0f, 1.0f));
@@ -303,10 +304,10 @@ namespace Rtx
             EXPECT_EQ(scene.meshes().getTriangleCount(), 4u);
             EXPECT_EQ(scene.meshes().getRows()[0].getTriangleCount(), 2u);
 
-            // 8 positions, 8 normals and 8 colours at 12 bytes, 8 texture coordinates at 8, and 12
-            // indices at 4. The mesh brought neither normal, coordinate nor colour and the buffers
-            // hold one apiece regardless — `MeshTable::writeVertices` says why.
-            EXPECT_EQ(scene.meshes().getGeometryBytes(), 8u * 12u + 8u * 12u + 8u * 8u + 8u * 12u + 12u * 4u);
+            // 8 positions, 8 normals and 8 colours at 12 bytes, 8 texture coordinates at 8, 8 tangents
+            // and 12 indices at 4. The mesh brought neither normal, coordinate, colour nor tangent
+            // and the buffers hold one apiece regardless — `MeshTable::writeVertices` says why.
+            EXPECT_EQ(scene.meshes().getGeometryBytes(), 8u * 12u + 8u * 12u + 8u * 8u + 8u * 12u + 8u * 4u + 12u * 4u);
         }
 
         /// The cutoff a material is traced against, and which materials get traced against one.
@@ -1356,7 +1357,7 @@ namespace Rtx
         /// **What stands for nothing is not the same in every buffer.** A zero normal says "use
         /// the triangle's plane" and a white colour says "no tint", because a hit reads the first
         /// and multiplies by the second — so a slot given a black colour would go dark rather than
-        /// untinted.
+        /// untinted. A zero tangent word is no tangent.
         TEST(RtxSceneDescTest, aReusedSlotDoesNotInheritTheAttributesOfWhatStoodInIt)
         {
             SceneDesc scene;
@@ -1368,14 +1369,22 @@ namespace Rtx
                 osg::Vec2f(0.5f, 0.5f) };
             const std::array<osg::Vec3f, 4> colours{ osg::Vec3f(0.25f, 0.0f, 0.0f), osg::Vec3f(0.25f, 0.0f, 0.0f),
                 osg::Vec3f(0.25f, 0.0f, 0.0f), osg::Vec3f(0.25f, 0.0f, 0.0f) };
+            const std::array<osg::Vec4f, 4> tangents{ osg::Vec4f(0.0f, 1.0f, 0.0f, 1.0f),
+                osg::Vec4f(0.0f, 1.0f, 0.0f, 1.0f), osg::Vec4f(0.0f, 1.0f, 0.0f, 1.0f),
+                osg::Vec4f(0.0f, 1.0f, 0.0f, 1.0f) };
 
             const Index slot = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad,
                 .mNormals = normals,
                 .mTexCoords = uvs,
                 .mColours = colours,
+                .mTangents = tangents,
                 .mIndices = Testing::sQuadIndices });
             ASSERT_EQ(meshes.getNormals()[meshes.getRows()[slot].mVertices.mOffset], osg::Vec3f(1.0f, 0.0f, 0.0f));
             ASSERT_EQ(meshes.getColours()[meshes.getRows()[slot].mVertices.mOffset], osg::Vec3f(0.25f, 0.0f, 0.0f));
+
+            // Packed as they are written: along y is the square's `(0, 1)`, steps `0x3FFF` and
+            // `0x7FFE`, the second fifteen bits up, and the present bit over them.
+            ASSERT_EQ(meshes.getTangents()[meshes.getRows()[slot].mVertices.mOffset], 0xBFFF3FFFu);
 
             ASSERT_TRUE(scene.release({}, {}));
             EXPECT_EQ(
@@ -1386,6 +1395,8 @@ namespace Rtx
             EXPECT_EQ(meshes.getTexCoords()[0], osg::Vec2f());
             EXPECT_EQ(meshes.getColours()[meshes.getRows()[slot].mVertices.mOffset], osg::Vec3f(1.0f, 1.0f, 1.0f))
                 << "the slot kept the last tenant's tint";
+            EXPECT_EQ(meshes.getTangents()[meshes.getRows()[slot].mVertices.mOffset], 0u)
+                << "the slot kept the last tenant's tangents";
         }
 
         /// A material frees its slot, and the layer run and masks behind it come back too.
