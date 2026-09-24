@@ -21,6 +21,17 @@
     "reveal": "always",
     "tags": ["rtx-view"]
   },
+  // The Fullrest Repack under /home/Games/M[FR]: `~/.config/openmw-mfr` is its Linux profile, and
+  // `--replace=config` keeps the vanilla profile's content list out of it.
+  {
+    "label": "RTX: seyda-neen-ship, M[FR] (release)",
+    "command": "apps/rtxtool/rtx release view --size=2560x1440 --view=seyda-neen-ship --replace=config --config=\"$HOME/.config/openmw-mfr\"",
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": true,
+    "reveal": "always",
+    "tags": ["rtx-view"]
+  },
   {
     "label": "Build: everything",
     "command": "cmake --build . -j32",
