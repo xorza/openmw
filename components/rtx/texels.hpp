@@ -56,6 +56,11 @@ namespace Rtx
     /// anything, so the uploader and the report cannot disagree.
     TextureFormat readFormat(const osg::Image& image, TextureEncoding encoding = TextureEncoding::Colour);
 
+    /// Whether a normal map bound for its height has one: an alpha, which a map of two channels
+    /// has not. The rasterizer's `ShaderVisitor` and `Terrain` turn parallax off for the same maps,
+    /// where the alpha a sampler returns is one and the shift would be the same everywhere.
+    bool carriesHeight(const osg::Image& normalMap);
+
     /// What `format` is called, for a report to print.
     std::string_view nameOf(TextureFormat format);
 

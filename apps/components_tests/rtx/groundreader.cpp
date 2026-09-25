@@ -119,6 +119,8 @@ namespace Rtx::Testing
             EXPECT_EQ(rock.mNormalPath, "textures/rock_nh.dds");
             ASSERT_NE(rock.mNormalImage, nullptr);
             EXPECT_EQ(rock.mNormalImage->getFileName(), "textures/rock_nh.dds");
+            EXPECT_TRUE(rock.mParallax) << "an `_nh` of four channels carries a height";
+            EXPECT_FALSE(grass.mParallax);
             EXPECT_FALSE(grass.mDiffuseSpec);
             EXPECT_TRUE(grass.mNormalPath.empty());
             EXPECT_EQ(grass.mNormalImage, nullptr);

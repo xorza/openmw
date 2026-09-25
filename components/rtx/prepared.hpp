@@ -69,6 +69,10 @@ namespace Rtx
         VFS::Path::Normalized mNormalPath;
         PreparedTexture* mNormalTexture = nullptr;
 
+        /// Whether that normal map's alpha is a height: an `_nh` the storage found, and
+        /// `carriesHeight`.
+        bool mParallax = false;
+
         /// Whether the storage swapped `_diffusespec` in for the diffuse. What its alpha means is
         /// the layout's to say, and the placer is what knows the layout.
         bool mDiffuseSpec = false;

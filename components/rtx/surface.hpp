@@ -235,6 +235,11 @@ namespace Rtx
         /// How a blended surface composites, meaningful under `AlphaMode::Blend`.
         BlendKind mBlend = BlendKind::Over;
 
+        /// Whether the normal map's alpha is a height, for parallax: bound as `normalHeightMap` — an
+        /// `_nh` file — and `carriesHeight`. The nearest state set's normal map says, as it says
+        /// which map it is.
+        bool mNormalHeight = false;
+
         /// Which texture unit the dark map is bound at, meaningful where there is one. Carried
         /// because half the vanilla dark maps read the geometry's second set of texture
         /// coordinates, and which set a unit reads is the geometry's to say.

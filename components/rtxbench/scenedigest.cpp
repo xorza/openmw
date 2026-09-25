@@ -87,7 +87,7 @@ namespace Rtx
         void forEachMaterialField(const Material& material, Texture texture, Layers layers, Value value)
         {
             const auto& [kind, diffuse, emissive, environment, environmentColour, dark, darkUnit, normal, specular,
-                diffuseColour, emissiveColour, opacity, alphaRef, alphaMode, blend, vertexColour, twoSided,
+                parallax, diffuseColour, emissiveColour, opacity, alphaRef, alphaMode, blend, vertexColour, twoSided,
                 textureTransform, run, flatten, layersMapped, animated, neverSolid, diffuseMean]
                 = material;
 
@@ -110,6 +110,8 @@ namespace Rtx
             }
             if (layersMapped)
                 value(std::uint8_t{ 3 });
+            if (parallax)
+                value(std::uint8_t{ 4 });
 
             layers(run);
 

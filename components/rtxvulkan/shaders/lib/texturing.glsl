@@ -7,6 +7,7 @@
 // Shared by everything that samples — a committed hit's colour, a candidate hit's cutout
 // mask, and each layer of a piece of ground — which is what keeps them reading one level.
 
+#include "look.h"
 #include "scene.h"
 #include "bindings.glsl"
 #include "geometry.glsl"
@@ -190,6 +191,16 @@ float coneLod(uint slot, TexturePoint point)
         return 0.0;
 
     return point.mBase + 0.5 * log2(float(textureTexelsAt(slot)));
+}
+
+/// How far a normal map's `height` shifts a texture point toward the eye, `eye` being the unit
+/// direction to the eye in the map's tangent frame: `PARALLAX_SCALE`'s shift, the rasterizer's own.
+///
+/// **With offset limiting, as the rasterizer's form has it**: linear in the eye's lean, where
+/// dividing by the eye's height would slide a texture off a surface met at grazing.
+vec2 parallaxShift(vec3 eye, float height)
+{
+    return eye.xy * (height * PARALLAX_SCALE + PARALLAX_BIAS);
 }
 
 /// The diffuse texel a hit landed on, read at the level its cone can resolve.

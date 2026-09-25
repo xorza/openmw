@@ -18,6 +18,7 @@
 #include "cellworld.hpp"
 #include "colour.hpp"
 #include "result.hpp"
+#include "texels.hpp"
 
 namespace Rtx
 {
@@ -177,6 +178,8 @@ namespace Rtx
                     = mContent.getImage(mLayerInfos[index].mNormalMap);
                 layer.mNormalImage = normal.isOk() ? normal.value() : nullptr;
                 layer.mNormalPath = std::move(mLayerInfos[index].mNormalMap);
+                layer.mParallax = mLayerInfos[index].mParallax && layer.mNormalImage != nullptr
+                    && carriesHeight(*layer.mNormalImage);
             }
 
             if (!mBlendmaps.empty() && mBlendmaps[index] != nullptr)

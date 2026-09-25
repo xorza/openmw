@@ -120,12 +120,14 @@ namespace Rtx
             row.mDiffuse = slot != sNoIndex ? slot : Shaders::TEXTURE_NEUTRAL;
 
             // A normal map is data and tiles with the diffuse; one the table has no room for is
-            // no normal map, and the layer keeps the chunk's normal.
+            // no normal map, and the layer keeps the chunk's normal and its own coordinates.
             if (layer.mNormalTexture != nullptr)
             {
                 row.mNormal
                     = mScene.textures().add(layer.mNormalTexture->mPath, TextureWrap::Repeat, TextureEncoding::Data);
                 stands.mTextures.push_back(layer.mNormalTexture);
+                if (layer.mParallax && row.mNormal != sNoIndex)
+                    row.mFlags |= Shaders::LAYER_PARALLAX;
             }
 
             // What a `_diffusespec`'s alpha is, the layout says: a classic one is a highlight's

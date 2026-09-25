@@ -602,7 +602,10 @@ joins the direct light. Ground sums its layers' maps by the weights it sums thei
 (`layerTexel` in `ground.glsl`, shared with the bake): the tangent-space normals, carried once
 through the frame `terrain.vert` gives every layer, and a dielectric lobe over the share of the
 weight on authored layers, at the roughness summed over all of them. A distant chunk keeps its
-geometric normal and reads the gloss baked beside its composite. `rtxtool
+geometric normal and reads the gloss baked beside its composite. A normal map with a height
+(`_nh`) shifts the texture point toward the eye by it before the hit reads anything on that
+coordinate set, in OpenMW's form (`parallaxShift`): a surface under `MATERIAL_PARALLAX`, never a
+cutout, and a ground layer under `LAYER_PARALLAX`. `rtxtool
 --show=albedo|normal|roughness|specular` writes the inputs out.
 
 Lights: `Light` is the device's row; `lightbuilder.hpp` makes one from a graph `LightSource`,

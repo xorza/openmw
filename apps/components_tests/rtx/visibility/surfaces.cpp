@@ -1580,6 +1580,101 @@ namespace Rtx::Testing
             }
         }
 
+        /// **Parallax shifts the sheet toward the eye by the height the normal map carries**, as the
+        /// rasterizer's `parallax.glsl` does, for a surface and for a ground layer alike: `eye.xy *
+        /// (height * 0.04 - 0.02)`, the eye in the tangent frame.
+        ///
+        /// The wall faces -y with the tangent `(1, 0, 0)`, so the bitangent `cross(N, T)` is
+        /// `(0, 0, 1)` — for the surface off the mesh's tangents, for the layer off `terrain.vert`'s
+        /// x — and the eye at `(100, -100, 0)` sees the middle of it along `(1, -1, 0) / √2`, which is
+        /// `(0.70711, 0, 0.70711)` in that frame. A height of 255 shifts `u` by `0.70711 * 0.02 =
+        /// 0.014142` and a height of nought by as much the other way. The albedo is a ramp of 256
+        /// texels whose byte is its column, which reads `(256 u - 0.5) / 255` between texel centres,
+        /// so the shift is the albedo moved by `256 / 255` of it; the painted light is left in.
+        ///
+        /// A normal map that stands in shifts nothing, and neither does a surface not flagged.
+        TEST_F(RtxVisibilityTest, parallaxShiftsTheSheetTowardTheEyeByTheNormalMapsHeight)
+        {
+            constexpr std::uint32_t size = 33;
+            constexpr std::size_t centre = centreValueOf(size);
+            constexpr std::uint32_t extent = 256;
+
+            std::vector<std::uint8_t> ramp(std::size_t{ extent } * extent * 4);
+            for (std::uint32_t row = 0; row < extent; ++row)
+                for (std::uint32_t column = 0; column < extent; ++column)
+                {
+                    const std::size_t at = (std::size_t{ row } * extent + column) * 4;
+                    const auto value = static_cast<std::uint8_t>(column);
+                    ramp[at] = value;
+                    ramp[at + 1] = value;
+                    ramp[at + 2] = value;
+                    ramp[at + 3] = 255;
+                }
+            Testing::TestTexture albedo;
+            Testing::paintFlat(albedo, extent, ramp, "ramp");
+
+            const osg::Vec3f facing(0.0f, -1.0f, 0.0f);
+            const osg::Vec4f tangent(1.0f, 0.0f, 0.0f, 1.0f);
+            const std::array normals{ facing, facing, facing, facing };
+            const std::array tangents{ tangent, tangent, tangent, tangent };
+
+            Shaders::VisibilityConstants camera = Testing::makeCamera(
+                osg::Vec3f(100.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
+            camera.mShow = Shaders::SHOW_ALBEDO;
+            camera.mDelight = 0.0f;
+
+            const auto shown = [&](bool ground, std::uint8_t height, bool flagged, bool standsIn = false) {
+                const std::array<std::uint8_t, 4> heightTexel{ 128, 128, 255, height };
+                std::array<TextureData, 2> textures{ albedo.mData, describeTexel(heightTexel, 1) };
+                textures[0].mSlot = 0;
+                if (standsIn)
+                    textures[1].mSource = TextureSource::StandIn;
+
+                SceneDesc scene;
+                const Index mesh = scene.addMesh(MeshArrays{ .mPositions = sWallQuad,
+                    .mNormals = normals,
+                    .mTexCoords = sQuadUv,
+                    .mTangents = tangents,
+                    .mIndices = sQuadIndices });
+                const Index diffuse = scene.textures().add(VFS::Path::NormalizedView("ramp.dds"));
+                const Index normalMap = scene.textures().add(
+                    VFS::Path::NormalizedView("ramp_nh.dds"), TextureWrap::Repeat, TextureEncoding::Data);
+
+                Material material;
+                if (ground)
+                {
+                    std::array layers{ Testing::layerOf(diffuse) };
+                    layers[0].mNormal = normalMap;
+                    layers[0].mFlags = flagged ? Shaders::LAYER_PARALLAX : 0u;
+                    material.mKind = MaterialKind::Terrain;
+                    material.mLayers = scene.materials().addLayers(layers);
+                    material.mLayersMapped = true;
+                }
+                else
+                {
+                    material.mDiffuse = diffuse;
+                    material.mNormal = normalMap;
+                    material.mParallax = flagged;
+                }
+                scene.addInstance(MeshInstance{
+                    .mTransform = osg::Matrixf::identity(), .mMesh = mesh, .mMaterial = scene.addMaterial(material) });
+
+                std::vector<std::uint8_t> pixels;
+                EXPECT_GT(countHits(scene, textures, camera, size, pixels), 0u);
+                return mRadiance[centre];
+            };
+
+            const float shift = 256.0f / 255.0f * std::sqrt(0.5f) * 0.02f;
+            for (const bool ground : { false, true })
+            {
+                const char* what = ground ? "a ground layer" : "a surface";
+                const float still = shown(ground, 255, false);
+                EXPECT_NEAR(shown(ground, 255, true) - still, shift, 5.0e-5f) << what << " at its full height";
+                EXPECT_NEAR(shown(ground, 0, true) - still, -shift, 5.0e-5f) << what << " at no height";
+                EXPECT_EQ(shown(ground, 255, true, true), still) << what << " whose normal map stands in";
+            }
+        }
+
         /// A chunk flattened on the device is the ground its stack sums, whichever way it arrived.
         ///
         /// Two solid layers at constant weights, a quarter of red and three quarters of green, so

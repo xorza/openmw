@@ -175,6 +175,7 @@ namespace Rtx
                      { "flatten", [](Rtx::Material& m) { m.mFlatten = true; } },
                      { "animated", [](Rtx::Material& m) { m.mAnimated = true; } },
                      { "never solid", [](Rtx::Material& m) { m.mDiffuseNeverSolid = true; } },
+                     { "parallax", [](Rtx::Material& m) { m.mParallax = true; } },
                  })
             {
                 const auto [movedScene, movedLayout] = digestsOfMaterial(change);

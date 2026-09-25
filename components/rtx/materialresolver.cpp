@@ -432,6 +432,8 @@ namespace Rtx
                 += osg::Vec3f(overridden.x() * ambient.x(), overridden.y() * ambient.y(), overridden.z() * ambient.z());
         }
 
+        material.mParallax = described->mNormalHeight && material.mNormal != sNoIndex && !material.isCutout();
+
         // Scaled about the middle of the texture, then offset, which is what `NifOsg` builds its
         // texture matrix from — so `(uv - 0.5) * scale + 0.5 + offset`, resolved here into the
         // `uv * xy + zw` the sampler takes. Doing the arithmetic once on the host keeps two

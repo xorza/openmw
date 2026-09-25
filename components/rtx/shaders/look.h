@@ -370,6 +370,13 @@ namespace Rtx::Shaders
     /// Morrowind mesh).
     const float DIELECTRIC_F0 = 0.04f;
 
+    /// How far a normal map's height shifts the texture coordinates toward the eye, as the
+    /// rasterizer's `parallax.glsl` has it: `eye.xy * (height * SCALE + BIAS)`, the eye in the
+    /// tangent frame. OpenMW's numbers and not chosen, so a surface is the one the content was
+    /// authored against.
+    const float PARALLAX_SCALE = 0.04f;
+    const float PARALLAX_BIAS = -0.02f;
+
     /// What the reflectance at grazing is, as a multiple of the reflectance at normal incidence's
     /// green, saturated at one: `F90 = saturate(50 * F0.g)`.
     ///

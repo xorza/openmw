@@ -476,6 +476,10 @@ namespace Rtx::Shaders
     /// two swap, and this is the host's one rule for which a row is, written where the row is.
     const uint MATERIAL_STACKED = 0x10u;
 
+    /// The normal map's alpha is a height the texture coordinates are shifted by —
+    /// `Rtx::Material::mParallax`, and `parallaxShift` says by how much.
+    const uint MATERIAL_PARALLAX = 0x20u;
+
     /// Which texture unit the dark map is bound at, in these bits of `mFlags` —
     /// `GpuMesh::mUnitStreams` says which stream that unit reads.
     const uint MATERIAL_DARK_UNIT_SHIFT = 8u;
@@ -723,6 +727,12 @@ namespace Rtx::Shaders
     /// `DIELECTRIC_F0`. Under the classic layout the same file is the plain diffuse OpenMW swaps
     /// in, and this is not set.
     const uint LAYER_AUTHORED = 0x01u;
+
+    /// A ground layer whose normal map's alpha is a height, as `MATERIAL_PARALLAX` is for a
+    /// surface: an `_nh` file the storage found, which `carriesHeight`. The rasterizer's terrain
+    /// shifts the layer by it, and so does the stack here; a flattened chunk has no eye to shift
+    /// toward.
+    const uint LAYER_PARALLAX = 0x02u;
 
     /// One layer of a terrain material: a tiling ground texture and the weights that place it.
     ///

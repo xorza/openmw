@@ -9,6 +9,7 @@
 
 #include <gtest/gtest.h>
 
+#include <osg/AlphaFunc>
 #include <osg/BlendFunc>
 #include <osg/GL>
 #include <osg/Geometry>
@@ -372,15 +373,18 @@ namespace Rtx::Testing
         /// **The companion maps reach the material as data, and the specular map only in the layout
         /// that names what its channels mean.** A normal map with height and one without are one map.
         /// A walk told nothing reads no specular map: the classic layout is the one OpenMW documents,
-        /// and read as metalness and roughness it is wrong.
+        /// and read as metalness and roughness it is wrong. **A normal map bound with its height is
+        /// parallax**, and not on a cutout, whose hole the traversal finds with no eye to shift by.
         TEST_F(RtxSceneExtractorTest, theCompanionMapsReachTheMaterialAsDataAndTheSpecularMapOnlyInItsLayout)
         {
-            const auto extractOne = [](SpecularLayout layout, TextureRole normalRole) {
+            const auto extractOne = [](SpecularLayout layout, TextureRole normalRole, bool cutout = false) {
                 osg::ref_ptr<osg::Geometry> quad = makeQuad();
                 osg::StateSet& state = *quad->getOrCreateStateSet();
                 paint(state, "textures/tx_a_steel.dds");
                 paint(state, "textures/tx_a_steel_nh.dds", normalRole);
                 paint(state, "textures/tx_a_steel_spec.dds", TextureRole::Specular);
+                if (cutout)
+                    state.setAttributeAndModes(new osg::AlphaFunc(osg::AlphaFunc::GEQUAL, 0.5f));
 
                 Rtx::SceneDesc scene;
                 SceneExtractor extractor(scene);
@@ -399,6 +403,7 @@ namespace Rtx::Testing
             EXPECT_EQ(ignoredRows[ignored.mDiffuse].mEncoding, TextureEncoding::Colour);
             EXPECT_EQ(ignored.mSpecular, sNoIndex);
             EXPECT_EQ(ignoredRows.size(), 2u) << "a specular map read by nothing takes no slot";
+            EXPECT_TRUE(ignored.mParallax) << "a normal map with its height";
 
             const auto [read, readRows] = extractOne(SpecularLayout::MetalRoughness, TextureRole::Normal);
             ASSERT_NE(read.mNormal, sNoIndex);
@@ -406,6 +411,11 @@ namespace Rtx::Testing
             EXPECT_EQ(readRows[read.mSpecular].mPath, VFS::Path::NormalizedView("textures/tx_a_steel_spec.dds"));
             EXPECT_EQ(readRows[read.mSpecular].mEncoding, TextureEncoding::Data);
             EXPECT_EQ(readRows.size(), 3u);
+            EXPECT_FALSE(read.mParallax) << "a normal map without one";
+
+            const auto [cut, cutRows] = extractOne(SpecularLayout::Ignore, TextureRole::NormalHeight, true);
+            EXPECT_TRUE(cut.isCutout());
+            EXPECT_FALSE(cut.mParallax) << "a cutout, shifted where it shades and not where it is cut";
         }
 
         /// A controller that shows a different sheet every frame, out of `mSheets`, on the unit

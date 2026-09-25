@@ -20,6 +20,8 @@
 #include <components/sceneutil/material.hpp>
 #include <components/sceneutil/util.hpp>
 
+#include "texels.hpp"
+
 namespace Rtx
 {
     namespace
@@ -254,6 +256,9 @@ namespace Rtx
             material.setTexture(*map, texture);
             if (*map == SurfaceMap::Diffuse)
                 diffuseUnit = unit;
+            if (*map == SurfaceMap::Normal)
+                material.mNormalHeight = *role == TextureRole::NormalHeight && texture->getImage(0) != nullptr
+                    && carriesHeight(*texture->getImage(0));
             if (*map == SurfaceMap::Dark)
                 material.mDarkUnit = static_cast<std::uint8_t>(unit);
         }

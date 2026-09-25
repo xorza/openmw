@@ -734,7 +734,7 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
 
     // Where the hit lands on the material's own sheet, which the albedo, the opacity and the
     // emissive map all read at. A terrain layer has a transform of its own and makes its own.
-    const TexturePoint point = texturePoint(uv, hit.mBary, material.mTextureTransform, cone, surface.mFootprint);
+    TexturePoint point = texturePoint(uv, hit.mBary, material.mTextureTransform, cone, surface.mFootprint);
 
     // **A normal map, read through the tangents the mesh carries**, in the frame `normals.glsl`
     // builds: the tangent unit, the bitangent `cross(N, T) * w`, and the interpolated normal, with
@@ -743,10 +743,24 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
     // the map's relief from behind. A mesh the map reached with no tangents keeps its normal.
     if (HAS_MAPS && holdsTexture(material.mNormal) && dot(hit.mTangent.xyz, hit.mTangent.xyz) > 0.0)
     {
-        const vec3 painted = sampleNormalMap(material.mNormal, point);
         const vec3 tangent = normalize(hit.mTangent.xyz);
-        const vec3 mapped = normalize(
-            tangent * painted.x + cross(normal, tangent) * (hit.mTangent.w * painted.y) + normal * painted.z);
+        const vec3 bitangent = cross(normal, tangent) * hit.mTangent.w;
+
+        // **Shifted toward the eye by the map's height first**, where it carries one, so every read
+        // on this sheet after it lands where the relief puts it: the map itself, the albedo, the
+        // opacity, and the specular, emissive and dark maps. The rasterizer shifts its diffuse and
+        // its normal map alone, because its other maps may read another set of coordinates; these
+        // read the set this point is on, and a specular map left behind is roughness painted for
+        // another texel of the colour. The height is read where the point was, as `objects.frag`
+        // reads it, and the shift runs along the axes the relief is painted on.
+        if ((material.mFlags & MATERIAL_PARALLAX) != 0u)
+        {
+            const vec3 eye = vec3(dot(tangent, -direction), dot(bitangent, -direction), dot(normal, -direction));
+            point.mAt += parallaxShift(eye, sampleDiffuse(material.mNormal, point).a);
+        }
+
+        const vec3 painted = sampleNormalMap(material.mNormal, point);
+        const vec3 mapped = normalize(tangent * painted.x + bitangent * painted.y + normal * painted.z);
 
         surface.mNormal = facingRay(turned ? -mapped : mapped, surface.mSmooth, direction, MAPPED_MIN_FACING);
     }
@@ -781,6 +795,26 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
         // one where the masks were built to — the same sum the rasterizer reaches by drawing the
         // layers over each other with additive blending and one pass apiece.
         const vec2 chunkUv = acrossTriangle(uv[0], uv[1], uv[2], hit.mBary);
+
+        // The frame `terrain.vert` gives every layer: the chunk's x, which is the world's, the
+        // bitangent `cross(N, x)`, and the tangent x less its part along N. A heightfield's normal
+        // leans up, so x is never along it. The eye in it is what a layer with a height is shifted
+        // by, the frame being one for every layer.
+        //
+        // **Filled behind `HAS_MAPS` and not declared with it**: the optimizer the kernels are
+        // compared through keeps arithmetic nothing reads, so a frame computed outside the branch
+        // would be in every vanilla program, read by nothing and moving its digest by a normalize.
+        vec3 layerTangent = vec3(0.0);
+        vec3 layerBitangent = vec3(0.0);
+        vec3 layerEye = vec3(0.0);
+        if (HAS_MAPS)
+        {
+            const vec3 across = vec3(1.0, 0.0, 0.0);
+            layerTangent = normalize(across - normal * dot(normal, across));
+            layerBitangent = cross(normal, across);
+            layerEye = vec3(dot(layerTangent, -direction), dot(layerBitangent, -direction), dot(normal, -direction));
+        }
+
         for (uint i = 0u; i < material.mLayerCount; ++i)
         {
             const GpuLayer layer = layerAt(material.mLayerOffset + i);
@@ -788,7 +822,12 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
             if (showing <= 0.0)
                 continue;
 
-            const TexturePoint at = texturePoint(uv, hit.mBary, layer.mDiffuseTransform, cone, surface.mFootprint);
+            // Shifted as `terrain.frag` shifts the layer, before any read of it, by the height read
+            // where the layer was.
+            TexturePoint at = texturePoint(uv, hit.mBary, layer.mDiffuseTransform, cone, surface.mFootprint);
+            if (HAS_MAPS && (layer.mFlags & LAYER_PARALLAX) != 0u && holdsTexture(layer.mNormal))
+                at.mAt += parallaxShift(layerEye, sampleDiffuse(layer.mNormal, at).a);
+
             const bool authored = HAS_MAPS && layerAuthored(layer, sceneTexels());
             const vec4 shown = layerTexel(layer, at.mAt, coneLod(layer.mDiffuse, at), frame.mDelight, authored);
             albedo += showing * shown.rgb;
@@ -807,18 +846,13 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
         }
 
         // **The layers' normals summed by their weights and then carried once**, through the
-        // frame `terrain.vert` gives every layer: the chunk's x, which is the world's, the
-        // bitangent `cross(N, x)`, and the tangent x less its part along N. Summing before the frame
-        // is summing after it, the frame being one for every layer, and a heightfield's normal
-        // leans up, so x is never along it. The rasterizer lights each layer under its own normal
-        // and blends the light; one lobe under the blended normal is what a path tracer can afford,
-        // and it parts from that only where the masks blend.
+        // layers' one frame: summing before the frame is summing after it. The rasterizer lights
+        // each layer under its own normal and blends the light; one lobe under the blended normal
+        // is what a path tracer can afford, and it parts from that only where the masks blend.
         if (HAS_MAPS && relief)
         {
-            const vec3 across = vec3(1.0, 0.0, 0.0);
-            const vec3 tangent = normalize(across - normal * dot(normal, across));
             const vec3 mapped
-                = normalize(tangent * painted.x + cross(normal, across) * painted.y + normal * painted.z);
+                = normalize(layerTangent * painted.x + layerBitangent * painted.y + normal * painted.z);
 
             surface.mNormal = facingRay(turned ? -mapped : mapped, surface.mSmooth, direction, MAPPED_MIN_FACING);
         }

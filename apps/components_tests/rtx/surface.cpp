@@ -109,6 +109,7 @@ namespace Rtx
             EXPECT_EQ(material.getTexture(SurfaceMap::Dark), nullptr);
             EXPECT_EQ(material.getTexture(SurfaceMap::Environment), nullptr);
             EXPECT_EQ(material.getTexture(SurfaceMap::Normal), normal.get()) << "named by its sampler";
+            EXPECT_FALSE(material.mNormalHeight) << "a normal map bound as one carries no height";
             EXPECT_EQ(material.getTexture(SurfaceMap::Specular), nullptr);
 
             // **The companion maps are kept under the type `Shader::MapVisitor` gives them**: a
@@ -126,6 +127,15 @@ namespace Rtx
             EXPECT_TRUE(describeStateSet(*companions, kept));
             EXPECT_EQ(kept.getTexture(SurfaceMap::Normal), height.get());
             EXPECT_EQ(kept.getTexture(SurfaceMap::Specular), specular.get());
+            EXPECT_TRUE(kept.mNormalHeight) << "a normal map bound with its height";
+
+            // **And a map of two channels has no height to carry**, however it was bound: its alpha
+            // reads one, which the rasterizer's visitor turns parallax off for.
+            height->setPixelFormat(GL_COMPRESSED_RED_GREEN_RGTC2_EXT);
+            SurfaceDescription twoChannels;
+            EXPECT_TRUE(describeStateSet(*companions, twoChannels));
+            EXPECT_EQ(twoChannels.getTexture(SurfaceMap::Normal), height.get());
+            EXPECT_FALSE(twoChannels.mNormalHeight);
 
             // What stays declined is what no shipped file binds, and it is kept nowhere: a
             // description that held it paid a reference for nothing.

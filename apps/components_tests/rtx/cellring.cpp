@@ -471,7 +471,7 @@ namespace Rtx::Testing
                 EXPECT_EQ(normal.mPath, "textures/rock_nh.dds");
                 EXPECT_EQ(normal.mWrap, TextureWrap::Repeat);
                 EXPECT_EQ(normal.mEncoding, TextureEncoding::Data);
-                EXPECT_EQ(layers[1].mFlags, Shaders::LAYER_AUTHORED);
+                EXPECT_EQ(layers[1].mFlags, Shaders::LAYER_AUTHORED | Shaders::LAYER_PARALLAX);
                 EXPECT_TRUE(material.mLayersMapped);
             }
             const std::optional<MeshInstance> home = groundOf(osg::Vec2i(0, 0));
@@ -573,7 +573,7 @@ namespace Rtx::Testing
             const Material& awayMaterial = mScene.materials().getRows()[away->mMaterial];
             const std::span<const MaterialLayer> awayLayers = awayMaterial.mLayers.in(mScene.materials().getLayers());
             ASSERT_EQ(awayLayers.size(), 2u);
-            EXPECT_EQ(awayLayers[1].mFlags, 0u);
+            EXPECT_EQ(awayLayers[1].mFlags, Shaders::LAYER_PARALLAX);
             ASSERT_NE(awayLayers[1].mNormal, sNoIndex);
             EXPECT_EQ(mScene.textures().getRows()[awayLayers[1].mNormal].mPath, "textures/rock_nh.dds");
             EXPECT_TRUE(awayMaterial.mLayersMapped);

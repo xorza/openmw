@@ -1,6 +1,6 @@
 # PBR materials in the RTX renderer
 
-Status: phases 0 to 5 are built; phase 6, parallax, is next.
+Status: phases 0 to 6 are built; phase 7, the measured follow-ups, is next.
 
 ## 1. Summary
 
@@ -370,7 +370,7 @@ Built in phase 4.
   indirect term only can follow.
 - **SSS (A).** Not read at first. The 3204 BC1 maps cannot carry it, so A = 1 there means
   nothing. The existing sheet transmission (`SHEET_TRANSMISSION`) stays the model for leaves.
-- **Parallax (`_nh` A).** Phase 6. OpenMW's form is one extra fetch and one offset.
+- **Parallax (`_nh` A).** Built in phase 6, in OpenMW's form: one extra fetch and one offset.
 - **Specular aliasing.** First measure whether the mips of the installed normal maps keep the
   averaged length (texconv can renormalize each mip). Toksvig works only on averaged mips.
 - **Classic `_spec` maps.** Declined. No physical mapping from a highlight colour to F0 exists.
@@ -383,6 +383,8 @@ Built in phase 4.
   maps' code compiled in, every vanilla view traced a different frame by a rounding — the driver
   fused the Lambert arithmetic around the new code differently — though not one hit ran it.
 - **The kernel table doubles on the trace's side**: 16 visibility and 8 froxel launches.
+- **Parallax (phase 6)** costs the trace 0.08 to 0.11 ms at Balmora, and nothing measurable at the
+  ship or in the guild: one more fetch where a layer or a surface carries a height.
 - **Terrain (phase 5)** costs the trace 0.08 to 0.27 ms where ground is in sight with its normal
   maps, and 0.12 to 0.32 with the authored layers as well: a fetch per mapped layer at each hit on
   a stack, and the lobe.
@@ -576,7 +578,44 @@ plan).
 - `rtx debug gate`: 556 component, 300 GPU and 22 game tests pass, 47 checks, and the repeat pair
   is identical.
 
-**Phase 6 — parallax on `_nh`.** OpenMW's offset, before all reads of the hit. Primary rays first.
+**Phase 6 — parallax on `_nh`.** Done.
+- Built: OpenMW's offset, `eye.xy * (height * 0.04 - 0.02)` with the eye in the tangent frame
+  (`PARALLAX_SCALE`, `PARALLAX_BIAS`, `parallaxShift`). A surface takes it where
+  `Material::mParallax` (`MATERIAL_PARALLAX`) is set: its normal map was bound as
+  `normalHeightMap` (`SurfaceDescription::mNormalHeight`) and `carriesHeight`, and the material is
+  no cutout. A ground layer takes it under `LAYER_PARALLAX`, set where the storage found an `_nh`
+  that `carriesHeight`. `carriesHeight` is false for BC5, as OpenMW's visitor and terrain turn
+  parallax off for two-channel maps. The height is read at the point before the shift, and a
+  normal map that stands in shifts nothing.
+- **Every read on the shifted point's coordinate set takes the shift**, the specular, emissive and
+  dark maps included. OpenMW shifts its diffuse and its normal map alone, because its other maps
+  may read another coordinate set; here each read knows its set, and a specular map left behind is
+  roughness painted for another texel of the colour.
+- **No cutout takes it.** The traversal's any-hit test finds a hole with no eye to shift toward,
+  so a shifted cutout would shade the leaf at one place and cut the hole at another. OpenMW shifts
+  its alpha test too, so a cutout with an `_nh` is the one surface that draws flatter here.
+- **One path.** `resolveFor` serves the primary hit and the bounce's far hit alike, so the far
+  hit shifts too. The plan's "primary rays first" was an order of work, and the bench measures the
+  whole cost.
+- Tests: `parallaxShiftsTheSheetTowardTheEyeByTheNormalMapsHeight` (a surface and a ground layer
+  shifted by the hand-computed `±0.014142` at the full and at no height, within 5e-5, and nothing
+  where the normal map stands in), the height bit and BC5 in `RtxSurfaceTest`, the material's
+  parallax and the cutout in `RtxSceneExtractorTest`, the layer's in `RtxGroundReaderTest` and
+  `RtxCellRingTest`, and the field in `everyMaterialFieldReachesBothDigests`.
+- `rtx debug test`: 556 component, 303 GPU and 22 game tests pass.
+- Vanilla against HEAD: all 23 views and all 184 frame hashes are the same. The kernels verb
+  moves every `visibilityhit` tuple, the vanilla ones by instruction order alone: the layer row's
+  flags word is loaded earlier, where the parallax test reads it, and one undefined value. The
+  layer frame is filled behind `HAS_MAPS` and not beside it, because the verb's optimizer keeps
+  arithmetic nothing reads.
+- `rtx debug gate`: 556 component, 303 GPU and 22 game tests pass, 47 checks, and the repeat pair
+  is identical.
+- `bench`, the phase 6 entry of `.notes/bench.txt`, against HEAD built aside: 0.08 to 0.11 ms of
+  trace at Balmora on the PBR profile, where the ground's layers read their heights, and the ship
+  and the guild inside the spread. Vanilla is inside the spread. The tail does not tell the arms
+  apart.
+- PBR: 21 of 23 views change. The mods ship 1189 `_nh` files, all DXT5. The shift is at most a
+  fiftieth of a repeat, as in OpenMW, so the pictures differ mostly by the sampling noise.
 
 **Phase 7 — measured follow-ups.** The lamp target with specular, specular aliasing, the AO A/B,
 the SSS A/B, the RR specular hit distance.

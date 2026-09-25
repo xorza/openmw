@@ -97,6 +97,14 @@ namespace Rtx
         Index mNormal = sNoIndex;
         Index mSpecular = sNoIndex;
 
+        /// Whether the normal map's alpha is a height the texture coordinates are shifted by toward
+        /// the eye, as the rasterizer's `parallax.glsl` shifts them (`Shaders::MATERIAL_PARALLAX`).
+        ///
+        /// **Never on a cutout**, which the rasterizer does not spare: a hole is found by the
+        /// traversal's test, which has no eye to shift toward, and a surface that shifted where it
+        /// shades and not where it is cut would put the leaf and the hole in different places.
+        bool mParallax = false;
+
         /// What the texture is tinted by, in linear light. Three channels and not the record's
         /// four: the alpha beside it is `mOpacity` and is not a colour.
         osg::Vec3f mDiffuseColour{ 1.0f, 1.0f, 1.0f };

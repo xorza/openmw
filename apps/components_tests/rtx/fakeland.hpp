@@ -39,8 +39,9 @@ namespace Rtx::Testing
     /// **Heights a test can compute by hand**: a plane of eight units a column and sixteen a row
     /// over every cell with a record. Every such cell is two ground types, grass on its western
     /// half and rock on its eastern, on the 34 × 34 blend maps `getBlendmaps` builds for Morrowind.
-    /// The rock is a mod's: a `_diffusespec` with a normal map beside it, as `getLayerInfo` finds
-    /// them under `auto use terrain normal maps` and `auto use terrain specular maps`.
+    /// The rock is a mod's: a `_diffusespec` with an `_nh` beside it, height and all, as
+    /// `getLayerInfo` finds them under `auto use terrain normal maps` and `auto use terrain specular
+    /// maps`.
     class FakeLand : public Terrain::Storage
     {
     public:
@@ -121,12 +122,12 @@ namespace Rtx::Testing
         {
             if (!hasData(cellOf(centre, worldspace)))
             {
-                layers.push_back(layerOf("textures/_land_default.dds", "", false));
+                layers.push_back(layerOf("textures/_land_default.dds", "", false, false));
                 return;
             }
 
-            layers.push_back(layerOf("textures/grass.dds", "", false));
-            layers.push_back(layerOf("textures/rock_diffusespec.dds", "textures/rock_nh.dds", true));
+            layers.push_back(layerOf("textures/grass.dds", "", false, false));
+            layers.push_back(layerOf("textures/rock_diffusespec.dds", "textures/rock_nh.dds", true, true));
             blendmaps.push_back(half(true));
             blendmaps.push_back(half(false));
         }
@@ -146,9 +147,10 @@ namespace Rtx::Testing
                 static_cast<int>(std::floor(centre.x())), static_cast<int>(std::floor(centre.y())), worldspace);
         }
 
-        static Terrain::LayerInfo layerOf(const char* path, const char* normal, const bool specular)
+        static Terrain::LayerInfo layerOf(
+            const char* path, const char* normal, const bool parallax, const bool specular)
         {
-            return Terrain::LayerInfo{ VFS::Path::Normalized(path), VFS::Path::Normalized(normal), false, specular };
+            return Terrain::LayerInfo{ VFS::Path::Normalized(path), VFS::Path::Normalized(normal), parallax, specular };
         }
 
         /// A blend map covering the western or the eastern half of the cell, as `ESMTerrain`

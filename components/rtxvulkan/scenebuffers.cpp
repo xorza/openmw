@@ -81,7 +81,7 @@ namespace Rtx
                 .mSpecular = material.mSpecular,
                 .mFlags = (material.isMedium() ? Shaders::MATERIAL_MEDIUM : 0u)
                     | (untextured && material.mLayers.mCount > 0 ? Shaders::MATERIAL_STACKED : 0u)
-                    | vertexColourFlag(material.mVertexColour)
+                    | (material.mParallax ? Shaders::MATERIAL_PARALLAX : 0u) | vertexColourFlag(material.mVertexColour)
                     | (material.isAdditive() && material.mBlend == BlendKind::AddWhole ? Shaders::MATERIAL_ADD_WHOLE
                                                                                        : 0u)
                     | ((material.mDarkUnit & Shaders::MATERIAL_DARK_UNIT_MASK) << Shaders::MATERIAL_DARK_UNIT_SHIFT),

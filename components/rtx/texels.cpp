@@ -159,6 +159,11 @@ namespace Rtx
         }
     }
 
+    bool carriesHeight(const osg::Image& normalMap)
+    {
+        return readFormat(normalMap, TextureEncoding::Data) != TextureFormat::Bc5Unorm;
+    }
+
     std::string_view nameOf(TextureFormat format)
     {
         switch (format)
