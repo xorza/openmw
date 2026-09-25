@@ -234,7 +234,7 @@ bool candidateStops(uint instanceIndex, uint primitive, vec2 bary, vec3 crossed,
     vec2 uv[3];
     triangleUvs(triangleCorners(meshAt(instance.mMesh), primitive), uv);
     const TexturePoint point = texturePoint(
-        uv, cornerWeights(bary), material.mTextureTransform, surfaceConeAt(crossed, direction), coneWidth);
+        uv, bary, material.mTextureTransform, surfaceConeAt(crossed, direction), coneWidth);
 
     if (walkPast)
     {
@@ -378,7 +378,7 @@ Hit committedHit(
     const GpuMesh mesh = meshAt(hit.mMesh);
     hit.mCorner = triangleCorners(mesh, primitive);
 
-    const vec3 shading = triangleNormal(hit.mCorner, cornerWeights(bary));
+    const vec3 shading = triangleNormal(hit.mCorner, bary);
     hit.mShading = dot(shading, shading) > 1e-8 ? mat3(toWorld) * shading : vec3(0.0);
 
     // **Three more words, and only off a mesh that carries them.** The bit is on the row this already
@@ -387,7 +387,7 @@ Hit committedHit(
     hit.mTangent = vec4(0.0);
     if (HAS_MAPS && (mesh.mShape & MESH_TANGENTS) != 0u)
     {
-        const vec4 tangent = triangleTangent(hit.mCorner, cornerWeights(bary));
+        const vec4 tangent = triangleTangent(hit.mCorner, bary);
         hit.mTangent = vec4(mat3(toWorld) * tangent.xyz, tangent.w);
     }
 
@@ -679,7 +679,6 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
     const GpuInstance instance = instanceAt(surface.mInstance);
     const GpuMesh mesh = meshAt(hit.mMesh);
     const uvec3 corner = hit.mCorner;
-    const vec3 weight = cornerWeights(hit.mBary);
 
     // The plane the traversal already gave: position fetch has the corners and no buffer has to be
     // bound for them, where the vertices' own normals are a fetch and are better where they are.
@@ -720,7 +719,7 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
     // weights below are one or nought — the content states which, and `MATERIAL_VERTEX_TINT` says
     // why the mode does not survive the trip. Over half of Morrowind's shapes and every piece of
     // ground carry a colour, so a branch would be taken by most of the frame anyway.
-    const vec3 vertexColour = triangleColour(corner, weight);
+    const vec3 vertexColour = triangleColour(corner, hit.mBary);
     const float tinted = float((material.mFlags & MATERIAL_VERTEX_TINT) != 0u);
     const float glowing = float((material.mFlags & MATERIAL_VERTEX_GLOW) != 0u);
 
@@ -734,7 +733,7 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
 
     // Where the hit lands on the material's own sheet, which the albedo, the opacity and the
     // emissive map all read at. A terrain layer has a transform of its own and makes its own.
-    const TexturePoint point = texturePoint(uv, weight, material.mTextureTransform, cone, surface.mFootprint);
+    const TexturePoint point = texturePoint(uv, hit.mBary, material.mTextureTransform, cone, surface.mFootprint);
 
     // **A normal map, read through the tangents the mesh carries**, in the frame `normals.glsl`
     // builds: the tangent unit, the bitangent `cross(N, T) * w`, and the interpolated normal, with
@@ -764,7 +763,7 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
         // Each layer is a tiling texture masked by its own grid of weights, and the stack sums to
         // one where the masks were built to — the same sum the rasterizer reaches by drawing the
         // layers over each other with additive blending and one pass apiece.
-        const vec2 chunkUv = interpolate(uv, weight);
+        const vec2 chunkUv = acrossTriangle(uv[0], uv[1], uv[2], hit.mBary);
         for (uint i = 0u; i < material.mLayerCount; ++i)
         {
             const GpuLayer layer = layerAt(material.mLayerOffset + i);
@@ -774,7 +773,7 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
 
             albedo += showing
                 * sampleAlbedo(layer.mDiffuse,
-                    texturePoint(uv, weight, layer.mDiffuseTransform, cone, surface.mFootprint));
+                    texturePoint(uv, hit.mBary, layer.mDiffuseTransform, cone, surface.mFootprint));
         }
     }
     else if (HAS_MAPS && material.mSpecular != NO_TEXTURE)
@@ -826,7 +825,7 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
         {
             vec2 second[3];
             triangleSecondUvs(mesh, corner, second);
-            darkPoint = texturePoint(second, weight, vec4(1.0, 1.0, 0.0, 0.0), cone, surface.mFootprint);
+            darkPoint = texturePoint(second, hit.mBary, vec4(1.0, 1.0, 0.0, 0.0), cone, surface.mFootprint);
         }
 
         const vec4 dark = sampleDiffuse(material.mDark, darkPoint);

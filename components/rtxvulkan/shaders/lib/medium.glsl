@@ -57,13 +57,14 @@ float mediumCrossing(float painted, float facing)
 }
 
 /// One crossing of a walk that confirms nothing, read down to what the walk weighs it by: the rows
-/// the candidate names, the corner the texel is read at, and the texel.
+/// the candidate names, the corners of its triangle and where between them the walk crossed, and
+/// the texel read there.
 struct Crossing
 {
     GpuInstance mInstance;
     GpuMaterial mMaterial;
     uvec3 mCorner;
-    vec3 mWeight;
+    vec2 mBary;
     vec4 mTexel;
 };
 
@@ -76,12 +77,12 @@ Crossing crossingOf(uint instanceIndex, uint primitive, vec2 bary, vec3 crossed,
     crossing.mInstance = instanceAt(instanceIndex);
     crossing.mMaterial = materialAt(crossing.mInstance.mMaterial);
     crossing.mCorner = triangleCorners(meshAt(crossing.mInstance.mMesh), primitive);
-    crossing.mWeight = cornerWeights(bary);
+    crossing.mBary = bary;
 
     vec2 uv[3];
     triangleUvs(crossing.mCorner, uv);
     const TexturePoint point = texturePoint(
-        uv, crossing.mWeight, crossing.mMaterial.mTextureTransform, surfaceConeAt(crossed, direction), coneWidth);
+        uv, crossing.mBary, crossing.mMaterial.mTextureTransform, surfaceConeAt(crossed, direction), coneWidth);
 
     // One path: an untextured shell names `TEXTURE_NEUTRAL`, which reads as the grey it stood for.
     crossing.mTexel = sampleDiffuse(crossing.mMaterial.mDiffuse, point);
@@ -210,7 +211,7 @@ Gathered gatherAlong(vec3 origin, vec3 direction, float limit, Cone cone, Gather
         // original engine puts it: a surface carrying one glows *with its texture in it*. An
         // emissive *map* is not read — no cloud in the game carries one, and a fetch a crossing
         // for it would be paid by every shell of every one that does not.
-        const vec3 vertexColour = rule.mVertexTint ? triangleColour(crossing.mCorner, crossing.mWeight) : vec3(1.0);
+        const vec3 vertexColour = rule.mVertexTint ? triangleColour(crossing.mCorner, crossing.mBary) : vec3(1.0);
         const float tinted = rule.mVertexTint ? float((material.mFlags & MATERIAL_VERTEX_TINT) != 0u) : 0.0;
         const float glowing = rule.mVertexTint ? float((material.mFlags & MATERIAL_VERTEX_GLOW) != 0u) : 0.0;
 

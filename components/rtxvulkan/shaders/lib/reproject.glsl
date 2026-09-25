@@ -138,7 +138,7 @@ vec3 deformedBy(GpuInstance instance, GpuMesh mesh, uint primitive, vec2 bary, m
     if (mesh.mBindOffset == NO_STREAM)
         return vec3(0.0);
 
-    const vec3 step = triangleDeformation(mesh, triangleCorners(mesh, primitive), cornerWeights(bary));
+    const vec3 step = triangleDeformation(mesh, triangleCorners(mesh, primitive), bary);
 
     // The step is this frame less the last, and what is wanted is where the point was: the other
     // way round. A step of nought comes out as nought, so a body that did not move adds nothing

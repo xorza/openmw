@@ -9,6 +9,7 @@
 
 #include "scene.h"
 #include "bindings.glsl"
+#include "geometry.glsl"
 #include "ground.glsl"
 
 /// What the hit's own triangle contributes to a mip level, before any texture is named.
@@ -102,14 +103,14 @@ struct TexturePoint
 };
 
 /// @param transform mesh texture coordinates to this texture's, as `uv * xy + zw`.
-TexturePoint texturePoint(vec2 uv[3], vec3 weight, vec4 transform, SurfaceCone cone, float coneWidth)
+TexturePoint texturePoint(vec2 uv[3], vec2 bary, vec4 transform, SurfaceCone cone, float coneWidth)
 {
     const vec2 corner0 = uv[0] * transform.xy + transform.zw;
     const vec2 corner1 = uv[1] * transform.xy + transform.zw;
     const vec2 corner2 = uv[2] * transform.xy + transform.zw;
 
-    return TexturePoint(corner0 * weight.x + corner1 * weight.y + corner2 * weight.z,
-        coneBase(corner0, corner1, corner2, cone, coneWidth));
+    return TexturePoint(
+        acrossTriangle(corner0, corner1, corner2, bary), coneBase(corner0, corner1, corner2, cone, coneWidth));
 }
 
 /// Where a sphere-mapped sheet is read, and how coarse a level the ray's cone can tell apart

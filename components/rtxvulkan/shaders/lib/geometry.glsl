@@ -1,7 +1,7 @@
 #ifndef OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_GEOMETRY_GLSL
 #define OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_GEOMETRY_GLSL
 
-// What a hit is, before any material is read: which vertices, what each weighs, and the
+// What a hit is, before any material is read: which vertices, where between them, and the
 // plane the triangle lies in.
 
 #include "scene.h"
@@ -32,10 +32,29 @@ uvec3 triangleCorners(GpuMesh mesh, uint primitive)
     return mesh.mVertexOffset + uvec3(block.at[at], block.at[at + 1u], block.at[at + 2u]);
 }
 
-/// What each corner contributes at a hit, from the two barycentrics a query reports.
-vec3 cornerWeights(vec2 bary)
+/// What the three corners of a triangle hold, carried to where a hit landed on it from the two
+/// barycentrics a query reports: the first corner's value, and each other corner's difference from
+/// it scaled by that corner's barycentric.
+///
+/// **Relative to one corner, and not weighted by all three.** The first corner's weight would be
+/// `1 - b.x - b.y`, which rounds twice, so three weights need not sum to one: weighted, a value the
+/// same at every corner comes back one or two ulp off in between one hit in twenty-four and one in
+/// four, and a vertex tint of 1.0 as 0.99999994. Here a corner that agrees adds a difference of
+/// nought, so such a value comes back exactly, and one that changes little across a triangle keeps
+/// the precision of its change rather than of its size.
+vec2 acrossTriangle(vec2 first, vec2 second, vec2 third, vec2 bary)
 {
-    return vec3(1.0 - bary.x - bary.y, bary.x, bary.y);
+    return first + (second - first) * bary.x + (third - first) * bary.y;
+}
+
+vec3 acrossTriangle(vec3 first, vec3 second, vec3 third, vec2 bary)
+{
+    return first + (second - first) * bary.x + (third - first) * bary.y;
+}
+
+vec4 acrossTriangle(vec4 first, vec4 second, vec4 third, vec2 bary)
+{
+    return first + (second - first) * bary.x + (third - first) * bary.y;
 }
 
 /// The texture coordinates of the triangle a hit landed on.
@@ -81,25 +100,25 @@ void triangleNormals(uvec3 corner, out vec3 normal[3])
 }
 
 /// The same interpolated across the triangle, which is what a hit shades with.
-vec3 triangleNormal(uvec3 corner, vec3 weight)
+vec3 triangleNormal(uvec3 corner, vec2 bary)
 {
     vec3 normal[3];
     triangleNormals(corner, normal);
 
-    return normal[0] * weight.x + normal[1] * weight.y + normal[2] * weight.z;
+    return acrossTriangle(normal[0], normal[1], normal[2], bary);
 }
 
 /// The vertex tangents interpolated across the triangle, in the mesh's own space, with the
 /// bitangent's handedness in `w` interpolated with them — which is what the rasterizer's
 /// `passTangent` is, and what `normals.glsl` builds its frame from. Nought where the mesh carries
 /// none, and the caller has asked whether it carries any — `MESH_TANGENTS`.
-vec4 triangleTangent(uvec3 corner, vec3 weight)
+vec4 triangleTangent(uvec3 corner, vec2 bary)
 {
     TangentBlock block = tangentBlockOf(corner.x);
     const uvec3 at = corner % VERTEX_BLOCK;
 
-    return unpackTangent(block.at[at.x]) * weight.x + unpackTangent(block.at[at.y]) * weight.y
-        + unpackTangent(block.at[at.z]) * weight.z;
+    return acrossTriangle(
+        unpackTangent(block.at[at.x]), unpackTangent(block.at[at.y]), unpackTangent(block.at[at.z]), bary);
 }
 
 /// How far the point a hit landed on moved since the previous frame, in the mesh's own space:
@@ -115,15 +134,14 @@ vec4 triangleTangent(uvec3 corner, vec3 weight)
 /// @param corner the global vertex ids `triangleCorners` hands back, which are the mesh's
 ///        vertex offset plus the index within the mesh; the pose blocks are addressed by the
 ///        bind offset plus that index.
-vec3 triangleDeformation(GpuMesh mesh, uvec3 corner, vec3 weight)
+vec3 triangleDeformation(GpuMesh mesh, uvec3 corner, vec2 bary)
 {
     const uvec3 posed = corner - mesh.mVertexOffset + mesh.mBindOffset;
     const uvec3 at = posed % VERTEX_BLOCK;
     NormalBlock now = poseBlockOf(posed.x);
     NormalBlock was = previousPoseBlockOf(posed.x);
 
-    return (now.at[at.x] - was.at[at.x]) * weight.x + (now.at[at.y] - was.at[at.y]) * weight.y
-        + (now.at[at.z] - was.at[at.z]) * weight.z;
+    return acrossTriangle(now.at[at.x] - was.at[at.x], now.at[at.y] - was.at[at.y], now.at[at.z] - was.at[at.z], bary);
 }
 
 /// The vertex colour interpolated across the triangle a hit landed on, in linear light.
@@ -135,17 +153,12 @@ vec3 triangleDeformation(GpuMesh mesh, uvec3 corner, vec3 weight)
 /// **Interpolated in light, and not between two stored bytes.** The host decodes each vertex once
 /// — `Rtx::MeshArrays::mColours` — so what a hit reads across a triangle is a blend of
 /// reflectances rather than a blend of the numbers they were written down as.
-vec3 triangleColour(uvec3 corner, vec3 weight)
+vec3 triangleColour(uvec3 corner, vec2 bary)
 {
     ColourBlock block = colourBlockOf(corner.x);
     const uvec3 at = corner % VERTEX_BLOCK;
 
-    return block.at[at.x] * weight.x + block.at[at.y] * weight.y + block.at[at.z] * weight.z;
-}
-
-vec2 interpolate(vec2 uv[3], vec3 weight)
-{
-    return uv[0] * weight.x + uv[1] * weight.y + uv[2] * weight.z;
+    return acrossTriangle(block.at[at.x], block.at[at.y], block.at[at.z], bary);
 }
 
 #endif

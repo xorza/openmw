@@ -61,6 +61,18 @@ elseif (CMAKE_CXX_COMPILER_ID STREQUAL GNU OR CMAKE_CXX_COMPILER_ID MATCHES Clan
         list(APPEND OPENMW_RTX_CHECKS -Wno-null-dereference)
     endif()
 
+    # One check GCC 16 gets wrong, measured on Arch's 16.2 and taken off there:
+    # `-Wstringop-overflow` reports growing a `std::vector` of bytes with `resize(n, value)` as eight
+    # bytes written into an allocation of one to five, where the growth is inlined into a test at
+    # `-O3` and the fill's move of the old bytes is vectorised. The path is one that cannot happen,
+    # seen by a pass that runs before the sizes are folded — the class of GCC bugs 107852, 117983 and
+    # 118521 — and it came back at a second call site after the first was written around, so it is
+    # the check that is taken off and not the call site that is bent. It is on by default and so
+    # reaches every file.
+    if (CMAKE_CXX_COMPILER_ID STREQUAL GNU AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 16)
+        list(APPEND OPENMW_RTX_ERRORS -Wno-stringop-overflow)
+    endif()
+
     # `-Wdouble-promotion` is GCC's only. Clang applies it to implicit argument conversions as
     # well as to arithmetic, which fires nine times inside `components/misc/convert.hpp` — an
     # upstream header whose whole job is handing `osg`'s floats to a double-precision Bullet.
@@ -147,10 +159,11 @@ endfunction()
 # own headers, which a host never does — the backend keeps Vulkan private behind
 # `createrenderer.hpp`. Found here, both see the same target.
 #
-# **1.4.329 at least**, the headers that first name `VK_KHR_shader_fma`: every shader's fusions are
-# `OpFmaKHR` (`Rtx::pinFloatArithmetic`), and an older SDK is a configure that says so rather than a
-# compile that stops inside `requirements.cpp`.
-find_package(Vulkan 1.4.329 REQUIRED)
+# **1.4.333 at least**, the headers that first name everything the backend requires: the hit objects
+# of `VK_EXT_ray_tracing_invocation_reorder` came at 1.4.333, and `VK_KHR_shader_fma`, which every
+# shader's fusions are (`Rtx::pinFloatArithmetic`), at 1.4.329. An older SDK is a configure that
+# says so rather than a compile that stops inside `requirements.cpp`.
+find_package(Vulkan 1.4.333 REQUIRED)
 
 # Where the RTX resources land. Not `OPENMW_RESOURCES_ROOT`: the top level only defines that for
 # non-Apple builds, and macOS derives its own — the bundle's `Contents/Resources` — inside
