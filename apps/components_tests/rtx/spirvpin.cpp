@@ -117,7 +117,7 @@ namespace Rtx
 
             void decorate(std::uint32_t id, spv::Decoration decoration)
             {
-                append(mAnnotations, spv::OpDecorate, { id, decoration });
+                append(mAnnotations, spv::OpDecorate, { id, static_cast<std::uint32_t>(decoration) });
             }
 
             void importSet(std::uint32_t id, std::string_view name)
