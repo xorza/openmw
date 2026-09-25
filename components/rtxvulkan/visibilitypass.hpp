@@ -113,20 +113,26 @@ namespace Rtx
         /// Whether the eye can meet water in this scene — the scene's answer and not the camera's,
         /// and what `HAS_SEA` takes the waves out of for a room.
         bool mWater = false;
+
+        /// Whether this scene places a material with a normal map or a specular map, and so whether
+        /// the trace needs the maps' code — `HAS_MAPS`. The scene's answer, for `mWater`'s reason.
+        bool mMapped = false;
     };
 
     /// What a trace can be told at compile time, and so what keys a pipeline. Each is only ever
     /// false where the shader's own test already answers no, so a variant takes out dead code and
-    /// never an answer, and a specialized frame is the same picture byte for byte.
-    /// `lib/variants.glsl` says what each removes.
+    /// never an answer. `lib/variants.glsl` says what each removes, and why that is the same
+    /// arithmetic and not always the same bits.
     struct VisibilityVariant
     {
         bool mSun = true;
         bool mMoons = true;
         bool mSea = true;
+        bool mMaps = true;
 
-        /// What this frame is. `water` is `VisibilityInputs::mWater`, for the reason given there.
-        static VisibilityVariant resolve(const Shaders::VisibilityConstants& frame, bool water);
+        /// What this frame is. `water` and `mapped` are `VisibilityInputs::mWater` and `mMapped`, for
+        /// the reason given there.
+        static VisibilityVariant resolve(const Shaders::VisibilityConstants& frame, bool water, bool mapped);
 
         /// Which of the table's pipelines this tuple is.
         std::uint32_t index() const;
@@ -135,7 +141,7 @@ namespace Rtx
         std::string describe(std::string_view kernel) const;
 
         /// How many tuples there are, and so how long the table is.
-        static constexpr std::uint32_t sCount = 8;
+        static constexpr std::uint32_t sCount = 16;
     };
 
     /// One ray per pixel against the top-level structure. Everything it needs arrives at record
@@ -144,8 +150,8 @@ namespace Rtx
     class VisibilityPass
     {
     public:
-        /// Uploads the blue-noise tile, which the pass owns because it belongs to the sampler and
-        /// not to the scene or the camera.
+        /// Uploads the blue-noise tile and the lobe's table, which the pass owns because they belong
+        /// to the sampler and to the surface model and not to the scene or the camera.
         ///
         /// @param textureLayout the layout of the bindless array this will be handed at record
         ///        time, because a pipeline layout names every set it will ever see.
@@ -239,12 +245,14 @@ namespace Rtx
 
         /// The same, for the launch that fills the fog volume's froxels. Every tuple has one, a
         /// room's included: the volume walks the lamps once per froxel where the closed form would
-        /// be a lamp reservoir and a shadow ray per pixel.
+        /// be a lamp reservoir and a shadow ray per pixel. **The maps are not a question it asks**,
+        /// so a tuple with maps is answered by its twin without them.
         const TracePipeline& scatterPipelineFor(VisibilityVariant variant) const;
 
         const Device& mDevice;
 
         Buffer mBlueNoise;
+        Buffer mSpecularAlbedo;
 
         /// This frame's `VisibilityConstants`, on the device: a push constant until they passed
         /// 256 bytes. Written with `vkCmdUpdateBuffer`, which runs in queue order, so one buffer
@@ -271,9 +279,10 @@ namespace Rtx
         /// One pipeline per tuple, every one of them made by `compileEvery`.
         std::array<std::unique_ptr<TracePipeline>, VisibilityVariant::sCount> mPipelines;
 
-        /// The same table for the launch that fills the froxels. A launch and not a dispatch, and
-        /// so is the column pass under it: `fogscatter.rgen` says what a ray query answers inside a
-        /// dispatch when another process shares the card.
+        /// The same table for the launch that fills the froxels, made for the tuples without maps —
+        /// `scatterPipelineFor` says why. A launch and not a dispatch, and so is the column pass
+        /// under it: `fogscatter.rgen` says what a ray query answers inside a dispatch when another
+        /// process shares the card.
         std::array<std::unique_ptr<TracePipeline>, VisibilityVariant::sCount> mScatterPipelines;
 
         /// And one for the launch that finds where each column's ray stops, which no tuple

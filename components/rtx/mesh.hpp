@@ -161,6 +161,10 @@ namespace Rtx
         /// Which units read the second set — `MeshArrays::mUnitStreams`.
         std::uint32_t mUnitStreams = 0;
 
+        /// Whether any of the mesh's vertices has a tangent — `MeshArrays::mTangents` — which is
+        /// what a hit asks before it reads its triangle's three.
+        bool mTangents = false;
+
         /// What the fold found this mesh's triangles to be. `Rtx::FoldedShape` says what each half
         /// means; the scene keeps them and draws nothing from them.
         FoldedShape mShape;
@@ -227,5 +231,9 @@ namespace Rtx
         /// How many are the player's own arms — `InstanceClass::FirstPerson` — and so whether the
         /// eye traces them ahead of the world at all (`VisibilityConstants::mArmsInFrame`).
         std::uint32_t mFirstPerson = 0;
+
+        /// How many wear a normal map or a specular map — `Material::Traversed::mMapped` — and so
+        /// whether the trace needs the maps' code at all (`HAS_MAPS`). None in a vanilla scene.
+        std::uint32_t mMapped = 0;
     };
 }

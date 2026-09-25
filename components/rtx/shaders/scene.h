@@ -479,6 +479,11 @@ namespace Rtx::Shaders
     /// which of a surface's two normals describes it, which `litCosine` reads.
     const uint MESH_CLOSED = 0x02u;
 
+    /// The mesh carries tangents — `Rtx::MeshRange::mTangents` — so a hit on it has a frame to read
+    /// a normal map through. **What a traversal asks before it fetches three tangent words**, on the
+    /// mesh row it already holds: a vanilla scene has none, and every hit in it skips the fetch.
+    const uint MESH_TANGENTS = 0x04u;
+
     /// Where a mesh's vertices and indices begin in the shared buffers.
     ///
     /// Indices are mesh-local, so a triangle's vertex is `mVertexOffset` plus what the index says.
@@ -627,9 +632,10 @@ namespace Rtx::Shaders
     /// a class of mistake gone.
     struct GpuTables
     {
-        /// The four tables of block addresses, which a global vertex or index id is resolved
-        /// through. The normals are this slot's copy.
+        /// The five tables of block addresses, which a global vertex or index id is resolved
+        /// through. The normals and the tangents are this slot's copy.
         uint64 mNormalBlocks;
+        uint64 mTangentBlocks;
         uint64 mTexCoordBlocks;
         uint64 mColourBlocks;
         uint64 mIndexBlocks;
@@ -650,6 +656,12 @@ namespace Rtx::Shaders
         uint64 mLightList;
 
         uint64 mBlueNoise;
+
+        /// The GGX lobe's two integrals over the cosine to the eye and the roughness,
+        /// `Rtx::SpecularAlbedo`: made once and read for every glossy surface's compensation and
+        /// its specular albedo.
+        uint64 mSpecularAlbedo;
+
         uint64 mSprites;
         uint64 mEmitters;
 
@@ -944,6 +956,17 @@ namespace Rtx::Shaders
         /// A map the albedo is multiplied by, or `NO_TEXTURE`, read at the unit `mFlags` names.
         uint mDark;
 
+        /// A tangent-space normal map, or `NO_TEXTURE`. Read at the diffuse's own place on the sheet
+        /// — a companion map is attached at a unit with no coordinates of its own, and reads unit
+        /// nought's — through the tangents the mesh carries.
+        uint mNormal;
+
+        /// A `_spec` map in the metal and roughness layout, or `NO_TEXTURE`: metalness in red,
+        /// perceptual roughness in green. **What names it also says the diffuse was authored as an
+        /// albedo**, so a material that has one is not delit — `Rtx::SpecularLayout` is what lets a
+        /// row carry one at all.
+        uint mSpecular;
+
         /// What this material is that no number above says — the `MATERIAL_*` bits.
         ///
         /// **Last.** A `vec4` is four-aligned in scalar layout like everything else here, so this
@@ -961,10 +984,10 @@ namespace Rtx::Shaders
     static_assert(sizeof(GpuLight) == 40, "GpuLight must be scalar-packed on every side");
     static_assert(sizeof(GpuLightGrid) == 28, "GpuLightGrid must be scalar-packed on every side");
     static_assert(sizeof(GpuLayer) == 48, "GpuLayer must be scalar-packed on every side");
-    static_assert(sizeof(GpuMaterial) == 88, "GpuMaterial must be scalar-packed on every side");
+    static_assert(sizeof(GpuMaterial) == 96, "GpuMaterial must be scalar-packed on every side");
     static_assert(sizeof(GpuSprite) == 56, "GpuSprite must be scalar-packed on every side");
     static_assert(sizeof(GpuEmitter) == 40, "GpuEmitter must be scalar-packed on every side");
-    static_assert(sizeof(GpuTables) == 152, "GpuTables must be scalar-packed on every side");
+    static_assert(sizeof(GpuTables) == 168, "GpuTables must be scalar-packed on every side");
 
 #endif
 

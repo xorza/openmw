@@ -202,6 +202,30 @@ vec4 sampleDiffuse(uint slot, TexturePoint point)
     return textureLod(textures[nonuniformEXT(slot)], point.mAt, coneLod(slot, point));
 }
 
+/// A tangent-space normal off a normal map, read at the level its cone can resolve: `2 rgb - 1`, as
+/// `objects.frag` decodes it, and not unit — the frame it is carried through is normalised after.
+///
+/// **A map of two channels reads nought in blue**, and no map of three holds that: its blue is the
+/// normal's height over the surface, from a half up. So a blue of nought is a BC5 or an RG map, and
+/// the third is rebuilt from the two, as the rasterizer rebuilds it for exactly those formats.
+vec3 sampleNormalMap(uint slot, TexturePoint point)
+{
+    const vec3 stored = sampleDiffuse(slot, point).rgb;
+    const vec2 across = stored.xy * 2.0 - 1.0;
+    const float up = stored.z > 0.0 ? stored.z * 2.0 - 1.0 : sqrt(max(1.0 - dot(across, across), 0.0));
+
+    return vec3(across, up);
+}
+
+/// A `_spec` map's metalness and perceptual roughness — `GpuMaterial::mSpecular`. **The occlusion
+/// in blue is not read**, because the traced bounce and `ambientReaching` already find what real
+/// geometry occludes and the map would count it twice; nor the scattering in alpha, which the BC1
+/// maps most of the content ships cannot carry.
+vec2 sampleSpecularMap(uint slot, TexturePoint point)
+{
+    return sampleDiffuse(slot, point).rg;
+}
+
 /// The albedo a hit landed on, read at the level its cone can resolve, with the light painted
 /// into the texture divided back out by the run's `mDelight` — `sampleAlbedoLod` says why.
 vec3 sampleAlbedo(uint slot, TexturePoint point)

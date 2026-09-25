@@ -363,6 +363,7 @@ namespace Rtx
             .mShown = &shown,
             .mSunGlare = &mDisplay.getGlareCounts(),
             .mWater = held.getCounts().mWater > 0,
+            .mMapped = held.getCounts().mMapped > 0,
         };
     }
 

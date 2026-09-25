@@ -561,6 +561,24 @@ nought for none). The device keeps a copy per frame slot beside the normals, and
 them with the linear part of the blend. The device makes the shading map and the sprite bake as
 each texture arrives; the host's versions are held to them by a test.
 
+The surface model (`shaders/brdf.h`, shared with the host) is glTF 2.0's metal and roughness: a
+GGX lobe with height-correlated Smith masking and Schlick's Fresnel, `F90 = saturate(50 F0.g)`,
+over a Lambert base. A vanilla surface is the model with `F0 = 0`, which reflects exactly nothing.
+`SpecularAlbedo` integrates the lobe once at startup into a 32 by 32 table over the cosine to the
+eye and the roughness (visible-normal draws, `specularalbedo.hpp`); the shader reads the energy
+compensation and the upscaler's specular albedo out of it (`GpuTables::mSpecularAlbedo`). In the
+hit (`resolveFor`), a material with a normal map reads it through the tangent `committedHit`
+fetched (`MESH_TANGENTS`) in the frame `normals.glsl` builds, and tilts it toward the interpolated
+normal where it faces the ray less than `MAPPED_MIN_FACING` (`facingRay`, which the water shares);
+`Surface::mSmooth` keeps the interpolated normal for a closed shape's light side. A material with a
+specular map is not delit, splits its base colour by metalness into `mAlbedo` and `mSpecular`
+(F0), and takes the vertex tint and the dark map on both. `gloss.glsl` holds the specular half
+(`Gloss`, `reflectionAt`); `gather` takes the lobe at the sun's or moon's direction and at the
+held lamp's centre, which is where the diffuse cosine and the reservoir's weight are taken, and
+returns the two halves apart (`DirectLight`). `HAS_MAPS` (`lib/variants.glsl`) compiles all of it
+out of a frame whose scene places no mapped material (`InstanceCounts::mMapped`). The bounce is
+still the cosine lobe. `rtxtool --show=albedo|normal|roughness|specular` writes the inputs out.
+
 Lights: `Light` is the device's row; `lightbuilder.hpp` makes one from a graph `LightSource`,
 a `LIGH` record, or a `Glow` (one lamp per magic effect); `LightGrid` bins lamps into a
 world-space grid. Water: `SeaState` and `WaveCascade` are the sea's tiles;
@@ -1137,6 +1155,7 @@ draw one frame.
 | what the scene is                              | `components/rtx/scenedesc.hpp` and the five table headers                |
 | a replacer's companion maps                    | `components/shader/automaps.hpp`, `components/rtx/specularlayout.hpp`, `textureencoding.hpp` |
 | a vertex's tangent                             | `components/rtx/tangent.hpp`, `components/rtxvulkan/shaders/lib/tangent.glsl`, `skin.comp` |
+| the surface model and its specular half        | `components/rtx/shaders/brdf.h`, `specularalbedo.hpp`, `components/rtxvulkan/shaders/lib/gloss.glsl` |
 | how a scene reaches the device                 | `components/rtx/sceneuploader.cpp`, `components/rtx/renderer.hpp`         |
 | the cells past the active grid                 | `components/rtx/cellring.hpp`, `cellsupply.hpp`, `cellreader.hpp`, `cellplacer.hpp` |
 | the sky, the air and the sea a frame is told   | `components/rtx/frameworld.hpp`, `skylight.hpp`, `mwrender/rtx/skyreader.hpp` |

@@ -105,6 +105,7 @@ set(RTX_FILES
     placementtable.hpp
     poseupdate.hpp
     prepared.hpp
+    radicalinverse.hpp
     reconstruction.hpp
     refusal.hpp
     refusals.cpp
@@ -134,6 +135,8 @@ set(RTX_FILES
     slot.hpp
     slots.cpp
     slots.hpp
+    specularalbedo.cpp
+    specularalbedo.hpp
     specularlayout.hpp
     sprite.hpp
     spritelight.cpp
@@ -141,6 +144,7 @@ set(RTX_FILES
     spritelistsize.cpp
     spritelistsize.hpp
     stepped.hpp
+    surfaceview.hpp
     surface.cpp
     surface.hpp
     tangent.cpp
@@ -173,6 +177,7 @@ set(RTX_SHADER_HEADERS
     shaders/atrous.h
     shaders/bindings.h
     shaders/bloom.h
+    shaders/brdf.h
     shaders/camera.h
     shaders/colour.h
     shaders/composite.h

@@ -38,8 +38,8 @@
 /// The two the hit module is specialized on, after the frame's tuple in `variants.glsl`: whether
 /// ground that kept its layer stack can reach this stage, and whether a hit is shaded as water.
 /// `VisibilityPass` hands each of the three stages its pair.
-layout(constant_id = 5) const bool LAYERED = false;
-layout(constant_id = 6) const bool WATER = false;
+layout(constant_id = 6) const bool LAYERED = false;
+layout(constant_id = 7) const bool WATER = false;
 
 layout(location = RTX_PAYLOAD) rayPayloadInEXT VisibilityPayload packed;
 hitAttributeEXT vec2 barycentrics;
@@ -105,13 +105,21 @@ void answerSolid(inout Answer answer, Surface surface)
         return;
     }
 
-    // **The colour is replaced and the surface is not.** What this view changes is what a pixel is
-    // painted with; the thing under it is the same Lambert surface, and saying otherwise hands every
-    // reader of the guide a frame with no normals in it — which the wavelet reads as "no surface
+    // **The colour is replaced and the surface is not.** What these views change is what a pixel is
+    // painted with; the guides still describe a surface there, and saying otherwise hands every
+    // reader of them a frame with no normals in it — which the wavelet reads as "no surface
     // anywhere" and the upscaler reconstructs accordingly.
-    if (frame.mShowAlbedo != 0u)
+    if (frame.mShow != SHOW_SHADED)
     {
-        answer.mRadiance = surface.mAlbedo;
+        if (frame.mShow == SHOW_ALBEDO)
+            answer.mRadiance = surface.mAlbedo;
+        else if (frame.mShow == SHOW_NORMAL)
+            answer.mRadiance = 0.5 + 0.5 * surface.mNormal;
+        else if (frame.mShow == SHOW_ROUGHNESS)
+            answer.mRadiance = vec3(surface.mRoughness);
+        else
+            answer.mRadiance = surface.mSpecular;
+
         answer.mResponse = lambertResponse(surface);
         return;
     }

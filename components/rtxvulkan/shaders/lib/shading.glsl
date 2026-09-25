@@ -9,6 +9,7 @@
 #include "scene.h"
 #include "bindings.glsl"
 #include "frame.glsl"
+#include "gloss.glsl"
 #include "lights.glsl"
 #include "random.glsl"
 #include "records.glsl"
@@ -25,7 +26,20 @@
 const uint PATH_SEEN = 0u;
 const uint PATH_INDIRECT = 1u;
 
-/// The *direct* light arriving at a point and turning back out of it, per unit albedo.
+/// The direct light a surface sends back toward the eye, in its two halves.
+struct DirectLight
+{
+    /// What reaches the diffuse half, per unit albedo, with the share the lobe reflected at each
+    /// light taken off it.
+    vec3 mDiffuse;
+
+    /// What the lobe reflects toward the eye, whole: a specular half is not multiplied by the
+    /// diffuse albedo.
+    vec3 mSpecular;
+};
+
+/// The *direct* light arriving at a point and turning back out of it: per unit albedo for the
+/// diffuse half, and whole for the specular.
 ///
 /// **Sources that can be asked where they are, and nothing else.** The sun and the lamps are each a
 /// known direction and a shadow ray; everything that arrives by having bounced off something is
@@ -35,23 +49,39 @@ const uint PATH_INDIRECT = 1u;
 /// from — the two tests before it are what keep a cell's worth of lamps affordable.
 ///
 /// What it reads of the surface: where it is, its shading normal, which side a light has to stand
-/// on — `Surface::mClosed` picks between the plane and the shading normal, and `litCosine` says why
-/// neither answers for both — how wide the cone that found it had grown, which is the scale the
+/// on — `Surface::mClosed` picks between the plane and the interpolated normal, and `litCosine` says
+/// why neither answers for both — how wide the cone that found it had grown, which is the scale the
 /// caustics resolve waves at, and what a light on its far side is worth, `Surface::mTransmission`.
 ///
+/// **The lobe is taken at the light the diffuse half drew, toward that light's centre**, and its
+/// estimate divides by the same chances the diffuse one does. The centre is where the diffuse half's
+/// cosine and the reservoir's weight are taken, and a lobe taken anywhere else is divided by a
+/// weight that does not describe it: taken where the shadow ray went across a lamp's sphere, a lamp
+/// whose centre stands at the horizon weighs next to nothing while its sampled point may stand well
+/// above it, and the quotient has no bound. The draws are the diffuse half's and there are no
+/// others, so a surface with no specular half draws, weighs and traces exactly what it did before
+/// it could have one.
+///
+/// @param gloss the surface's specular half, `glossOf`: made once by the caller, which reports it
+///        to the upscaler as well.
 /// @param seed which draw sequence the lamp reservoir steps. **One per depth of the path**, because
 ///        a bounce shades a second surface and two reservoirs stepping one sequence would keep
 ///        correlated lamps at both ends of it.
 /// @param path `PATH_SEEN` or `PATH_INDIRECT`. It decides whether the moons are asked at all, and
 ///        whether the rest of this is drawn at `INDIRECT_LIGHT_RATE` or spent on every hit.
-vec3 gather(Surface surface, uint seed, uint path)
+DirectLight gather(Surface surface, Gloss gloss, uint seed, uint path)
 {
     const vec3 position = surface.mPosition;
     const vec3 normal = surface.mNormal;
-    const vec3 side = surface.mClosed ? surface.mNormal : surface.mGeometric;
+    const vec3 side = surface.mClosed ? surface.mSmooth : surface.mGeometric;
     const float transmission = surface.mTransmission;
 
     vec3 radiance = vec3(0.0);
+
+    // What the lobe reflects, and the share of the diffuse half's light it took. Each stays nought
+    // on a surface with no specular half, and taking nought off the diffuse half is exact.
+    vec3 specular = vec3(0.0);
+    vec3 taken = vec3(0.0);
 
     // **Drawn before anything else and out of a sequence of its own**: the ordering below is what
     // keeps a lamp arriving in the next cell from moving the penumbra of the one already there, and
@@ -61,7 +91,7 @@ vec3 gather(Surface surface, uint seed, uint path)
     {
         uint lit = randomSeed(seed + SEED_INDIRECT_LIGHT);
         if (randomNext(lit) >= INDIRECT_LIGHT_RATE)
-            return radiance;
+            return DirectLight(radiance, specular);
 
         rated = 1.0 / INDIRECT_LIGHT_RATE;
     }
@@ -131,8 +161,18 @@ vec3 gather(Surface surface, uint seed, uint path)
 
         const float chance = picked.mWeight / total;
 
-        radiance += picked.mSky.mIrradiance * lightThroughWater(position, picked.mSky.mDirection, surface.mFootprint)
-            * (picked.mCosine * INV_PI * skyVisible(picked.mSky, position, sunDraw) / chance);
+        const float skySeen = skyVisible(picked.mSky, position, sunDraw);
+        const vec3 skyArriving
+            = picked.mSky.mIrradiance * lightThroughWater(position, picked.mSky.mDirection, surface.mFootprint);
+        const vec3 skyDiffuse = skyArriving * (picked.mCosine * INV_PI * skySeen / chance);
+        radiance += skyDiffuse;
+
+        if (gloss.mGlossy)
+        {
+            const Reflection reflected = reflectionAt(gloss, side, picked.mSky.mDirection);
+            specular += skyArriving * (skySeen / chance) * reflected.mLobe;
+            taken += skyDiffuse * reflected.mFresnel;
+        }
     }
 
     // A lamp loses nothing to the water, where the sun and the sky both lose the column above the
@@ -150,12 +190,27 @@ vec3 gather(Surface surface, uint seed, uint path)
     //
     // **With one lamp in the cell it is exactly the arithmetic that was here before**: the sum is
     // that lamp's weight, the ratio is one, and what is left is the term that was always there.
+    //
+    // **The lobe takes the held lamp at the lamp's own falloff**, off its row, and the reservoir's
+    // share: the estimate of the lobe over every lamp is then the one the diffuse half makes, with
+    // the lobe where the cosine was.
     Reservoir kept = noLamps();
     weighLamps(kept, state, position, normal, side, INV_PI, transmission);
 
-    radiance += lampsThrough(kept, lampDraw);
+    float lampShare;
+    const vec3 lampDiffuse = lampsThrough(kept, lampDraw, lampShare);
+    radiance += lampDiffuse;
 
-    return radiance * rated;
+    if (gloss.mGlossy && lampShare > 0.0)
+    {
+        const GpuLight held = lightAt(kept.mLamp);
+        const Lamp lamp = lampAt(held, position);
+        const Reflection reflected = reflectionAt(gloss, side, lamp.mTowards);
+        specular += held.mIntensity * (lamp.mReaching * lampShare) * reflected.mLobe;
+        taken += lampDiffuse * reflected.mFresnel;
+    }
+
+    return DirectLight((radiance - taken) * rated, specular * rated);
 }
 
 /// What terminates a path: the cell's own ambient, dimmed by whatever stands over the point.
@@ -178,12 +233,23 @@ vec3 pathEnd(vec3 position, float reaching)
     return frame.mAmbient * (daylightReaching(position) * reaching);
 }
 
-/// What `shadeSurface` does, said in those terms. Perfectly rough and perfectly diffuse, because
-/// that is exactly what a Lambert model is — and until there is a material model saying otherwise,
-/// it is the true answer rather than a stand-in for one.
+/// What `shadeSurface` does with a surface that has no specular half, said in those terms. Perfectly
+/// rough and perfectly diffuse, because that is exactly what a Lambert surface is — the true answer
+/// for it and not a stand-in for one.
 SurfaceResponse lambertResponse(Surface surface)
 {
     return SurfaceResponse(surface.mNormal, surface.mAlbedo, vec3(0.0), 1.0);
+}
+
+/// What a surface is in the upscaler's terms: its shading normal, its diffuse albedo, the albedo its
+/// lobe reflects toward the eye and its roughness — or, with no specular half, `lambertResponse`
+/// exactly.
+SurfaceResponse surfaceResponse(Surface surface, Gloss gloss)
+{
+    if (!gloss.mGlossy)
+        return lambertResponse(surface);
+
+    return SurfaceResponse(surface.mNormal, surface.mAlbedo, gloss.mAlbedo, surface.mRoughness);
 }
 
 /// What an ordinary lit surface sends back along the ray that found it.
@@ -192,7 +258,8 @@ SurfaceResponse lambertResponse(Surface surface)
 ///        hit the eye found, and `pathEnd` at the hit that hemisphere found. **One statement of what
 ///        a diffuse surface does with light, used at both depths** — writing it twice is how the two
 ///        would come to disagree.
-vec3 shadeSurface(Surface surface, vec3 incoming, uint seed, uint path)
+/// @param gloss the surface's specular half, `glossOf`.
+vec3 shadeSurface(Surface surface, Gloss gloss, vec3 incoming, uint seed, uint path)
 {
     // The emissive colour joins the light rather than the albedo, which is where the original engine
     // puts it: it sums the term with the diffuse and ambient light and multiplies the whole by the
@@ -202,8 +269,11 @@ vec3 shadeSurface(Surface surface, vec3 incoming, uint seed, uint path)
     // The emissive *map* is the other way round, and that is the engine's doing too
     // (`objects.frag:244`): added after the multiply, so it glows through whatever the surface is
     // made of rather than being tinted by it.
-    return surface.mAlbedo * (incoming + gather(surface, seed, path) + surface.mEmissiveColour * EMISSIVE_INTENSITY)
-        + surface.mEmitted;
+    //
+    // The lobe's light is added last, and whole.
+    const DirectLight lit = gather(surface, gloss, seed, path);
+    return surface.mAlbedo * (incoming + lit.mDiffuse + surface.mEmissiveColour * EMISSIVE_INTENSITY)
+        + surface.mEmitted + lit.mSpecular;
 }
 
 /// Which face of a surface a diffuse sample leaves by, and what the sample is then worth.
@@ -322,7 +392,7 @@ vec3 shadeAtPathEnd(Surface hit, uint ambientSeed, uint lampSeed, uint path)
     const float reaching
         = ambientReaching(hit.mPosition, hit.mNormal, hit.mGeometric, hit.mTransmission, ambientSeed);
 
-    return shadeSurface(hit, pathEnd(hit.mPosition, reaching), lampSeed, path);
+    return shadeSurface(hit, glossOf(hit), pathEnd(hit.mPosition, reaching), lampSeed, path);
 }
 
 /// What a bounce brings back when it reaches nothing.
@@ -415,9 +485,11 @@ vec3 bounceLight(Surface surface, uvec2 pixel)
 /// is how the two would come to disagree.
 void shadeSolid(Surface hit, uvec2 pixel, out vec3 direct, out vec3 bounce, out SurfaceResponse response)
 {
-    direct = shadeSurface(hit, vec3(0.0), pixelKey(pixel) + SEED_LAMPS_EYE, PATH_SEEN);
+    const Gloss gloss = glossOf(hit);
+
+    direct = shadeSurface(hit, gloss, vec3(0.0), pixelKey(pixel) + SEED_LAMPS_EYE, PATH_SEEN);
     bounce = bounceLight(hit, pixel);
-    response = lambertResponse(hit);
+    response = surfaceResponse(hit, gloss);
 }
 
 #endif

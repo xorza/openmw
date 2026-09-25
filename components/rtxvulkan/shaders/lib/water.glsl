@@ -7,6 +7,7 @@
 #include "camera.h"
 #include "look.h"
 #include "scene.h"
+#include "basis.glsl"
 #include "bindings.glsl"
 #include "random.glsl"
 #include "records.glsl"
@@ -182,18 +183,9 @@ WaterShading shadeWater(Surface surface, vec3 incident, uvec2 pixel, Cone cone)
     const float lobe = clamp(2.0 * sqrt(sea.mLostSlope), 0.0, 1.0);
     vec3 normal = fromBelow ? -sea.mNormal : sea.mNormal;
 
-    // A facet still facing away is one the surface would have hidden behind the wave in front of it.
-    // Tilting it back toward the plane until it faces the ray is the cheap stand-in for the
-    // self-occlusion that is missing, and it is what keeps a glancing reflection finite.
-    const float facing = dot(-incident, normal);
-    const float flatFacing = dot(-incident, plane);
-    if (facing < WATER_MIN_FACING)
-    {
-        // The dot is linear in the blend, so this is the exact fraction that brings it back to
-        // `WATER_MIN_FACING` — solved rather than iterated.
-        const float back = (WATER_MIN_FACING - facing) / max(flatFacing - facing, 1e-4);
-        normal = normalize(mix(normal, plane, clamp(back, 0.0, 1.0)));
-    }
+    // A facet still facing away is one the surface would have hidden behind the wave in front of it,
+    // and tilting it back toward the plane is what keeps a glancing reflection finite.
+    normal = facingRay(normal, plane, incident, WATER_MIN_FACING);
 
     const float cosine = clamp(dot(-incident, normal), 0.0, 1.0);
     const float fresnel = WATER_F0 + (1.0 - WATER_F0) * pow(1.0 - cosine, 5.0);
@@ -210,10 +202,11 @@ WaterShading shadeWater(Surface surface, vec3 incident, uvec2 pixel, Cone cone)
     // internal reflection makes it all of the pixel. What is written here reaches no return of its
     // own.
     //
-    // Water is the only surface in this renderer with a specular half at all. Every solid reports
+    // Water is the only surface of vanilla content with a specular half. A vanilla solid reports
     // nought and that is the content's answer rather than a gap: `nifloader.cpp` forces specular to
     // black and glossiness to zero for every mesh at Morrowind's NIF version, because the game had
-    // specular lighting disabled — measured across four cells, 831 materials, none with either.
+    // specular lighting disabled — measured across four cells, 831 materials, none with either. A
+    // solid with a specular map has one of its own, `surfaceResponse`.
     shaded.mResponse = SurfaceResponse(normal, vec3(0.0), vec3(fresnel), lobe);
 
     // Offset along the *plane*, not the facet: what a ray has to clear to avoid finding this surface

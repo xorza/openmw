@@ -6,6 +6,7 @@
 
 #include "scene.h"
 #include "bindings.glsl"
+#include "tangent.glsl"
 
 /// Twice the area of a hit triangle, as a vector along its plane's normal.
 ///
@@ -86,6 +87,19 @@ vec3 triangleNormal(uvec3 corner, vec3 weight)
     triangleNormals(corner, normal);
 
     return normal[0] * weight.x + normal[1] * weight.y + normal[2] * weight.z;
+}
+
+/// The vertex tangents interpolated across the triangle, in the mesh's own space, with the
+/// bitangent's handedness in `w` interpolated with them — which is what the rasterizer's
+/// `passTangent` is, and what `normals.glsl` builds its frame from. Nought where the mesh carries
+/// none, and the caller has asked whether it carries any — `MESH_TANGENTS`.
+vec4 triangleTangent(uvec3 corner, vec3 weight)
+{
+    TangentBlock block = tangentBlockOf(corner.x);
+    const uvec3 at = corner % VERTEX_BLOCK;
+
+    return unpackTangent(block.at[at.x]) * weight.x + unpackTangent(block.at[at.y]) * weight.y
+        + unpackTangent(block.at[at.z]) * weight.z;
 }
 
 /// How far the point a hit landed on moved since the previous frame, in the mesh's own space:

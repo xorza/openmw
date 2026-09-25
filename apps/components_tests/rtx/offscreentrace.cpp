@@ -19,7 +19,9 @@
 #include <components/rtx/offscreentrace.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/scene.h>
+#include <components/rtx/shaders/visibility.h>
 #include <components/rtx/slot.hpp>
+#include <components/rtx/surfaceview.hpp>
 #include <components/rtx/viewscene.hpp>
 #include <components/sceneutil/offscreenframing.hpp>
 #include <components/vfs/manager.hpp>
@@ -111,12 +113,12 @@ namespace Rtx
             for (const auto& [delight, albedo] : { std::pair{ 0.25f, false }, std::pair{ 0.75f, true } })
             {
                 renderer.mProfile.mDelight = delight;
-                renderer.mProfile.mShowAlbedo = albedo;
+                renderer.mProfile.mShow = albedo ? SurfaceView::Albedo : SurfaceView::Shaded;
                 world.traceInto(GuiSlot::at(0), false);
 
                 ASSERT_TRUE(renderer.mTraced.has_value());
                 EXPECT_EQ(renderer.mTraced->mDelight, delight);
-                EXPECT_EQ(renderer.mTraced->mShowAlbedo, albedo ? 1u : 0u);
+                EXPECT_EQ(renderer.mTraced->mShow, albedo ? Shaders::SHOW_ALBEDO : Shaders::SHOW_SHADED);
             }
         }
 

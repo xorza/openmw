@@ -369,7 +369,7 @@ namespace Rtx
             constants.mCamera.mSpreadAngle = 0.001f;
             constants.mFrame = 42;
             constants.mDelight = 0.5f;
-            constants.mShowAlbedo = 1;
+            constants.mShow = Shaders::SHOW_ALBEDO;
             constants.mTransparentBackground = 1;
 
             FogDrift drift;
@@ -386,7 +386,7 @@ namespace Rtx
             EXPECT_EQ(constants.mCamera.mSpreadAngle, 0.001f);
             EXPECT_EQ(constants.mFrame, 42u);
             EXPECT_EQ(constants.mDelight, 0.5f);
-            EXPECT_EQ(constants.mShowAlbedo, 1u);
+            EXPECT_EQ(constants.mShow, Shaders::SHOW_ALBEDO);
             EXPECT_EQ(constants.mTransparentBackground, 1u);
         }
 

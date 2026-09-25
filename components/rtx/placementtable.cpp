@@ -18,6 +18,7 @@ namespace Rtx
             .mMedium = traversed.mMedium ? 1u : 0u,
             .mAdditive = traversed.mAdditive ? 1u : 0u,
             .mFirstPerson = placed.mClass == InstanceClass::FirstPerson ? 1u : 0u,
+            .mMapped = worn.mMapped ? 1u : 0u,
         };
     }
 
@@ -30,6 +31,7 @@ namespace Rtx
         mCounts.mMedium += share.mMedium;
         mCounts.mAdditive += share.mAdditive;
         mCounts.mFirstPerson += share.mFirstPerson;
+        mCounts.mMapped += share.mMapped;
     }
 
     void PlacementTable::discount(const Index slot)
@@ -41,6 +43,7 @@ namespace Rtx
         mCounts.mMedium -= share.mMedium;
         mCounts.mAdditive -= share.mAdditive;
         mCounts.mFirstPerson -= share.mFirstPerson;
+        mCounts.mMapped -= share.mMapped;
     }
 
     Index PlacementTable::add(const MeshInstance& instance, const Material::Traversed& worn)

@@ -81,9 +81,10 @@ namespace Rtx
 
     private:
         /// Makes the five vertex buffers as long as the vertex runs reach and writes `range`'s run
-        /// of each. Fills one the mesh did not bring with what stands for nothing there, because a
-        /// reused slot still holds its last tenant's.
-        void writeVertices(const MeshRange& range, const MeshArrays& arrays);
+        /// of each, and says in `MeshRange::mTangents` whether any tangent word is not nought. Fills
+        /// one the mesh did not bring with what stands for nothing there, because a reused slot
+        /// still holds its last tenant's.
+        void writeVertices(MeshRange& range, const MeshArrays& arrays);
 
         /// Records `slot` as having arrived or gone, and grows the list to reach it.
         void note(Index slot, SlotNews what);

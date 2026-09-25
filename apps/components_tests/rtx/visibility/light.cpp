@@ -20,12 +20,16 @@
 #include <components/rtx/mesh.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
+#include <components/rtx/shaders/brdf.h>
 #include <components/rtx/shaders/look.h>
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/shaders/visibility.h>
 #include <components/rtx/shapefold.hpp>
+#include <components/rtx/specularalbedo.hpp>
 #include <components/rtx/surface.hpp>
 #include <components/rtx/texturedata.hpp>
+#include <components/rtx/textureencoding.hpp>
+#include <components/rtx/texturewrap.hpp>
 #include <components/vfs/pathutil.hpp>
 
 #include "../geometry.hpp"
@@ -437,7 +441,7 @@ namespace Rtx::Testing
 
             Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -150.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
-            camera.mShowAlbedo = 1u;
+            camera.mShow = Shaders::SHOW_ALBEDO;
 
             const auto render = [&](AlphaMode mode, float alphaRef) {
                 SceneDesc scene = makeWall();
@@ -591,6 +595,147 @@ namespace Rtx::Testing
             Light spent = lamp;
             spent.mReach = 50.0f;
             EXPECT_EQ(render(spent, osg::Vec3f(), false), 0) << "and one whose reach ends at the wall";
+        }
+
+        /// **A wall with a specular map reflects the lamp by the lobe the host evaluates**, a
+        /// dielectric keeps what the lobe did not take for its diffuse half, and a normal map turns
+        /// both through the tangent frame the rasterizer builds.
+        ///
+        /// The lamp test's wall, lamp and camera, with a metal and roughness map on the wall and the
+        /// sky black, so the centre pixel is the lamp's direct light and nothing else: its
+        /// irradiance square to the wall, `4000 * 3.99760e-4 = 1.59904`, through `brdf.h` at the
+        /// pixel's own vectors — the eye along `(1, -1, 0) / √2` and the lamp along `(0, -1, 0)`.
+        /// The base colour and the roughness are both a byte of 128, `0.501961`, read linearly as a
+        /// data map is.
+        ///
+        /// **The normal map is the frame's test.** The mesh carries the tangent `(1, 0, 0)` with a
+        /// handedness of one and the normal `(0, -1, 0)`, so the bitangent `cross(N, T) * w` is
+        /// `(0, 0, 1)`; a texel of `(191, 128, 221)` is the tangent-space normal
+        /// `(0.498, 0.0039, 0.733)`, which leans the normal toward the eye's side of the wall. A
+        /// frame built another way round — a bitangent flipped, a tangent read as the bitangent —
+        /// leans it somewhere else, and every term below moves with it.
+        ///
+        /// **A vertex tint darkens both halves**, and the reflectance's edge with it: a tint of a
+        /// quarter takes the dielectric's 4% to 1%, whose edge is `50 * 0.01 = 0.5`.
+        ///
+        /// **What the device is held to is the host's arithmetic, to float rounding**: the same
+        /// scalar functions and the same table lookup, `SpecularAlbedo::at`. A lobe off by a factor
+        /// anywhere is off by far more than a part in ten thousand. The surface views are held to
+        /// the same inputs exactly: the mapped normal, the painted roughness and the reflectance.
+        TEST_F(RtxVisibilityTest, aSpecularMapReflectsTheLampByTheHostsLobe)
+        {
+            constexpr std::uint32_t size = 33;
+            constexpr std::size_t centre = centreValueOf(size);
+
+            constexpr std::array<std::uint8_t, 4> sBaseTexel{ 128, 128, 128, 255 };
+            constexpr std::array<std::uint8_t, 4> sLeaningTexel{ 191, 128, 221, 255 };
+            const Shaders::VisibilityConstants camera = Testing::makeCamera(
+                osg::Vec3f(100.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
+
+            const float irradiance = 4000.0f * 3.99760e-4f;
+            const float base = 128.0f / 255.0f;
+            const float roughness = 128.0f / 255.0f;
+            const osg::Vec3f toEye = osg::Vec3f(1.0f, -1.0f, 0.0f) / std::sqrt(2.0f);
+            const osg::Vec3f toLamp(0.0f, -1.0f, 0.0f);
+            const osg::Vec3f normal(0.0f, -1.0f, 0.0f);
+            const osg::Vec3f tangent(1.0f, 0.0f, 0.0f);
+
+            const std::array<osg::Vec3f, 4> normals{ normal, normal, normal, normal };
+            const std::array<osg::Vec4f, 4> tangents{ osg::Vec4f(tangent, 1.0f), osg::Vec4f(tangent, 1.0f),
+                osg::Vec4f(tangent, 1.0f), osg::Vec4f(tangent, 1.0f) };
+
+            const auto lit
+                = [&](std::uint8_t metal, bool leaning, std::uint32_t show = Shaders::SHOW_SHADED, float tint = 1.0f) {
+                      const std::array<std::uint8_t, 4> mapTexel{ metal, 128, 255, 255 };
+                      const std::array<TextureData, 3> textures{ describeTexel(sBaseTexel, 0),
+                          describeTexel(mapTexel, 1), describeTexel(sLeaningTexel, 2) };
+                      const osg::Vec3f colour(tint, tint, tint);
+                      const std::array<osg::Vec3f, 4> colours{ colour, colour, colour, colour };
+
+                      SceneDesc scene;
+                      const Index mesh = scene.addMesh(MeshArrays{ .mPositions = sWallQuad,
+                          .mNormals = normals,
+                          .mTexCoords = sQuadUv,
+                          .mColours = colours,
+                          .mTangents = tangents,
+                          .mIndices = sQuadIndices });
+                      const Index diffuse = scene.textures().add(VFS::Path::NormalizedView("base.dds"));
+                      const Index map = scene.textures().add(
+                          VFS::Path::NormalizedView("base_spec.dds"), TextureWrap::Repeat, TextureEncoding::Data);
+                      const Index normalMap = scene.textures().add(
+                          VFS::Path::NormalizedView("base_n.dds"), TextureWrap::Repeat, TextureEncoding::Data);
+                      scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                          .mMesh = mesh,
+                          .mMaterial = scene.addMaterial(Material{ .mDiffuse = diffuse,
+                              .mNormal = leaning ? normalMap : sNoIndex,
+                              .mSpecular = map,
+                              .mVertexColour = VertexColour::Tint }) });
+                      scene.addLight(Light{
+                          .mPosition = osg::Vec3f(0.0f, -50.0f, 0.0f),
+                          .mIntensity = osg::Vec3f(4000.0f, 4000.0f, 4000.0f),
+                          .mReach = 500.0f,
+                      });
+
+                      Shaders::VisibilityConstants shown = camera;
+                      shown.mShow = show;
+                      std::vector<std::uint8_t> pixels;
+                      EXPECT_GT(countHits(scene, textures, shown, size, pixels), 0u);
+                      return osg::Vec3f(mRadiance[centre], mRadiance[centre + 1], mRadiance[centre + 2]);
+                  };
+
+            // The pixel on the host, at a shading normal of `shading`, a metalness of `metal` and a
+            // vertex tint of `tint`.
+            const auto expected = [&](const osg::Vec3f& shading, float metal, float tint = 1.0f) {
+                osg::Vec3f halfway = toEye + toLamp;
+                halfway.normalize();
+                const float toLight = shading * toLamp;
+                const float eyeCosine = shading * toEye;
+
+                const float reflectance = (metal * base + (1.0f - metal) * Shaders::DIELECTRIC_F0) * tint;
+                const float alpha = Shaders::ggxAlpha(roughness);
+                const osg::Vec2f table = SpecularAlbedo::shared().at(eyeCosine, roughness);
+                const float fresnel = Shaders::fresnelSchlick(
+                    reflectance, Shaders::specularEdge(reflectance), Shaders::schlickWeight(toEye * halfway));
+                const float lobe = fresnel * Shaders::specularCompensation(reflectance, table.y())
+                    * Shaders::ggxDistribution(alpha, shading * halfway)
+                    * Shaders::smithVisibility(alpha, eyeCosine, toLight) * toLight;
+                const float scattered = (1.0f - metal) * base * tint * toLight * Shaders::INV_PI * (1.0f - fresnel);
+
+                return irradiance * (scattered + lobe);
+            };
+
+            // A metal: no diffuse half at all, and the base colour is the reflectance.
+            const float metal = expected(normal, 1.0f);
+            EXPECT_NEAR(lit(255, false).x(), metal, metal * 1e-4f) << "a metal";
+
+            // A dielectric: the base colour scatters what the lobe's Fresnel term did not take, and
+            // the lobe reflects 4% and climbing.
+            const float dielectric = expected(normal, 0.0f);
+            EXPECT_NEAR(lit(0, false).x(), dielectric, dielectric * 1e-4f) << "a dielectric";
+
+            const float tinted = expected(normal, 0.0f, 0.25f);
+            EXPECT_NEAR(lit(0, false, Shaders::SHOW_SHADED, 0.25f).x(), tinted, tinted * 1e-4f)
+                << "a tinted dielectric";
+            EXPECT_EQ(lit(0, false, Shaders::SHOW_SPECULAR, 0.25f), osg::Vec3f(0.01f, 0.01f, 0.01f))
+                << "the tint on the reflectance";
+
+            // The same through the leaning map, decoded as `2 * byte / 255 - 1`.
+            const osg::Vec3f painted(
+                2.0f * 191.0f / 255.0f - 1.0f, 2.0f * 128.0f / 255.0f - 1.0f, 2.0f * 221.0f / 255.0f - 1.0f);
+            osg::Vec3f mapped = tangent * painted.x() + (normal ^ tangent) * painted.y() + normal * painted.z();
+            mapped.normalize();
+            const float leaning = expected(mapped, 0.0f);
+            EXPECT_NEAR(lit(0, true).x(), leaning, leaning * 1e-4f) << "through the leaning map";
+            EXPECT_GT(std::abs(leaning - dielectric), dielectric * 1e-2f) << "a map that leans nothing";
+
+            // And the views of the same inputs: the mapped normal as `0.5 + 0.5 n`, the painted
+            // roughness, and the reflectance of a metal, which is its base colour.
+            const osg::Vec3f shownNormal = lit(0, true, Shaders::SHOW_NORMAL);
+            const osg::Vec3f wantedNormal = mapped * 0.5f + osg::Vec3f(0.5f, 0.5f, 0.5f);
+            for (int axis = 0; axis < 3; ++axis)
+                EXPECT_NEAR(shownNormal[axis], wantedNormal[axis], 1e-5f) << axis;
+            EXPECT_EQ(lit(0, false, Shaders::SHOW_ROUGHNESS), osg::Vec3f(roughness, roughness, roughness));
+            EXPECT_EQ(lit(255, false, Shaders::SHOW_SPECULAR), osg::Vec3f(base, base, base));
         }
 
         /// Which side of a surface the light may come from is the triangle's plane's answer, and a

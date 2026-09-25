@@ -31,6 +31,7 @@
 #extension GL_EXT_ray_query : require
 
 #include "bindings.h"
+#include "brdf.h"
 #include "counts.h"
 #include "fogvolume.h"
 #include "gbuffer.h"
@@ -202,6 +203,12 @@ layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_ROWS) read
     uint at[];
 };
 
+// A vertex's tangent as one word — `TANGENT_*` in `scene.h` — and nought where the mesh has none.
+layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_ROWS) readonly buffer TangentBlock
+{
+    uint at[];
+};
+
 /// Where a blocked table's blocks start: a table of addresses, one per block.
 layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_BLOCKS) readonly buffer BlockTable
 {
@@ -230,6 +237,11 @@ NormalBlock poseBlockOf(uint posed)
 NormalBlock previousPoseBlockOf(uint posed)
 {
     return NormalBlock(BlockTable(frame.mTables.mPreviousPoseBlocks).at[posed / VERTEX_BLOCK]);
+}
+
+TangentBlock tangentBlockOf(uint vertex)
+{
+    return TangentBlock(BlockTable(frame.mTables.mTangentBlocks).at[vertex / VERTEX_BLOCK]);
 }
 
 TexCoordBlock texCoordBlockOf(uint vertex)
@@ -279,6 +291,12 @@ layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_ROWS) read
     float at[];
 };
 
+/// The lobe's two integrals a cell — `Rtx::SpecularAlbedo`.
+layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_ROWS) readonly buffer SpecularAlbedoTable
+{
+    vec2 at[];
+};
+
 /// How many texels each slot of the bindless array holds — `GpuTables::mTextureTexels`.
 layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_ROWS) readonly buffer TexelTable
 {
@@ -323,6 +341,13 @@ uint lightListAt(uint slot)
 float blueNoiseAt(uint index)
 {
     return BlueNoiseTable(frame.mTables.mBlueNoise).at[index];
+}
+
+/// The lobe's two integrals at one cell of the table, cell by cell along the cosine to the eye and
+/// row by row along the roughness.
+vec2 specularAlbedoCell(uint column, uint row)
+{
+    return SpecularAlbedoTable(frame.mTables.mSpecularAlbedo).at[row * SPECULAR_TABLE_SIZE + column];
 }
 
 /// How many texels the texture in `slot` holds, which is what its mip level owes its own size.

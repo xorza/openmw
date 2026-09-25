@@ -281,7 +281,7 @@ Reservoir noLamps()
 /// faceted, and its *facets* lean off the normals: read off the plane, whole triangles of a boulder
 /// go black under a light its surface plainly faces. `Surface::mClosed` is what tells them apart.
 ///
-/// @param side what decides which side of the surface a light has to stand on — `Surface::mNormal`
+/// @param side what decides which side of the surface a light has to stand on — `Surface::mSmooth`
 ///        for a closed shape and `Surface::mGeometric` for an open one. Zero has no meaning here:
 ///        an asker with no sides does not ask.
 float litCosine(vec3 normal, vec3 side, vec3 towards, float transmission)
@@ -454,12 +454,23 @@ void aimLampFrom(inout Reservoir kept, vec3 from)
 }
 
 /// What every lamp a reservoir stands for delivers, once the one it held has been traced to.
-vec3 lampsThrough(Reservoir kept, vec2 draw)
+///
+/// @param share what the held lamp's own light is worth to the estimate: the reservoir's weight over
+///        the held one's, times what the world left of it. Nought where nothing was held. What an
+///        asker that weighs the same lamp a second way multiplies by, which keeps that estimate the
+///        unbiased one this is.
+vec3 lampsThrough(Reservoir kept, vec2 draw, out float share)
 {
+    share = 0.0;
     if (!(kept.mWeight > 0.0))
         return vec3(0.0);
 
-    return kept.mRadiance * (kept.mTotal / kept.mWeight) * lampVisible(kept, draw);
+    const float visible = lampVisible(kept, draw);
+    share = (kept.mTotal / kept.mWeight) * visible;
+
+    // Not `mRadiance * share`, which rounds differently. The share is dead code in a frame with no
+    // specular half — every vanilla frame — and this is then the product vanilla pictures are held to.
+    return kept.mRadiance * (kept.mTotal / kept.mWeight) * visible;
 }
 
 #endif

@@ -361,7 +361,7 @@ namespace Rtx::Testing
             constexpr std::uint32_t size = 64;
             Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
-            camera.mShowAlbedo = 1u;
+            camera.mShow = Shaders::SHOW_ALBEDO;
 
             std::vector<std::uint8_t> pixels;
             EXPECT_EQ(countHits(makeWall(), {}, camera, size, pixels), size * size);
@@ -549,7 +549,7 @@ namespace Rtx::Testing
             // them reads as neither.
             camera.mSkyHorizon = osg::Vec3f(0.0f, 0.25f, 0.0f);
             camera.mSkyZenith = osg::Vec3f(0.0f, 0.25f, 0.0f);
-            camera.mShowAlbedo = 1u;
+            camera.mShow = Shaders::SHOW_ALBEDO;
 
             // The last column the wall covers, and the first one past it.
             constexpr std::size_t row = std::size_t{ size / 2 } * size;
@@ -1056,7 +1056,7 @@ namespace Rtx::Testing
 
             Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 30.0f, size, size, 10000.0f);
-            camera.mShowAlbedo = 1u;
+            camera.mShow = Shaders::SHOW_ALBEDO;
             camera.mDelight = 0.0f;
 
             struct Seen

@@ -364,6 +364,29 @@ namespace Rtx::Shaders
     /// as well would deliver the same light twice.
     const float SHEET_TRANSMISSION = 0.5f;
 
+    /// The reflectance at normal incidence of whatever a `_spec` map calls no metal: glTF 2.0's 4%,
+    /// an index of refraction of 1.5. A vanilla surface is none of these — it has no specular map and
+    /// reflects nothing, which is what its NIF says (`nifloader.cpp` sets specular to black on every
+    /// Morrowind mesh).
+    const float DIELECTRIC_F0 = 0.04f;
+
+    /// What the reflectance at grazing is, as a multiple of the reflectance at normal incidence's
+    /// green, saturated at one: `F90 = saturate(50 * F0.g)`.
+    ///
+    /// **No real material reflects under 2% at normal incidence**, so less is taken as specular
+    /// occlusion the content painted and the edge darkens with it — Filament's "specular occlusion"
+    /// and Unreal's `F_Schlick`, and the factor the Ray Reconstruction guide's `EnvBRDFApprox2`
+    /// carries. It is also what makes a reflectance of nought reflect exactly nothing at every angle,
+    /// which is what keeps a vanilla surface the Lambert surface it was.
+    const float SPECULAR_EDGE_SCALE = 50.0f;
+
+    /// The smoothest perceptual roughness a light is evaluated at.
+    ///
+    /// **The sun and the lamps are small, and a lobe narrower than they are is a spike the one ray
+    /// drawn across them lands in or misses.** Filament's floor for 32-bit analytic lights; it holds
+    /// the lobe's peak finite and is below any roughness the installed maps paint (steel reads 0.36).
+    const float ROUGHNESS_FLOOR = 0.045f;
+
     /// What share of indirect hits out of doors are lit at all, the rest paying by weight.
     ///
     /// **The two rays a bounce hit spends on direct light are the dimmest pair in the frame.** A sun ray

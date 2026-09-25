@@ -77,6 +77,8 @@ namespace Rtx
                 .mEnvironment = material.mEnvironment,
                 .mEnvironmentColour = material.mEnvironmentColour,
                 .mDark = material.mDark,
+                .mNormal = material.mNormal,
+                .mSpecular = material.mSpecular,
                 .mFlags = (material.isMedium() ? Shaders::MATERIAL_MEDIUM : 0u)
                     | (untextured && material.mLayers.mCount > 0 ? Shaders::MATERIAL_STACKED : 0u)
                     | vertexColourFlag(material.mVertexColour)
@@ -105,6 +107,8 @@ namespace Rtx
                 .mEnvironment = Shaders::NO_TEXTURE,
                 .mEnvironmentColour = osg::Vec3f(1.0f, 1.0f, 1.0f),
                 .mDark = Shaders::NO_TEXTURE,
+                .mNormal = Shaders::NO_TEXTURE,
+                .mSpecular = Shaders::NO_TEXTURE,
             };
         }
     }
@@ -198,8 +202,9 @@ namespace Rtx
             mMeshScratch.push_back(Shaders::GpuMesh{
                 .mVertexOffset = mesh.mVertices.mOffset,
                 .mIndexOffset = mesh.mIndices.mOffset,
-                .mShape
-                = (mesh.mShape.mSheet ? Shaders::MESH_SHEET : 0u) | (mesh.mShape.mClosed ? Shaders::MESH_CLOSED : 0u),
+                .mShape = (mesh.mShape.mSheet ? Shaders::MESH_SHEET : 0u)
+                    | (mesh.mShape.mClosed ? Shaders::MESH_CLOSED : 0u)
+                    | (mesh.mTangents ? Shaders::MESH_TANGENTS : 0u),
                 .mSecondTexCoordOffset
                 = mesh.mSecondTexCoords.empty() ? Shaders::NO_STREAM : mesh.mSecondTexCoords.mOffset,
                 .mUnitStreams = mesh.mUnitStreams,
@@ -395,6 +400,7 @@ namespace Rtx
         // says so of each. Every host write of any of these then checks the stamp, so a table
         // rewritten under a trace is an assert and not a fault.
         into.mNormalBlocks = mNormalTable.at(slot).getTableAddress();
+        into.mTangentBlocks = mTangentTable.at(slot).getTableAddress();
         into.mTexCoordBlocks = mTexCoords.getTableAddress();
         into.mColourBlocks = mColours.getTableAddress();
         into.mSecondTexCoordBlocks = mSecondTexCoords.getTableAddress();

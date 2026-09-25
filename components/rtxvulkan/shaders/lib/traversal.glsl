@@ -13,9 +13,11 @@
 
 #include "look.h"
 #include "scene.h"
+#include "basis.glsl"
 #include "bindings.glsl"
 #include "geometry.glsl"
 #include "texturing.glsl"
+#include "variants.glsl"
 
 /// How far off a surface a shadow ray starts, in world units.
 ///
@@ -85,6 +87,11 @@ bool isSeenThrough(float opacity)
 {
     return opacity < 1.0;
 }
+
+/// How squarely a mapped normal has to face the ray that found the surface before it is tilted back
+/// toward the interpolated normal: `facingRay`. Small, as the water's is — a guard against a normal
+/// the map leans past the ray, and not a limit on the map.
+const float MAPPED_MIN_FACING = 0.03;
 
 /// How much of a see-through surface is there, where a ray met it.
 ///
@@ -323,6 +330,11 @@ struct Hit
     /// the matrix is not. Not unit: `resolve` normalises it, and the uniform scale in the transform
     /// drops out there.
     vec3 mShading;
+
+    /// The vertex tangent interpolated across the triangle, in world space, with the bitangent's
+    /// handedness in `w` — or nought where the mesh carries none, which is every vanilla mesh.
+    /// Brought across here for the reason `mShading` is: the matrix does not survive the call.
+    vec4 mTangent;
 };
 
 /// A ray that committed nothing, as far away as anything can be.
@@ -338,6 +350,7 @@ Hit noHit()
     hit.mFootprint = 0.0;
     hit.mCrossed = vec3(0.0);
     hit.mShading = vec3(0.0);
+    hit.mTangent = vec4(0.0);
 
     return hit;
 }
@@ -362,10 +375,21 @@ Hit committedHit(
     // would otherwise change which branch it took.
     const GpuInstance placement = instanceAt(instance);
     hit.mMesh = placement.mMesh;
-    hit.mCorner = triangleCorners(meshAt(hit.mMesh), primitive);
+    const GpuMesh mesh = meshAt(hit.mMesh);
+    hit.mCorner = triangleCorners(mesh, primitive);
 
     const vec3 shading = triangleNormal(hit.mCorner, cornerWeights(bary));
     hit.mShading = dot(shading, shading) > 1e-8 ? mat3(toWorld) * shading : vec3(0.0);
+
+    // **Three more words, and only off a mesh that carries them.** The bit is on the row this already
+    // read, so a hit on anything no normal map is read through — every hit in a vanilla scene —
+    // pays one test and no fetch.
+    hit.mTangent = vec4(0.0);
+    if (HAS_MAPS && (mesh.mShape & MESH_TANGENTS) != 0u)
+    {
+        const vec4 tangent = triangleTangent(hit.mCorner, cornerWeights(bary));
+        hit.mTangent = vec4(mat3(toWorld) * tangent.xyz, tangent.w);
+    }
 
     return hit;
 }
@@ -517,8 +541,19 @@ struct Surface
     /// The shading normal, turned to the side of the triangle's plane the ray arrived on.
     /// Morrowind's sheet geometry is lit from both faces, so which side that is carries no meaning
     /// of its own — and the *plane* is what turns it, never the interpolated normal, which on this
-    /// content routinely points through its own triangle.
+    /// content routinely points through its own triangle. Where the material has a normal map, the
+    /// map's normal, turned the same way and tilted to face the ray.
     vec3 mNormal;
+
+    /// The interpolated normal, turned as `mNormal` is, before any map: `mNormal` wherever there is
+    /// no map. **What a closed shape takes a light's side from**, so a normal map cannot move a
+    /// light to the other side of the surface — `litCosine` says why the side is not the map's
+    /// question.
+    vec3 mSmooth;
+
+    /// Which way the ray that found this surface was travelling, which is what the lobe is
+    /// evaluated against: the eye's own ray, a bounce, a reflection.
+    vec3 mIncident;
 
     /// The triangle's own plane, turned the same way `mNormal` is.
     ///
@@ -532,7 +567,18 @@ struct Surface
     /// out.
     vec3 mGeometric;
 
+    /// The diffuse albedo: the texture's, delit, for a vanilla surface, and `(1 - metal)` of the
+    /// authored base colour for one with a specular map.
     vec3 mAlbedo;
+
+    /// The reflectance at normal incidence, `F0`: nought for a vanilla surface, which reflects
+    /// nothing — `DIELECTRIC_F0` says why — and the base colour's mix toward `DIELECTRIC_F0` by the
+    /// map's metalness for one with a specular map.
+    vec3 mSpecular;
+
+    /// The perceptual roughness the map paints, and one where there is no map — which is what a
+    /// Lambert surface is to the upscaler, and what `lambertResponse` reports.
+    float mRoughness;
 
     /// The material's own glow, as a lighting term. See `GpuMaterial::mEmissiveColour`.
     vec3 mEmissiveColour;
@@ -585,8 +631,12 @@ Surface noSurface(vec3 origin)
     surface.mGround = false;
     surface.mPosition = origin;
     surface.mNormal = vec3(0.0, 0.0, 1.0);
+    surface.mSmooth = vec3(0.0, 0.0, 1.0);
+    surface.mIncident = vec3(0.0, 0.0, -1.0);
     surface.mGeometric = vec3(0.0, 0.0, 1.0);
     surface.mAlbedo = vec3(0.0);
+    surface.mSpecular = vec3(0.0);
+    surface.mRoughness = 1.0;
     surface.mEmissiveColour = vec3(0.0);
     surface.mEmitted = vec3(0.0);
     surface.mDistance = frame.mReach;
@@ -620,6 +670,7 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
     surface.mHit = true;
     surface.mDistance = hit.mDistance;
     surface.mPosition = origin + direction * surface.mDistance;
+    surface.mIncident = direction;
 
     surface.mFootprint = hit.mFootprint;
 
@@ -657,7 +708,9 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
     // undoes — so the two hundredths of a percent of triangles wound against their own normals are
     // not a case this has to be right about.
     surface.mGeometric = faceforward(surface.mGeometric, direction, surface.mGeometric);
-    surface.mNormal = dot(normal, surface.mGeometric) < 0.0 ? -normal : normal;
+    const bool turned = dot(normal, surface.mGeometric) < 0.0;
+    surface.mNormal = turned ? -normal : normal;
+    surface.mSmooth = surface.mNormal;
 
     const GpuMaterial material = materialAt(instance.mMaterial);
     surface.mGround = layered && material.mLayerCount > 0u;
@@ -682,6 +735,21 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
     // Where the hit lands on the material's own sheet, which the albedo, the opacity and the
     // emissive map all read at. A terrain layer has a transform of its own and makes its own.
     const TexturePoint point = texturePoint(uv, weight, material.mTextureTransform, cone, surface.mFootprint);
+
+    // **A normal map, read through the tangents the mesh carries**, in the frame `normals.glsl`
+    // builds: the tangent unit, the bitangent `cross(N, T) * w`, and the interpolated normal, with
+    // no orthogonalisation between them — which is what the maps were checked against. Built on
+    // the normal as the mesh states it and then turned with it, so a sheet met from behind sees
+    // the map's relief from behind. A mesh the map reached with no tangents keeps its normal.
+    if (HAS_MAPS && material.mNormal != NO_TEXTURE && dot(hit.mTangent.xyz, hit.mTangent.xyz) > 0.0)
+    {
+        const vec3 painted = sampleNormalMap(material.mNormal, point);
+        const vec3 tangent = normalize(hit.mTangent.xyz);
+        const vec3 mapped = normalize(
+            tangent * painted.x + cross(normal, tangent) * (hit.mTangent.w * painted.y) + normal * painted.z);
+
+        surface.mNormal = facingRay(turned ? -mapped : mapped, surface.mSmooth, direction, MAPPED_MIN_FACING);
+    }
 
     // **Ground that kept its stack**, which is every chunk near enough to be worth the sharpness,
     // and one fetch for everything else, an untextured surface included: its diffuse is
@@ -709,13 +777,35 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
                     texturePoint(uv, weight, layer.mDiffuseTransform, cone, surface.mFootprint));
         }
     }
+    else if (HAS_MAPS && material.mSpecular != NO_TEXTURE)
+        albedo = sampleDiffuse(material.mDiffuse, point).rgb;
     else
         albedo = sampleAlbedo(material.mDiffuse, point);
 
     // The vertex colour *replaces* the material's tint where the content asked for it, which is
     // what `glColorMaterial(GL_AMBIENT_AND_DIFFUSE)` does and what `getDiffuseColor` reads in the
     // game's own shader. Multiplying the two together would tint a surface twice.
-    surface.mAlbedo = albedo * mix(material.mDiffuseColour, vertexColour, tinted);
+    const vec3 tint = mix(material.mDiffuseColour, vertexColour, tinted);
+    surface.mAlbedo = albedo * tint;
+
+    // **A specular map says the diffuse was authored as a base colour**, which is why it was read
+    // above with nothing divided out of it: glTF's metal and roughness, the base colour split
+    // between what a metal reflects and what a dielectric scatters.
+    //
+    // **The tint darkens the lobe as well as the base**, because on this content it is mostly light
+    // baked into the vertices rather than a colour — Wareya's `PBR_VERTEX_COLOR_HACK`, which these
+    // maps were made against, puts it on the light for the same reason. Left off the lobe, a 4%
+    // reflectance hazed over every darkened surface: a tapestry in the Seyda Neen census office
+    // reflected two to four times what it scattered. On the reflectance at normal incidence, it
+    // darkens the edge too, below `SPECULAR_EDGE_SCALE`'s two per cent, which is the specular
+    // occlusion that convention is for.
+    if (HAS_MAPS && material.mSpecular != NO_TEXTURE)
+    {
+        const vec2 painted = sampleSpecularMap(material.mSpecular, point);
+        surface.mSpecular = mix(vec3(DIELECTRIC_F0), albedo, painted.x) * tint;
+        surface.mRoughness = painted.y;
+        surface.mAlbedo *= 1.0 - painted.x;
+    }
 
     // **Fetched again rather than kept from the albedo.** `sampleAlbedo` drops the alpha on purpose,
     // for the reason written over it: it is the hottest sampler in the shader and an out-parameter
@@ -741,6 +831,10 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
 
         const vec4 dark = sampleDiffuse(material.mDark, darkPoint);
         surface.mAlbedo *= dark.rgb;
+
+        // And the lobe, for the tint's reason: a dark map is light painted in.
+        if (HAS_MAPS)
+            surface.mSpecular *= dark.rgb;
 
         // The alpha only where an alpha is read at all: an opaque surface's is never written to
         // the frame, and the peel reads `mOpacity` as whether there is a layer to peel.

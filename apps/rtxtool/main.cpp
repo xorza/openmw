@@ -32,6 +32,7 @@
 #include <components/rtx/pacing.hpp>
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/renderer.hpp>
+#include <components/rtx/surfaceview.hpp>
 #include <components/rtxbench/benchrecord.hpp>
 #include <components/rtxbench/benchrun.hpp>
 #include <components/rtxbench/benchspec.hpp>
@@ -235,7 +236,7 @@ namespace RtxTool
             profile.mUpscaling = derived.mUpscaling;
             profile.mDelight = variables["delight"].as<float>();
             profile.mReconstruction.mFilter = variables["filter"].as<bool>();
-            profile.mShowAlbedo = variables["albedo"].as<bool>();
+            profile.mShow = Rtx::sSurfaceViewNames.require(variables["show"].as<std::string>(), "a surface view");
             profile.mReconstruction.mJitter = variables["jitter"].as<bool>();
             profile.mExposure = parseExposure(variables["exposure"].as<std::string>());
             profile.mStressOverlapMs = variables["hold"].as<double>();

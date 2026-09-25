@@ -9,6 +9,7 @@
 #include <osg/Matrixd>
 
 #include "contract.hpp"
+#include "radicalinverse.hpp"
 #include "shaders/camera.h"
 #include "shaders/scene.h"
 
@@ -16,23 +17,6 @@ namespace Rtx
 {
     namespace
     {
-        /// The `index`th term of the radical inverse in `base`, which is Halton's whole definition:
-        /// write the index in that base and reflect its digits about the point.
-        float radicalInverse(std::uint32_t index, std::uint32_t base)
-        {
-            float result = 0.0f;
-            float place = 1.0f / static_cast<float>(base);
-
-            while (index > 0)
-            {
-                result += static_cast<float>(index % base) * place;
-                index /= base;
-                place /= static_cast<float>(base);
-            }
-
-            return result;
-        }
-
         /// The half-extents of the image plane at one unit ahead, and the angle one pixel covers.
         struct Spread
         {
@@ -195,7 +179,7 @@ namespace Rtx
     void describeTexturing(const RenderProfile& profile, Shaders::VisibilityConstants& constants)
     {
         constants.mDelight = profile.mDelight;
-        constants.mShowAlbedo = profile.mShowAlbedo ? 1u : 0u;
+        constants.mShow = static_cast<std::uint32_t>(profile.mShow);
     }
 
     osg::Vec2f haltonJitter(std::uint32_t index)

@@ -15,16 +15,19 @@
 // three per cent in a daytime exterior — `one-cell-walk` 1.58 against 1.63 ms, `seyda-neen-shore`
 // 2.58 against 2.66 — where the full tuple carries the moons' code the day never runs; nothing
 // measurable in a room, where the legs spread by a quarter either way and the guild's medians
-// came out 3.74 against 3.66. What they cost is fourteen launches more for the driver to compile
-// on a cold start: eight seconds of creation and thirteen of its second compile, against 2.3 s
-// and 1.1 s with the full tuple alone, so a prime (`Rtx::CodeSettle`) that settles at twenty
-// seconds settles at six. Kept for the exteriors' three per cent; the switch is what measures it
-// again.
+// came out 3.74 against 3.66. What they cost is launches for the driver to compile on a cold
+// start: fourteen more than the full tuple alone was eight seconds of creation and thirteen of its
+// second compile, against 2.3 s and 1.1 s, so a prime (`Rtx::CodeSettle`) that settled at six
+// seconds settled at twenty. `HAS_MAPS` doubles the trace's half of the table, and a prime from an
+// empty driver cache settles at twenty-six (2026-09-25). Kept for the exteriors' three per cent and
+// for a vanilla frame's own kernel; the switch is what measures it again.
 //
 // **Each of these stands in front of the runtime test it replaces and never in place of it.** True
 // leaves the shader exactly as it was. False is set only where the test behind it already answers
-// no, so what the compiler removes is dead code rather than an answer — which is what makes a
-// specialized frame the same picture, byte for byte, as the one kernel drew.
+// no, so what the compiler removes is dead code rather than an answer: a specialized frame computes
+// the arithmetic the one kernel does. **Not always to the bit** — the driver fuses what is left
+// around what went, and `HAS_MAPS` measured a vanilla frame moving by a rounding with the maps'
+// code compiled in and not one hit running it.
 //
 // `Rtx::VisibilityVariant` is the other half. It reads each of these off the frame's own constants,
 // and `VisibilityPass` keeps one pipeline per tuple.
@@ -67,7 +70,18 @@ layout(constant_id = 3) const bool HAS_SEA = true;
 /// what sets it.
 layout(constant_id = 4) const uint REORDER = REORDER_NONE;
 
-// Constants five and six are the hit module's own — `visibilityhit.rchit` — and stand after these
+/// Whether this frame's scene places a material with a normal map or a specular map. False takes
+/// the tangent fetch, the maps' reads and the whole specular half out of a scene that has none —
+/// every vanilla scene.
+///
+/// **What keeps a vanilla frame the frame it was, and not only what keeps it fast.** The maps' code
+/// sits beside the Lambert surface's in the same functions, and compiled in, it moved how this
+/// driver fused the Lambert arithmetic around it even where not one hit ran it: every vanilla view
+/// traced a different frame by a rounding. Specialized out, the kernel a vanilla scene runs is the
+/// one it ran before the maps existed.
+layout(constant_id = 5) const bool HAS_MAPS = true;
+
+// Constants six and seven are the hit module's own — `visibilityhit.rchit` — and stand after these
 // so that one table of words serves every stage of a pipeline.
 
 #endif

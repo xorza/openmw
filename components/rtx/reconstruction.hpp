@@ -10,6 +10,7 @@
 
 #include "frameextents.hpp"
 #include "namedenum.hpp"
+#include "surfaceview.hpp"
 #include "upscale.hpp"
 
 namespace Rtx
@@ -266,7 +267,9 @@ namespace Rtx
         /// Bethesda's textures with their lighting still in them.
         float mDelight = 1.0f;
 
-        bool mShowAlbedo = false;
+        /// What every pixel is painted with: the light, or a surface input for a picture of the
+        /// maps themselves.
+        SurfaceView mShow = SurfaceView::Shaded;
 
         /// What to scale the frame by before the display curve, or nothing to measure it off the
         /// frame. A picture wants it measured, and a reference wants it held still. Carried into

@@ -154,9 +154,12 @@ namespace Rtx
         /// **A field added and not named here does not compile.** `digestParts` reads these whole,
         /// so a field it did not name would be one the gate stopped watching — silently, and on
         /// the one report every determinism argument in this fork rests on.
+        ///
+        /// **Whether it brought tangents is the one field left out**, and the meshes column adds it
+        /// where it is set: a scene where no mesh has any digests to the words on record.
         auto fieldsOf(const MeshRange& mesh)
         {
-            const auto& [vertices, indices, secondTexCoords, unitStreams, shape, deform, deformer, bindOffset,
+            const auto& [vertices, indices, secondTexCoords, unitStreams, tangents, shape, deform, deformer, bindOffset,
                 poseOffset, posed, bounds]
                 = mesh;
             return std::tie(vertices, indices, secondTexCoords, unitStreams, shape, deform, deformer, bindOffset,
@@ -423,7 +426,11 @@ namespace Rtx
         // moved is exactly what `digestScene` sums away.
         Column meshes(mScratch);
         for (const MeshRange& mesh : scene.meshes().getRows())
+        {
             meshes.addFields(fieldsOf(mesh));
+            if (mesh.mTangents)
+                meshes.add(mesh.mTangents);
+        }
         take(ScenePart::Meshes, meshes.take());
 
         Column instances(mScratch);

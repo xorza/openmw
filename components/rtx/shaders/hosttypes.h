@@ -40,11 +40,13 @@ namespace Rtx::Shaders
     using uint64 = std::uint64_t;
 
     // **The builtins a shared scalar curve spells**, so that a curve a test has to call reads on
-    // this side as it does in the shader: GLSL's `clamp(x, lo, hi)`, `log2` and `exp2` are the
-    // standard library's under the same names and the same argument order.
+    // this side as it does in the shader: GLSL's `clamp(x, lo, hi)`, `log2`, `exp2`, `max` and
+    // `sqrt` are the standard library's under the same names and the same argument order.
     using std::clamp;
     using std::exp2;
     using std::log2;
+    using std::max;
+    using std::sqrt;
 }
 
 #else

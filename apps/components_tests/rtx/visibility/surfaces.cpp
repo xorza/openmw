@@ -134,7 +134,7 @@ namespace Rtx::Testing
 
             Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
-            camera.mShowAlbedo = 1u;
+            camera.mShow = Shaders::SHOW_ALBEDO;
 
             constexpr std::array<std::uint8_t, 4> redTexel{ 255, 0, 0, 255 };
             constexpr std::array<std::uint8_t, 4> blueTexel{ 0, 0, 255, 255 };
@@ -210,7 +210,7 @@ namespace Rtx::Testing
 
             Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
-            camera.mShowAlbedo = 1u;
+            camera.mShow = Shaders::SHOW_ALBEDO;
 
             constexpr std::array<std::uint8_t, 4> redTexel{ 255, 0, 0, 255 };
             constexpr std::array<std::uint8_t, 4> blueTexel{ 0, 0, 255, 255 };
@@ -339,7 +339,7 @@ namespace Rtx::Testing
 
             Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
-            camera.mShowAlbedo = 1u;
+            camera.mShow = Shaders::SHOW_ALBEDO;
 
             // No textures at all, so the array is allocated with nothing in it. The untextured
             // material's 0.5 encoded: `1.055 * 0.5^(1/2.4) - 0.055` is 0.735, or 187 of 255.
@@ -528,7 +528,7 @@ namespace Rtx::Testing
 
             Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
-            camera.mShowAlbedo = 1u;
+            camera.mShow = Shaders::SHOW_ALBEDO;
 
             const auto shownAt = [&](float delight, const TextureData& texture) {
                 camera.mDelight = delight;
@@ -581,7 +581,7 @@ namespace Rtx::Testing
 
             Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
-            camera.mShowAlbedo = 1u;
+            camera.mShow = Shaders::SHOW_ALBEDO;
             camera.mDelight = 1.0f;
 
             std::vector<std::uint8_t> pixels;
@@ -685,7 +685,7 @@ namespace Rtx::Testing
 
             Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
-            camera.mShowAlbedo = 1u;
+            camera.mShow = Shaders::SHOW_ALBEDO;
             camera.mDelight = 0.0f;
 
             const auto albedoUnder = [&](VertexColour mode, std::span<const osg::Vec3f> colours) {
@@ -964,7 +964,7 @@ namespace Rtx::Testing
 
             Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
-            camera.mShowAlbedo = 1u;
+            camera.mShow = Shaders::SHOW_ALBEDO;
             camera.mDelight = 0.0f;
 
             const std::array<osg::Vec2f, 4> onRed{ osg::Vec2f(0.25f, 0.25f), osg::Vec2f(0.25f, 0.25f),
@@ -1274,7 +1274,7 @@ namespace Rtx::Testing
             const auto renderAt = [&](float distance, float levelBias) {
                 Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(0.0f, -distance, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
-                camera.mShowAlbedo = 1u;
+                camera.mShow = Shaders::SHOW_ALBEDO;
 
                 std::vector<std::uint8_t> pixels;
                 countHits(scene, textures, camera, size, pixels, Shot{ .mLevelEpsilon = levelBias });
@@ -1347,7 +1347,7 @@ namespace Rtx::Testing
 
             Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
-            camera.mShowAlbedo = 1u;
+            camera.mShow = Shaders::SHOW_ALBEDO;
 
             /// @param second the texture slot and diffuse transform of the layer on the right.
             const auto render = [&](Index second, const osg::Vec4f& secondTransform) {
@@ -1443,7 +1443,7 @@ namespace Rtx::Testing
 
             Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
-            camera.mShowAlbedo = 1u;
+            camera.mShow = Shaders::SHOW_ALBEDO;
 
             SceneDesc scene;
             const Index mesh

@@ -109,7 +109,7 @@ namespace Rtx
         mChanges.note(slot, what);
     }
 
-    void MeshTable::writeVertices(const MeshRange& range, const MeshArrays& arrays)
+    void MeshTable::writeVertices(MeshRange& range, const MeshArrays& arrays)
     {
         // As far as the runs reach and no further. All five are indexed by one vertex id, and the
         // blocks decide where a run may go rather than how much is uploaded — so reaching a whole
@@ -137,12 +137,23 @@ namespace Rtx
         fill(mTexCoords, arrays.mTexCoords, osg::Vec2f());
         fill(mColours, arrays.mColours, osg::Vec3f(1.0f, 1.0f, 1.0f));
 
-        // Packed where they are copied, and nought — no tangent — where the mesh brought none.
-        const auto tangents = mTangents.in(range.mVertices).begin();
+        // Packed where they are copied, and nought — no tangent — where the mesh brought none. The
+        // mesh has tangents where any word is not nought, and not wherever it brought an array: a
+        // generator that found no texture coordinates to build from leaves tangents of no length,
+        // which pack to none.
+        auto tangents = mTangents.in(range.mVertices).begin();
         if (arrays.mTangents.empty())
             std::fill_n(tangents, range.mVertices.mCount, 0u);
         else
-            std::transform(arrays.mTangents.begin(), arrays.mTangents.end(), tangents, packTangent);
+        {
+            std::uint32_t any = 0;
+            for (const osg::Vec4f& tangent : arrays.mTangents)
+            {
+                *tangents = packTangent(tangent);
+                any |= *tangents++;
+            }
+            range.mTangents = any != 0;
+        }
     }
 
     void MeshTable::notePosed(Index mesh, const osg::BoundingBoxf& bounds)
@@ -194,6 +205,7 @@ namespace Rtx
             range.mIndices.mCount = 0;
             range.mSecondTexCoords.mCount = 0;
             range.mUnitStreams = 0;
+            range.mTangents = false;
             range.mBounds = osg::BoundingBoxf();
 
             // A slot given back names no structure to refit, however it was posed this frame: the

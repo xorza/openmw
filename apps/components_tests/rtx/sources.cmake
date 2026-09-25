@@ -8,6 +8,7 @@
 set(RTX_TEST_FILES
     rtx/alphaimage.cpp
     rtx/bluenoise.cpp
+    rtx/brdf.cpp
     rtx/cellgrid.cpp
     rtx/cellring.cpp
     rtx/cloudshell.cpp
@@ -62,6 +63,7 @@ set(RTX_TEST_FILES
     rtx/skylight.cpp
     rtx/slots.cpp
     rtx/sourcetree.cpp
+    rtx/specularalbedo.cpp
     rtx/spritelight.cpp
     rtx/spritelistsize.cpp
     rtx/stepped.cpp

@@ -20,6 +20,7 @@
 #include <components/rtx/contract.hpp>
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/renderer.hpp>
+#include <components/rtx/surfaceview.hpp>
 #include <components/rtx/upscale.hpp>
 
 #include "run.hpp"
@@ -209,9 +210,13 @@ namespace RtxTool
             "and a number holds it there. A pixel test and a converged reference want it held, "
             "because a measured exposure makes every value depend on the whole frame");
 
-        option(sFramed, "albedo", bpo::bool_switch(),
-            "write the albedo with no shading over it, which is what a texture problem looks like "
-            "when nothing else is in the way");
+        option(sFramed, "show", bpo::value<std::string>()->default_value("shaded"),
+            std::format("what every pixel is painted with: {}. shaded is the light; the rest write one "
+                        "input of the surface with no shading over it — the albedo, the shading normal as "
+                        "0.5 + 0.5n, the perceptual roughness, the reflectance at normal incidence — which is "
+                        "what a texture or a map problem looks like when nothing else is in the way",
+                Rtx::sSurfaceViewNames.list())
+                .c_str());
 
         option(sFramed, "weather", bpo::value<std::string>()->default_value(std::string(sDefaultWeather)),
             "which weather's sun, sky and precipitation an exterior stands under, named as the "

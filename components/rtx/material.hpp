@@ -237,9 +237,9 @@ namespace Rtx
         /// layers are composited as depth along the ray — `mediumAlong`.
         bool isMedium() const { return isTranslucent() && mDiffuseNeverSolid; }
 
-        /// What a placement's row tells traversal about the material it wears, stated once because
-        /// the record builder writes it into the row and `setMaterial` has to know whether a
-        /// rewrite changed it.
+        /// What a placement keeps of the material it wears — what its row tells traversal, and what
+        /// the scene's counts read — stated once because the record builder writes it into the row
+        /// and `setMaterial` has to know whether a rewrite changed it.
         struct Traversed
         {
             MaterialKind mKind = MaterialKind::Surface;
@@ -257,6 +257,11 @@ namespace Rtx
             /// What `Material::mTwoSided` says, carried here because the row that culls by it is
             /// the placement's and not the material's.
             bool mTwoSided = false;
+
+            /// Whether the material wears a normal map or a specular map: what the trace compiles
+            /// the maps' code in for, and only for a scene that places such a material
+            /// (`InstanceCounts::mMapped`).
+            bool mMapped = false;
 
             bool operator==(const Traversed& other) const = default;
 
@@ -282,6 +287,7 @@ namespace Rtx
                 .mMedium = isMedium(),
                 .mAdditive = isAdditive(),
                 .mTwoSided = mTwoSided,
+                .mMapped = mNormal != sNoIndex || mSpecular != sNoIndex,
             };
         }
     };

@@ -1,6 +1,6 @@
 # PBR materials in the RTX renderer
 
-Status: research and design. No code is changed yet.
+Status: phases 0 to 3 are built; phase 4, the specular bounce, is next.
 
 ## 1. Summary
 
@@ -246,41 +246,51 @@ Built in phase 2. This replaces the host copy of the `osgUtil` algorithm of the 
 
 ### 5.6 The hit
 
-`resolveFor` reads the new maps only where the material names them (`!= NO_TEXTURE`), as it does
-for the dark map, the emissive map and the environment sheet. The branch is uniform over a mesh.
+Built in phase 3.
 
-- **Normal.** Read the map at the same `TexturePoint` as the diffuse. Decode `2 * rgb - 1`, or
-  reconstruct Z for a two-channel map. Build the frame from the interpolated tangent, the
-  interpolated normal and `B = cross(N, T) * w`. Orthonormalize T against N first.
-- **Facing.** If the mapped normal faces away from the ray, tilt it toward the interpolated normal
-  until it faces the ray at a minimum cosine. Move that solved blend out of `shadeWater` into one
-  shared function, so water and solids use one statement.
-- **Side.** `Surface` gains `mSmooth`, the interpolated normal before the map. `gather` takes a
-  light's side from `mSmooth` on a closed mesh and from the plane on an open mesh, as today. A
-  normal map then cannot move a light to the other side of the surface.
-- **Specular map.** R, G and B as section 2.1. The run's layout setting reaches the shader as the
-  presence of a slot: with `ignore`, no material names a `_spec` slot.
-- **`Surface` gains** `mSpecular` (F0, vec3), `mRoughness` (perceptual) and `mSmooth`. The
-  environment sheet (`spherePoint`) takes the mapped normal, as `objects.frag` does.
+- **The tangent** is fetched in `committedHit`, where the object-to-world matrix still is, and only
+  from a mesh whose row says it has tangents (`MESH_TANGENTS`, from `MeshRange::mTangents`, which
+  is set where any packed word is not nought). `Hit::mTangent` carries it in world space.
+- **Normal.** Read the map at the diffuse's `TexturePoint`, decode `2 * rgb - 1`, and build the
+  frame as `normals.glsl` does: the tangent unit, `B = cross(N, T) * w`, the interpolated normal,
+  and **no orthogonalisation**, which is what the maps were checked against (the first design said
+  to orthonormalise). Built on the normal as the mesh states it and then turned with it, so a sheet
+  seen from behind sees the relief from behind. **Two-channel maps are found by their blue**: BC5 and
+  RG formats read nought there and no three-channel map does, so `sampleNormalMap` rebuilds Z where
+  blue is nought and needs no flag.
+- **Facing.** A mapped normal that faces the ray less than `MAPPED_MIN_FACING` (0.03) is tilted
+  toward the interpolated normal: `facingRay` in `basis.glsl`, which the water now calls too.
+- **Side.** `Surface::mSmooth` is the interpolated normal, turned. `gather` takes a closed shape's
+  light side from it.
+- **Specular map.** Metalness in R, perceptual roughness in G. **A material with one is not delit**,
+  splits `base * tint` into `mAlbedo = (1 - metal) base tint` and `mSpecular = mix(0.04, base, metal)
+  * tint`, and the dark map multiplies both. **The tint and the dark map reach the lobe** because
+  on this content they are light baked in, not colour: Wareya's `PBR_VERTEX_COLOR_HACK` (on by
+  default) puts the vertex colour on the light, "otherwise darkened areas get a weird haze". That
+  haze is what phase 3 drew first: the census office tapestry, which its vertices darken, reflected
+  two to four times what it scattered, measured per pixel. With the tint on F0 it is 0.46 at the
+  cloth and 0.10 at the wall. On F0, the tint also darkens the edge below 2%, which is the specular
+  occlusion `saturate(50 F0.g)` is for.
+- The environment sheet (`spherePoint`) takes the mapped normal, as `objects.frag` does.
 
 ### 5.7 Direct light
 
-- `gather` returns two sums: `mDiffuse` (per unit albedo, with `1 - F` in it) and `mSpecular`
-  (`F D V cos L`, with the energy compensation). `shadeSurface` becomes
-  `albedo * (incoming + g.mDiffuse + emissive) + g.mSpecular + emitted`.
-- **The lamp reservoir keeps its weight.** The weight stays the Lambert cosine per unit albedo.
-  After the choice, the chosen lamp gets the full BRDF. The estimate is the chosen lamp's full term
-  over the chance of its choice, so it stays unbiased. The target function changes only the
-  variance. Vanilla keeps the same lamp choices and the same numbers.
-- **The BRDF uses the direction that the shadow ray samples.** `lampVisible` and `skyVisible`
-  already draw a direction across the lamp's sphere and the sun's disc. They return it, and the
-  specular term is evaluated there. That is the Monte Carlo estimate of the area light, and it
-  needs no representative-point fit.
-- **No MIS is needed.** A bounce never counts the sun disc (`bounceEscape` returns the glow only),
-  and lamps are not in the acceleration structure. So a lamp and the sun arrive by one estimator
-  only. The roughness floor limits the variance of a sharp lobe on a small source.
-- **Later, after a measurement:** add the specular term to the lamp weight, if shiny metal under
-  many lamps is noisy.
+Built in phase 3.
+
+- `gather` returns two sums (`DirectLight`): the diffuse half per unit albedo, with `F · diffuse`
+  of each light taken off it (glTF's `1 - F`), and the specular half, `F D V (n.l)` with the energy
+  compensation. `shadeSurface` is `albedo * (incoming + diffuse + emissive) + emitted + specular`.
+- **The lamp reservoir keeps its weight**, the Lambert cosine per unit albedo, and the held lamp
+  gets the lobe as well; the estimate divides by the same chances, so it stays unbiased.
+- **The lobe is taken toward the source's centre, not where the shadow ray went** (a change from
+  the first design). The centre is where the diffuse cosine and the reservoir's weight are taken,
+  and a lobe taken elsewhere is divided by a weight that does not describe it: a lamp whose centre
+  stands at the horizon weighs next to nothing while a point on its sphere may stand above it, and
+  that quotient has no bound. The shadow ray still draws across the source, for the penumbra.
+- **No MIS is needed**, for the first design's reason: no bounce counts the sun disc or a lamp.
+- **Measured against the host**: `aSpecularMapReflectsTheLampByTheHostsLobe` holds the device to
+  `brdf.h` and the table to a part in ten thousand for a metal, a dielectric, a tilted normal map and
+  a tinted dielectric.
 
 ### 5.8 The bounce
 
@@ -336,15 +346,17 @@ for the dark map, the emissive map and the environment sheet. The branch is unif
 
 ### 5.12 Cost
 
-- **Hit.** For a material with maps: two fetches, one tangent fetch, and the frame. For a vanilla
-  material: two compares. The GGX terms in `gather` run on every hit with F0 = 0. That is a factor
-  of zero, as AGENTS.md prefers. `bench` must show no change of the `trace` zone on vanilla, or the
-  terms get a uniform branch on F0.
-- **`Surface`** grows by 7 floats. Check the stage for spills, as the `SkyChoice` comment did.
-- **Memory.** 4 bytes per vertex, 8 bytes per material. PBR maps take about three times the
-  texture memory and slots of the diffuse maps. The ship view uses 606 of 4096 slots and 860 MiB
-  for diffuse maps only. The budget and the slot limit refuse what does not fit, and `scene`
-  reports it.
+- **A vanilla frame pays nothing**, which the first design did not plan: `HAS_MAPS`, a fourth
+  question of the kernel tuple, compiles the tangent fetch, the maps' reads and the specular half
+  out of a frame whose scene places no mapped material. It was needed for more than cost. With the
+  maps' code compiled in, every vanilla view traced a different frame by a rounding — the driver
+  fused the Lambert arithmetic around the new code differently — though not one hit ran it.
+- **The kernel table doubles on the trace's side**: 16 visibility and 8 froxel launches. A prime
+  from an empty driver cache settles at 22 to 32 s (16 to 24 s before), and one run as late as
+  44 s. The prime's cap of 45 s stood twice, and is 90 s now.
+- **`Surface`** grows by 10 floats (`mSmooth`, `mIncident`, `mSpecular`, `mRoughness`) and `Hit` by
+  4 (`mTangent`).
+- **Memory.** 4 bytes per vertex (phase 2), 8 bytes per material, and the 8 KiB table.
 
 ## 6. Decisions
 
@@ -434,22 +446,35 @@ Done at 711f4b27c6 (release). Everything is in `build-release/pbr-baseline/`:
   from 40670 to 43275 KiB, and live device memory from 2265.7 to 2284.0 MiB. A vanilla scene
   pays the 4 bytes per vertex too, as zeros, in the host table and in each slot's copy.
 
-**Phase 3 — the model in direct light and in the hit.**
-- `shaders/brdf.h` (new, shared by host and device like `look.h`): GGX D, height-correlated V,
-  Schlick F with F90, compensation, VNDF sampling. `look.h`: the dielectric F0, the roughness
-  floor, the F90 factor.
-- The specular-albedo table: made once at startup by integration, a baked slot or a table buffer.
-- `scene.h`: `GpuMaterial` to 96 bytes, the flags. `scenebuffers.cpp` `toGpu`.
-- `geometry.glsl` (tangent fetch), `texturing.glsl` (normal and specular reads, delight by flag),
-  `traversal.glsl` (`Surface` fields, the frame, facing), `lights.glsl` (the sampled direction),
-  `shading.glsl` (`gather` in two sums, `shadeSurface`, the response), `water.glsl` (the shared
-  facing function).
-- Debug views: `--show=normal|roughness|metal|specular` beside `mShowAlbedo`.
-- Tests: host tests of `brdf.h` (the furnace: compensated white metal returns 1 within the table's
-  error, reciprocity, F0 = 0 gives exactly 0, the table against `EnvBRDFApprox2`), and a device
-  test that the shader's BRDF matches the host's.
-- Exit: vanilla pictures do not change. The PBR views show armor highlights under the sun and
-  lamps.
+**Phase 3 — the model in direct light and in the hit.** Done (sections 5.6, 5.7 and 5.12 say
+what was built, and where it left the plan).
+- Built as planned: `shaders/brdf.h` (GGX, height-correlated Smith, Schlick with `F90`, the
+  compensation), `look.h`'s `DIELECTRIC_F0`, `SPECULAR_EDGE_SCALE` and `ROUGHNESS_FLOOR`, the table
+  (`SpecularAlbedo`, a buffer beside the blue noise), `GpuMaterial` at 96 bytes, the tangent fetch,
+  the maps' reads, `gather` in two sums, the response, the shared facing function, and
+  `rtxtool --show=albedo|normal|roughness|specular` (it replaces `--albedo`).
+- Left out of the plan: the visible-normal sampler in `brdf.h` (the table has its host copy; the
+  shader's belongs to phase 4, which draws with it); the material flags (a specular slot is what
+  says a material is not delit, and a blue of nought says a map has two channels); a `metal` view
+  (`specular` shows F0, where a metal shows its base colour).
+- Tests: `RtxBrdfTest` (a reflectance of nought reflects exactly nothing, reciprocity, the
+  distribution's normalisation), `RtxSpecularAlbedoTest` (the table against a 500-step quadrature
+  that shares nothing with it, within 3e-4; the mirror limit at the roughness floor; Ray
+  Reconstruction's `EnvBRDFApprox2` within 0.06 for cosines from a half, the fit being to another
+  lobe's table), the mesh flag through a reused slot, the mapped count through reclasses, the digest
+  of the flag, and the device test of section 5.7 with the three views.
+- `rtx debug test`: 546 component, 297 GPU and 20 game tests pass.
+- Vanilla: with `--upscale=off`, 17 of 23 views have every frame hash the same as the phase 2 logic
+  over the same host, and the saved pictures of all 23 are the same byte for byte. The six others
+  are the run-to-run set of `.notes/ISSUES.md`; one frame hash of `balmora`'s picture moved on two
+  of eight frames. Against the DLSS baseline, the same set moves by the network's noise.
+- PBR: 21 of 23 views change (the other two place no mapped material in view). The census office
+  guard's steel is dark metal with lamp highlights — the room's reflection arrives with phase 4 — and
+  the stone and the tapestries show their relief. Direct light only: a metal in shade is dark.
+- `bench`, the 2026-09-25 entry of `.notes/bench.txt`: on the PBR profile the trace costs 0.7 ms
+  more at the ship (5.27–5.34 to 5.98–6.05), 0.35 in the guild and 0.5 at Balmora, and the frame
+  follows it. Vanilla is inside the spread at every place. The p99 and the worst frame are the
+  desktop's in both arms.
 
 **Phase 4 — the specular bounce.**
 - `shading.glsl` `bounceLight`: the lobe draw, the VNDF sample, the weights, the cone. `SEED_BOUNCE_LOBE`.

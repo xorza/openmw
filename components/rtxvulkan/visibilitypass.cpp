@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <memory>
 #include <span>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -21,6 +22,7 @@
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/shaders/sky.h>
 #include <components/rtx/shaders/wave.h>
+#include <components/rtx/specularalbedo.hpp>
 #include <components/rtx/wavecascade.hpp>
 
 #include "barriers.hpp"
@@ -52,14 +54,16 @@ namespace Rtx
                 = [](std::uint64_t address, std::uint32_t align) { return address != 0 && address % align == 0; };
 
             return at(tables.mNormalBlocks, Shaders::TABLE_ALIGN_BLOCKS)
+                && at(tables.mTangentBlocks, Shaders::TABLE_ALIGN_BLOCKS)
                 && at(tables.mTexCoordBlocks, Shaders::TABLE_ALIGN_BLOCKS)
                 && at(tables.mColourBlocks, Shaders::TABLE_ALIGN_BLOCKS)
                 && at(tables.mIndexBlocks, Shaders::TABLE_ALIGN_BLOCKS) && at(tables.mMeshes, Shaders::TABLE_ALIGN_ROWS)
                 && at(tables.mInstances, Shaders::TABLE_ALIGN_ROWS) && at(tables.mMaterials, Shaders::TABLE_ALIGN_ROWS)
                 && at(tables.mLayers, Shaders::TABLE_ALIGN_LAYERS) && at(tables.mMasks, Shaders::TABLE_ALIGN_ROWS)
                 && at(tables.mLights, Shaders::TABLE_ALIGN_ROWS) && at(tables.mLightList, Shaders::TABLE_ALIGN_ROWS)
-                && at(tables.mBlueNoise, Shaders::TABLE_ALIGN_ROWS) && at(tables.mSprites, Shaders::TABLE_ALIGN_ROWS)
-                && at(tables.mEmitters, Shaders::TABLE_ALIGN_ROWS)
+                && at(tables.mBlueNoise, Shaders::TABLE_ALIGN_ROWS)
+                && at(tables.mSpecularAlbedo, Shaders::TABLE_ALIGN_ROWS)
+                && at(tables.mSprites, Shaders::TABLE_ALIGN_ROWS) && at(tables.mEmitters, Shaders::TABLE_ALIGN_ROWS)
                 && at(tables.mTextureTexels, Shaders::TABLE_ALIGN_ROWS)
                 && at(tables.mSpriteTileList, Shaders::TABLE_ALIGN_ROWS);
         }
@@ -147,14 +151,14 @@ namespace Rtx
             return declared;
         }();
 
-        /// The sampler's tile, once for the life of the pass, in a submit of its own.
-        Buffer uploadBlueNoise(const Device& device)
+        /// A table made once on the host — the sampler's tile, the lobe's integrals — for the life
+        /// of the pass, in a submit of its own.
+        Buffer uploadOnce(const Device& device, std::span<const float> values, std::string_view name)
         {
             Batch batch(device.getPool());
-            Buffer noise = uploadBuffer(
-                batch, BlueNoise::shared().getValues(), VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, "blue noise");
+            Buffer table = uploadBuffer(batch, values, VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, name);
             batch.flush();
-            return noise;
+            return table;
         }
     }
 
@@ -166,7 +170,8 @@ namespace Rtx
     static_assert(static_cast<std::uint32_t>(MaterialKind::Terrain) == 1);
     static_assert(static_cast<std::uint32_t>(MaterialKind::Water) == 2);
 
-    VisibilityVariant VisibilityVariant::resolve(const Shaders::VisibilityConstants& frame, const bool water)
+    VisibilityVariant VisibilityVariant::resolve(
+        const Shaders::VisibilityConstants& frame, const bool water, const bool mapped)
     {
         // A moon that is drawn and a moon that lights are two facts, and the sky needs the first
         // where no surface asks for the second: the game fades both out over the hours around dawn,
@@ -185,12 +190,13 @@ namespace Rtx
             // Either half is water in the frame: a surface the eye can meet, or a level it can be
             // under. A cell with a level and no surface is one the eye can still be submerged in.
             .mSea = water || !std::isinf(frame.mWaterLevel),
+            .mMaps = mapped,
         };
     }
 
     std::uint32_t VisibilityVariant::index() const
     {
-        return (mSun ? 1u : 0u) | (mMoons ? 2u : 0u) | (mSea ? 4u : 0u);
+        return (mSun ? 1u : 0u) | (mMoons ? 2u : 0u) | (mSea ? 4u : 0u) | (mMaps ? 8u : 0u);
     }
 
     std::string VisibilityVariant::describe(const std::string_view kernel) const
@@ -202,6 +208,8 @@ namespace Rtx
             name += " moons";
         if (mSea)
             name += " sea";
+        if (mMaps)
+            name += " maps";
         return name;
     }
 
@@ -209,7 +217,8 @@ namespace Rtx
         const SetLayout& textureLayout, const SetLayout& channelLayout, const SetLayout& volumeLayout, bool counting,
         const bool specialize, const Reorder reorder)
         : mDevice(device)
-        , mBlueNoise(uploadBlueNoise(device))
+        , mBlueNoise(uploadOnce(device, BlueNoise::shared().getValues(), "blue noise"))
+        , mSpecularAlbedo(uploadOnce(device, SpecularAlbedo::shared().getValues(), "specular albedo"))
         , mConstants(Buffer::deviceLocal(device, sizeof(Shaders::VisibilityConstants),
               VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, "frame constants"))
         , mCounting(counting ? 1u : 0u)
@@ -261,18 +270,21 @@ namespace Rtx
         wanted.reserve(2 * VisibilityVariant::sCount);
 
         // Every tuple, or the full one alone, which every frame then runs on: its constants are
-        // all true and the shaders' own tests answer the rest.
+        // all true and the shaders' own tests answer the rest. The froxels' launch once per tuple
+        // without maps, which is what `scatterPipelineFor` asks for.
         for (const bool sun : { false, true })
             for (const bool moons : { false, true })
                 for (const bool sea : { false, true })
-                {
-                    if (!mSpecialize && !(sun && moons && sea))
-                        continue;
+                    for (const bool maps : { false, true })
+                    {
+                        if (!mSpecialize && !(sun && moons && sea && maps))
+                            continue;
 
-                    const VisibilityVariant variant{ .mSun = sun, .mMoons = moons, .mSea = sea };
-                    wanted.push_back(Wanted{ .mVariant = variant });
-                    wanted.push_back(Wanted{ .mVariant = variant, .mVolume = true });
-                }
+                        const VisibilityVariant variant{ .mSun = sun, .mMoons = moons, .mSea = sea, .mMaps = maps };
+                        wanted.push_back(Wanted{ .mVariant = variant });
+                        if (!maps || !mSpecialize)
+                            wanted.push_back(Wanted{ .mVariant = variant, .mVolume = true });
+                    }
 
         const std::thread::id caller = std::this_thread::get_id();
 
@@ -289,8 +301,8 @@ namespace Rtx
                 // One word per `constant_id`, in the order `lib/variants.glsl` declares them. The
                 // volume traces no primary ray and so adds no miss, but its froxels are a boundary
                 // the finiteness count watches, so it counts under the same word as the trace.
-                const std::array<std::uint32_t, 5> specialization{ mCounting, variant.mSun ? 1u : 0u,
-                    variant.mMoons ? 1u : 0u, variant.mSea ? 1u : 0u, mReorder };
+                const std::array<std::uint32_t, 6> specialization{ mCounting, variant.mSun ? 1u : 0u,
+                    variant.mMoons ? 1u : 0u, variant.mSea ? 1u : 0u, mReorder, variant.mMaps ? 1u : 0u };
 
                 if (volume)
                     mScatterPipelines[variant.index()]
@@ -338,8 +350,9 @@ namespace Rtx
         return *held;
     }
 
-    const TracePipeline& VisibilityPass::scatterPipelineFor(const VisibilityVariant variant) const
+    const TracePipeline& VisibilityPass::scatterPipelineFor(VisibilityVariant variant) const
     {
+        variant.mMaps = false;
         const std::unique_ptr<TracePipeline>& held = mScatterPipelines[slotOf(variant)];
         assert(held != nullptr && "a tuple `compileEvery` made no scatter kernel for");
 
@@ -485,6 +498,7 @@ namespace Rtx
         // between here and the submit grows a table.
         inputs.mBuffers->describeTables(inputs.mSlot, described.mTables);
         described.mTables.mBlueNoise = mBlueNoise.addressFor();
+        described.mTables.mSpecularAlbedo = mSpecularAlbedo.addressFor();
         described.mTables.mIndexBlocks = inputs.mIndexBlocks;
         described.mTables.mPoseBlocks = inputs.mPoseBlocks;
         described.mTables.mPreviousPoseBlocks = inputs.mPreviousPoseBlocks;
@@ -541,7 +555,7 @@ namespace Rtx
 
         // Resolved from the constants this frame is about to be traced with, and from nothing
         // kept between frames: a dusk moves the tuple and a doorway moves it again.
-        const VisibilityVariant variant = VisibilityVariant::resolve(constants, inputs.mWater);
+        const VisibilityVariant variant = VisibilityVariant::resolve(constants, inputs.mWater, inputs.mMapped);
 
         const FrameSlot trace = inputs.mTraceSlot;
         inputs.mFogVolume->begin(commands, trace);

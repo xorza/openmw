@@ -788,7 +788,7 @@ namespace Rtx
 
         /// The counts follow every write to a placement: placed, faded across opaque, reclassed
         /// through the material it wears, and dropped. Each step is hand-counted, and the flags a
-        /// row keeps take back exactly what they added.
+        /// row keeps take back exactly what they added — the maps' among them.
         TEST(RtxSceneDescTest, theCountsFollowEachPlacementAsItIsStoodFadedReclassedAndDropped)
         {
             SceneDesc scene;
@@ -837,6 +837,16 @@ namespace Rtx
             EXPECT_EQ(counts().mWater, 2u);
             EXPECT_EQ(counts().mFirstPerson, 1u);
             EXPECT_EQ(counts().mCutout, 0u);
+
+            // A normal map and a specular map each count as mapped, and a reclass that takes both
+            // away takes the count back: the sea's one placement, then the arms' as well.
+            EXPECT_EQ(counts().mMapped, 0u);
+            scene.setMaterial(sea, Material{ .mKind = MaterialKind::Water, .mNormal = leaf });
+            EXPECT_EQ(counts().mMapped, 1u);
+            scene.setMaterial(foliage, Material{ .mDiffuse = leaf, .mSpecular = leaf });
+            EXPECT_EQ(counts().mMapped, 2u);
+            scene.setMaterial(sea, Material{ .mKind = MaterialKind::Water });
+            EXPECT_EQ(counts().mMapped, 1u);
         }
 
         /// A reclass reaches the placements wearing the material and no other, through the list
@@ -1385,6 +1395,7 @@ namespace Rtx
             // Packed as they are written: along y is the square's `(0, 1)`, steps `0x3FFF` and
             // `0x7FFE`, the second fifteen bits up, and the present bit over them.
             ASSERT_EQ(meshes.getTangents()[meshes.getRows()[slot].mVertices.mOffset], 0xBFFF3FFFu);
+            ASSERT_TRUE(meshes.getRows()[slot].mTangents);
 
             ASSERT_TRUE(scene.release({}, {}));
             EXPECT_EQ(
@@ -1397,6 +1408,7 @@ namespace Rtx
                 << "the slot kept the last tenant's tint";
             EXPECT_EQ(meshes.getTangents()[meshes.getRows()[slot].mVertices.mOffset], 0u)
                 << "the slot kept the last tenant's tangents";
+            EXPECT_FALSE(meshes.getRows()[slot].mTangents) << "the slot kept the last tenant's claim to tangents";
         }
 
         /// A material frees its slot, and the layer run and masks behind it come back too.

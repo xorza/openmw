@@ -194,11 +194,12 @@ namespace Rtx
             return { spellHash(digestScene(scene)), digestParts(scene) };
         }
 
-        /// **A tangent moves the normals column and the scene, and no tangent moves nothing.** The
-        /// words are hashed only where a vertex has one, so a box whose tangents all packed to none
-        /// digests as the box that brought none — which is every vanilla scene, and so the
-        /// baselines on record hold.
-        TEST(RtxSceneDigestTest, aTangentMovesTheNormalsColumnAndNoTangentMovesNothing)
+        /// **A tangent moves the normals column, the meshes column and the scene, and no tangent
+        /// moves nothing.** The words are hashed only where a vertex has one and the mesh row's
+        /// claim to them only where it is made, so a box whose tangents all packed to none digests
+        /// as the box that brought none — which is every vanilla scene, and so the baselines on
+        /// record hold.
+        TEST(RtxSceneDigestTest, aTangentMovesTheNormalsAndMeshesColumnsAndNoTangentMovesNothing)
         {
             const auto [bare, bareParts] = digestsOfTangents({});
 
@@ -214,7 +215,8 @@ namespace Rtx
             for (std::size_t at = 0; at < bareParts.size(); ++at)
             {
                 const auto part = static_cast<ScenePart>(at);
-                EXPECT_EQ(tangentParts[at] != bareParts[at], part == ScenePart::Normals) << nameOf(part);
+                EXPECT_EQ(tangentParts[at] != bareParts[at], part == ScenePart::Normals || part == ScenePart::Meshes)
+                    << nameOf(part);
             }
 
             // The handedness alone is a change as well.

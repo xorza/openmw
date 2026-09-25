@@ -67,11 +67,12 @@ namespace RtxTool
     namespace
     {
         /// How long a prime waits for the driver's compile thread to go quiet before giving up:
-        /// the thread takes twelve to fifteen seconds of a core from the first pipelines'
+        /// the thread takes eighteen to twenty-two seconds of a core from the first pipelines'
         /// creation and pauses inside that, the quiet is judged two windows after it ends, and
-        /// primes have settled between 16 and 24 s of the stop. Thirty stood once on a compile
-        /// that ran long. A run that waited this out says so and does not start again.
-        constexpr double sPrimeCapSeconds = 45.0;
+        /// primes have settled between 22 and 44 s of the stop. Forty-five stood twice on a
+        /// compile still at work, so the cap is twice the longest settle. A run that waited this
+        /// out says so and does not start again.
+        constexpr double sPrimeCapSeconds = 90.0;
 
         /// How often a run that turns its sky asks for the next weather, in frames of world: off
         /// the frame index rather than the clock, so the same frame stands under the same sky on
@@ -665,7 +666,7 @@ namespace RtxTool
         // the first frame that has it; once, because the pipelines are made once per process. For
         // every stepped run, because a stepped run is one that measures or writes a picture
         // (`RunSetup::mStep`) and either is on the code the game will run or it is nothing; a
-        // window on the wall is somebody watching, and fifteen seconds of a frame they cannot move
+        // window on the wall is somebody watching, and half a minute of a frame they cannot move
         // is not what they came for.
         if (!mPriming.has_value())
         {

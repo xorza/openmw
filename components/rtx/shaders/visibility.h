@@ -109,6 +109,14 @@ namespace Rtx::Shaders
     ///
     /// **The ray generator is `Camera` and is separate**, because the wavelet builds the same rays
     /// and needs none of the rest of this. What is left here is the world.
+    /// What a pixel is painted with: the light, or one input of the surface written straight out —
+    /// `Rtx::SurfaceView`, which says what each is.
+    const uint SHOW_SHADED = 0u;
+    const uint SHOW_ALBEDO = 1u;
+    const uint SHOW_NORMAL = 2u;
+    const uint SHOW_ROUGHNESS = 3u;
+    const uint SHOW_SPECULAR = 4u;
+
     struct VisibilityConstants
     {
         vec3 mOrigin;
@@ -150,9 +158,8 @@ namespace Rtx::Shaders
         /// its shadow rays at the depth range it frames lit the ground under every roof past it.
         float mReach;
 
-        /// Non-zero to write the albedo straight out, with no shading over it. What a test asserting
-        /// "this pixel is that texel" needs, and what makes a texture problem visible as itself.
-        uint mShowAlbedo;
+        /// What a pixel is painted with — `SHOW_*`, `Rtx::SurfaceView` — where it is not the light.
+        uint mShow;
 
         /// Non-zero where there is no sky behind the subject: a ray that hits nothing comes back
         /// with no radiance **and no coverage**, so the pixel is transparent rather than the
@@ -553,7 +560,7 @@ namespace Rtx::Shaders
     // Pinned for the reason `scene.h` gives: the side that writes these bytes and the side that
     // reads them are different compilers.
     static_assert(offsetof(VisibilityConstants, mTables) == 1168, "GpuTables must land eight-aligned and last");
-    static_assert(sizeof(VisibilityConstants) == 1320, "VisibilityConstants must be scalar-packed on every side");
+    static_assert(sizeof(VisibilityConstants) == 1336, "VisibilityConstants must be scalar-packed on every side");
 #endif
 
 #ifdef RTX_HOST
