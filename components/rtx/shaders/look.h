@@ -64,6 +64,19 @@ namespace Rtx::Shaders
     /// again here.
     const float EXPOSURE_ADAPTATION = 0.75f;
 
+    /// How far the metered exposure is moved, in stops: one doubles the picture and minus one
+    /// halves it.
+    ///
+    /// **The dial for how bright the picture is, and not `EXPOSURE_KEY`.** The key is the convention
+    /// the meter aims at and it passes through `EXPOSURE_ADAPTATION`'s power, so doubling it moves
+    /// the picture by `2^0.75` and by nothing in a scene already at the key. This multiplies what the
+    /// meter settled, as a camera's exposure compensation does, so a stop is a stop in every scene.
+    ///
+    /// Taken with the hour's bias, before `EXPOSURE_MIN`, `EXPOSURE_MAX` and the eye's approach, so a
+    /// frame moves toward the compensated value rather than jumping to it. An exposure a run holds
+    /// fixed — a reference, a test — is a number the run chose, and this does not move it.
+    const float EXPOSURE_COMPENSATION = 0.0f;
+
     /// Clamped rather than trusted: a frame that is almost entirely black would otherwise divide by
     /// something near zero and hand back an exposure that turns the next frame's noise into a
     /// snowstorm. `MAX_SUN_RADIANCE` is sized against the floor.
@@ -98,12 +111,32 @@ namespace Rtx::Shaders
     /// How far a compressed colour is carried toward white. Khronos's own.
     const float TONE_DESATURATION = 0.15f;
 
+    /// How much colour the picture keeps: one as traced, nought grey, and past one more than traced.
+    ///
+    /// **Each colour is carried toward its own luminance, in linear light, before the curve**, which
+    /// is where a grading pass puts its saturation. The luminance is `LUMINANCE_WEIGHTS`', so the
+    /// grade moves no brightness the eye weighs. Before the curve, because the curve then brings
+    /// whatever the grade made into the display's range, and highlights still go to white by its
+    /// own roll-off.
+    const float TONE_SATURATION = 0.85f;
+
+    /// How far from mid grey the picture is spread, as stops per stop: one as traced, under one
+    /// flatter, over one harder.
+    ///
+    /// **A luminance `n` stops from `EXPOSURE_KEY` is moved to `n * TONE_CONTRAST` stops from it**,
+    /// which is a grading pass's contrast: a power about mid grey in log space. The pivot is the key
+    /// because that is the grey the exposure just put there, so the dial moves the darks and the
+    /// lights and leaves the level of the picture alone. The whole colour is scaled by what its
+    /// luminance moved, so the grade changes no hue and no saturation — that is `TONE_SATURATION`'s.
+    /// Before `TONE_SATURATION` and the curve, like it.
+    const float TONE_CONTRAST = 0.85f;
+
     /// How much of each coarser level survives into the one above it.
     ///
     /// **The pyramid is mixed rather than summed**, which is what keeps the total independent of
     /// how many levels there are: `mix(finer, coarser, this)` at every step, so a frame that built
     /// one level fewer is a narrower bloom and not a dimmer one. Higher is a wider, softer veil.
-    const float BLOOM_SCATTER = 0.75f;
+    const float BLOOM_SCATTER = 0.6f;
 
     /// How much of the pyramid is left in the picture.
     ///
@@ -113,7 +146,7 @@ namespace Rtx::Shaders
     /// can see, and takes the veil off everything under it. What makes a Morrowind sun read as a
     /// sun is that its disc is a hundred times the median of the frame around it, not that anything
     /// selected it.
-    const float BLOOM_STRENGTH = 0.05f;
+    const float BLOOM_STRENGTH = 0.04f;
 
     /// Irradiance of the sun against the sky it is set in.
     ///

@@ -38,6 +38,7 @@
 #include <components/rtxvulkan/scenebuffers.hpp>
 #include <components/rtxvulkan/skinpass.hpp>
 
+#include "../displaycurve.hpp"
 #include "../geometry.hpp"
 #include "../harness.hpp"
 #include "../testcamera.hpp"
@@ -182,17 +183,6 @@ namespace Rtx::Testing
     inline constexpr std::size_t centreValueOf(std::uint32_t size)
     {
         return centreOf(size) * 4;
-    }
-
-    /// A linear value as the display curve writes it, so a test can name the byte it expects.
-    ///
-    /// **The display curve and not the whole of what `tone.comp` does**: that pass runs
-    /// `toneMap` first, and a test measuring what the trace computed wants the radiance rather
-    /// than the picture made of it. `countHits` encodes with this for the same reason.
-    inline std::uint8_t encodeSrgb(float linear)
-    {
-        const float encoded = linear <= 0.0031308f ? linear * 12.92f : 1.055f * std::pow(linear, 1.0f / 2.4f) - 0.055f;
-        return static_cast<std::uint8_t>(std::lround(std::clamp(encoded, 0.0f, 1.0f) * 255.0f));
     }
 
     /// A byte the shader wrote, back to the linear value behind it.

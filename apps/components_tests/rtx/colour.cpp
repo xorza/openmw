@@ -7,6 +7,7 @@
 #include <osg/Vec4f>
 
 #include <components/rtx/colour.hpp>
+#include <components/rtx/shaders/colour.h>
 #include <components/sceneutil/util.hpp>
 
 namespace Rtx
@@ -108,6 +109,78 @@ namespace Rtx
 
             // The same mid grey, reached the other way: 128 of 255 encoded is 0.21586 linear.
             EXPECT_NEAR(decodeColour(osg::Vec4f(128.0f / 255.0f, 0.0f, 0.0f, 1.0f)).x(), 0.21586f, 1e-5f);
+        }
+
+        /// The saturation grade: one is the channel to the bit, nought the luminance, and between
+        /// and past them a straight line through both that keeps the luminance.
+        ///
+        /// A red of `(0.8, 0.2, 0.1)` weighs `0.2126 * 0.8 + 0.7152 * 0.2 + 0.0722 * 0.1 = 0.32034`.
+        /// At a half each channel is half way to that: `(0.56017, 0.26017, 0.21017)`. At two it is as
+        /// far again on the other side: `(1.27966, 0.07966, -0.12034)`, and the blue, carried below
+        /// nothing, is held at nought.
+        TEST(RtxSaturationTest, oneKeepsTheChannelNoughtIsTheLuminanceAndTheLuminanceHolds)
+        {
+            const osg::Vec3f red(0.8f, 0.2f, 0.1f);
+            const float luminance = red * Shaders::LUMINANCE_WEIGHTS;
+            EXPECT_NEAR(luminance, 0.32034f, 1e-6f);
+
+            const auto graded = [&](float saturation) {
+                return osg::Vec3f(Shaders::saturatedChannel(red.x(), luminance, saturation),
+                    Shaders::saturatedChannel(red.y(), luminance, saturation),
+                    Shaders::saturatedChannel(red.z(), luminance, saturation));
+            };
+
+            // **Equal and not near**, for values that round: what the dial as shipped leaves of a
+            // picture is every pixel as it was.
+            for (const float channel : { 0.0f, 0.1f, 0.3333333f, 1.0f / 3.0f, 7.77f, 1.0e-30f })
+                for (const float weighed : { 0.0f, 0.2f, 0.6180339f, 12.5f })
+                {
+                    EXPECT_EQ(Shaders::saturatedChannel(channel, weighed, 1.0f), channel)
+                        << channel << " at " << weighed;
+                    EXPECT_EQ(Shaders::saturatedChannel(channel, weighed, 0.0f), weighed)
+                        << channel << " at " << weighed;
+                }
+
+            const osg::Vec3f half = graded(0.5f);
+            EXPECT_NEAR(half.x(), 0.56017f, 1e-5f);
+            EXPECT_NEAR(half.y(), 0.26017f, 1e-5f);
+            EXPECT_NEAR(half.z(), 0.21017f, 1e-5f);
+
+            const osg::Vec3f twice = graded(2.0f);
+            EXPECT_NEAR(twice.x(), 1.27966f, 1e-5f);
+            EXPECT_NEAR(twice.y(), 0.07966f, 1e-5f);
+            EXPECT_EQ(twice.z(), 0.0f) << "a channel carried below nothing is held at nought";
+
+            for (const float saturation : { 0.0f, 0.5f, 1.0f })
+                EXPECT_NEAR(graded(saturation) * Shaders::LUMINANCE_WEIGHTS, luminance, 1e-6f)
+                    << "the grade moved the luminance at " << saturation;
+
+            EXPECT_NE(half, graded(0.25f)) << "the saturation made no difference";
+        }
+
+        /// The contrast grade: a luminance `n` stops from the key lands `n * contrast` stops from it,
+        /// the key itself does not move, and a contrast of one multiplies by exactly one.
+        ///
+        /// Two stops over the key is `4 * 0.18 = 0.72`. At a half it lands one stop over, 0.36, so
+        /// the colour is multiplied by a half; two stops under, 0.045, lands one stop under, 0.09,
+        /// a multiple of two. At one and a half the two stops over become three, 1.44: twice.
+        TEST(RtxContrastTest, aStopFromTheKeyBecomesContrastStopsAndTheKeyHolds)
+        {
+            const float key = Shaders::EXPOSURE_KEY;
+
+            for (const float luminance : { 1.0e-6f, 0.045f, 0.18f, 0.2391f, 0.72f, 55.5f })
+                EXPECT_EQ(Shaders::contrastScale(luminance, 1.0f), 1.0f) << "at " << luminance;
+
+            for (const float contrast : { 0.5f, 0.9f, 1.5f })
+                EXPECT_FLOAT_EQ(Shaders::contrastScale(key, contrast), 1.0f) << "the key moved at " << contrast;
+
+            EXPECT_NEAR(Shaders::contrastScale(4.0f * key, 0.5f), 0.5f, 1e-6f);
+            EXPECT_NEAR(Shaders::contrastScale(0.25f * key, 0.5f), 2.0f, 1e-5f);
+            EXPECT_NEAR(Shaders::contrastScale(4.0f * key, 1.5f), 2.0f, 1e-5f);
+
+            EXPECT_EQ(Shaders::contrastScale(0.0f, 0.5f), 1.0f) << "black has no ratio to take";
+            EXPECT_EQ(Shaders::contrastScale(-0.01f, 0.5f), 1.0f) << "nor has less than black";
+            EXPECT_EQ(Shaders::contrastScale(1.0e-39f, 0.5f), 1.0f) << "nor has a subnormal a device may flush";
         }
     }
 }

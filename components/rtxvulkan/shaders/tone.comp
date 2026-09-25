@@ -12,8 +12,8 @@
 // several frames of it. Being last is also what makes it the only pass that can draw a point source
 // — `ToneConstants::mStars` says why one cannot survive the upscaler.
 //
-// Exposure is a multiply and the curve is `toneMap`'s, which is where a highlight is rolled off
-// rather than clipped.
+// Exposure is a multiply, the grade is `graded`'s and the curve is `toneMap`'s, which is where a
+// highlight is rolled off rather than clipped.
 
 #include "camera.h"
 #include "colour.h"
@@ -126,7 +126,7 @@ void main()
     // full-screen quad blended `SRC_ALPHA, ONE` into the framebuffer after the world, which is a
     // sum in the display's own values that the framebuffer then saturates — so it is added here,
     // after the curve and the encode, and nowhere the light is still light.
-    const vec3 encoded = encodeSrgb(toneMap(lit.rgb * exposure));
+    const vec3 encoded = encodeSrgb(toneMap(graded(lit.rgb * exposure, TONE_CONTRAST, TONE_SATURATION)));
     const vec3 washed = min(encoded + frame.mGlareColour * (frame.mGlareAmount * sunGlareShare), vec3(1.0));
 
     imageStore(target, at, vec4(washed, frame.mCoverAlpha != 0u ? 1.0 : lit.a));

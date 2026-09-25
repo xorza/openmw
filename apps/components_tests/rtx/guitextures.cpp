@@ -24,6 +24,7 @@
 #include <components/rtx/texturedata.hpp>
 #include <components/vfs/pathutil.hpp>
 
+#include "displaycurve.hpp"
 #include "geometry.hpp"
 #include "guiquad.hpp"
 #include "harness.hpp"
@@ -537,6 +538,18 @@ namespace Rtx
             return camera;
         }
 
+        /// The sheet `makeMapCamera` lights, as the display pass writes it.
+        ///
+        /// A default albedo of a half, Lambertian, square to a sun of one: `0.5 * 1.0 / pi = 0.159155`
+        /// linear, at the exposure of one a picture is held at. At a contrast of one the curve takes
+        /// its whole shadow offset off that and leaves the rest alone — `1.055 * 0.119155^(1/2.4) -
+        /// 0.055 = 0.378907`, or 97 of 255.
+        std::array<std::uint8_t, 4> sheetLit()
+        {
+            const std::uint8_t grey = Testing::displayedGrey(0.5f * Shaders::INV_PI);
+            return { grey, grey, grey, 255 };
+        }
+
         /// A picture traced into the table the GUI draws from, and where it stops.
         ///
         /// **The shape is the assertion and it is counted by hand.** The sheet is fifty units across
@@ -575,12 +588,8 @@ namespace Rtx
             }
 
             // **Lit, and to the byte**, so the whole chain ran rather than only the coverage the
-            // alpha above would have had either way. A default albedo of a half, Lambertian, square
-            // to a sun of one: `0.5 * 1.0 / pi = 0.159155` linear. The tone curve takes its whole
-            // shadow offset off that, being past three times it, and leaves the rest alone far under
-            // the compression point — `1.055 * 0.119155^(1/2.4) - 0.055 = 0.378907`, or 97 of 255.
-            EXPECT_EQ(inTexture(texture, extent, 8, 8), (std::array<std::uint8_t, 4>{ 97, 97, 97, 255 }))
-                << "the sheet, lit";
+            // alpha above would have had either way.
+            EXPECT_EQ(inTexture(texture, extent, 8, 8), sheetLit()) << "the sheet, lit";
 
             // The same picture with a sky behind it, which is what a frame filling a window has:
             // every pixel opaque, the corner included.
@@ -659,7 +668,7 @@ namespace Rtx
 
             mRenderer->readGuiTexture(texture, mPixels);
             EXPECT_EQ(copy, mPixels);
-            EXPECT_EQ(Testing::rgbaAt(copy, extent, 8, 8), (std::array<std::uint8_t, 4>{ 97, 97, 97, 255 }));
+            EXPECT_EQ(Testing::rgbaAt(copy, extent, 8, 8), sheetLit());
         }
 
         /// A camera's mask is what its rays meet: a class the mask leaves out is not in the picture.
@@ -706,9 +715,8 @@ namespace Rtx
         ///
         /// A white puff hangs over the middle of the sheet, square to the sun. With the bit the
         /// centre pixel is the puff over the sheet and not the sheet's own grey; without it the
-        /// centre is the lit sheet exactly as `aTracedPictureFillsAGuiTextureAndSaysWhereItStops`
-        /// counts it, 97 of 255. The frame between the two is what leaves a bin of the puff in the
-        /// slot's list for the second picture to ignore.
+        /// centre is the lit sheet exactly as `sheetLit` counts it. The frame between the two is what
+        /// leaves a bin of the puff in the slot's list for the second picture to ignore.
         TEST_F(RtxGuiDrawTest, aCameraWithoutTheParticleBitDrawsNoSprites)
         {
             constexpr std::uint32_t extent = 16;
@@ -728,10 +736,10 @@ namespace Rtx
             mHeld.push_back(texture);
 
             const Shaders::VisibilityConstants camera = makeMapCamera(extent);
-            constexpr std::array<std::uint8_t, 4> sheetLit{ 97, 97, 97, 255 };
+            const std::array<std::uint8_t, 4> lit = sheetLit();
 
             mRenderer->traceGuiTexture(texture, camera, GuiTraceOptions{});
-            EXPECT_NE(inTexture(texture, extent, 8, 8), sheetLit) << "the puff over the sheet";
+            EXPECT_NE(inTexture(texture, extent, 8, 8), lit) << "the puff over the sheet";
 
             Shaders::VisibilityConstants frame = camera;
             frame.mCamera.mWidth = sExtent;
@@ -741,13 +749,13 @@ namespace Rtx
             Shaders::VisibilityConstants chart = camera;
             chart.mRayMask &= ~Shaders::MASK_PARTICLE;
             mRenderer->traceGuiTexture(texture, chart, GuiTraceOptions{});
-            EXPECT_EQ(inTexture(texture, extent, 8, 8), sheetLit) << "the sheet alone";
+            EXPECT_EQ(inTexture(texture, extent, 8, 8), lit) << "the sheet alone";
 
             // The same scene as a subject, binned into its own tables and not the frame's.
             const SceneSlot subject = mRenderer->addViewScene();
             mRenderer->setScene(subject, scene, puff);
             mRenderer->traceGuiTexture(texture, camera, GuiTraceOptions{ .mScene = subject });
-            EXPECT_NE(inTexture(texture, extent, 8, 8), sheetLit) << "the puff over the subject's sheet";
+            EXPECT_NE(inTexture(texture, extent, 8, 8), lit) << "the puff over the subject's sheet";
             mRenderer->dropViewScene(subject);
         }
 

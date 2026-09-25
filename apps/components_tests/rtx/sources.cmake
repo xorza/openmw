@@ -101,6 +101,7 @@ set(RTX_TEST_SUPPORT
     rtx/allocations.cpp
     rtx/allocations.hpp
     rtx/countingrenderer.hpp
+    rtx/displaycurve.hpp
     rtx/fakeland.hpp
     rtx/fallbackseed.cpp
     rtx/geometry.hpp

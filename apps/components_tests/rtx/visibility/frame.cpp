@@ -1,6 +1,7 @@
 #include "../testcamera.hpp"
 #include "fixture.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -384,21 +385,30 @@ namespace Rtx::Testing
             // mean bin is 143 and the reduction reads back
             // `(143 - 1) / 254 * 16 - 10 = -1.055118` — a luminance of 0.481258, which is the
             // quantisation and not a mistake. The key over that, to the adaptation power, is
-            // `(0.18 / 0.481258)^0.75 = 0.478268`, so the frame reaches the display transform at
-            // 0.239134 linear.
+            // `(0.18 / 0.481258)^0.75 = 0.478268`, times two to the compensation, and the contrast
+            // grade then multiplies by `(0.5 * exposure / 0.18)^(contrast - 1)`. The saturation grade
+            // leaves a grey where it is.
             //
-            // The tone curve takes its shadow offset off that — 0.239134 is past three times it, so
-            // the whole 0.04 comes off — and leaves the rest alone, being far under the compression
-            // point. `1.055 * 0.199134^(1/2.4) - 0.055 = 0.483578`, or 123 of 255.
+            // At a compensation of nought and a contrast of one the frame reaches the curve at
+            // 0.239134 linear. The curve takes its shadow offset off that — 0.239134 is past three
+            // times it, so the whole 0.04 comes off — and leaves the rest alone, being far under the
+            // compression point: `1.055 * 0.199134^(1/2.4) - 0.055 = 0.483578`, or 123 of 255.
+            // **Worked out from the dials rather than written as 123**, so a look tuned in `look.h`
+            // leaves this test holding the arithmetic and not the old look.
+            const float exposure = std::exp2(Shaders::EXPOSURE_COMPENSATION)
+                * std::pow(Shaders::EXPOSURE_KEY / 0.481258f, Shaders::EXPOSURE_ADAPTATION);
+            const float exposed = 0.5f * std::clamp(exposure, Shaders::EXPOSURE_MIN, Shaders::EXPOSURE_MAX);
+            const std::uint8_t expected = displayedGrey(exposed);
+
             std::vector<std::uint8_t> measured;
             renderPicture(makeWall(), {}, camera, size, measured);
 
             ASSERT_EQ(measured.size(), pixels.size());
             for (std::size_t i = 0; i < measured.size(); i += 4)
             {
-                ASSERT_NEAR(measured[i], 123, 1) << "red at pixel " << i / 4;
-                ASSERT_NEAR(measured[i + 1], 123, 1) << "green at pixel " << i / 4;
-                ASSERT_NEAR(measured[i + 2], 123, 1) << "blue at pixel " << i / 4;
+                ASSERT_NEAR(measured[i], expected, 1) << "red at pixel " << i / 4;
+                ASSERT_NEAR(measured[i + 1], expected, 1) << "green at pixel " << i / 4;
+                ASSERT_NEAR(measured[i + 2], expected, 1) << "blue at pixel " << i / 4;
             }
         }
 
@@ -1069,10 +1079,9 @@ namespace Rtx::Testing
 
             const auto seenWith = [&](const Shaders::Camera& arms) {
                 camera.mArms = arms;
-                EXPECT_EQ(renderShot(scene, textures, camera, size), size * size);
 
                 std::vector<std::uint8_t> pixels;
-                mRenderer->readPixels(pixels);
+                EXPECT_EQ(countHits(scene, textures, camera, size, pixels), size * size);
                 requireFrame(pixels, size);
 
                 // Two floats a pixel: clip depth, then distance from the eye.

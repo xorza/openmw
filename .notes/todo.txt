@@ -6,3 +6,5 @@
 - tracy
 - fsr and other denoisers and upscalers
 - postprocessing
+- balmora house appears on distant terrain
+- remove lit npc with light spell

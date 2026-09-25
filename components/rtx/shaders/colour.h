@@ -20,6 +20,34 @@ namespace Rtx::Shaders
     /// more light into it than the surface behind them left.
     const vec3 LUMINANCE_WEIGHTS = vec3(0.2126f, 0.7152f, 0.0722f);
 
+    /// One channel of a colour carried toward its luminance: nought gives the luminance, one the
+    /// channel, and past one the channel further from it — `TONE_SATURATION`'s grade.
+    ///
+    /// **Two products, so that one gives the channel back to the bit** and a saturation of one
+    /// changes no picture. The usual `luminance + saturation * (channel - luminance)` rounds twice
+    /// there. Held at nought past one, where a channel under the luminance is carried below nothing.
+    RTX_SHADER float saturatedChannel(float channel, float luminance, float saturation)
+    {
+        const float carried = channel * saturation + luminance * (1.0f - saturation);
+        return saturation > 1.0f ? max(carried, 0.0f) : carried;
+    }
+
+    /// What a colour of `luminance` is multiplied by to put it `contrast` times as many stops from
+    /// `EXPOSURE_KEY` — `TONE_CONTRAST`'s grade.
+    ///
+    /// **A contrast of one is one without the power**, which a device evaluates to a bound and not
+    /// exactly, so a contrast of one changes no picture. Nothing is moved under the smallest normal
+    /// float either, which a device may flush to nought — and the logarithm of nought is an infinity
+    /// the power turns into a NaN.
+    RTX_SHADER float contrastScale(float luminance, float contrast)
+    {
+        const float smallestNormal = 1.17549435e-38f;
+        if (contrast == 1.0f || !(luminance >= smallestNormal))
+            return 1.0f;
+
+        return exp2((contrast - 1.0f) * log2(luminance / EXPOSURE_KEY));
+    }
+
 #ifdef RTX_HOST
 }
 #endif
@@ -36,6 +64,23 @@ namespace Rtx::Shaders
 RTX_SHADER float brightest(vec3 colour)
 {
     return max(colour.x, max(colour.y, colour.z));
+}
+
+/// A colour spread about mid grey by `contrast` and carried toward its luminance by `saturation`:
+/// `contrastScale`, then `saturatedChannel` in each channel.
+///
+/// One luminance for both, because the spread scales every channel alike and so scales the
+/// luminance by the same number.
+RTX_SHADER vec3 graded(vec3 colour, float contrast, float saturation)
+{
+    const float luminance = dot(colour, LUMINANCE_WEIGHTS);
+    const float scale = contrastScale(luminance, contrast);
+    const vec3 spread = colour * scale;
+    const float spreadLuminance = luminance * scale;
+
+    return vec3(saturatedChannel(spread.x, spreadLuminance, saturation),
+        saturatedChannel(spread.y, spreadLuminance, saturation),
+        saturatedChannel(spread.z, spreadLuminance, saturation));
 }
 
 /// Radiance to a display range: Khronos PBR Neutral, with its shadow offset ramped.
