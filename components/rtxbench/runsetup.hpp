@@ -56,5 +56,10 @@ namespace Rtx
         /// `RendererOptions::mMemoryBudget`: the harness's, for a run that asks what a smaller
         /// card does, and never a played session's.
         std::optional<std::uint64_t> mMemoryBudget;
+
+        /// Whether the renderer reads its shaders with their source in them, for a profiler that
+        /// shows a shader's lines (`Rtx::shaderDirectory`). The harness's, and never a played
+        /// session's: the driver's cache is keyed on the modules without it.
+        bool mShaderSource = false;
     };
 }

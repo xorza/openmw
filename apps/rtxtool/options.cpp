@@ -300,6 +300,11 @@ namespace RtxTool
             "the same picture by lib/variants.glsl's argument, for measuring what the tuples are "
             "worth against the sixteen launches the driver compiles for them");
 
+        option(Verbs::Every, "shader-source", bpo::value<bool>()->default_value(false)->implicit_value(true),
+            "hand the driver the shaders with their source in them, for a profiler that shows a "
+            "shader's lines. The driver keys its cache on the modules it is handed, so these keep a "
+            "cache of their own, apart from the one every other run reads");
+
         option(sFramed, "noise", bpo::value<std::string>()->default_value("auto"),
             std::format("where the trace's per-pixel draws come from: auto, {}. Auto follows the "
                         "denoiser — the tile under the wavelet, the hash under Ray Reconstruction, "

@@ -1053,7 +1053,9 @@ elseif(NOT APPLE)
         install(CODE "configure_file(\"${OpenMW_SOURCE_DIR}/files/openmw.cfg\" \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_SYSCONFDIR}/openmw.cfg\")")
     endif ()
 
-    install(DIRECTORY "${RUNTIME_OUTPUT_DIRECTORY}/resources" TYPE DATA)
+    # The ray tracer's harness keeps the driver's cache of each shader set beside it
+    # (`Rtx::DriverCache`), and a cache is this machine's and nobody else's.
+    install(DIRECTORY "${RUNTIME_OUTPUT_DIRECTORY}/resources" TYPE DATA PATTERN "*-driver-cache" EXCLUDE)
 endif(APPLE)
 
 # what is necessary to build documentation

@@ -5,6 +5,7 @@
 #include <cassert>
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <memory>
 #include <optional>
@@ -298,14 +299,6 @@ namespace Rtx
         report += "\nlogical device and every required entry point: ok\n";
 
         return report;
-    }
-
-    bool VulkanRenderer::compiledLaunches() const
-    {
-        // Two orders of magnitude apart with nothing between, measured over nineteen launches:
-        // out of the driver's disk cache 10 to 12 ms each, compiled 1.8 to 3.3 s.
-        constexpr double sCompiledMs = 200.0;
-        return mPass.getLongestCompileMs() > sCompiledMs;
     }
 
     bool VulkanRenderer::isValidating() const

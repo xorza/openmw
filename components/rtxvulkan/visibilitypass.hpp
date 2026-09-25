@@ -212,10 +212,6 @@ namespace Rtx
         void recordSpriteComposite(VkCommandBuffer commands, const VisibilityInputs& inputs, VkExtent2D shown,
             VkExtent2D traced, GpuTimer* timer) const;
 
-        /// The longest any launch here took the driver to create, `TracePipeline::getCompileMs`,
-        /// or nought where every one came out of a cache.
-        double getLongestCompileMs() const { return mLongestCompileMs; }
-
     private:
         /// Makes every kernel this pass can ever need, before it returns, because the frame path
         /// must not be able to compile: the trace took 2.8 seconds on a cold cache, and a frame
@@ -301,7 +297,5 @@ namespace Rtx
         /// And one for the pass that integrates the columns, which takes no tuple at all: every
         /// question was answered by the pass that filled the froxels.
         std::unique_ptr<ComputePipeline> mIntegratePipeline;
-
-        double mLongestCompileMs = 0.0;
     };
 }

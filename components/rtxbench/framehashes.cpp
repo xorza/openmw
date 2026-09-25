@@ -254,6 +254,28 @@ namespace Rtx
         return held;
     }
 
+    std::optional<std::uint32_t> FrameHashes::findStillMoved(const std::string_view view) const
+    {
+        const Frame* first = nullptr;
+        for (const Frame& frame : mFrames)
+        {
+            if (frame.mView != view || !frame.mPictured)
+                continue;
+
+            if (first == nullptr)
+            {
+                first = &frame;
+                continue;
+            }
+
+            for (const Channel still : { Channel::Depth, Channel::Motion })
+                if (frame.mTraced[bindingOf(still)] != first->mTraced[bindingOf(still)])
+                    return frame.mFrame;
+        }
+
+        return std::nullopt;
+    }
+
     std::vector<FrameHashes::ViewDifference> FrameHashes::against(const FrameHashes& reference) const
     {
         // **Each view of the reference as the stretch of rows it drew**, in frame order: `note`

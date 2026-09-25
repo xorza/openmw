@@ -4,7 +4,6 @@
 #include <array>
 #include <cstddef>
 #include <cstring>
-#include <exception>
 #include <fstream>
 #include <ios>
 #include <random>
@@ -15,10 +14,8 @@
 #include <utility>
 #include <vector>
 
-#include <smhasher/MurmurHash3.h>
-
 #include <components/debug/debuglog.hpp>
-#include <components/files/hash.hpp>
+#include <components/rtx/shaderdirectory.hpp>
 
 #include "result.hpp"
 
@@ -63,53 +60,6 @@ namespace Rtx
             }
         }
 
-        /// A number that changes when any compiled shader does, and with nothing else — what makes
-        /// the eviction exact, because a blob cannot be pruned entry by entry and the file is
-        /// replaced exactly when this changes. The whole directory, sorted, because a module none
-        /// of this run's pipelines named may be named by the next. Six megabytes hashed in six
-        /// milliseconds; nought where the directory cannot be read.
-        std::array<std::uint64_t, 2> digestOfShaders(const std::filesystem::path& directory)
-        {
-            std::error_code failed;
-            std::vector<std::filesystem::path> files;
-            for (const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator(directory, failed))
-                if (entry.is_regular_file(failed))
-                    files.push_back(entry.path());
-
-            std::sort(files.begin(), files.end());
-
-            std::array<std::uint64_t, 2> digest{ 0, 0 };
-            for (const std::filesystem::path& file : files)
-            {
-                std::ifstream stream(file, std::ios::binary);
-                if (!stream)
-                    continue;
-
-                // The name as well as the contents, so that renaming a shader is a change and two
-                // files trading contents is not the same set.
-                const std::string name = file.filename().string();
-                std::array<std::uint64_t, 2> step{ 0, 0 };
-                MurmurHash3_x64_128(name.data(), static_cast<int>(name.size()), digest.data(), step.data());
-                digest = step;
-
-                // `Files::getHash` throws where a read fails, and this one may not: a cache that
-                // cannot be built is a renderer that compiles from source.
-                try
-                {
-                    const std::array<std::uint64_t, 2> content = Files::getHash(name, stream);
-                    MurmurHash3_x64_128(content.data(), static_cast<int>(sizeof(content)), digest.data(), step.data());
-                    digest = step;
-                }
-                catch (const std::exception& error)
-                {
-                    Log(Debug::Warning) << "Rtx: " << name
-                                        << " would not read for the pipeline cache's key: " << error.what();
-                }
-            }
-
-            return digest;
-        }
-
         /// What this cache is called: the driver that can read it back, and the shaders it was
         /// built from. Both halves are the eviction, so the run knows exactly one file is live and
         /// `sweep` removes the rest.
@@ -123,7 +73,7 @@ namespace Rtx
             if (failed)
                 return {};
 
-            const std::array<std::uint64_t, 2> shaders = digestOfShaders(spec.mShaderDirectory);
+            const std::array<std::uint64_t, 2> shaders = digestShaders(spec.mShaderDirectory);
 
             std::array<std::uint8_t, sizeof(shaders)> digest{};
             std::memcpy(digest.data(), shaders.data(), digest.size());

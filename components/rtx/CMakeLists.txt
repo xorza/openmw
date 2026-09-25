@@ -56,6 +56,7 @@ set(RTX_FILES
     frameworld.hpp
     groundreader.cpp
     groundreader.hpp
+    guirenderer.hpp
     held.cpp
     held.hpp
     instancerecord.cpp
@@ -111,6 +112,7 @@ set(RTX_FILES
     refusals.cpp
     refusals.hpp
     renderer.hpp
+    result.hpp
     ripple.hpp
     runs.cpp
     runs.hpp
@@ -122,6 +124,8 @@ set(RTX_FILES
     sceneuploader.cpp
     sceneuploader.hpp
     scratch.hpp
+    shaderdirectory.cpp
+    shaderdirectory.hpp
     shading.cpp
     shading.hpp
     shadingmap.cpp
@@ -160,6 +164,8 @@ set(RTX_FILES
     textureencoding.hpp
     texturetable.cpp
     texturetable.hpp
+    texturewrap.hpp
+    upscale.hpp
     viewscene.cpp
     viewscene.hpp
     wavecascade.cpp
@@ -196,6 +202,7 @@ set(RTX_SHADER_HEADERS
     shaders/probe.h
     shaders/ripple.h
     shaders/scene.h
+    shaders/sets.h
     shaders/shadingmap.h
     shaders/skinning.h
     shaders/sky.h
@@ -210,6 +217,7 @@ set(RTX_SHADER_HEADERS
 )
 
 openmw_rtx_library(openmw-rtx ${RTX_FILES} ${RTX_SHADER_HEADERS})
+openmw_rtx_expect_listed("${CMAKE_CURRENT_SOURCE_DIR}" MATCHING *.cpp *.hpp *.h LISTED ${RTX_FILES} ${RTX_SHADER_HEADERS})
 
 # **`PUBLIC`, because the interface is not self-contained.** `sceneextractor.hpp` takes an
 # `osg::NodeVisitor` and an `osgParticle::ParticleSystem`, and `scenedesc.hpp` has always included

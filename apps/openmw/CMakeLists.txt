@@ -46,9 +46,12 @@ if (OPENMW_RTX)
     # gives. A name with a header alone names a file nothing compiles, and a property on it is
     # read by nothing.
     set(OPENMW_RTX_SOURCES)
+    set(OPENMW_RTX_NAMED)
     foreach (name ${OPENMW_RTX_DIR})
         list(APPEND OPENMW_RTX_SOURCES mwrender/rtx/${name}.cpp)
+        list(APPEND OPENMW_RTX_NAMED ${name}.cpp ${name}.hpp)
     endforeach()
+    openmw_rtx_expect_listed("${CMAKE_CURRENT_SOURCE_DIR}/mwrender/rtx" MATCHING *.cpp *.hpp LISTED ${OPENMW_RTX_NAMED})
     foreach (name ${OPENMW_RENDERER_SEAM})
         list(APPEND OPENMW_RTX_SOURCES mwrender/${name}.cpp)
     endforeach()

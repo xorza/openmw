@@ -11,7 +11,6 @@
 #include <components/rtxbench/benchrecord.hpp>
 #include <components/rtxbench/benchrun.hpp>
 #include <components/rtxbench/frametimes.hpp>
-#include <components/rtxbench/threadwatch.hpp>
 
 namespace osg
 {
@@ -55,10 +54,6 @@ namespace RtxTool
         std::span<const Rtx::GpuZone> mZones;
         const Rtx::HoldTimes& mHold;
         double mHoldAskedMs = 0.0;
-
-        /// The busiest of the process's other threads across the stop, which only `DriverQuiet`
-        /// reads.
-        const Rtx::ThreadShare& mThreads;
 
         /// What the measured frames wrote that was not finite, summed, which only `Finite` reads.
         const Rtx::NotFinite& mNotFinite;

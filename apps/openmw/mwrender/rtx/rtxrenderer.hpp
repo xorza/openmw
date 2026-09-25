@@ -183,6 +183,18 @@ namespace MWRender
         /// camera carrying no callback is left alone.
         static void updateEye(osg::Camera& camera, osgUtil::UpdateVisitor& visitor);
 
+        /// Keeps everything a stepped run loads for as long as the run lasts, and leaves a run on
+        /// the wall to `[Cells] cache expiry delay`.
+        ///
+        /// **Which models a run kept was a thread's answer.** An expiry is decided on a loading
+        /// thread (`CellPreloader::updateCache` queues it) and keeps what is referenced at the moment
+        /// it runs, which the other loading threads change as they go: behind the PBR mods'
+        /// textures, two runs of one build dropped different models, read them again as new
+        /// objects and laid the scene out two ways from `island-crossing` on. Never expiring is the
+        /// schedule's answer, and takes a PBR shot of every view to 7.7 GiB resident at its peak
+        /// against 6.8.
+        static void setResourceExpiry(Resource::ResourceSystem& resources, const std::optional<float>& step);
+
         /// The backend the frames and the pictures are traced into, for the harness's own reads.
         Rtx::Renderer& getBackend() { return *mRenderer; }
 

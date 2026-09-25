@@ -351,9 +351,7 @@ Built in phase 3.
   out of a frame whose scene places no mapped material. It was needed for more than cost. With the
   maps' code compiled in, every vanilla view traced a different frame by a rounding — the driver
   fused the Lambert arithmetic around the new code differently — though not one hit ran it.
-- **The kernel table doubles on the trace's side**: 16 visibility and 8 froxel launches. A prime
-  from an empty driver cache settles at 22 to 32 s (16 to 24 s before), and one run as late as
-  44 s. The prime's cap of 45 s stood twice, and is 90 s now.
+- **The kernel table doubles on the trace's side**: 16 visibility and 8 froxel launches.
 - **`Surface`** grows by 10 floats (`mSmooth`, `mIncident`, `mSpecular`, `mRoughness`) and `Hit` by
   4 (`mTangent`).
 - **Memory.** 4 bytes per vertex (phase 2), 8 bytes per material, and the 8 KiB table.

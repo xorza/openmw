@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
@@ -185,6 +186,45 @@ namespace Rtx
                 << report;
             EXPECT_EQ(report.find("g-guide"), std::string::npos) << report;
             EXPECT_NE(report.find("the scene was the same on every frame"), std::string::npos) << report;
+        }
+
+        /// A still's light moves with the noise from frame to frame and its depth and motion do
+        /// not, so the first frame where either moves is the one named — and a frame of another view,
+        /// which stands somewhere else, is never compared with it.
+        TEST(RtxFrameHashesTest, aStillWhoseDepthOrMotionMovedNamesTheFirstFrameThatDid)
+        {
+            FrameDigest lit = digestOf(100);
+            lit.mImages[bindingOf(Channel::Direct)] = hashOf(4242);
+            lit.mImages[bindingOf(Channel::Indirect)] = hashOf(4243);
+            FrameDigest deeper = lit;
+            deeper.mImages[bindingOf(Channel::Depth)] = hashOf(4244);
+            FrameDigest moving = digestOf(100);
+            moving.mImages[bindingOf(Channel::Motion)] = hashOf(4245);
+
+            FrameHashes steady;
+            add(steady, 1, sPixels, partsOf(100));
+            add(steady, 2, sOtherPixels, partsOf(100), lit);
+            EXPECT_EQ(steady.findStillMoved("somewhere"), std::nullopt) << "the light moved and nothing else";
+            EXPECT_EQ(steady.findStillMoved("nowhere"), std::nullopt) << "a view with no frames moved nothing";
+
+            FrameHashes deepened = steady;
+            add(deepened, 3, sPixels, partsOf(100), deeper);
+            add(deepened, 4, sPixels, partsOf(100), moving);
+            EXPECT_EQ(deepened.findStillMoved("somewhere"), 3u);
+
+            FrameHashes moved = steady;
+            add(moved, 3, sPixels, partsOf(100), moving);
+            EXPECT_EQ(moved.findStillMoved("somewhere"), 3u);
+
+            // Another view first, with other depth: its frames are its own still, and this one's
+            // first frame is still frame 1.
+            FrameHashes elsewhereFirst;
+            elsewhereFirst.note("elsewhere", 1, 50, partsOf(100));
+            elsewhereFirst.picture(Finished{ 50, sPixels, deeper }.result());
+            add(elsewhereFirst, 1, sPixels, partsOf(100));
+            add(elsewhereFirst, 2, sPixels, partsOf(100), lit);
+            EXPECT_EQ(elsewhereFirst.findStillMoved("somewhere"), std::nullopt);
+            EXPECT_EQ(elsewhereFirst.findStillMoved("elsewhere"), std::nullopt);
         }
 
         TEST(RtxFrameHashesTest, whatTheFrameHandedTheReconstructionIsAColumnOfItsOwn)

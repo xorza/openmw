@@ -3,7 +3,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
-#include <optional>
 #include <span>
 #include <string_view>
 
@@ -79,16 +78,8 @@ namespace Rtx
         void traceRays(
             VkCommandBuffer commands, std::uint32_t width, std::uint32_t height, std::uint32_t depth = 1) const;
 
-        /// How long the driver took to create this pipeline, or nothing where it came out of the
-        /// application's cache or the driver gave no feedback. What says whether this process
-        /// compiled the launches: out of the driver's own disk cache one takes 12 ms, and compiled
-        /// from SPIR-V 1.8 s and up.
-        std::optional<double> getCompileMs() const { return mCompileMs; }
-
     private:
         const Device& mDevice;
-
-        std::optional<double> mCompileMs;
 
         /// Every group's handle, in video memory the host wrote it straight into.
         Buffer mTable;

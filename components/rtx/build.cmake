@@ -113,6 +113,35 @@ function(openmw_rtx_sources)
     endif()
 endfunction()
 
+# Stops the configure where a file under `directory` that a `MATCHING` pattern finds is not in
+# `LISTED`: the whole of what the directory's lists name, conditional ones included. **The lists are
+# written by hand and nothing but this reads them against the tree**: a source left out is never
+# compiled, a shader left out is never built, and a header left out is missing from every IDE's
+# view of its target — and none of the three says so. The patterns are relative to `directory` and
+# reach into its subdirectories; a listed path is relative to it or absolute. `CONFIGURE_DEPENDS`,
+# so a file added later reruns this at the next build rather than at the next configure somebody
+# remembers to run.
+function(openmw_rtx_expect_listed directory)
+    cmake_parse_arguments(PARSE_ARGV 1 arg "" "" "MATCHING;LISTED")
+    set(patterns)
+    foreach (pattern ${arg_MATCHING})
+        list(APPEND patterns "${directory}/${pattern}")
+    endforeach()
+    file(GLOB_RECURSE unlisted CONFIGURE_DEPENDS LIST_DIRECTORIES false RELATIVE "${directory}" ${patterns})
+
+    foreach (listed ${arg_LISTED})
+        if (IS_ABSOLUTE "${listed}")
+            file(RELATIVE_PATH listed "${directory}" "${listed}")
+        endif()
+        list(REMOVE_ITEM unlisted "${listed}")
+    endforeach()
+
+    if (unlisted)
+        list(JOIN unlisted ", " named)
+        message(FATAL_ERROR "${directory}: the lists name every file here but ${named}")
+    endif()
+endfunction()
+
 # **Vulkan, found once and at the top.** An imported target is scoped to the directory that finds
 # it, and two directories link this one: the backend, and the tests that reach into the backend's
 # own headers, which a host never does — the backend keeps Vulkan private behind
@@ -132,7 +161,14 @@ endif()
 
 # Where the compiled shaders land, beside the other RTX resources: the backend writes them, the
 # game and the harness read them through `resources/`, and the tests are told the path outright.
+#
+# **Two sets, because the driver keys its cache on the bytes it is handed.** Every renderer reads
+# the first, which holds no source: with the source in it, an edited comment was a module the
+# driver had never seen, compiled again, and profiled and replaced again over the next processes
+# (`Rtx::DriverCache`). The second is the same modules with their source, for a profiler that
+# shows a shader's lines — the harness's `--shader-source`.
 set(RTX_SPIRV_DIR "${RTX_RESOURCES_ROOT}/resources/rtx/shaders")
+set(RTX_SPIRV_SOURCE_DIR "${RTX_RESOURCES_ROOT}/resources/rtx/shaders-source")
 
 # Where the structures shared with every shader language live. Both backends compile against
 # them, so the path is settled once rather than in each.

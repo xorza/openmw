@@ -66,14 +66,6 @@ namespace RtxTool
 {
     namespace
     {
-        /// How long a prime waits for the driver's compile thread to go quiet before giving up:
-        /// the thread takes eighteen to twenty-two seconds of a core from the first pipelines'
-        /// creation and pauses inside that, the quiet is judged two windows after it ends, and
-        /// primes have settled between 22 and 44 s of the stop. Forty-five stood twice on a
-        /// compile still at work, so the cap is twice the longest settle. A run that waited this
-        /// out says so and does not start again.
-        constexpr double sPrimeCapSeconds = 90.0;
-
         /// How often a run that turns its sky asks for the next weather, in frames of world: off
         /// the frame index rather than the clock, so the same frame stands under the same sky on
         /// every machine. The crossing itself takes the same `sTurnSeconds`, which `setTurnCrossings`
@@ -145,9 +137,7 @@ namespace RtxTool
 
     Rtx::SessionResult Session::describe() const
     {
-        Rtx::SessionResult result = mRecord.describe(mStood.has_value() ? &*mStood : nullptr);
-        result.mPrimed = mPrimed;
-        return result;
+        return mRecord.describe(mStood.has_value() ? &*mStood : nullptr);
     }
 
     void Session::noteStanding()
@@ -292,12 +282,6 @@ namespace RtxTool
         // **First, because everything below writes into it.** A stop's progress is one object so
         // that a field added to it is reset here whether or not its author remembered to.
         mProgress.restart();
-
-        // **From the stop's first frame, warm-up included**, because the driver's compile is
-        // what it watches for and a compile lands in the warm-up as readily as after it. The
-        // frame's thread is left out: its work is the run's own.
-        if (mRequest.mSetup.mStep.has_value())
-            mThreadWatch.start(Rtx::ThreadWatch::currentThread());
 
         // **The player goes first, because the ring is read around them and not around the eye.**
         // A camera placed in a cell nobody stands in is a camera looking at ground the simulation
@@ -660,64 +644,12 @@ namespace RtxTool
         return !mDone && mStarted && mRequest.mStops[mAt].mActions.mHash;
     }
 
-    bool Session::prime(const Rtx::Renderer& renderer)
-    {
-        // Decided on the first stop's first frame, because the renderer is what knows and this is
-        // the first frame that has it; once, because the pipelines are made once per process. For
-        // every stepped run, because a stepped run is one that measures or writes a picture
-        // (`RunSetup::mStep`) and either is on the code the game will run or it is nothing; a
-        // window on the wall is somebody watching, and half a minute of a frame they cannot move
-        // is not what they came for.
-        if (!mPriming.has_value())
-        {
-            if (mAt != 0 || mProgress.mSeen != 0 || !mRequest.mSetup.mStep.has_value() || !renderer.compiledLaunches())
-                return false;
-
-            mPriming.emplace(sPrimeCapSeconds);
-            Log(Debug::Info) << "Ray tracing session: this process compiled the launches; priming the driver's "
-                                "cache over the first stop's frames, then starting again";
-        }
-
-        // The stop's own frames, drawn and not counted: the stop's counters stand at nought until
-        // the process that starts again reaches this frame warm. The watch began with the stop, a
-        // frame before the prime, which is what the settle's clock counts from.
-        mThreadWatch.under([&](const Rtx::ThreadWindows& windows) { mPriming->judge(windows); });
-        if (!mPriming->isSettled())
-            return true;
-
-        mThreadWatch.stop();
-
-        // **A cap that stood is a failure and not a prime.** The driver did not finish, so the
-        // cache is not the second code, and a process that started again on it would compile
-        // again and wait the cap out a second time before the guard in `main` said so. A cache
-        // directory the driver would not make is what the gate found this with.
-        if (!mPriming->wentQuiet())
-        {
-            abandon(
-                std::format("{}: the driver's compile did not finish, so its cache cannot be primed; check "
-                            "that __GL_SHADER_DISK_CACHE_PATH names a directory that exists and is writable",
-                    mPriming->describe()));
-            mPriming.reset();
-            return true;
-        }
-
-        Log(Debug::Info) << "Ray tracing session: primed — " << mPriming->describe();
-        mPriming.reset();
-        mPrimed = true;
-        mDone = true;
-        MWBase::Environment::get().getStateManager()->requestQuit();
-        return true;
-    }
-
     void Session::frame(const MWRender::FrameContext& context, const MWRender::FrameReport& report)
     {
         Rtx::Renderer& renderer = context.mRenderer.getBackend();
         const double frameMs = report.mSpend.at(Rtx::Timing::Frame);
 
         if (mDone || !mStarted)
-            return;
-
-        if (prime(renderer))
             return;
 
         const Rtx::Stop& stop = mRequest.mStops[mAt];
@@ -861,20 +793,6 @@ namespace RtxTool
         const Rtx::CardReading card = mCardWatch.stop();
         mProgress.mClock = card.mClock;
         mProgress.mCard = card.mShare;
-        const Rtx::ThreadShare threads
-            = mRequest.mSetup.mStep.has_value() ? mThreadWatch.stop().summarise() : Rtx::ThreadShare{};
-
-        // **A stop the driver compiled inside is not a result**, whatever the stop asked for: its
-        // frames were timed on two codes and drawn on two, and a pair that happened not to straddle
-        // the swap would pass. `ThreadShare` says how a compile is told from the game's own loader.
-        if (threads.mLongestFlatOut >= Rtx::ThreadShare::sCompileWindows)
-        {
-            const std::string why = std::format("the driver compiled during {}: {}",
-                stop.mName.empty() ? "the stop" : stop.mName, Rtx::describeThreads(threads));
-            Log(Debug::Error) << "Ray tracing session: " << why;
-            mRecord.note(why + '\n');
-            mRecord.fail();
-        }
 
         const Rtx::FrameExtents extents = renderer.getExtents();
 
@@ -883,6 +801,21 @@ namespace RtxTool
         // the place they belong to.
         while (const std::optional<Rtx::FrameResult> finished = renderer.finishFrame())
             answered(*finished, extents);
+
+        // **A still is one frame traced again, and its depth and motion cannot move unless the
+        // code under them did.** Asked of every hashed still that nothing jittered and nothing
+        // flew: a frame where either moved is the driver swapping its code in mid-stop
+        // (`Rtx::DriverCache`), and the stop's frames are then two codes' and no reference.
+        if (stop.mSchedule.mFrozen && !stop.mSchedule.mRoute.has_value() && stop.mActions.mHash
+            && !report.mReconstruction.mJitter)
+            if (const std::optional<std::uint32_t> moved = mRecord.getHashes().findStillMoved(stop.mName))
+            {
+                const std::string why = std::format(
+                    "the driver's code changed during {}: depth or motion moved at frame {}", stop.mName, *moved);
+                Log(Debug::Error) << "Ray tracing session: " << why;
+                mRecord.note(why + '\n');
+                mRecord.fail();
+            }
 
         if (mRecord.empty())
         {
@@ -913,7 +846,6 @@ namespace RtxTool
                 .mZones = zones,
                 .mHold = mProgress.mHold,
                 .mHoldAskedMs = mRequest.mSetup.mProfile.mStressOverlapMs,
-                .mThreads = threads,
                 .mNotFinite = mProgress.mNotFinite,
             },
             mRecord);
@@ -932,7 +864,6 @@ namespace RtxTool
             place.mLatency = Rtx::summarise(mProgress.mLatencyMs);
         place.mClock = mProgress.mClock;
         place.mCard = mProgress.mCard;
-        place.mThreads = threads;
         place.mHitPercent = mProgress.mHitPercent;
         place.mCrossings = mProgress.mCrossings;
         place.mArrivals = mProgress.mArrivals;

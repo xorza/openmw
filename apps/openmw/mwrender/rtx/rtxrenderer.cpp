@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -43,6 +44,7 @@
 #include <components/rtx/poseupdate.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/sceneuploader.hpp>
+#include <components/rtx/shaderdirectory.hpp>
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/shaders/visibility.h>
 #include <components/rtx/specularlayout.hpp>
@@ -143,13 +145,13 @@ namespace MWRender
         adopt(*camera, *frameStamp, *stats);
 
         Rtx::RendererOptions options;
-        options.mShaderDirectory = spec.mResourceDir / "rtx" / "shaders";
+        options.mShaderDirectory = Rtx::shaderDirectory(spec.mResourceDir, setup.mShaderSource);
 
         // **A measured run keeps no pipeline cache of its own.** A pipeline out of the blob
         // starts on the compile's first code and is swapped for the driver's second all the same
-        // (`Rtx::CodeSettle`), and the object shared between parallel compiles handed one pipeline
-        // another's code (`PipelineCacheSpec::mDirectory`). The driver's own disk cache holds the
-        // second code and stays on. The player keeps the fork's cache: a game is not compared with
+        // (`Rtx::DriverCache`), and the object shared between parallel compiles handed one pipeline
+        // another's code (`PipelineCacheSpec::mDirectory`). The driver's own disk cache stays on,
+        // one per set of shaders. The player keeps the fork's cache: a game is not compared with
         // itself, and the seconds it saves at start are the player's.
         if (run == nullptr)
             options.mCacheDirectory = spec.mCachePath;
@@ -278,6 +280,8 @@ namespace MWRender
 
     void RtxRenderer::configureResources(Resource::ResourceSystem& resources)
     {
+        setResourceExpiry(resources, mStep);
+
         Resource::SceneManager& scene = *resources.getSceneManager();
         scene.setShadersEnabled(false);
 
@@ -286,6 +290,12 @@ namespace MWRender
         Shader::AutoMapRules maps = scene.getAutoMaps();
         maps.mSpecularMaps = maps.mSpecularMaps && mMirror.getSpecularLayout() == Rtx::SpecularLayout::MetalRoughness;
         scene.setAutoMaps(maps);
+    }
+
+    void RtxRenderer::setResourceExpiry(Resource::ResourceSystem& resources, const std::optional<float>& step)
+    {
+        if (step.has_value())
+            resources.setExpiryDelay(std::numeric_limits<double>::infinity());
     }
 
     osg::ref_ptr<osg::Group> RtxRenderer::createSceneRoot()

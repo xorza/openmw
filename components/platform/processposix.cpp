@@ -1,11 +1,7 @@
 #include "process.hpp"
 
-#include <cerrno>
 #include <cstdint>
 #include <cstdlib>
-#include <cstring>
-#include <optional>
-#include <string>
 
 #include <unistd.h>
 
@@ -28,17 +24,6 @@ namespace Platform::Process
     void setEnvironment(const char* name, const char* value)
     {
         setenv(name, value, 1);
-    }
-
-    std::optional<int> startAgain(char* const argv[], std::string& why)
-    {
-        // The image itself where the kernel names it, so a tool started through a relative path
-        // from a directory the run has since left starts again all the same; the name it was
-        // started by where there is no such link.
-        execv("/proc/self/exe", argv);
-        execvp(argv[0], argv);
-        why = std::strerror(errno);
-        return std::nullopt;
     }
 
     std::uint32_t currentId()

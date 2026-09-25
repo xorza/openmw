@@ -2,8 +2,6 @@
 #define OPENMW_COMPONENTS_PLATFORM_PROCESS_HPP
 
 #include <cstdint>
-#include <optional>
-#include <string>
 
 /// What this process does with itself that the operating systems spell differently: how it
 /// ends, what it says to its environment, and which process it is. One header over
@@ -21,16 +19,8 @@ namespace Platform::Process
     /// stood instead.
     bool setEnvironmentDefault(const char* name, const char* value);
 
-    /// Gives `name` the value `value` in this process's environment, over whatever it had: a
-    /// word this process leaves for the one it starts in its place with `startAgain`.
+    /// Gives `name` the value `value` in this process's environment, over whatever it had.
     void setEnvironment(const char* name, const char* value);
-
-    /// Starts this process again: the same image, handed `argv` again and the environment as it
-    /// stands now. Where the platform can put the fresh process in this one's place it never
-    /// returns; where it cannot, it runs the fresh one to its end in this console and answers its
-    /// exit status, for the caller to end with. Nothing where neither happened, with why in
-    /// `why`; the caller then says so and ends.
-    std::optional<int> startAgain(char* const argv[], std::string& why);
 
     /// This process's id, as the system numbers processes: what a reading that names processes
     /// tells this one from the rest by.

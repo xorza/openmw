@@ -17,10 +17,9 @@
 // measurable in a room, where the legs spread by a quarter either way and the guild's medians
 // came out 3.74 against 3.66. What they cost is launches for the driver to compile on a cold
 // start: fourteen more than the full tuple alone was eight seconds of creation and thirteen of its
-// second compile, against 2.3 s and 1.1 s, so a prime (`Rtx::CodeSettle`) that settled at six
-// seconds settled at twenty. `HAS_MAPS` doubles the trace's half of the table, and a prime from an
-// empty driver cache settles at twenty-six (2026-09-25). Kept for the exteriors' three per cent and
-// for a vanilla frame's own kernel; the switch is what measures it again.
+// second compile, against 2.3 s and 1.1 s. `HAS_MAPS` doubles the trace's half of the table. Kept
+// for the exteriors' three per cent and for a vanilla frame's own kernel; the switch is what
+// measures it again.
 //
 // **Each of these stands in front of the runtime test it replaces and never in place of it.** True
 // leaves the shader exactly as it was. False is set only where the test behind it already answers

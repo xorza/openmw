@@ -10,6 +10,9 @@
 #   rtx <flavour> setup <morrowind dir>  write the openmw.cfg a fresh box has none of
 #   rtx <flavour> repeat [--pairs=N] [bench args]
 #                                        two runs of one binary walk one place and must agree
+#   rtx <flavour> kernels [--against=<file>]
+#                                        one digest per shader and tuple of its constants; against
+#                                        an earlier listing, which tuples moved
 #   rtx package archive [name]           the release archive out of the package build, into dist/:
 #                                        an AppImage on Linux, the portable folder on Windows,
 #                                        named after the ref or the name given
@@ -131,20 +134,6 @@ describeFlavour() {
             exit 2
             ;;
     esac
-
-    # **The driver's shader cache, one per flavour and nobody else's.** The driver keeps the second
-    # code of the launches in it (`Rtx::CodeSettle`), prunes it at a size limit, and by default
-    # shares one cache with every application on the machine, so another program's shaders can
-    # evict the tool's and the next run compiles and primes again. The flavours' SPIR-V differ, so
-    # each gets its own; the size is far past what nineteen launches take, which is twenty
-    # megabytes. Made here, because the driver keeps no cache in a directory that is not there
-    # and says nothing about it: without one the compile thread had no quiet window in thirty
-    # seconds, and the process that started again compiled again.
-    if ! onWindows; then
-        export __GL_SHADER_DISK_CACHE_PATH="$build/driver-cache"
-        export __GL_SHADER_DISK_CACHE_SIZE=$((8 * 1024 * 1024 * 1024))
-        mkdir -p "$__GL_SHADER_DISK_CACHE_PATH"
-    fi
 }
 
 # **MSVC's environment, captured into this shell.** `cl` finds its headers and libraries through
@@ -660,6 +649,116 @@ runRepeat() {
     return "$status"
 }
 
+# **What each kernel is once its constants are fixed, as one digest per tuple: `rtx <flavour>
+# kernels [--against=<file>]`.** The exact answer to "does this change move a vanilla frame",
+# asked of the shaders and not of a run: two runs are the driver's code, and its code of a module
+# is not a function of the module alone (`Rtx::DriverCache`). A module is specialized to each
+# tuple of its boolean constants — a `uint` stays at its default — optimized so the branches
+# its constants decide are gone, stripped of its source, given canonical ids, and hashed with its
+# declarations sorted and its functions in order: code no tuple runs, a comment and the order
+# declarations came in all leave the digest where it was. Equal digests are one program for that
+# tuple as far as SPIR-V can say; with `--against`, a file this wrote before, the tuples that
+# moved are named and the exit status says whether any did.
+kernelDigest() {
+    local module constants label
+    IFS=$'\t' read -r module constants label <<< "$1"
+    local specialize=()
+    [ -n "$constants" ] && specialize=(--set-spec-const-default-value "$constants")
+    # Into a file, because the optimizer says what it could not canonicalize on its standard
+    # output, and a module refused is a failure of the listing and never a digest of nothing.
+    local specialized digest
+    specialized="$(mktemp)"
+    if ! "$optimizer" --target-env=vulkan1.4 --scalar-block-layout "${specialize[@]}" --freeze-spec-const -O \
+        --strip-debug --strip-nonsemantic --canonicalize-ids "$module" -o "$specialized" > /dev/null 2>&1; then
+        echo "rtx: spirv-opt refused $(basename "$module") at ${label:--}" >&2
+        rm -f "$specialized"
+        return 1
+    fi
+    digest="$("$disassembler" --raw-id --no-header "$specialized" \
+        | awk '/^ *OpFunction / { body = 1 } body { printf "B %09d %s\n", ++line, $0; next } { print "D " $0 }' \
+        | LC_ALL=C sort | md5sum | cut -d' ' -f1)"
+    rm -f "$specialized"
+    printf '%s %s %s\n' "$(basename "$module" .spv)" "${label:--}" "$digest"
+}
+
+runKernels() {
+    local against=""
+    for arg in "$@"; do
+        case "$arg" in
+            --against=*) against="${arg#*=}" ;;
+            *)
+                echo "rtx: kernels reads --against=<file> and nothing else" >&2
+                exit 2
+                ;;
+        esac
+    done
+
+    # The optimizer the build strips its modules with, so the two cannot be different releases.
+    optimizer="$(sed -n 's/^OPENMW_SPIRV_OPT:FILEPATH=//p' "$build/CMakeCache.txt" 2> /dev/null)"
+    if [ ! -x "$optimizer" ]; then
+        echo "rtx: the $flavour build names no spirv-opt yet — \`rtx $flavour build\` first" >&2
+        exit 2
+    fi
+    disassembler="$(dirname "$optimizer")/spirv-dis"
+    export optimizer disassembler
+    export -f kernelDigest
+
+    # Every tuple of every module: the constants off the module the driver is handed, their names
+    # off the same module with its source, which keeps the ids it has.
+    local shaders="$build/resources/rtx/shaders" jobs module
+    jobs="$(mktemp)"
+    for module in "$shaders"/*.spv; do
+        local listing ids=() names=() count id name
+        listing="$("$disassembler" --raw-id --no-header "$build/resources/rtx/shaders-source/$(basename "$module")" 2> /dev/null \
+            || "$disassembler" --raw-id --no-header "$module")"
+        while read -r id count; do
+            if grep -Eq "^ *$id = OpSpecConstant(True|False) " <<< "$listing"; then
+                name="$(sed -n "s/^ *OpName $id \"\(.*\)\"$/\1/p" <<< "$listing")"
+                ids+=("$count")
+                names+=("${name:-constant$count}")
+            fi
+        done < <(sed -n 's/^ *OpDecorate \(%[0-9]*\) SpecId \([0-9]*\)$/\1 \2/p' <<< "$listing" | sort -k2,2n)
+
+        local tuple tuples=$((1 << ${#ids[@]}))
+        for ((tuple = 0; tuple < tuples; ++tuple)); do
+            local constants="" label="" at
+            for ((at = 0; at < ${#ids[@]}; ++at)); do
+                local on=$(((tuple >> at) & 1))
+                constants+="${constants:+ }${ids[at]}:$([ $on = 1 ] && echo true || echo false)"
+                label+="${label:+,}${names[at]}=$on"
+            done
+            printf '%s\t%s\t%s\n' "$module" "$constants" "$label" >> "$jobs"
+        done
+    done
+
+    local listed
+    listed="$(mktemp)"
+    xargs -d '\n' -P "$(nproc)" -n 1 bash -c 'kernelDigest "$1"' _ < "$jobs" | LC_ALL=C sort > "$listed"
+    rm -f "$jobs"
+
+    if [ -z "$against" ]; then
+        cat "$listed"
+        rm -f "$listed"
+        return 0
+    fi
+
+    # Keyed on the module and the tuple; a digest that differs, a tuple one side lacks.
+    local moved
+    moved="$(LC_ALL=C join -a 1 -a 2 -e '(none)' -o 0,1.2,2.2 \
+        <(awk '{ print $1 "/" $2, $3 }' "$against" | LC_ALL=C sort) \
+        <(awk '{ print $1 "/" $2, $3 }' "$listed" | LC_ALL=C sort) | awk '$2 != $3')"
+    local total
+    total="$(wc -l < "$listed")"
+    rm -f "$listed"
+    if [ -z "$moved" ]; then
+        echo "kernels: all $total the same as $against"
+        return 0
+    fi
+    echo "kernels: $(wc -l <<< "$moved") of $total moved against $against (tuple, before, now):"
+    echo "$moved"
+    return 1
+}
+
 # The tools an AppImage is made with, pinned by release and checksum into deps/ the way the
 # Windows set is, and fetched only where the directory lacks one.
 fetchAppImageTools() {
@@ -841,6 +940,11 @@ case "$what" in
     repeat)
         buildTargets openmw-rtxtool
         runRepeat "$@"
+        ;;
+    kernels)
+        # The build's lines on the side, because the listing is what a caller keeps.
+        buildTargets openmw-rtx-vulkan-shaders >&2
+        runKernels "$@"
         ;;
     archive)
         buildTargets "${targets[@]}"

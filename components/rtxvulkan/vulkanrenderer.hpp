@@ -70,7 +70,6 @@ namespace Rtx
         ~VulkanRenderer() override;
 
         std::string describeDevice() const override;
-        bool compiledLaunches() const override;
         bool isValidating() const override;
         void resetHistory() override
         {

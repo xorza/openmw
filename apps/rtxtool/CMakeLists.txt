@@ -25,6 +25,8 @@ source_group(apps\\rtxtool FILES ${RTXTOOL_HOSTED_FILES} main.cpp)
 
 # A library so the tests can reach into it, the way apps/openmw builds openmw-lib.
 openmw_rtx_library(openmw-rtxtool-lib ${RTXTOOL_FILES})
+openmw_rtx_expect_listed("${CMAKE_CURRENT_SOURCE_DIR}" MATCHING *.cpp *.hpp
+    LISTED ${RTXTOOL_FILES} ${RTXTOOL_HOSTED_FILES} main.cpp)
 
 # `PUBLIC`, because the interface names all of them: `options.hpp` takes Boost's option maps,
 # `run.hpp` an `SDLUtil` mode, and the fork's own types throughout.

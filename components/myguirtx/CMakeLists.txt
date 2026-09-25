@@ -22,5 +22,6 @@ set(RTX_MYGUI_FILES
 )
 
 openmw_rtx_library(openmw-rtx-mygui ${RTX_MYGUI_FILES})
+openmw_rtx_expect_listed("${CMAKE_CURRENT_SOURCE_DIR}" MATCHING *.cpp *.hpp LISTED ${RTX_MYGUI_FILES})
 
 target_link_libraries(openmw-rtx-mygui PUBLIC openmw-rtx components)

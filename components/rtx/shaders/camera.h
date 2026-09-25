@@ -185,8 +185,8 @@ RTX_SHADER Ray rayAt(Camera camera, vec2 pixel)
     // the driver's second compile of the trace fused them differently from its first, and a
     // direction an ulp away is a hit distance an ulp away on the surfaces it reaches and another
     // sample on a few hundred pixels. `precise` forbids the fusion, so every compile of this sum
-    // is the written sum. Which of the driver's two codes a measured run is on is
-    // `Rtx::CodeSettle`'s business and not this line's.
+    // is the written sum. The `normalize` under it is not pinned: Vulkan lets each compile add the
+    // squares inside it in any order, so two compiles can still hand back directions an ulp apart.
     RTX_PRECISE vec3 summed = camera.mForward + camera.mRight * uv.x - camera.mUp * uv.y;
     ray.mDirection = normalize(summed);
 

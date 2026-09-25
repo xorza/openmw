@@ -321,20 +321,6 @@ namespace Rtx
                             },
                             variant.describe("visibility"), specialization);
             });
-
-        // After the hands have joined and not inside them, so the fold needs no lock. A slot
-        // with nothing in it is a tuple the full one answers for.
-        const auto longest = [&](const std::unique_ptr<TracePipeline>& launch) {
-            if (launch != nullptr)
-                mLongestCompileMs = std::max(mLongestCompileMs, launch->getCompileMs().value_or(0.0));
-        };
-        longest(mDepthPipeline);
-        longest(mSpriteCompositePipeline);
-        longest(mSpriteShelterPipeline);
-        for (const std::unique_ptr<TracePipeline>& launch : mPipelines)
-            longest(launch);
-        for (const std::unique_ptr<TracePipeline>& launch : mScatterPipelines)
-            longest(launch);
     }
 
     std::uint32_t VisibilityPass::slotOf(const VisibilityVariant variant) const

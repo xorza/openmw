@@ -105,6 +105,10 @@ source_group(apps\\components-tests FILES ${UNITTEST_SRC_FILES})
 
 if (OPENMW_RTX)
     include(rtx/sources.cmake)
+    openmw_rtx_expect_listed("${CMAKE_CURRENT_SOURCE_DIR}"
+        MATCHING rtx/*.cpp rtx/*.hpp rtxbench/*.cpp rtxbench/*.hpp rtxtool/*.cpp rtxtool/*.hpp
+        LISTED ${RTX_TEST_FILES} ${RTX_TEST_SUPPORT} ${RTX_GPU_TEST_FILES} ${RTX_TEST_FILES_FIFO}
+               ${RTX_TEST_FILES_UPSTREAM})
     list(APPEND UNITTEST_SRC_FILES ${RTX_TEST_FILES} ${RTX_TEST_SUPPORT} ${RTX_TEST_FILES_UPSTREAM})
 endif()
 

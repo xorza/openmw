@@ -19,8 +19,8 @@ set(RTX_BENCH_FILES
     benchspec.hpp
     cardwatch.cpp
     cardwatch.hpp
-    codesettle.cpp
-    codesettle.hpp
+    drivercache.cpp
+    drivercache.hpp
     framehashes.cpp
     framehashes.hpp
     frametimes.cpp
@@ -31,13 +31,13 @@ set(RTX_BENCH_FILES
     nvml.hpp
     runrecord.cpp
     runrecord.hpp
+    runsetup.hpp
     scenedigest.cpp
     scenedigest.hpp
-    threadwatch.cpp
-    threadwatch.hpp
 )
 
 openmw_rtx_library(openmw-rtx-bench ${RTX_BENCH_FILES})
+openmw_rtx_expect_listed("${CMAKE_CURRENT_SOURCE_DIR}" MATCHING *.cpp *.hpp LISTED ${RTX_BENCH_FILES})
 
 # `PUBLIC`, because `benchrecord.hpp` names `Rtx::SceneStats` and the three reconstruction enums,
 # and `frametimes.hpp` names `Rtx::GpuSpan`: every consumer needs the core's include paths.

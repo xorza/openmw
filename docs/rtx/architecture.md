@@ -99,17 +99,21 @@ public `OPENMW_RTX` definition, read by `#ifdef OPENMW_RTX` in `mwrender/rendere
 | `openmw-rtx-mygui`          | `components/myguirtx`  | `openmw-rtx`, `components`                                    |
 | `openmw-rtxtool-lib`        | `apps/rtxtool`         | the three component libraries, `components`, Boost, SDL2      |
 | `openmw-rtxtool`            | `apps/rtxtool`         | `openmw-rtxtool-lib`, `openmw-lib`                            |
-| `openmw-rtx-vulkan-shaders` | `components/rtxvulkan` | every `.spv` under `resources/rtx/shaders/`                   |
+| `openmw-rtx-vulkan-shaders` | `components/rtxvulkan` | each module in `rtx/shaders/` and `rtx/shaders-source/`       |
 
 `openmw-lib` links the four component libraries and compiles `mwrender/rtx/*.cpp` with the
 seam files. Shaders are compiled by `glslc` for Vulkan 1.4 and validated by `spirv-val` in one
-command, so an invalid module fails the build. The C++/GLSL shared headers are
-`components/rtx/shaders/*.h`. Validation layers are on outside a Release build
+command, so an invalid module fails the build. `spirv-opt` strips each module's source into
+`resources/rtx/shaders/`, which every renderer reads, because the driver keys its cache on the
+bytes it is handed; `shaders-source/` keeps the source for a profiler (`--shader-source`). Every
+fork directory checks its hand-written lists against the files it holds
+(`openmw_rtx_expect_listed`), so a file no list names stops the configure. The C++/GLSL shared
+headers are `components/rtx/shaders/*.h`. Validation layers are on outside a Release build
 (`Rtx::sValidationByDefault`); `OPENMW_RTX_SYNC_VALIDATION` and `OPENMW_RTX_GPU_VALIDATION`
 raise the level at run time.
 
 `CMakePresets.json` names the flavours `debug`, `release`, `asan` and `nodlss`, per system.
-`apps/rtxtool/rtx <flavour> <build|test|game|repeat|gate|verb>` is the one command line over
+`apps/rtxtool/rtx <flavour> <build|test|game|repeat|kernels|gate|verb>` is the one command line over
 them.
 
 ---
@@ -1069,7 +1073,7 @@ the presenter whether the swapchain wants a rebuild before it compares the exten
 |------------------------------|-----------------------------|----------------------------------------------------------------------------------|
 | the main thread              | the engine                  | every seam call, every walk, every Vulkan submit and wait, the GUI                |
 | the cell reader              | `Rtx::CellSupply` (`Worker`) | `CellReader`, the land and object storages, templates and images through `ContentSource`; `Monitor` in between |
-| the driver's compile threads | the driver                  | recompile the launches after they were made; `CodeSettle` and `ThreadWatch` watch |
+| the driver's compile threads | the driver                  | rebuild the launches from what they measured and swap them in; a hashed still's check sees it |
 | the work queue, the Lua worker | upstream                  | preloading, the screenshot writer; scripts                                        |
 
 `OwnedBy` asserts which thread a member belongs to. A worker that throws closes the monitor
@@ -1128,7 +1132,17 @@ collects every frame in `frame`. `Rtx::Check` (`components/rtxbench/benchrun.hpp
 
 `components/rtxbench` holds the instruments both hosts share, because the game measures
 itself: the run's length, what a place came to, frame times and hashes, the scene digest, the
-card's clock and who held the card, the process's threads. It knows nothing about a world.
+card's clock and who held the card, the driver's cache. It knows nothing about a world.
+
+**The driver's cache of each shader set is its own.** `Rtx::DriverCache` points the driver at a
+directory beside the modules, named by their digest, and removes the one before it when a build
+changes them. It does not settle which code the driver runs: the NVIDIA driver builds a launch
+again from its own profile and swaps it in at a frame of some processes, and the second code
+orders and fuses its float arithmetic otherwise, so the two give other frames
+(`.notes/ISSUES.md`). A hashed still nothing jittered and nothing flew fails where
+its depth or motion moved between frames, which is that swap. A stepped run also never
+expires the resource caches (`RtxRenderer::setResourceExpiry`): an expiry runs on a loading
+thread, and what it kept was that thread's timing.
 
 | binary             | filter         | holds                                                                       |
 |--------------------|----------------|-----------------------------------------------------------------------------|
@@ -1139,7 +1153,8 @@ card's clock and who held the card, the process's threads. It knows nothing abou
 `rtx <flavour> test` runs the three. `rtx <flavour> gate` runs everything a change owes.
 Rendering changes are checked without a window: `shot --views=all --map --against=<dir>` says
 which pictures moved, and `rtx <flavour> repeat --pairs=N` says whether two runs of one binary
-draw one frame.
+draw one frame. `rtx <flavour> kernels --against=<listing>` says which kernels a change moved, per
+tuple of their constants, from the modules alone: a tuple that did not move is the same program.
 
 ---
 
@@ -1173,4 +1188,5 @@ draw one frame.
 | the two hosts                                  | `mwrender/rtx/rtxrun.hpp`, `components/rtxbench/runsetup.hpp`, `apps/rtxtool/session.hpp` |
 | the settings a player sees                     | `docs/source/reference/modding/settings/rtx.rst`, `files/settings-default.cfg` |
 | the build                                      | `components/rtx/build.cmake`, `components/rtxvulkan/CMakeLists.txt`, `CMakePresets.json`, `apps/rtxtool/rtx` |
+| the driver's cache of a shader set             | `components/rtxbench/drivercache.hpp`, `components/rtx/shaderdirectory.hpp` |
 | the words                                      | `components/rtx/GLOSSARY.md`                                             |

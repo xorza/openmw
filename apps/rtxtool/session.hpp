@@ -18,12 +18,10 @@
 #include <components/rtxbench/benchrecord.hpp>
 #include <components/rtxbench/benchrun.hpp>
 #include <components/rtxbench/cardwatch.hpp>
-#include <components/rtxbench/codesettle.hpp>
 #include <components/rtxbench/frametimes.hpp>
 #include <components/rtxbench/gpuclock.hpp>
 #include <components/rtxbench/runrecord.hpp>
 #include <components/rtxbench/scenedigest.hpp>
-#include <components/rtxbench/threadwatch.hpp>
 
 #include "stopwriter.hpp"
 
@@ -282,23 +280,5 @@ namespace RtxTool
 
         /// What a hashed frame's scene columns come from, kept so a frame pays for what moved.
         Rtx::SceneDigester mDigester;
-
-        /// The prime a stepped run of a process that compiled its launches spends its first
-        /// stop's frames on: judged once a frame off `mThreadWatch` until the driver's threads are
-        /// quiet, and nothing otherwise. `Rtx::CodeSettle` says what for.
-        std::optional<Rtx::CodeSettle> mPriming;
-
-        /// The process's other threads, watched across each stepped stop from a thread of its
-        /// own: what the prime waits on and what every place records, so a driver that compiled
-        /// inside a stop's frames is a fact in its report. Held rather than made per stop, because
-        /// what it owns is a thread.
-        Rtx::ThreadWatch mThreadWatch;
-
-        /// Whether the run ended primed and not measured — `SessionResult::mPrimed`.
-        bool mPrimed = false;
-
-        /// Where a stepped run's first frame decides whether to prime, and where every frame of
-        /// a prime goes: answers whether the frame is the prime's and not the stop's.
-        bool prime(const Rtx::Renderer& renderer);
     };
 }

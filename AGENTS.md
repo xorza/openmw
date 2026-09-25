@@ -60,6 +60,9 @@ backend ever arrives.
 --against=<dir>` says which pictures a change moved. `scene` reports what the renderer was
   handed. `check` asserts the tree's claims at every place of its suite. `bench` has the moving
   camera. `view` is for what only a window shows.
+- `rtx <flavour> kernels > before.txt` ahead of a shader change and `--against=before.txt` after
+  it names the kernels the change moved, per tuple of their constants; a tuple it did not name
+  draws what it drew.
 - `rtx debug repeat --pairs=10` after touching anything a frame reads. A run is the same run
   twice, and a pair that finds nothing has found nothing. Read a difference with `--exposure=1`
   and `--pictures=<dir>`.

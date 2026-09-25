@@ -21,7 +21,6 @@
 #include "cardwatch.hpp"
 #include "frametimes.hpp"
 #include "gpuclock.hpp"
-#include "threadwatch.hpp"
 
 namespace Rtx
 {
@@ -174,12 +173,6 @@ namespace Rtx
         /// through carries that process's frames in every row above, and this is the line that
         /// says so.
         CardShare mCard;
-
-        /// The busiest of the process's other threads across the place's frames, warm-up
-        /// included: what says the driver's second compile of the launches (`CodeSettle`) did not
-        /// run inside them, which would be a place measured on two codes. Not in the JSON, which
-        /// is for comparing frame times across commits.
-        ThreadShare mThreads;
 
         /// What fraction of primary rays hit something, as a percentage. A place profiled facing a
         /// wall is fast and means nothing, and this is what says so without opening a window.

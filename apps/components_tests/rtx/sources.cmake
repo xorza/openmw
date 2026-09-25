@@ -55,6 +55,7 @@ set(RTX_TEST_FILES
     rtx/runs.cpp
     rtx/scenedesc.cpp
     rtx/sceneuploader.cpp
+    rtx/shaderdirectory.cpp
     rtx/shading.cpp
     rtx/shadingmap.cpp
     rtx/shapefold.cpp
@@ -80,13 +81,12 @@ set(RTX_TEST_FILES
     rtxbench/benchrun.cpp
     rtxbench/benchspec.cpp
     rtxbench/cardwatch.cpp
-    rtxbench/codesettle.cpp
+    rtxbench/drivercache.cpp
     rtxbench/framehashes.cpp
     rtxbench/frametimes.cpp
     rtxbench/gpuclock.cpp
     rtxbench/runrecord.cpp
     rtxbench/scenedigest.cpp
-    rtxbench/threadwatch.cpp
     rtxtool/compare.cpp
     rtxtool/options.cpp
     rtxtool/run.cpp
@@ -98,11 +98,15 @@ set(RTX_TEST_FILES
 set(RTX_TEST_SUPPORT
     rtx/allocations.cpp
     rtx/allocations.hpp
+    rtx/countingrenderer.hpp
+    rtx/fakeland.hpp
     rtx/fallbackseed.cpp
     rtx/geometry.hpp
     rtx/guiquad.hpp
+    rtx/heldimages.hpp
     rtx/layers.hpp
     rtx/statistics.hpp
+    rtx/testcamera.hpp
     rtx/testtexture.hpp
     rtx/wavemoments.hpp
 )
@@ -157,8 +161,9 @@ set(RTX_GPU_TEST_FILES
 
 
 # What is read off a fifo, where the platform has one.
+set(RTX_TEST_FILES_FIFO rtxbench/perffifo.cpp)
 if (NOT WIN32)
-    list(APPEND RTX_TEST_FILES rtxbench/perffifo.cpp)
+    list(APPEND RTX_TEST_FILES ${RTX_TEST_FILES_FIFO})
 endif()
 
 # Reads a NIF through upstream's loader, whose headers are not warning-free under the extra

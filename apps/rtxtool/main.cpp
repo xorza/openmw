@@ -3,7 +3,6 @@
 #include <charconv>
 #include <cstddef>
 #include <cstdint>
-#include <cstdlib>
 #include <exception>
 #include <filesystem>
 #include <format>
@@ -32,10 +31,12 @@
 #include <components/rtx/pacing.hpp>
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/renderer.hpp>
+#include <components/rtx/shaderdirectory.hpp>
 #include <components/rtx/surfaceview.hpp>
 #include <components/rtxbench/benchrecord.hpp>
 #include <components/rtxbench/benchrun.hpp>
 #include <components/rtxbench/benchspec.hpp>
+#include <components/rtxbench/drivercache.hpp>
 #include <components/rtxvulkan/createrenderer.hpp>
 #include <components/sdlutil/vsyncmode.hpp>
 #include <components/settings/settings.hpp>
@@ -168,12 +169,14 @@ namespace RtxTool
         }
 
         /// What every command is handed: the line it was given, the configuration that line was
-        /// read against, and where the resources are.
+        /// read against, where the resources are, and which of their shader sets a renderer reads —
+        /// the one the driver's cache was pointed at.
         struct Command
         {
             const bpo::variables_map& mVariables;
             Files::ConfigurationManager& mConfig;
             const std::filesystem::path& mResources;
+            const std::filesystem::path& mShaders;
             Verbs mVerb;
         };
 
@@ -263,7 +266,7 @@ namespace RtxTool
             try
             {
                 const std::unique_ptr<Rtx::Renderer> renderer = Rtx::createVulkanRenderer(Rtx::RendererOptions{
-                    .mShaderDirectory = command.mResources / "rtx" / "shaders",
+                    .mShaderDirectory = command.mShaders,
                     .mWidth = 1,
                     .mHeight = 1,
                     .mValidation = validation,
@@ -348,6 +351,7 @@ namespace RtxTool
             request.mSetup.mMirror = framed.mMirror;
             request.mSetup.mLatency = framed.mLatency;
             request.mSetup.mValidation = validation;
+            request.mSetup.mShaderSource = variables["shader-source"].as<bool>();
             if (variables.count("memory-budget") != 0)
                 request.mSetup.mMemoryBudget = variables["memory-budget"].as<std::uint64_t>() * 1024 * 1024;
             request.mHud = variables["hud"].as<bool>();
@@ -941,34 +945,16 @@ namespace RtxTool
                 return 1;
             }
 
-            return found->mRun(Command{ variables, config, resources, found->mVerb });
-        }
+            // **Before any verb makes a device, because the driver reads where its cache is once.**
+            // A cache of the shaders this run reads and of nothing else, beside them
+            // (`Rtx::DriverCache`).
+            const std::filesystem::path shaders
+                = Rtx::shaderDirectory(resources, variables["shader-source"].as<bool>());
+            const Rtx::DriverCache driverCache(shaders);
+            driverCache.applyToDriver();
+            driverCache.sweep();
 
-        /// Where a run primed the driver's cache instead of measuring: the same run again, in a
-        /// process that finds the cache warm. Once, because a process that compiled the launches
-        /// after a prime is a cache that is not being kept, and that is a failure to report and
-        /// not a loop to run.
-        int startAgain(char* argv[])
-        {
-            if (std::getenv(sPrimedEnvironment) != nullptr)
-            {
-                Debug::getRawStderr() << "openmw-rtxtool: the launches were compiled again after a prime, so the "
-                                         "driver's shader cache is not being kept and this run cannot be measured\n";
-                return 1;
-            }
-
-            Platform::Process::setEnvironment(sPrimedEnvironment, "1");
-            Log(Debug::Info) << "Ray tracing session: starting again on the primed cache";
-
-            // Where the platform cannot put the fresh process in this one's place, it ran it to
-            // its end and this one ends with its status.
-            std::string why;
-            if (const std::optional<int> status = Platform::Process::startAgain(argv, why); status.has_value())
-                return *status;
-
-            Debug::getRawStderr() << "openmw-rtxtool: could not start again (" << why
-                                  << "); run the same command again by hand\n";
-            return 1;
+            return found->mRun(Command{ variables, config, resources, shaders, found->mVerb });
         }
 
         int run(int argc, char* argv[])
@@ -978,8 +964,7 @@ namespace RtxTool
             // ssh and from a script, where a dialog nobody can see is a hang.
             try
             {
-                const int status = dispatch(argc, argv);
-                return status == sPrimedStatus ? startAgain(argv) : status;
+                return dispatch(argc, argv);
             }
             catch (const std::exception& e)
             {

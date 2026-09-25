@@ -152,11 +152,12 @@ namespace Rtx
         constexpr VkPipelineCreationFeedbackFlags valid = VK_PIPELINE_CREATION_FEEDBACK_VALID_BIT;
         constexpr VkPipelineCreationFeedbackFlags fromApplicationCache
             = VK_PIPELINE_CREATION_FEEDBACK_APPLICATION_PIPELINE_CACHE_HIT_BIT;
+        std::optional<double> compileMs;
         if ((feedback.flags & (valid | fromApplicationCache)) == valid)
-            mCompileMs = static_cast<double>(feedback.duration) / 1e6;
+            compileMs = static_cast<double>(feedback.duration) / 1e6;
 
         device.setName(mHandle.get(), name);
-        device.reportPipeline(mHandle.get(), name, mCompileMs);
+        device.reportPipeline(mHandle.get(), name, compileMs);
 
         const VkPhysicalDeviceRayTracingPipelinePropertiesKHR& limits
             = device.getPhysicalDevice().getProperties().mRayTracingPipeline;

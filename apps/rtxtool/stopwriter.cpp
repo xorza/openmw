@@ -634,24 +634,6 @@ namespace RtxTool
                     && hold.mShortestMs >= facts.mHoldAskedMs && zoneShortest >= facts.mHoldAskedMs;
             }
 
-            case Rtx::Check::DriverQuiet:
-            {
-                const Rtx::ThreadShare& threads = facts.mThreads;
-                if (!threads.mViewed)
-                {
-                    found = "no view of the process's other threads on this platform";
-                    return true;
-                }
-
-                // A stop shorter than the stretch cannot hold one, and says how short it was so
-                // the yes reads as what it is.
-                found = std::format(
-                    "{} windows, the busiest thread flat out through {} in a row at most, against "
-                    "the {} a compile holds",
-                    threads.mWindows, threads.mLongestFlatOut, Rtx::ThreadShare::sCompileWindows);
-                return threads.mLongestFlatOut < Rtx::ThreadShare::sCompileWindows;
-            }
-
             case Rtx::Check::Finite:
             {
                 const Rtx::NotFinite& wrote = facts.mNotFinite;

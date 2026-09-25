@@ -25,15 +25,6 @@ namespace Files
 
 namespace RtxTool
 {
-    /// What a hosted run returns where the process compiled the launches and primed the driver's
-    /// cache instead of measuring — `SessionResult::mPrimed` — and what `main` starts the process
-    /// again on. `EX_TEMPFAIL`, which no other path returns.
-    inline constexpr int sPrimedStatus = 75;
-
-    /// The word a process that primed leaves in the environment of the one it starts in its place,
-    /// so a process that compiled the launches all the same is a failure and not another prime.
-    inline constexpr const char* sPrimedEnvironment = "OPENMW_RTX_PRIMED";
-
     /// Degrees clockwise from north, in `[0, 360)`, of the way a stand faces. North is +Y and east
     /// is +X, so the arguments come the other way round from the usual `atan2`.
     float bearingOf(const Rtx::Stand& stand);
