@@ -5,7 +5,8 @@
         "the one way in on the desk and in CI: it configures through these, fetches what a system lacks first,",
         "and knows what each flavour is for once it is built. A visible preset is a flavour on a system, named",
         "`<flavour>-<system>`, and inherits the flavour, the system and the common ground, in that order: the",
-        "earlier preset wins a variable both name. The hidden presets are the parts and build nothing alone.",
+        "earlier preset wins a variable both name. The hidden presets are the parts and build nothing alone,",
+        "and each flavour's names its directory, `build-<flavour>`, which is where `rtx` looks for it.",
         "Version 10, because it is the first that can carry a `$comment` beside each decision."
     ],
     "configurePresets": [
@@ -103,6 +104,7 @@
             "name": "debug",
             "hidden": true,
             "$comment": "Every assert, with the tests: the everyday build.",
+            "binaryDir": "${sourceDir}/build-debug",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "RelWithDebInfo",
                 "BUILD_COMPONENTS_TESTS": "ON",
@@ -118,6 +120,7 @@
                 "through a test. Each system adds the light debug data and the frame pointers a profiler",
                 "needs, in its own spelling, on the visible preset."
             ],
+            "binaryDir": "${sourceDir}/build-release",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
                 "BUILD_COMPONENTS_TESTS": "OFF",
@@ -132,6 +135,7 @@
                 "The debug flavour under AddressSanitizer. Linux only: MSVC has a sanitizer, and nobody has",
                 "measured this tree under it. The ASAN_OPTIONS without which there is no device are `rtx`'s."
             ],
+            "binaryDir": "${sourceDir}/build-asan",
             "cacheVariables": {
                 "CMAKE_C_FLAGS_INIT": "-fsanitize=address -fno-omit-frame-pointer",
                 "CMAKE_CXX_FLAGS_INIT": "-fsanitize=address -fno-omit-frame-pointer"
@@ -147,6 +151,7 @@
                 "has to be behind the `#ifdef`. The gate compiles it so that a symbol reached from the wrong side",
                 "is found here and not by whoever next configures without the SDK."
             ],
+            "binaryDir": "${sourceDir}/build-nodlss",
             "cacheVariables": {
                 "OPENMW_RTX_DLSS": "OFF"
             }
@@ -162,6 +167,7 @@
                 "as the `rtx` preset says. Listed first among what a visible preset inherits, so what it turns",
                 "on beats what `windows` turns off."
             ],
+            "binaryDir": "${sourceDir}/build-package",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
                 "BUILD_COMPONENTS_TESTS": "OFF",
@@ -175,18 +181,15 @@
         },
         {
             "name": "debug-linux",
-            "inherits": [ "debug", "linux", "rtx" ],
-            "binaryDir": "${sourceDir}/build-debug"
+            "inherits": [ "debug", "linux", "rtx" ]
         },
         {
             "name": "debug-windows",
-            "inherits": [ "debug", "windows", "rtx" ],
-            "binaryDir": "${sourceDir}/build-debug"
+            "inherits": [ "debug", "windows", "rtx" ]
         },
         {
             "name": "release-linux",
             "inherits": [ "release", "linux", "rtx" ],
-            "binaryDir": "${sourceDir}/build-release",
             "$comment": [
                 "`-g1` is line tables and nothing else, so it costs nothing at runtime and a profile can name a",
                 "line rather than an offset; the frame pointers cost less than the run-to-run spread and are",
@@ -202,7 +205,6 @@
         {
             "name": "release-windows",
             "inherits": [ "release", "windows", "rtx" ],
-            "binaryDir": "${sourceDir}/build-release",
             "$comment": [
                 "`-Z7` with `-DEBUG` at link is the line table a profiler names a line from, and `-Oy-` keeps the",
                 "frame pointers a stack walk reads. Spelt with a dash, which every Microsoft tool takes, because",
@@ -218,28 +220,23 @@
         },
         {
             "name": "asan-linux",
-            "inherits": [ "asan", "linux", "rtx" ],
-            "binaryDir": "${sourceDir}/build-asan"
+            "inherits": [ "asan", "linux", "rtx" ]
         },
         {
             "name": "nodlss-linux",
-            "inherits": [ "nodlss", "linux", "rtx" ],
-            "binaryDir": "${sourceDir}/build-nodlss"
+            "inherits": [ "nodlss", "linux", "rtx" ]
         },
         {
             "name": "nodlss-windows",
-            "inherits": [ "nodlss", "windows", "rtx" ],
-            "binaryDir": "${sourceDir}/build-nodlss"
+            "inherits": [ "nodlss", "windows", "rtx" ]
         },
         {
             "name": "package-linux",
-            "inherits": [ "package", "linux", "rtx" ],
-            "binaryDir": "${sourceDir}/build-package"
+            "inherits": [ "package", "linux", "rtx" ]
         },
         {
             "name": "package-windows",
             "inherits": [ "package", "windows", "rtx" ],
-            "binaryDir": "${sourceDir}/build-package",
             "$comment": [
                 "Qt, which the set has none of and the launcher and the wizard are made of: the one `rtx` fetches",
                 "into deps/ for this flavour, by the version CI/deps_versions.msvc.sh pins and exports as QT_VER."

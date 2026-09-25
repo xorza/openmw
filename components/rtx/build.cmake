@@ -85,8 +85,9 @@ endif()
 
 # A target of this fork's own: the errors, the checks, and coverage where the build asks for it.
 # The keyword form of `target_link_libraries`, because every one of these targets links with it,
-# and CMake refuses a target the two forms are mixed on.
+# and CMake refuses a target the two forms are mixed on. Each is also listed for `openmw-rtx-all`.
 function(openmw_rtx_target target)
+    set_property(GLOBAL APPEND PROPERTY OPENMW_RTX_TARGETS ${target})
     target_compile_options(${target} PRIVATE ${OPENMW_RTX_ERRORS} ${OPENMW_RTX_CHECKS})
     if (BUILD_WITH_CODE_COVERAGE)
         target_compile_options(${target} PRIVATE --coverage)
@@ -200,3 +201,10 @@ add_subdirectory (components/myguirtx)
 # The harness drives a real game, so there has to be one to drive. Its library is still built
 # without one, because `components-tests` reaches into it and needs no engine.
 add_subdirectory (apps/rtxtool)
+
+# **Every target of this fork's own, by one name**: what `openmw_rtx_target` was handed, so a
+# target added later is in it without anybody listing it. What `rtx` compiles without asserts.
+add_custom_target(openmw-rtx-all)
+get_property(_openmw_rtx_targets GLOBAL PROPERTY OPENMW_RTX_TARGETS)
+add_dependencies(openmw-rtx-all ${_openmw_rtx_targets})
+unset(_openmw_rtx_targets)

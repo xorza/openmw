@@ -42,8 +42,8 @@
 # is on and what that system lacks, what each flavour is for once built, and what a run is.
 #
 # **The verb stays first.** `dispatch` reads it off argv[1] and takes a leading dash to mean nobody
-# named one, so a switch put before it silently ran `view` instead — a `bench` typed after them once opened
-# a window and profiled nothing.
+# named one, so a switch put before it silently ran `view` instead — a `bench` typed after them
+# once opened a window and profiled nothing.
 #
 # **The same grammar under Git Bash on Windows, with MSVC.** Upstream's prebuilt dependency set is
 # fetched into `deps/` the way `windows.yml` fetches it, and the compiler is found through vswhere
@@ -55,6 +55,8 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# shellcheck source=apps/rtxtool/pins.sh
+source "$root/apps/rtxtool/pins.sh"
 
 # Bash's own word for the system it was built for, which no environment variable can misstate:
 # `msys` under Git Bash, `linux-gnu` on the desk.
@@ -89,22 +91,18 @@ shift 2
 describeFlavour() {
     flavour="$1"
     build="$root/build-$flavour"
+    validation=sync
+    targets=(openmw-rtxtool openmw)
     case "$flavour" in
-        debug)
-            validation=sync
-            targets=(openmw-rtxtool openmw)
-            ;;
+        debug | nodlss) ;;
         release)
             validation=off
-            targets=(openmw-rtxtool openmw)
             ;;
         asan)
             if onWindows; then
                 echo "rtx: asan is Linux's here — MSVC's sanitizer has not been measured on this tree" >&2
                 exit 2
             fi
-            validation=sync
-            targets=(openmw-rtxtool openmw)
 
             # **`protect_shadow_gap=0` is not a preference — without it there is no device at all.**
             # The NVIDIA driver maps its own enormous address ranges, ASan's shadow gap is mapped
@@ -121,10 +119,6 @@ describeFlavour() {
                 options="$options:detect_leaks=0"
             fi
             export ASAN_OPTIONS="$options${ASAN_OPTIONS:+:$ASAN_OPTIONS}"
-            ;;
-        nodlss)
-            validation=sync
-            targets=(openmw-rtxtool openmw)
             ;;
         package)
             validation=off
@@ -254,22 +248,22 @@ fetchWindowsDeps() {
 
 # **The formatter CI pins, out of LLVM's own Windows package.** Nothing installs clang-format 14
 # on Windows any more — LLVM's current installer and the Visual Studio component both carry a
-# later one, and the versions disagree — but LLVM still serves the 14.0.6 package, an NSIS
+# later one, and the versions disagree — but LLVM still serves the last 14 package, an NSIS
 # installer 7-Zip reads without running, and `bin/clang-format.exe` is one file of it. LLVM
-# publishes a signature and no checksum for that release, so the SHA-256 here is the one taken
-# off the download this was written against: the same bytes every time, and nothing else.
+# publishes a signature and no checksum for that release, so the SHA-256 `pins.sh` holds is the
+# one taken off the download this was written against: the same bytes every time, and nothing else.
 fetchClangFormat() {
-    local found="$root/deps/clang-format-14.0.6/clang-format.exe"
+    local found="$root/deps/clang-format-$llvmRelease/clang-format.exe"
     if [ -x "$found" ]; then
         echo "$found"
         return
     fi
 
-    local unpack package="$root/deps/LLVM-14.0.6-win64.exe"
+    local unpack package="$root/deps/LLVM-$llvmRelease-win64.exe"
     unpack="$(sevenZip)"
     mkdir -p "$root/deps"
-    fetchChecked "https://github.com/llvm/llvm-project/releases/download/llvmorg-14.0.6/$(basename "$package")" \
-        e8dbb2f7de8e37915273d65c1c2f2d96844b96bb8e8035f62c5182475e80b9fc "$package"
+    fetchChecked "https://github.com/llvm/llvm-project/releases/download/llvmorg-$llvmRelease/$(basename "$package")" \
+        "$llvmSha256" "$package"
     "$unpack" e -y -o"$(dirname "$found")" "$package" bin/clang-format.exe > /dev/null
     rm -f "$package"
     echo "$found"
@@ -279,12 +273,11 @@ fetchClangFormat() {
 # `SDL_VIDEO_VULKAN`, since the rasterizer never asks for a Vulkan surface, and the renderer's
 # window is one: the symbols link and refuse at runtime. SDL's own Windows package of the same
 # version carries it — the same version, because vcpkg's SDL2_image loads `SDL2.dll` by name and
-# was built against that one. The version is read off the set and has to be the one pinned here
-# beside the package's checksum, which SDL does not publish: a bump upstream is a bump here. The
-# preset reads the version through the environment, to name the package's directory.
-export RTX_SDL2_VERSION="2.32.10"
+# was built against that one. The version is read off the set and has to be the one `pins.sh`
+# pins beside the package's checksum, which SDL does not publish: a bump upstream is a bump there.
+# The preset reads the version through the environment, to name the package's directory.
 fetchWindowsSdl() {
-    local version="$RTX_SDL2_VERSION" sum="af347939395a58b365846aaea27391e69f9ec9d4dd650d6ac40802159b418a6e"
+    local version="$RTX_SDL2_VERSION" sum="$sdl2Sha256"
     sdl="$root/deps/SDL2-$version"
 
     local stamp
@@ -312,14 +305,14 @@ fetchWindowsSdl() {
 # the version `CI/deps_versions.msvc.sh` names into deps/Qt, and the preset reads that version
 # through `QT_VER`. Once, judged by the directory the install leaves.
 fetchWindowsQt() {
-    local version="${QT_VER:?}" sum="f9e9acc05975f2e70e4935ace76b41882cda4b53eb779c9bcf1d87a95029a6b0"
+    local version="${QT_VER:?}"
     qt="$root/deps/Qt/$version/msvc2019_64"
     if [ -d "$qt" ]; then
         return
     fi
 
     mkdir -p "$root/deps/Qt"
-    fetchChecked "https://github.com/miurahr/aqtinstall/releases/download/v3.1.15/aqt_x64.exe" "$sum" \
+    fetchChecked "https://github.com/miurahr/aqtinstall/releases/download/$aqtRelease/aqt_x64.exe" "$aqtSha256" \
         "$root/deps/Qt/aqt_x64.exe"
     (cd "$root/deps/Qt" && ./aqt_x64.exe install-qt windows desktop "$version" win64_msvc2019_64)
     rm -f "$root/deps/Qt/aqt_x64.exe"
@@ -343,6 +336,12 @@ presetDigest() {
             printf '%s=%s\n' "$name" "${!name-}"
         done
     } | sha256sum | cut -d' ' -f1
+}
+
+# The build's CMake cache, an entry a line. CMake writes it in the platform's text mode, so on
+# Windows every line ends in a carriage return, which comes off here.
+cacheEntries() {
+    tr -d '\r' < "$build/CMakeCache.txt"
 }
 
 # **Configured again whenever what its preset expands from changes, and from nothing else.** A
@@ -374,7 +373,7 @@ configureIfNeeded() {
     if [ -f "$build/CMakeCache.txt" ]; then
         while IFS= read -r entry; do
             carried+=("-D$entry")
-        done < <(sed -nE '/^NGX_[A-Za-z_]*:(PATH|FILEPATH|STRING|UNINITIALIZED)=/{/-NOTFOUND$/d;p}' "$build/CMakeCache.txt")
+        done < <(cacheEntries | sed -nE '/^NGX_[A-Za-z_]*:(PATH|FILEPATH|STRING|UNINITIALIZED)=/{/-NOTFOUND$/d;p}')
     fi
 
     if onWindows; then
@@ -438,13 +437,18 @@ if onWindows; then
 fi
 configureIfNeeded
 
-# **Run from the build directory**, because `--resources` defaults to `./resources`, and the tests
-# that read game data resolve it the way the tool does.
 # `-k 0` keeps ninja going past a failed object, so one run of a build that breaks names every
 # object that broke — on a compiler this box does not have, that is the difference between one
 # round trip through CI and five.
 buildTargets() {
     cmake --build "$build" -j"$(nproc)" --target "$@" -- -k 0
+}
+
+# The value of one entry of the build's CMake cache, or nothing where the build has no cache yet.
+cacheValue() {
+    if [ -f "$build/CMakeCache.txt" ]; then
+        cacheEntries | sed -n "s/^$1:[A-Z]*=\(.*\)$/\1/p"
+    fi
 }
 
 testTargets=(components-tests rtx-gpu-tests openmw-tests)
@@ -458,7 +462,7 @@ testTargets=(components-tests rtx-gpu-tests openmw-tests)
 # `if`, where `set -e` stops nothing and an empty answer would read as "no tests".
 buildsTests() {
     local ninja target built=0
-    ninja="$(sed -n 's/^CMAKE_MAKE_PROGRAM:[A-Z]*=//p' "$build/CMakeCache.txt")"
+    ninja="$(cacheValue CMAKE_MAKE_PROGRAM)"
     if [ -z "$ninja" ]; then
         echo "rtx: $build/CMakeCache.txt names no CMAKE_MAKE_PROGRAM" >&2
         exit 2
@@ -571,17 +575,18 @@ checkFormat() {
         | xargs -P "$(nproc)" "$clangFormat" --dry-run -Werror)
 }
 
-# **The fork's libraries, compiled the way a number is taken.** `-DNDEBUG` compiles every assert
+# **The fork's own targets, compiled the way a number is taken.** `-DNDEBUG` compiles every assert
 # out, and a diagnostic that fires only once the assert is gone — a lookup the optimizer can now
-# prove reaches a null — is one the debug build never sees. Every library the fork owns, since the
-# flags that make a warning an error reach each of them; the fork's files inside upstream's
-# targets are compiled by `build` in this flavour, which is the build a number is quoted from. A
-# minute with the cache warm, in a subshell so the gate's own flavour stays what it was.
+# prove reaches a null — is one the debug build never sees. Every target the fork owns,
+# `openmw-rtx-all`, since the flags that make a warning an error reach each of them; the fork's
+# files inside upstream's targets are compiled by `build` in this flavour, which is the build a
+# number is quoted from. A minute with the cache warm, in a subshell so the gate's own flavour
+# stays what it was.
 compileWithoutAsserts() {
     (
         describeFlavour release
         configureIfNeeded
-        buildTargets openmw-rtx openmw-rtx-bench openmw-rtx-vulkan openmw-rtx-mygui openmw-rtxtool-lib
+        buildTargets openmw-rtx-all
     )
 }
 
@@ -658,8 +663,9 @@ runTests() {
 #
 # **The upscaler and the denoiser are off**, so what is walked is what a reconstruction is fed,
 # which is where every defect this has caught showed itself — a picture that moved here is one the
-# trace drew differently, with nothing temporal between. `--exposure=1` reads a difference in the
-# picture: a measured exposure couples every pixel to every other and every frame to the one before.
+# trace drew differently, with nothing temporal between. The exposure stays measured; add
+# `--exposure=1` to read a difference in the picture, since a measured exposure couples every pixel
+# to every other and every frame to the one before.
 #
 # **Every column is the gate.** The second run is compared by `bench --against`, which names the
 # frames whose picture moved and the parts of the scene that did, and fails on either. One pair
@@ -766,7 +772,8 @@ kernelDigest() {
         return 1
     fi
     rm -f "$specialized" "$disassembly"
-    printf '%s %s %s\n' "$(basename "$module" .spv)" "${label:--}" "$digest"
+    # The tool writes a text line, which ends in a carriage return on Windows.
+    printf '%s %s %s\n' "$(basename "$module" .spv)" "${label:--}" "${digest%$'\r'}"
 }
 
 runKernels() {
@@ -782,7 +789,7 @@ runKernels() {
     done
 
     # The optimizer the build strips its modules with, so the two cannot be different releases.
-    optimizer="$(sed -n 's/^OPENMW_SPIRV_OPT:FILEPATH=//p' "$build/CMakeCache.txt" 2> /dev/null)"
+    optimizer="$(cacheValue OPENMW_SPIRV_OPT)"
     if [ ! -x "$optimizer" ]; then
         echo "rtx: the $flavour build names no spirv-opt yet — \`rtx $flavour build\` first" >&2
         exit 2
@@ -848,8 +855,8 @@ runKernels() {
     return 1
 }
 
-# The tools an AppImage is made with, pinned by release and checksum into deps/ the way the
-# Windows set is, and fetched only where the directory lacks one.
+# The tools an AppImage is made with, pinned by release and checksum in `pins.sh` the way the
+# Windows set is, and fetched into deps/ only where the directory lacks one.
 fetchAppImageTools() {
     local tools="$root/deps/appimage"
     mkdir -p "$tools"
@@ -860,12 +867,7 @@ fetchAppImageTools() {
         fi
         fetchChecked "$url" "$sum" "$tools/$file"
         chmod +x "$tools/$file"
-    done <<'EOT'
-linuxdeploy https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20251107-1/linuxdeploy-x86_64.AppImage c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d
-linuxdeploy-plugin-qt https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/1-alpha-20250213-1/linuxdeploy-plugin-qt-x86_64.AppImage 15106be885c1c48a021198e7e1e9a48ce9d02a86dd0a1848f00bdbf3c1c92724
-linuxdeploy-plugin-appimage https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/1-alpha-20250213-1/linuxdeploy-plugin-appimage-x86_64.AppImage 992d502a248e14ab185448ddf6f6e7d25558cb84d4623c354c3af350c25fccb3
-runtime-x86_64 https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64 2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d
-EOT
+    done <<< "$appImageTools"
 }
 
 # The names between `set(USED_OSG_PLUGINS` and its `)`, `osgdb_` and all, read off the one place
@@ -978,12 +980,13 @@ archiveWindows() {
 }
 
 # The archive out of the package build, named after the argument or the ref: a tag names its
-# archives and a branch names its own.
+# archives and a branch names its own. Refused before anything is built for it.
 archive() {
     if [ "$flavour" != package ]; then
         echo "rtx: an archive is made of the package flavour — \`rtx package archive\`" >&2
         exit 2
     fi
+    buildTargets "${targets[@]}"
     local name="${1:-$(git -C "$root" describe --tags --always)}"
     if onWindows; then
         archiveWindows "$name"
@@ -993,6 +996,8 @@ archive() {
     ls -l "$root/dist"
 }
 
+# **Every run is from the build directory**, because `--resources` defaults to `./resources`, and
+# the tests that read game data resolve it the way the tool does.
 case "$what" in
     build)
         # The flavour's own targets, or the ones the line names: CI compiles the backend alone in
@@ -1044,7 +1049,6 @@ case "$what" in
         runKernels "$@"
         ;;
     archive)
-        buildTargets "${targets[@]}"
         archive "$@"
         ;;
     gate)

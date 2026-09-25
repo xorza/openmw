@@ -1,0 +1,7 @@
+# Line endings a file has to have whatever a clone's `core.autocrlf` says. Git for Windows installs
+# with it on, and bash reads a carriage return as part of the line: `apps/rtxtool/rtx` stopped at
+# `set -euo pipefail` with "invalid option name", and every value a sourced file set carried one.
+# A batch file is cmd's, which reads its lines as CR LF.
+apps/rtxtool/rtx text eol=lf
+*.sh text eol=lf
+*.cmd text eol=crlf

@@ -59,8 +59,6 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # The tag components/rtxvulkan/CMakeLists.txt asks FindNGX for, exactly.
-  NGX_TAG: v310.7.0
   # Whether this run packages: on a release tag, or when asked by hand.
   PACKAGE: ${{ startsWith(github.ref, 'refs/tags/rtx-v') || inputs.package == true }}
 
@@ -140,14 +138,14 @@ jobs:
       - name: OpenMW dependencies cache
         # Windows has no package for them: `rtx` fetches upstream's prebuilt set, SDL's own
         # package and Qt into deps/ at the first configure, and this keeps them between runs. The
-        # key names the tags upstream pins and the script that pins the rest, so a bump of either
+        # key names the tags upstream pins and the file `rtx` pins the rest in, so a bump of either
         # saves afresh; an older cache is restored all the same, because `rtx` judges each set by
         # the directory it leaves and fetches only what a bump changed.
         if: runner.os == 'Windows'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: deps
-          key: deps-${{ matrix.os }}-${{ hashFiles('CI/deps_versions.msvc.sh', 'apps/rtxtool/rtx') }}
+          key: deps-${{ matrix.os }}-${{ hashFiles('CI/deps_versions.msvc.sh', 'apps/rtxtool/pins.sh') }}
           restore-keys: deps-${{ matrix.os }}-
 
       - name: Vulkan SDK cache
@@ -161,8 +159,9 @@ jobs:
 
       - name: Vulkan SDK download
         if: steps.vulkan.outputs.cache-hit != 'true' && runner.os == 'Linux'
-        # Only the four things the build needs out of 330 MB: the headers, the loader the tests
-        # start against, glslc and spirv-val (both statically linked). No device, so no layers.
+        # Only what the build needs out of 330 MB: the headers, SPIR-V's among them, the loader the
+        # tests start against, and glslc, spirv-val and spirv-opt, which link nothing of the SDK's.
+        # No device, so no layers.
         # The loader sits in its own prefix, `lib/VulkanLoader`, which is where the SDK's
         # `setup-env.sh` points too.
         run: |
@@ -173,13 +172,13 @@ jobs:
           mkdir -p "${RUNNER_TEMP}/vulkan-sdk"
           tar -xJf "$tarball" -C "${RUNNER_TEMP}/vulkan-sdk" --strip-components=1 --wildcards \
             '*/x86_64/include/*' '*/x86_64/lib/VulkanLoader/lib/libvulkan.so*' \
-            '*/x86_64/bin/glslc' '*/x86_64/bin/spirv-val'
+            '*/x86_64/bin/glslc' '*/x86_64/bin/spirv-val' '*/x86_64/bin/spirv-opt'
 
       - name: Vulkan SDK download
         if: steps.vulkan.outputs.cache-hit != 'true' && runner.os == 'Windows'
-        # The same four things, out of a 288 MB installer that has no tarball beside it: it is
-        # run unattended into a directory of its own, and the headers, the import library, glslc
-        # and spirv-val are taken out of it. The loader comes separately, from the runtime
+        # The same things, out of a 288 MB installer that has no tarball beside it: it is run
+        # unattended into a directory of its own, and the headers, the import library, glslc,
+        # spirv-val and spirv-opt are taken out of it. The loader comes separately, from the runtime
         # components LunarG publishes for redistribution: the installer leaves it to the driver,
         # and a runner has no driver. Everything else the installer put down is left behind.
         run: |
@@ -191,7 +190,8 @@ jobs:
           # Through PowerShell's own wait, since the installer is a windowed program and a shell
           # that does not wait on one would test for its files before it wrote them.
           powershell -NoProfile -Command "Start-Process -Wait -FilePath './$installer' -ArgumentList @('--root', '$(cygpath -w "$full")', '--accept-licenses', '--default-answer', '--confirm-command', 'install')"
-          for file in Include/vulkan/vulkan.h Lib/vulkan-1.lib Bin/glslc.exe Bin/spirv-val.exe; do
+          for file in Include/vulkan/vulkan.h Include/spirv/unified1/spirv.hpp Lib/vulkan-1.lib \
+            Bin/glslc.exe Bin/spirv-val.exe Bin/spirv-opt.exe; do
             test -f "$full/$file"
           done
 
@@ -204,35 +204,51 @@ jobs:
           mkdir -p "$sdk/Lib" "$sdk/Bin"
           cp -r "$full/Include" "$sdk/"
           cp "$full/Lib/vulkan-1.lib" "$sdk/Lib/"
-          cp "$full/Bin/glslc.exe" "$full/Bin/spirv-val.exe" "$sdk/Bin/"
+          cp "$full/Bin/glslc.exe" "$full/Bin/spirv-val.exe" "$full/Bin/spirv-opt.exe" "$sdk/Bin/"
           "/c/Program Files/7-Zip/7z.exe" e -y -o"$sdk/Bin" "$loader" "${loader%.zip}/x64/vulkan-1.dll" > /dev/null
           test -f "$sdk/Bin/vulkan-1.dll"
 
       - name: Vulkan SDK environment
         # What `setup-env.sh` would export: FindVulkan reads VULKAN_SDK for the headers and, on
         # Linux, CMAKE_PREFIX_PATH for the loader's prefix; the test binaries load the loader from
-        # LD_LIBRARY_PATH or from the PATH beside glslc. Verified on a desk configure against the
-        # same subset on both systems.
+        # LD_LIBRARY_PATH or from the PATH beside glslc. Each tool is then run once, so one the
+        # subset left out, or one that needs a library it did not bring, stops here by name and not
+        # in the middle of a configure.
         run: |
           if [ "$RUNNER_OS" = Linux ]; then
             sdk="${RUNNER_TEMP}/vulkan-sdk/x86_64"
             echo "VULKAN_SDK=${sdk}" >> "$GITHUB_ENV"
             echo "CMAKE_PREFIX_PATH=${sdk}/lib/VulkanLoader" >> "$GITHUB_ENV"
             echo "LD_LIBRARY_PATH=${sdk}/lib/VulkanLoader/lib" >> "$GITHUB_ENV"
-            echo "${sdk}/bin" >> "$GITHUB_PATH"
+            bin="${sdk}/bin"
+            echo "$bin" >> "$GITHUB_PATH"
           else
             sdk="$(cygpath "$RUNNER_TEMP")/vulkan-sdk"
+            bin="$sdk/Bin"
             echo "VULKAN_SDK=$(cygpath -w "$sdk")" >> "$GITHUB_ENV"
-            echo "$(cygpath -w "$sdk/Bin")" >> "$GITHUB_PATH"
+            echo "$(cygpath -w "$bin")" >> "$GITHUB_PATH"
           fi
+          for tool in glslc spirv-val spirv-opt; do
+            "$bin/$tool" --version
+          done
+
+      - name: NGX version
+        # The one components/rtxvulkan/CMakeLists.txt asks FindNGX for, exactly, read off it so the
+        # two cannot name different releases. NVIDIA tags each release as the version with a `v`.
+        id: ngx
+        run: |
+          version="$(tr -d '\r' < components/rtxvulkan/CMakeLists.txt \
+            | sed -n 's/^ *find_package(NGX \([0-9.]*\) EXACT REQUIRED)$/\1/p')"
+          test -n "$version"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
 
       - name: NGX SDK
-        # A sparse checkout of NVIDIA's public repository at the pinned tag, of what this leg's
-        # system reads: about 150 MB either way.
+        # A sparse checkout of NVIDIA's public repository at that tag, of what this leg's system
+        # reads: about 150 MB either way.
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: NVIDIA/DLSS
-          ref: ${{ env.NGX_TAG }}
+          ref: ${{ steps.ngx.outputs.tag }}
           path: dlss
           persist-credentials: false
           sparse-checkout: ${{ matrix.ngx }}
