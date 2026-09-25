@@ -280,16 +280,14 @@ namespace Rtx::Testing
             EXPECT_NEAR(lights[0].mIntensity.x(), sWhiteLampAtHundred, 0.01f);
             EXPECT_EQ(lights[1].mIntensity, lights[0].mIntensity) << "an empty model dimmed the light hanging on it";
 
-            // The same lamp scaled by what 1.5 of ambient decodes to — and a fill, because the
-            // ambient is the whole of what it radiates: a flame three quarters of a body wide stood
-            // on the ground where the glow hangs, the ray kept clear of the whole of it, and four
-            // radii of reach. `makeFill` says why.
-            EXPECT_NEAR(lights[2].mIntensity.x(), sWhiteLampAtHundred * 2.53716f, 0.05f);
-            EXPECT_EQ(lights[2].mFill, 1u);
-            EXPECT_EQ(lights[2].mPosition, osg::Vec3f(10.0f, 20.0f, 126.0f)) << "the ball stands on the glow's place";
-            EXPECT_EQ(lights[2].mSourceRadius, 96.0f);
-            EXPECT_EQ(lights[2].mClearance, 96.0f);
-            EXPECT_EQ(lights[2].mReach, 400.0f);
+            // The same white lamp and no brighter, although 1.5 of ambient decodes to 2.54, because
+            // the ambient is the whole of what it radiates and so it is a Light spell's: stood 64
+            // up, inside its bearer. `makeSpellLight` says why.
+            EXPECT_EQ(lights[2].mIntensity, lights[0].mIntensity);
+            EXPECT_EQ(lights[2].mFill, 0u);
+            EXPECT_EQ(lights[2].mPosition, osg::Vec3f(10.0f, 20.0f, 94.0f)) << "the lamp stands inside the bearer";
+            EXPECT_EQ(lights[2].mSourceRadius, lights[0].mSourceRadius);
+            EXPECT_EQ(lights[2].mReach, lights[0].mReach);
 
             EXPECT_EQ(lights[0].mFill, 0u) << "a lamp with a diffuse is no fill";
             EXPECT_EQ(lights[0].mSourceRadius, 100.0f / 16.0f);

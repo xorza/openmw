@@ -574,9 +574,9 @@ namespace Rtx::Shaders
         vec4 mMotion[3];
     };
 
-    /// One light placed in the world — a lamp, or the fill a Light spell casts — with everything a
-    /// shader needs already derived: a `LIGH` record carries a colour and a radius and no
-    /// intensity at all, and `Rtx::makeLight` settles both on the way in, so the shader has one
+    /// One light placed in the world — a lamp, or the fill a magic effect glows with — with
+    /// everything a shader needs already derived: a `LIGH` record carries a colour and a radius and
+    /// no intensity at all, and `Rtx::makeLight` settles both on the way in, so the shader has one
     /// falloff to evaluate and no rules to remember.
     ///
     /// **The scene's own row, and the device's.** `Rtx::Light` is this struct: the walk builds
@@ -609,9 +609,8 @@ namespace Rtx::Shaders
         float mClearance;
 
         /// One where this light is a fill and nought where it is a lamp. A fill is a lamp whose
-        /// flame is a ball `mSourceRadius` wide that a body can stand inside, lit from every side
-        /// there; it is what the game means by a light whose whole output is in its ambient, and
-        /// `Rtx::makeFill` says which light that is. A word and not a bool, because the record is
+        /// flame is a ball `mSourceRadius` wide, lit from every side inside it: a magic effect's
+        /// glow, which `Rtx::Glow::makeLight` builds. A word and not a bool, because the record is
         /// hashed whole and a bool leaves three bytes nothing wrote.
         uint mFill;
     };

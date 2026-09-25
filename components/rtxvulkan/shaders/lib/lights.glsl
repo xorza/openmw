@@ -502,8 +502,8 @@ void weighLamps(inout Reservoir kept, inout uint state, vec3 from, vec3 normal, 
         const Lamp lamp = lampAt(held, from);
 
         // **Inside a fill's ball the cosine to the centre is blended out**, by how deep the point
-        // stands, because the ball glows on every side of it there. `Rtx::makeFill` says what a
-        // fill is: the rest of its weight is a lamp's, and so is its ray, which the ball's own
+        // stands, because the ball glows on every side of it there. `Rtx::Glow::makeLight` says what
+        // a fill is: the rest of its weight is a lamp's, and so is its ray, which the ball's own
         // clearance keeps out of the ball. A factor of nought for a lamp, and not a branch, which
         // leaves a lamp's arithmetic the arithmetic it was.
         //

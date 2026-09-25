@@ -54,22 +54,10 @@ namespace Rtx
         /// from it.
         constexpr float sFittingFraction = 0.25f;
 
-        /// How far a fill reaches, as a multiple of the radius the spell states — one foot a point.
-        /// The rasterizer runs its glow out to three radii on the game's attenuation curve, over an
-        /// ambient that already lights the room; here the pool stands against a night the fill
-        /// lights alone. Four radii, set by eye like `sIntensity`.
-        constexpr float sFillReachScale = 4.0f;
-
-        /// How big a fill's ball of glow is, in world units: three quarters of a body, so that a
-        /// ball stood on the ground where the game hangs the glow — the bearer's feet — holds the
-        /// bearer whole with the head well inside it. Morrowind's people stand 128 units; a ball
-        /// of 64 put a head at its very top, where the cosine to the centre is blended out by
-        /// nothing and the top of the head went dark. Inside the ball the bearer is lit from every
-        /// side and shadowed by nothing hard; outside it the ball is a source a body wide, which is
-        /// a penumbra a body wide under everything the pool reaches. The spell's radius sets the
-        /// reach and the intensity, never the ball: a ball the spell's radius wide held everything
-        /// within it flat.
-        constexpr float sFillBallRadius = 96.0f;
+        /// How high over the actor's feet, where the game hangs a Light spell's glow, its lamp
+        /// stands: half of the 128 units Morrowind's people stand, so the lamp is inside the body
+        /// and lights everything round it but the body itself, which faces away from it.
+        constexpr float sSpellLightLift = 64.0f;
 
         /// How much brighter a burst's lamp is than the shell and the discs it is derived from,
         /// and how far it reaches, in radii of its ball.
@@ -171,24 +159,6 @@ namespace Rtx
 
             return lamp;
         }
-
-        /// A fill: a lamp whose flame is a ball `ball` wide at `position`, radiating `intensity` to
-        /// `reach`. The ball is the source, so the shadow ray opens to the whole of it, and the
-        /// ball is the clearance too, so the ray stops at the ball: nothing inside it casts a
-        /// shadow, and what is inside it is lit from every side — `weighLamps` reads `mFill` for
-        /// that. Stated once, because a fill made by hand with its clearance short of its ball
-        /// would shadow what stands inside it by its own bearer.
-        Light fillOf(const osg::Vec3f& position, const osg::Vec3f& intensity, const float ball, const float reach)
-        {
-            return Light{
-                .mPosition = position,
-                .mIntensity = intensity,
-                .mReach = reach,
-                .mSourceRadius = ball,
-                .mClearance = ball,
-                .mFill = 1,
-            };
-        }
     }
 
     Result<std::optional<Light>, std::string_view> makeLight(
@@ -217,21 +187,14 @@ namespace Rtx
         });
     }
 
-    Result<std::optional<Light>, std::string_view> makeFill(
+    Result<std::optional<Light>, std::string_view> makeSpellLight(
         const osg::Vec3f& colour, const float radius, const osg::Vec3f& position)
     {
-        // Lifted by its own radius, so the ball stands on the ground the game hung the glow at and
-        // the bearer stands inside it rather than on top of it.
-        const Result<std::optional<Light>, std::string_view> made
-            = makeLight(colour, radius, position + osg::Vec3f(0.0f, 0.0f, sFillBallRadius));
-        if (!made.isOk() || !made.value().has_value())
-            return made;
-
-        const Light& lamp = *made.value();
-        return finiteOnly(fillOf(lamp.mPosition, lamp.mIntensity, sFillBallRadius, radius * sFillReachScale));
+        const osg::Vec3f clamped(std::min(colour.x(), 1.0f), std::min(colour.y(), 1.0f), std::min(colour.z(), 1.0f));
+        return makeLight(clamped, radius, position + osg::Vec3f(0.0f, 0.0f, sSpellLightLift));
     }
 
-    bool isFill(const SceneUtil::LightSource& source)
+    bool isSpellLight(const SceneUtil::LightSource& source)
     {
         const SceneUtil::Light& light = *source.getLight(0);
         const osg::Vec4f diffuse = light.getDiffuse();
@@ -316,9 +279,18 @@ namespace Rtx
         if (intensity == osg::Vec3f())
             return std::nullopt;
 
+        // **A fill.** The ball is the source, so the shadow ray opens to the whole of it, and the
+        // clearance too, so the ray stops at the ball and nothing inside it casts a shadow;
+        // `weighLamps` reads `mFill` to light what is inside from every side.
         const float radius = mBall.radius();
-
-        return finiteOnly(fillOf(mBall.center(), intensity * sGlowGain, radius, radius * sGlowReachScale));
+        return finiteOnly(Light{
+            .mPosition = mBall.center(),
+            .mIntensity = intensity * sGlowGain,
+            .mReach = radius * sGlowReachScale,
+            .mSourceRadius = radius,
+            .mClearance = radius,
+            .mFill = 1,
+        });
     }
 
     osg::Vec3f lightColour(const SceneUtil::LightSource& source, double simulationTime)

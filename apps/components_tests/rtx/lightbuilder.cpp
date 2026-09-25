@@ -252,44 +252,44 @@ namespace Rtx
             EXPECT_EQ(lightColour(*gone, 0.0), osg::Vec3f());
         }
 
-        /// A source that radiates in its ambient alone is a fill, and one with any diffuse is a
-        /// lamp, whatever ambient rides beside it.
+        /// A source that radiates in its ambient alone is a Light spell's glow, and one with any
+        /// diffuse is a lamp, whatever ambient rides beside it.
         ///
         /// **The Light spell's glow and the lamp in a pack are the two ambients the game writes**,
-        /// and only the first is a fill: `ActorAnimation::addHiddenItemLight` puts a white ambient
+        /// and only the first is the spell's: `ActorAnimation::addHiddenItemLight` puts a white ambient
         /// beside the record's own diffuse, and that lamp still has a flame and a direction.
-        TEST(RtxLightBuilderTest, anAmbientOnlySourceIsAFillAndADiffuseMakesALamp)
+        TEST(RtxLightBuilderTest, anAmbientOnlySourceIsASpellLightAndADiffuseMakesALamp)
         {
             const osg::Vec4f glow(1.5f, 1.5f, 1.5f, 1.0f);
             const osg::Vec4f white(1.0f, 1.0f, 1.0f, 1.0f);
 
-            EXPECT_TRUE(isFill(*Testing::makeLightSource(440.0f, osg::Vec4f(), glow)));
-            EXPECT_FALSE(isFill(*Testing::makeLightSource(440.0f, white, white))) << "a carried lamp's ambient";
-            EXPECT_FALSE(isFill(*Testing::makeLightSource(440.0f, white))) << "a lamp";
-            EXPECT_FALSE(isFill(*Testing::makeLightSource(440.0f, osg::Vec4f(), osg::Vec4f()))) << "nothing at all";
+            EXPECT_TRUE(isSpellLight(*Testing::makeLightSource(440.0f, osg::Vec4f(), glow)));
+            EXPECT_FALSE(isSpellLight(*Testing::makeLightSource(440.0f, white, white))) << "a carried lamp's ambient";
+            EXPECT_FALSE(isSpellLight(*Testing::makeLightSource(440.0f, white))) << "a lamp";
+            EXPECT_FALSE(isSpellLight(*Testing::makeLightSource(440.0f, osg::Vec4f(), osg::Vec4f())))
+                << "nothing at all";
 
-            // Light 20 is 440 units, a foot a point. The intensity is a lamp's — white at 440 is
-            // 440 * 440 * 0.25 * pi = 152053 — so a fill and a lamp of one radius cannot disagree
-            // about how bright the content meant them; the ball is three quarters of a body, 96
-            // units, stood on the ground at the glow's place and so centred 96 up, and the ball is
-            // the clearance too; the reach is four radii.
-            const std::optional<Light> fill
-                = makeFill(osg::Vec3f(1.0f, 1.0f, 1.0f), 440.0f, osg::Vec3f(1, 2, 3)).value();
-            ASSERT_TRUE(fill.has_value());
-            EXPECT_EQ(fill->mPosition, osg::Vec3f(1, 2, 99));
-            EXPECT_NEAR(fill->mIntensity.x(), 152053.0f, 1.0f);
-            EXPECT_FLOAT_EQ(fill->mSourceRadius, 96.0f);
-            EXPECT_FLOAT_EQ(fill->mClearance, 96.0f);
-            EXPECT_FLOAT_EQ(fill->mReach, 1760.0f);
-            EXPECT_EQ(fill->mFill, 1u);
+            // Light 20 is 440 units, a foot a point. The spell's lamp is a white lamp of that radius
+            // stood 64 up, inside the body: its colour is clamped at one, so the spell's 1.5 of
+            // ambient, which decodes to 2.54, is that lamp exactly, and a colour under one — an
+            // actor half faded — is passed through.
+            const osg::Vec3f full(1.0f, 1.0f, 1.0f);
+            const std::optional<Light> spell = makeSpellLight(full * 2.54f, 440.0f, osg::Vec3f(1, 2, 3)).value();
+            const std::optional<Light> lamp = makeLight(full, 440.0f, osg::Vec3f(1, 2, 67)).value();
+            ASSERT_TRUE(spell.has_value() && lamp.has_value());
+            EXPECT_EQ(spell->mPosition, lamp->mPosition);
+            EXPECT_EQ(spell->mIntensity, lamp->mIntensity);
+            EXPECT_EQ(spell->mReach, lamp->mReach);
+            EXPECT_EQ(spell->mSourceRadius, lamp->mSourceRadius);
+            EXPECT_EQ(spell->mClearance, lamp->mClearance);
+            EXPECT_EQ(spell->mFill, 0u) << "the spell lights its bearer from every side";
 
-            const std::optional<Light> lamp = makeLight(osg::Vec3f(1.0f, 1.0f, 1.0f), 440.0f, osg::Vec3f()).value();
-            ASSERT_TRUE(lamp.has_value());
-            EXPECT_EQ(lamp->mFill, 0u);
-            EXPECT_EQ(lamp->mIntensity, fill->mIntensity);
+            const std::optional<Light> faded
+                = makeSpellLight(osg::Vec3f(0.5f, 2.0f, 0.0f), 440.0f, osg::Vec3f(1, 2, 3)).value();
+            EXPECT_EQ(faded->mIntensity, osg::componentMultiply(lamp->mIntensity, osg::Vec3f(0.5f, 1.0f, 0.0f)));
 
-            EXPECT_TRUE(isNothing(makeFill(osg::Vec3f(1.0f, 1.0f, 1.0f), 0.0f, osg::Vec3f()))) << "no size";
-            EXPECT_TRUE(isRefused(makeFill(osg::Vec3f(-1.0f, 1.0f, 1.0f), 440.0f, osg::Vec3f()))) << "negative";
+            EXPECT_TRUE(isNothing(makeSpellLight(full, 0.0f, osg::Vec3f()))) << "no size";
+            EXPECT_TRUE(isRefused(makeSpellLight(osg::Vec3f(-1.0f, 1.0f, 1.0f), 440.0f, osg::Vec3f()))) << "negative";
         }
 
         /// The animation reaches the diffuse and stops there.
@@ -536,7 +536,7 @@ namespace Rtx
             const osg::Vec3f white(1.0f, 1.0f, 1.0f);
 
             ASSERT_TRUE(isLamp(makeLight(white, 100.0f, osg::Vec3f())));
-            ASSERT_TRUE(isLamp(makeFill(white, 100.0f, osg::Vec3f())));
+            ASSERT_TRUE(isLamp(makeSpellLight(white, 100.0f, osg::Vec3f())));
             EXPECT_TRUE(isNothing(makeLight(white, 0.0f, osg::Vec3f()))) << "no size is no light in the game either";
             EXPECT_TRUE(isRefused(makeLight(white, 1.0e20f, osg::Vec3f()))) << "an intensity past the largest float";
             EXPECT_EQ(makeLight(white, sNaN, osg::Vec3f()).error(), "a number it is made of is not finite");
@@ -547,7 +547,8 @@ namespace Rtx
                 EXPECT_TRUE(isRefused(makeLight(osg::Vec3f(1.0f, bad, 1.0f), 100.0f, osg::Vec3f())))
                     << "a colour of " << bad;
                 EXPECT_TRUE(isRefused(makeLight(white, 100.0f, osg::Vec3f(0.0f, 0.0f, bad)))) << "a place of " << bad;
-                EXPECT_TRUE(isRefused(makeFill(white, 100.0f, osg::Vec3f(bad, 0.0f, 0.0f)))) << "a fill at " << bad;
+                EXPECT_TRUE(isRefused(makeSpellLight(white, 100.0f, osg::Vec3f(bad, 0.0f, 0.0f))))
+                    << "a spell at " << bad;
             }
 
             // An effect's flames, one of them a colour the particle system left undefined.

@@ -55,23 +55,17 @@ namespace Rtx
     Result<std::optional<Light>, std::string_view> makeLight(
         const osg::Vec3f& colour, float radius, const osg::Vec3f& position);
 
-    /// Whether a light in the game's scene graph is a fill: it radiates in its ambient and in
-    /// nothing else. The game builds exactly one such light, the Light spell's glow
+    /// Whether a light in the game's scene graph is a Light spell's glow: it radiates in its
+    /// ambient and in nothing else. The game builds exactly one such light
     /// (`MWRender::Animation::setLightEffect`, a diffuse of nought and an ambient of 1.5), and the
     /// only other ambient it writes rides beside a diffuse, on a lamp carried in a pack.
-    bool isFill(const SceneUtil::LightSource& source);
+    bool isSpellLight(const SceneUtil::LightSource& source);
 
-    /// The fill an ambient-only source casts: the rasterizer's ambient term is an even brightening
-    /// of everything within the radius, with no direction and no shadow, and this is that term in
-    /// a ray tracer that keeps its shadows. A lamp whose flame is a ball a body and a half tall,
-    /// stood on the ground at `position`, so the actor who casts the spell stands inside the
-    /// light: lit from every side, because `weighLamps` blends the cosine to the centre out by how
-    /// deep inside the ball a point stands, and shadowed by nothing, because the shadow ray stops
-    /// at the ball. Everything outside the ball is lit by a source a body wide and shadowed as
-    /// softly as that, and the reach is longer than a lamp's, because the spell's whole purpose
-    /// is the pool of light around its bearer. The intensity is a lamp's of `radius`, so far off
-    /// a fill is that lamp. None where `makeLight` makes none, for the same reason.
-    Result<std::optional<Light>, std::string_view> makeFill(
+    /// The lamp a Light spell's glow is: an ordinary lamp of the spell's radius, stood inside its
+    /// bearer's body so the pool lights everything round the bearer and not the bearer, and its
+    /// colour clamped at one as the rasterizer clamps its lighting — the spell's 1.5 is full light
+    /// there, and decoded it would be two and a half lamps. None where `makeLight` makes none.
+    Result<std::optional<Light>, std::string_view> makeSpellLight(
         const osg::Vec3f& colour, float radius, const osg::Vec3f& position);
 
     /// What a light in the game's scene graph radiates this frame, in the renderer's units: the

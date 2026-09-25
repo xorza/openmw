@@ -657,8 +657,9 @@ namespace Rtx
         // The radius the content states, and not the cut-off the rasterizer widened it to: a
         // bolt's is its spell's area, which `ProjectileManager` writes there.
         const float radius = source.getSourceRadius();
-        const Result<std::optional<Light>, std::string_view> made
-            = isFill(source) ? makeFill(colour, radius, place.getTrans()) : makeLight(colour, radius, place.getTrans());
+        const Result<std::optional<Light>, std::string_view> made = isSpellLight(source)
+            ? makeSpellLight(colour, radius, place.getTrans())
+            : makeLight(colour, radius, place.getTrans());
         if (!made.isOk())
         {
             mScene.refusals().refuse(Refused::Lamp, source.getName(), made.error());
