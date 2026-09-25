@@ -54,6 +54,9 @@ namespace Rtx
                 // `VisibilityConstants::mBounceRate` says why a frame built by hand keeps them all.
                 .mBounceRate = 1.0f,
 
+                // No day to lift, until a world says the sun is up.
+                .mDaylightGain = 1.0f,
+
                 // Not zero, which would be sea level: a world with no water has to answer "how deep
                 // is this point" with never, and only an infinity does that without a second
                 // question.

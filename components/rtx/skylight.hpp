@@ -67,6 +67,11 @@ namespace Rtx
         /// because an interior's ambient is the whole of its light and `exposureBias` would hold a
         /// cellar back by two stops.
         float mExposureBias = 1.0f;
+
+        /// What the sun, the sky and everything the sky sends are multiplied by under this sky: one
+        /// at night and in a room, and `DAYLIGHT_GAIN` with the sun fully up. The terms above are
+        /// without it, and `describeWorld` applies it to the whole sky at once.
+        float mDaylightGain = 1.0f;
     };
 
     /// The sky's light out of what a weather says: the one place a sun is built. Morrowind never

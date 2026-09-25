@@ -320,6 +320,41 @@ namespace Rtx
             // pass under.
             EXPECT_NE(constants.mMoons[0].mAlpha, constants.mMoons[1].mAlpha);
             EXPECT_NE(constants.mMoons[0].mSource.mDirection, constants.mMoons[1].mSource.mDirection);
+
+            // **The day's gain lifts the whole sky and nothing else.** Four, because scaling by a
+            // power of two is exact through every sum and product the sky's terms go through, so each
+            // lifted field is its unlifted self times four to the bit: the sun, the ambient, the dome,
+            // what the sky fills with, the air's colour, the deck's light, the stars and the moons'
+            // light. The frame carries the gain for the one thing drawn off a constant, a moon's face.
+            WorldReading day = read;
+            day.mDaylight.mLight.mDaylightGain = 4.0f;
+            Shaders::VisibilityConstants lifted{};
+            FogDrift dayDrift;
+            describeWorld(day, dayDrift, lifted);
+
+            EXPECT_EQ(constants.mDaylightGain, 1.0f);
+            EXPECT_EQ(lifted.mDaylightGain, 4.0f);
+            EXPECT_EQ(lifted.mSun.mIrradiance, constants.mSun.mIrradiance * 4.0f);
+            EXPECT_EQ(lifted.mAmbient, constants.mAmbient * 4.0f);
+            EXPECT_EQ(lifted.mSkyHorizon, constants.mSkyHorizon * 4.0f);
+            EXPECT_EQ(lifted.mSkyZenith, constants.mSkyZenith * 4.0f);
+            EXPECT_EQ(lifted.mSkyFill, constants.mSkyFill * 4.0f);
+            EXPECT_EQ(lifted.mFogColour, constants.mFogColour * 4.0f);
+            EXPECT_EQ(lifted.mClouds.mLit, constants.mClouds.mLit * 4.0f);
+            EXPECT_EQ(lifted.mClouds.mShadowed, constants.mClouds.mShadowed * 4.0f);
+            EXPECT_EQ(lifted.mStars.mFade, constants.mStars.mFade * 4.0f);
+            EXPECT_EQ(lifted.mStars.mGlow, constants.mStars.mGlow * 4.0f);
+            for (std::size_t moon = 0; moon < read.mMoons.size(); ++moon)
+            {
+                EXPECT_EQ(lifted.mMoons[moon].mSource.mIrradiance, constants.mMoons[moon].mSource.mIrradiance * 4.0f)
+                    << "moon " << moon;
+                EXPECT_EQ(lifted.mMoons[moon].mColour, constants.mMoons[moon].mColour) << "a face's paint is not light";
+            }
+
+            EXPECT_EQ(lifted.mSunDiscColour, constants.mSunDiscColour) << "a colour and not a light";
+            EXPECT_EQ(lifted.mFogExtinction, constants.mFogExtinction) << "the air is no thicker by day";
+            ASSERT_GT(constants.mSkyFill.x() + constants.mClouds.mLit.x() + constants.mStars.mGlow.x(), 0.0f)
+                << "nothing the gain reaches was lit, so the gain was not tried";
         }
 
         /// The glare fader's amount is `SunGlareCallback`'s own line: the strength, faded to nothing

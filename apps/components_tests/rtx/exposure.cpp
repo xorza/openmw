@@ -12,15 +12,17 @@ namespace Rtx
         /// The two halves of the bin mapping are inverses of each other, and a luminance lands in
         /// the bin that stands for it.
         ///
-        /// **Hand-placed at the scale's ends and its middle.** The scale runs from `2^-10` at bin
-        /// one to `2^6` at bin `EXPOSURE_BINS - 1`, so a luminance of one is `10 / 16` of the way
-        /// along it: `0.625 * 254` is 158.75, and the bin under that plus the black bin is 159.
+        /// **Hand-placed at the scale's ends and at one.** The scale runs from `2^-10` at bin one to
+        /// `2^(6 + log2 DAYLIGHT_GAIN)` at bin `EXPOSURE_BINS - 1`, so a luminance of one is
+        /// `10 / (16 + log2 DAYLIGHT_GAIN)` of the way along it. At a gain of ten that is
+        /// `10 / 19.3219 * 254 = 131.46`, and the bin under it plus the black bin is 132.
         TEST(RtxExposureBinTest, aLuminanceLandsInTheBinThatStandsForIt)
         {
             EXPECT_EQ(Shaders::luminanceBin(std::exp2(Shaders::MIN_LOG_LUMINANCE)), 1u) << "the bottom of the scale";
             EXPECT_EQ(Shaders::luminanceBin(std::exp2(Shaders::MAX_LOG_LUMINANCE)), Shaders::EXPOSURE_BINS - 1u)
                 << "the top of it";
-            EXPECT_EQ(Shaders::luminanceBin(1.0f), 159u) << "and mid grey";
+            const float span = 16.0f + std::log2(Shaders::DAYLIGHT_GAIN);
+            EXPECT_EQ(Shaders::luminanceBin(1.0f), static_cast<std::uint32_t>(10.0f / span * 254.0f) + 1u) << "and one";
 
             // **The middle of each bin and not its edge.** `binLuminance` of a whole bin is the
             // luminance at that bin's lower edge, and `log2` of `exp2` of it lands a rounding either

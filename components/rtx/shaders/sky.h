@@ -165,7 +165,8 @@ namespace Rtx::Shaders
     struct StarField
     {
         /// How much of the sheet is there: the engine's `Stars` ramp times the weather's glare, so
-        /// stars come out at dusk and an overcast keeps them in.
+        /// stars come out at dusk and an overcast keeps them in — and times the day's gain, which
+        /// `Rtx::describeWorld` lifts the whole sky by, so past one while a dusk is still lifted.
         float mFade;
 
         /// What every sheet of the night sky adds to what the sky *lights* with, already faded.

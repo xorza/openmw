@@ -85,16 +85,36 @@ namespace Rtx
     float describeWorld(const WorldReading& reading, FogDrift& drift, Shaders::VisibilityConstants& constants)
     {
         const Daylight& day = reading.mDaylight;
-        const Skylight& light = day.mLight;
 
-        const Shaders::StarField stars = reading.mOutdoors
+        // **The day's gain on the whole sky at once, before anything is derived from it**: the sun,
+        // the ambient, the dome, the air, the moons and the stars, so the sky's budget, the fog's
+        // colour and the deck's light all follow from lifted terms. `DAYLIGHT_GAIN` says why, and
+        // `Skylight::mExposureBias` already adapts to it.
+        const float gain = day.mLight.mDaylightGain;
+
+        Skylight light = day.mLight;
+        light.mSun.mIrradiance *= gain;
+        light.mSunAloft.mIrradiance *= gain;
+        light.mAmbient *= gain;
+
+        const osg::Vec3f horizon = day.mSkyHorizon * gain;
+        const osg::Vec3f zenith = day.mSkyZenith * gain;
+
+        std::array<MoonPlacement, 2> moons = reading.mMoons;
+        for (MoonPlacement& moon : moons)
+            moon.mIrradiance *= gain;
+
+        Shaders::StarField stars = reading.mOutdoors
             ? describeStars(day.mStarFade, reading.mGlare, reading.mStarRoll, reading.mSky)
             : noStars();
+        stars.mFade *= gain;
+        stars.mGlow *= gain;
 
         const SkyBudget budget
-            = reading.mOutdoors ? skyBudget(day.mSkyHorizon, day.mSkyZenith, stars.mGlow, light.mAmbient) : SkyBudget{};
+            = reading.mOutdoors ? skyBudget(horizon, zenith, stars.mGlow, light.mAmbient) : SkyBudget{};
 
         Fog air = day.mFog;
+        air.mColour *= gain;
         if (reading.mOutdoors)
             air.mColour = fogColour(budget.mMean, air.mColour);
 
@@ -103,9 +123,10 @@ namespace Rtx
         constants.mAmbient = light.mAmbient;
         constants.mAmbientFromSky = reading.mOutdoors ? 1.0f : 0.0f;
         constants.mBounceRate = Shaders::BOUNCE_RATE;
+        constants.mDaylightGain = gain;
 
-        constants.mSkyHorizon = day.mSkyHorizon;
-        constants.mSkyZenith = day.mSkyZenith;
+        constants.mSkyHorizon = horizon;
+        constants.mSkyZenith = zenith;
         constants.mSkyFill = budget.mFill;
 
         constants.mStars = stars;
@@ -122,13 +143,13 @@ namespace Rtx
 
         if (reading.mOutdoors)
         {
-            constants.mClouds = describeClouds(
-                reading.mClouds, deckLight(light.mSunAloft, budget.mMean, reading.mMoons), reading.mSky);
+            constants.mClouds
+                = describeClouds(reading.mClouds, deckLight(light.mSunAloft, budget.mMean, moons), reading.mSky);
 
             describePatches(reading.mStarRoll, reading.mSky, constants.mSkyPatches);
 
-            for (std::size_t moon = 0; moon < reading.mMoons.size(); ++moon)
-                constants.mMoons[moon] = describeMoon(reading.mMoons[moon]);
+            for (std::size_t moon = 0; moon < moons.size(); ++moon)
+                constants.mMoons[moon] = describeMoon(moons[moon]);
         }
 
         constants.mFogColour = air.mColour;

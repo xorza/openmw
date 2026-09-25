@@ -347,7 +347,7 @@ vec3 moonFace(MoonDisc moon, vec3 direction, float blur, out float covered)
     // here — the engine switches one off under `Fade_End_Angle` instead. `mThroughAir` is per
     // channel, so a low moon reddens as it goes rather than merely fading. And painted what a
     // script painted it, which is how Secunda goes red for the Bloodmoon prophecy.
-    return base * moon.mPaint * moon.mThroughAir * (MOON_RADIANCE * shade * covered);
+    return base * moon.mPaint * moon.mThroughAir * (MOON_RADIANCE * frame.mDaylightGain * shade * covered);
 }
 
 /// The radiance a ray that hit nothing comes back with, for a ray being looked along.

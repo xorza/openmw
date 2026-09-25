@@ -257,6 +257,11 @@ namespace Rtx::Shaders
         /// traces every bounce and reads exactly.
         float mBounceRate;
 
+        /// The day's gain, `Rtx::Skylight::mDaylightGain`, for what the sky draws from a constant
+        /// rather than from a term the host already lifted: a moon's face at `MOON_RADIANCE`. One in
+        /// a frame built by hand.
+        float mDaylightGain;
+
         /// What the sky lights with over and above those two, and is not drawn with.
         ///
         /// **The one place where what the sky sends and what the sky shows are different things.**

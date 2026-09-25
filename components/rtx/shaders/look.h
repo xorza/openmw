@@ -32,12 +32,33 @@ namespace Rtx::Shaders
 {
 #endif
 
+    /// How many times brighter the day is than the scale the lamps, the rooms and the night are set
+    /// on: what the sun, the sky and everything the sky sends are multiplied by with the sun fully up.
+    ///
+    /// **Morrowind set its lamps, its rooms and its nights on one scale with its day**, a lamp at
+    /// half its radius about half as bright on a wall as the noon sun, and this renderer inherited
+    /// the scale. In the world a day outshines a lantern's light on the wall beside it some twenty
+    /// thousand times. Here the day is lifted by this and the exposure adapts to the lift in full,
+    /// so a sunlit frame is shown as bright as before, and what the day does not lift — lamps,
+    /// flames, glows — falls under it by this much. Set by eye and well under the world's figure:
+    /// at ten, a lamp at half its radius still gives a shaded wall a fifth again.
+    ///
+    /// **Geometric in the sun's share**, so each step of a dawn adds the same number of stops, which
+    /// is twilight's own shape: its light falls about exponentially as the sun sinks. One at night,
+    /// in a room and in a frame built by hand.
+    ///
+    /// **First in the file, because the exposure's ranges are sized by it**: `MAX_LOG_LUMINANCE`,
+    /// `EXPOSURE_MIN` and, through that, `MAX_SUN_RADIANCE`. Past about sixty-five the sun's capped
+    /// disc no longer fits the half floats a shown frame is stored in.
+    const float DAYLIGHT_GAIN = 10.0f;
+
     /// Darkest luminance the histogram resolves, as a power of two. About a thousandth of mid grey,
     /// which is below anything a lit surface reaches and well under an unlit interior.
     const float MIN_LOG_LUMINANCE = -10.0f;
 
-    /// Brightest, as a power of two. Sixty-four times mid grey covers a flame seen directly.
-    const float MAX_LOG_LUMINANCE = 6.0f;
+    /// Brightest, as a power of two. Sixty-four times mid grey covers a flame seen directly, and the
+    /// day's gain lifts every sunlit pixel past that by `DAYLIGHT_GAIN`.
+    const float MAX_LOG_LUMINANCE = 6.0f + log2(DAYLIGHT_GAIN);
 
     /// Where a pixel stops being binned and starts being counted as black.
     ///
@@ -79,8 +100,9 @@ namespace Rtx::Shaders
 
     /// Clamped rather than trusted: a frame that is almost entirely black would otherwise divide by
     /// something near zero and hand back an exposure that turns the next frame's noise into a
-    /// snowstorm. `MAX_SUN_RADIANCE` is sized against the floor.
-    const float EXPOSURE_MIN = 0.05f;
+    /// snowstorm. `MAX_SUN_RADIANCE` is sized against the floor, and the floor against the day: a
+    /// day lifted by `DAYLIGHT_GAIN` meters that much lower.
+    const float EXPOSURE_MIN = 0.05f / DAYLIGHT_GAIN;
     const float EXPOSURE_MAX = 200.0f;
 
     /// How long the exposure takes to open, as the time constant of an exponential approach, in
@@ -189,27 +211,6 @@ namespace Rtx::Shaders
     /// above what this box's `sinf` gives; `RtxSkylightTest` holds it to within that step of the
     /// angle.
     const float SUN_SHADOW_SINE = 0.034899913f;
-
-    /// The most radiance the sun's disc is drawn with.
-    ///
-    /// **A ceiling for a temporal history, not for a picture.** The sun's disc is drawn at its
-    /// irradiance spread over its own solid angle, which at noon is `8 / (pi * 0.004654^2)` — a
-    /// hundred and seventeen thousand. Nothing downstream can use it: the dimmest exposure the
-    /// renderer will choose is `EXPOSURE_MIN`, so a radiance of 20 is already the top of the display
-    /// range at every exposure it can pick. What the number does reach is the upscaler, which reconstructs
-    /// from several frames of linear radiance and has to hold that value in a history — and a
-    /// neighbourhood five orders of magnitude out of range is one it clears slowly, which is a
-    /// blown pixel that stays blown for seconds after the sun has left the frame.
-    ///
-    /// **A thousand, because a glint is the dimmest thing this can reach.** Water reflects `WATER_F0`
-    /// of what it faces at normal incidence, so a source has to survive a factor of 0.02 and still
-    /// clear the display's top: `20 / 0.02` is the smallest ceiling that leaves every white pixel
-    /// white. It is a hundred and eighteen times below where the disc sits.
-    ///
-    /// **The disc alone, because it is the only thing in the sky that can reach a ceiling at all.**
-    /// A moon's face is held at 0.18, a star at the same, and the dome's own glow is a decoded
-    /// weather colour — every one of them three orders below this.
-    const float MAX_SUN_RADIANCE = 1000.0f;
 
     /// What a moon's own texels are worth as radiance.
     ///
@@ -728,6 +729,28 @@ namespace Rtx::Shaders
     /// seen along it.
     const float WATER_IOR = 1.333f;
     const float WATER_F0 = 0.02f;
+
+    /// The most radiance the sun's disc is drawn with.
+    ///
+    /// **A ceiling for a temporal history, not for a picture.** The sun's disc is drawn at its
+    /// irradiance spread over its own solid angle, which at noon is a hundred and seventeen thousand
+    /// times the sun's irradiance. Nothing downstream can use that: the dimmest exposure the
+    /// renderer will choose is `EXPOSURE_MIN`, so a radiance of its inverse is already the top of
+    /// the display range at every exposure it can pick. What the number does reach is the
+    /// upscaler, which reconstructs from several frames of linear radiance and has to hold that
+    /// value in a history — and a neighbourhood five orders of magnitude out of range is one it
+    /// clears slowly, which is a blown pixel that stays blown for seconds after the sun has left
+    /// the frame.
+    ///
+    /// **Over `WATER_F0`, because a glint is the dimmest thing this can reach**, and stated after it
+    /// for that reason. Water reflects that share of what it faces at normal incidence, so a source
+    /// has to survive it and still clear the display's top: this is the smallest ceiling that leaves
+    /// every white pixel white.
+    ///
+    /// **The disc alone, because it is the only thing in the sky that can reach a ceiling at all.**
+    /// A moon's face is held at 0.18, a star at the same, and the dome's own glow is a decoded
+    /// weather colour — every one of them three orders below this.
+    const float MAX_SUN_RADIANCE = 1.0f / (EXPOSURE_MIN * WATER_F0);
 
     /// Extinction per world unit, per channel — how fast water swallows light along a path.
     ///

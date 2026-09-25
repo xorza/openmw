@@ -148,8 +148,14 @@ namespace Rtx
             .mAmbient = sky.mAmbient + irradiance * (dusk * Shaders::INV_FOUR_PI),
         };
 
-        // After both terms, because it measures what they come to between them.
-        light.mExposureBias = exposureBias(light.mSun.mIrradiance, light.mAmbient);
+        // **The day's gain is adapted to in full.** A frame the gain lifts meters `gain` brighter
+        // and the exposure answers with `gain^-EXPOSURE_ADAPTATION`, so the rest of the gain is
+        // taken off here: a sunlit frame is then shown where it was, and what the gain did not lift
+        // falls under it. The hour's own bias is measured on the unlifted terms, after both,
+        // because it measures what they come to between them.
+        light.mDaylightGain = std::pow(Shaders::DAYLIGHT_GAIN, share);
+        light.mExposureBias = exposureBias(light.mSun.mIrradiance, light.mAmbient)
+            * std::pow(light.mDaylightGain, Shaders::EXPOSURE_ADAPTATION - 1.0f);
 
         return light;
     }

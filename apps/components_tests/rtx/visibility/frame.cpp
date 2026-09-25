@@ -23,6 +23,7 @@
 #include <components/rtx/material.hpp>
 #include <components/rtx/mesh.hpp>
 #include <components/rtx/runs.hpp>
+#include <components/rtx/shaders/exposure.h>
 #include <components/rtx/shaders/visibility.h>
 #include <components/rtx/slot.hpp>
 #include <components/rtx/texturedata.hpp>
@@ -381,11 +382,12 @@ namespace Rtx::Testing
             // half a check against "it got darker" would not cover.
             //
             // Luminance is 0.5, so `log2` is -1 and the histogram places it at
-            // `uint((-1 + 10) / 16 * 254) + 1 = 143`. Every lit pixel lands in that one bin, so the
-            // mean bin is 143 and the reduction reads back
-            // `(143 - 1) / 254 * 16 - 10 = -1.055118` — a luminance of 0.481258, which is the
-            // quantisation and not a mistake. The key over that, to the adaptation power, is
-            // `(0.18 / 0.481258)^0.75 = 0.478268`, times two to the compensation, and the contrast
+            // `uint((-1 + 10) / span * 254) + 1`, the span being `16 + log2 DAYLIGHT_GAIN` stops.
+            // Every lit pixel lands in that one bin, so the reduction reads back that bin's lower
+            // edge — at a gain of one bin 143 and `(143 - 1) / 254 * 16 - 10 = -1.055118`, a
+            // luminance of 0.481258, which is the quantisation and not a mistake. The key over that,
+            // to the adaptation power, is `(0.18 / 0.481258)^0.75 = 0.478268`, times two to the
+            // compensation — a frame built by hand has no day to adapt to — and the contrast
             // grade then multiplies by `(0.5 * exposure / 0.18)^(contrast - 1)`. The saturation grade
             // leaves a grey where it is.
             //
@@ -395,8 +397,9 @@ namespace Rtx::Testing
             // compression point: `1.055 * 0.199134^(1/2.4) - 0.055 = 0.483578`, or 123 of 255.
             // **Worked out from the dials rather than written as 123**, so a look tuned in `look.h`
             // leaves this test holding the arithmetic and not the old look.
+            const float metered = Shaders::binLuminance(static_cast<float>(Shaders::luminanceBin(0.5f)));
             const float exposure = std::exp2(Shaders::EXPOSURE_COMPENSATION)
-                * std::pow(Shaders::EXPOSURE_KEY / 0.481258f, Shaders::EXPOSURE_ADAPTATION);
+                * std::pow(Shaders::EXPOSURE_KEY / metered, Shaders::EXPOSURE_ADAPTATION);
             const float exposed = 0.5f * std::clamp(exposure, Shaders::EXPOSURE_MIN, Shaders::EXPOSURE_MAX);
             const std::uint8_t expected = displayedGrey(exposed);
 

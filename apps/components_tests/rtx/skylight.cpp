@@ -96,6 +96,21 @@ namespace Rtx
             // **And the ambient is the ground's alone.** What a layer above it keeps is that layer's
             // to spend; spreading it over the world as well would be the same light twice.
             EXPECT_EQ(dusk.mAmbient, room);
+
+            // **The day's gain follows the ground's sun**: none at night, `DAYLIGHT_GAIN` in a full
+            // day, and geometric between, so a half-risen sun has half the stops — the square root.
+            // The terms above are without it, and the exposure's bias adapts to it in full: a gain
+            // of ten takes `10^-0.25 = 0.5623` off a full day's bias.
+            const float gain = Rtx::Shaders::DAYLIGHT_GAIN;
+            EXPECT_EQ(at(0.0f).mDaylightGain, 1.0f) << "a night is not lifted";
+            EXPECT_FLOAT_EQ(at(1.0f).mDaylightGain, gain);
+            EXPECT_FLOAT_EQ(at(0.5f).mDaylightGain, std::sqrt(gain));
+            EXPECT_NE(at(0.5f).mDaylightGain, at(0.25f).mDaylightGain) << "the share made no difference";
+            EXPECT_EQ(dusk.mDaylightGain, 1.0f) << "the layer's sun lifted the ground's day";
+            EXPECT_FLOAT_EQ(at(1.0f).mExposureBias,
+                exposureBias(at(1.0f).mSun.mIrradiance, room)
+                    * std::pow(gain, Rtx::Shaders::EXPOSURE_ADAPTATION - 1.0f));
+            EXPECT_EQ(at(0.0f).mExposureBias, exposureBias(osg::Vec3f(), room)) << "a night's bias is the hour's alone";
         }
 
         /// A layer over the ground keeps the sun, and what it keeps is an hour and not an angle.
@@ -319,8 +334,10 @@ namespace Rtx
 
             ASSERT_GT(dusk.mAmbient.x(), recorded.x()) << "the spread moved nothing, so the order decides nothing";
 
-            EXPECT_FLOAT_EQ(dusk.mExposureBias, exposureBias(dusk.mSun.mIrradiance, dusk.mAmbient));
-            EXPECT_NE(dusk.mExposureBias, exposureBias(dusk.mSun.mIrradiance, recorded));
+            // Adapted to the half-risen day's gain in full as well, which is the same factor either way.
+            const float adapted = std::pow(dusk.mDaylightGain, Rtx::Shaders::EXPOSURE_ADAPTATION - 1.0f);
+            EXPECT_FLOAT_EQ(dusk.mExposureBias, exposureBias(dusk.mSun.mIrradiance, dusk.mAmbient) * adapted);
+            EXPECT_NE(dusk.mExposureBias, exposureBias(dusk.mSun.mIrradiance, recorded) * adapted);
         }
 
         /// A room's `AMBI` record, as Berandas, Propylon Chamber writes it: ambient `15, 15, 15`,
@@ -374,6 +391,7 @@ namespace Rtx
 
             EXPECT_FLOAT_EQ(room.mStarFade, 0.0f);
             EXPECT_FLOAT_EQ(room.mLight.mExposureBias, 1.0f) << "the game holds a room at one";
+            EXPECT_EQ(room.mLight.mDaylightGain, 1.0f) << "a room has no day to lift";
 
             // **The spread is the sunlight's doing and nothing else's**: the same room with its
             // sunlight written black keeps the record's ambient exactly, so what the row above adds
