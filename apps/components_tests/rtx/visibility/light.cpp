@@ -951,6 +951,86 @@ namespace Rtx::Testing
             EXPECT_NEAR(mRadiance[centre], first + second, (first + second) * 1e-4f);
         }
 
+        /// **The same for the sky: a metal holds the source its lobe returns, and one frame is the
+        /// host's sum.**
+        ///
+        /// The wall, metal and camera of the test above, with no lamp and the sky black: the sun
+        /// along `(0, -1, 0)` at an irradiance of 2, and Masser along `(-0.6, -0.8, 0)` at 0.5. The
+        /// sky's pick weighs a glossy surface by its lobe, as the lamps' does (`surfaceCandidate`),
+        /// so whichever source a pixel draws is divided by the chance its own lobe gave it, and the
+        /// estimate is the two lobes summed. Weighed by the cosine and the irradiance, as the sky's
+        /// pick was, a frame holding the sun gives `2.4 / 2` of its lobe and one holding the moon
+        /// `2.4 / 0.4` of hers: the sum only where the moon's lobe is a fifth of the sun's.
+        TEST_F(RtxVisibilityTest, aMetalHoldsTheSkySourceItsLobeReturnsAndIsSampledWithNoNoise)
+        {
+            constexpr std::uint32_t size = 33;
+            constexpr std::size_t centre = centreValueOf(size);
+
+            constexpr std::array<std::uint8_t, 4> sBaseTexel{ 128, 128, 128, 255 };
+            constexpr std::array<std::uint8_t, 4> sMetalTexel{ 255, 128, 255, 255 };
+            const std::array<TextureData, 2> textures{ describeTexel(sBaseTexel, 0), describeTexel(sMetalTexel, 1) };
+
+            const osg::Vec3f normal(0.0f, -1.0f, 0.0f);
+            const osg::Vec4f tangent(1.0f, 0.0f, 0.0f, 1.0f);
+            const std::array normals{ normal, normal, normal, normal };
+            const std::array tangents{ tangent, tangent, tangent, tangent };
+
+            SceneDesc scene;
+            const Index mesh = scene.addMesh(MeshArrays{ .mPositions = sWallQuad,
+                .mNormals = normals,
+                .mTexCoords = sQuadUv,
+                .mTangents = tangents,
+                .mIndices = sQuadIndices });
+            const Index diffuse = scene.textures().add(VFS::Path::NormalizedView("base.dds"));
+            const Index map = scene.textures().add(
+                VFS::Path::NormalizedView("base_spec.dds"), TextureWrap::Repeat, TextureEncoding::Data);
+            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                .mMesh = mesh,
+                .mMaterial = scene.addMaterial(Material{ .mDiffuse = diffuse, .mSpecular = map }) });
+
+            const osg::Vec3f toSun(0.0f, -1.0f, 0.0f);
+            const osg::Vec3f toMoon(-0.6f, -0.8f, 0.0f);
+            constexpr float sunlight = 2.0f;
+            constexpr float moonlight = 0.5f;
+
+            Shaders::VisibilityConstants camera = Testing::makeCamera(
+                osg::Vec3f(100.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
+            camera.mSkyHorizon = osg::Vec3f();
+            camera.mSkyZenith = osg::Vec3f();
+            camera.mSun = Shaders::sunSource(toSun, osg::Vec3f(sunlight, sunlight, sunlight));
+            camera.mMoons[0].mSource = Shaders::moonSource(toMoon, osg::Vec3f(moonlight, moonlight, moonlight), 0.05f);
+            camera.mMoons[0].mRight = osg::Vec3f(0.0f, 0.0f, 1.0f);
+            camera.mMoons[0].mUp = osg::Vec3f(1.0f, 0.0f, 0.0f);
+            camera.mMoons[0].mColour = osg::Vec3f(1.0f, 1.0f, 1.0f);
+            camera.mMoons[0].mAlpha = 1.0f;
+            camera.mMoons[0].mFace = Shaders::NO_TEXTURE;
+
+            const float reflectance = 128.0f / 255.0f;
+            const float roughness = 128.0f / 255.0f;
+            const osg::Vec3f toEye = osg::Vec3f(1.0f, -1.0f, 0.0f) / std::sqrt(2.0f);
+            const auto lobe = [&](const osg::Vec3f& toLight, float irradiance) {
+                osg::Vec3f halfway = toEye + toLight;
+                halfway.normalize();
+                const float toLightCosine = normal * toLight;
+                const float eyeCosine = normal * toEye;
+                const float alpha = Shaders::ggxAlpha(roughness);
+                const osg::Vec2f table = SpecularAlbedo::shared().at(eyeCosine, roughness);
+                const float fresnel = Shaders::fresnelSchlick(
+                    reflectance, Shaders::specularEdge(reflectance), Shaders::schlickWeight(toEye * halfway));
+                return irradiance * fresnel * Shaders::specularCompensation(reflectance, table.y())
+                    * Shaders::ggxDistribution(alpha, normal * halfway)
+                    * Shaders::smithVisibility(alpha, eyeCosine, toLightCosine) * toLightCosine;
+            };
+
+            const float sun = lobe(toSun, sunlight);
+            const float moon = lobe(toMoon, moonlight);
+            ASSERT_GT(std::abs(moon / sun - 0.2f), 0.05f) << "the directions no longer tell the two targets apart";
+
+            std::vector<std::uint8_t> pixels;
+            EXPECT_GT(countHits(scene, textures, camera, size, pixels), 0u);
+            EXPECT_NEAR(mRadiance[centre], sun + moon, (sun + moon) * 1e-4f);
+        }
+
         /// Which side of a surface the light may come from is the triangle's plane's answer, and a
         /// vertex normal that disagrees does not get to overrule it.
         ///

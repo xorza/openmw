@@ -303,6 +303,9 @@ PuffLayer mediumAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit, Con
 
     const GatheredLight lit = gatheredLight(pixel, origin, direction, limit, gathered);
 
+    // **The glow is not scaled by `EMISSIVE_INTENSITY`**, as a surface's and a sheet's are: the
+    // Ghostfence is a medium that glows, and at that scale a night's exposure washes it to white and
+    // loses the orbs painted on it.
     layer.mColour = albedo * (lit.mLight + vec3(gathered.mGlowed) / float(gathered.mCoverage)) * lit.mReaching;
     layer.mCoveredAt = lit.mSeen;
 

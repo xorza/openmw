@@ -249,8 +249,13 @@ struct Reservoir
     /// Where the ray this buys leaves from — a shading point, or a froxel of the air.
     vec3 mFrom;
 
-    /// What the lamp held would deliver there with nothing in the way.
+    /// What the lamp held would deliver there with nothing in the way: `LightCandidate::mRadiance`.
     vec3 mRadiance;
+
+    /// What the held lamp's light is to a surface's lobe, `LightCandidate::mSpecular` and
+    /// `LightCandidate::mFresnel`: kept from the weighing, so the lobe is evaluated once per lamp.
+    vec3 mSpecular;
+    vec3 mFresnel;
 
     /// Which lamp, as a row of the light table.
     uint mLamp;
@@ -263,7 +268,7 @@ struct Reservoir
 /// A reservoir that has weighed nothing, which buys no ray and delivers nothing.
 Reservoir noLamps()
 {
-    return Reservoir(vec3(0.0), vec3(0.0), 0u, 0.0, 0.0);
+    return Reservoir(vec3(0.0), vec3(0.0), vec3(0.0), vec3(0.0), 0u, 0.0, 0.0);
 }
 
 /// The cosine a diffuse surface takes a light at, with what a sheet takes from its far side.
@@ -291,6 +296,109 @@ float litCosine(vec3 normal, vec3 side, vec3 towards, float transmission)
     return dot(side, towards) > 0.0 ? max(cosine, 0.0) : transmission * max(-cosine, 0.0);
 }
 
+/// Which of three weights one draw picks, and what that pick is worth.
+struct WeightedPick
+{
+    /// 0, 1 or 2, in the order the weights were given.
+    uint mIndex;
+
+    /// The picked weight over the total, or one where every weight is nought.
+    float mChance;
+
+    /// Whether the picked one holds all of the weight, and is taken whole rather than divided by a
+    /// chance of one.
+    bool mWhole;
+
+    /// The weights' sum: nought where nothing is worth a ray.
+    float mTotal;
+};
+
+/// Picks among three weights in proportion to them, with one draw in `[0, 1)`.
+///
+/// **Against the weights and never against a quotient.** `draw < first / total` says the same on
+/// paper and not on the card: a divide is allowed 2.5 ULP here, `first / first` came back one ulp
+/// under one, and the one draw in sixteen million that equals it picked a moon while she was down —
+/// a chance of nought, a `0 / 0` in the froxel, and a NaN the fog's history then spread across the
+/// frame in eight-pixel blocks. A product is correctly rounded and never exceeds `total`, and a
+/// weight of nought is never the pick, so the fallback past every comparison is the last weight
+/// that is anything. **And a pick holding all the weight is taken whole**, for the same reason: a
+/// weight over itself need not be one either.
+///
+/// One statement for the surface's sky and the air's moons. A third weight of nought makes it a
+/// pick between two.
+WeightedPick pickByWeight(float first, float second, float third, float draw)
+{
+    const float total = first + second + third;
+    const float scaled = draw * total;
+
+    uint index = third > 0.0 ? 2u : (second > 0.0 ? 1u : 0u);
+    if (first > 0.0 && scaled < first)
+        index = 0u;
+    else if (second > 0.0 && scaled < first + second)
+        index = 1u;
+
+    const float picked = index == 0u ? first : (index == 1u ? second : third);
+    return WeightedPick(index, total > 0.0 ? picked / total : 1.0, !(picked < total), total);
+}
+
+/// What one light would deliver to a point with nothing in the way, and the weight it is drawn by.
+///
+/// **One record for a lamp and a sky source, for a surface and the air**, so what a light is worth
+/// cannot be worked out two ways by two askers.
+struct LightCandidate
+{
+    /// What the diffuse half receives, per unit albedo — or, in the air, the phase's share.
+    vec3 mRadiance;
+
+    /// What the lobe reflects toward the eye, whole. Nought on a surface with no lobe, and in the air.
+    vec3 mSpecular;
+
+    /// The lobe's Fresnel term at this light: the share of `mRadiance` the diffuse half does not get.
+    vec3 mFresnel;
+
+    float mWeight;
+};
+
+/// A light as a surface weighs it.
+///
+/// **One target for every light a surface draws between**: a glossy surface weighs a light by all it
+/// sends back — the diffuse half net of what the lobe took, and the lobe — so a metal holds the
+/// lights its highlights come from. Weighed by the cosine alone, it held them as often as the
+/// lights behind its shoulder. A surface with no lobe keeps the cosine's weight per unit albedo,
+/// which is the target every vanilla picture was drawn with: weighed by its albedo, a coloured light
+/// would be held more or less often than before.
+///
+/// @param unshadowed what the diffuse half would receive per unit albedo.
+/// @param plain the weight of a surface with no lobe, which is the luminance of `unshadowed` up to a
+///        scale the whole draw shares. **Handed in, because each kind rounds it its own way and the
+///        vanilla pictures were drawn with those roundings**: a lamp's is the luminance of the
+///        product, and a sky source's the cosine times the luminance of the irradiance. Worked out
+///        here the one way, the moons' pick flipped at a boundary and moved a night's pixels.
+/// @param arriving the light's irradiance square to its direction, which the lobe reflects.
+/// @param side what decides which side a light has to stand on, as `reflectionAt` takes it.
+/// @param diffuse the surface's diffuse albedo.
+LightCandidate surfaceCandidate(
+    vec3 unshadowed, float plain, vec3 arriving, vec3 towards, Gloss gloss, vec3 side, vec3 diffuse)
+{
+    LightCandidate candidate = LightCandidate(unshadowed, vec3(0.0), vec3(0.0), plain);
+    if (gloss.mGlossy)
+    {
+        const Reflection reflected = reflectionAt(gloss, side, towards);
+        candidate.mSpecular = arriving * reflected.mLobe;
+        candidate.mFresnel = reflected.mFresnel;
+        candidate.mWeight = dot(unshadowed * diffuse * (1.0 - reflected.mFresnel) + candidate.mSpecular,
+            LUMINANCE_WEIGHTS);
+    }
+
+    return candidate;
+}
+
+/// A light as a point of the air weighs it: its share, which has no lobe to add.
+LightCandidate airCandidate(vec3 share)
+{
+    return LightCandidate(share, vec3(0.0), vec3(0.0), dot(share, LUMINANCE_WEIGHTS));
+}
+
 /// One sky source, weighed for a point that is about to draw between them.
 ///
 /// **Named rather than kept in an array, because a computed index is a spill.** The three were held
@@ -310,20 +418,29 @@ struct SkyChoice
     /// What the surface makes of this source's direction, or nought where it is not asked.
     float mCosine;
 
-    /// What it would deliver unshadowed, as a luminance, which is what the draw is made on.
-    float mWeight;
+    /// What it would deliver unshadowed, and the weight the draw is made on — `surfaceCandidate`'s,
+    /// as a lamp's is.
+    LightCandidate mLight;
 };
 
 /// Everything about one source that can be known before a ray is traced to it.
 ///
 /// @param asked whether this source is one the caller wants at all — a sun that is down, or a moon
 ///        a bounce does not ask for.
-SkyChoice skyChoiceAt(uint source, vec3 normal, vec3 side, float transmission, bool asked)
+/// @param diffuse the surface's diffuse albedo, which a glossy surface's weight reads.
+SkyChoice skyChoiceAt(uint source, vec3 normal, vec3 side, float transmission, bool asked, Gloss gloss, vec3 diffuse)
 {
     const SkySource sky = skySourceAt(source);
     const float cosine = asked ? litCosine(normal, side, sky.mDirection, transmission) : 0.0;
 
-    return SkyChoice(sky, cosine, cosine > 0.0 ? cosine * dot(sky.mIrradiance, LUMINANCE_WEIGHTS) : 0.0);
+    // A source the surface does not face weighs nought and is never drawn, and its lobe is not worth
+    // evaluating: in daylight that is both moons.
+    LightCandidate light = LightCandidate(vec3(0.0), vec3(0.0), vec3(0.0), 0.0);
+    if (cosine > 0.0)
+        light = surfaceCandidate(sky.mIrradiance * (cosine * INV_PI), cosine * dot(sky.mIrradiance, LUMINANCE_WEIGHTS),
+            sky.mIrradiance, sky.mDirection, gloss, side, diffuse);
+
+    return SkyChoice(sky, cosine, light);
 }
 
 /// Offers one candidate to `kept`, already resolved to what it delivers at `from`.
@@ -331,13 +448,13 @@ SkyChoice skyChoiceAt(uint source, vec3 normal, vec3 side, float transmission, b
 /// **The reservoir's own rule, written once**, because two walks feed it: the point one below, and
 /// the walk along a ray that `lampsInAir` takes. A second copy of this is a second chance for the
 /// two to disagree about what unbiased means.
-/// @param weight what the candidate is weighed by — the target, a scalar because a colour cannot be
-///        drawn in proportion to — and positive wherever `unshadowed` is anything the asker keeps.
-///        The luminance of what the pixel receives, because what it decides is which lamp this
-///        pixel would most notice the loss of.
+/// @param candidate what the lamp delivers and the weight it is drawn by — `surfaceCandidate` or
+///        `airCandidate`. The weight is a scalar because a colour cannot be drawn in proportion to,
+///        and positive wherever the candidate is anything the asker keeps.
 /// @param lamp which row of the light table the candidate is.
-void considerLamp(inout Reservoir kept, inout uint state, vec3 from, vec3 unshadowed, float weight, uint lamp)
+void considerLamp(inout Reservoir kept, inout uint state, vec3 from, LightCandidate candidate, uint lamp)
 {
+    const float weight = candidate.mWeight;
     if (!(weight > 0.0))
         return;
 
@@ -348,7 +465,9 @@ void considerLamp(inout Reservoir kept, inout uint state, vec3 from, vec3 unshad
     if (randomNext(state) * kept.mTotal <= weight)
     {
         kept.mFrom = from;
-        kept.mRadiance = unshadowed;
+        kept.mRadiance = candidate.mRadiance;
+        kept.mSpecular = candidate.mSpecular;
+        kept.mFresnel = candidate.mFresnel;
         kept.mLamp = lamp;
         kept.mWeight = weight;
     }
@@ -368,13 +487,8 @@ void considerLamp(inout Reservoir kept, inout uint state, vec3 from, vec3 unshad
 ///        `INV_FOUR_PI` times a step's weight for the air.
 /// @param transmission what the far side of a sheet is worth, out of `Surface::mTransmission`.
 ///        Nought for a solid and for a point in a medium, which has no far side.
-/// @param gloss the surface's specular half, and `diffuse` its diffuse albedo: **a glossy surface
-///        weighs a lamp by all it sends back**, the diffuse half net of what the lobe took and the
-///        lobe, so a metal — which has no diffuse half — holds the lamps its highlights come from.
-///        Weighed by the cosine alone, it held them as often as the lamps behind its shoulder. A
-///        surface with no lobe keeps the cosine's weight per unit albedo, which is the target every
-///        vanilla picture was drawn with: weighed by its albedo, a coloured lamp would be held more
-///        or less often than before.
+/// @param gloss the surface's specular half, and `diffuse` its diffuse albedo, which weigh a lamp as
+///        `surfaceCandidate` says.
 void weighLamps(inout Reservoir kept, inout uint state, vec3 from, vec3 normal, vec3 side, float scale,
     float transmission, Gloss gloss, vec3 diffuse)
 {
@@ -405,16 +519,10 @@ void weighLamps(inout Reservoir kept, inout uint state, vec3 from, vec3 normal, 
         const float cosine = mix(faced, 1.0, depth);
         const vec3 unshadowed = held.mIntensity * (cosine * lamp.mReaching * scale);
 
-        float weight = dot(unshadowed, LUMINANCE_WEIGHTS);
-        if (gloss.mGlossy)
-        {
-            const Reflection reflected = reflectionAt(gloss, side, lamp.mTowards);
-            weight = dot(unshadowed * diffuse * (1.0 - reflected.mFresnel)
-                    + held.mIntensity * lamp.mReaching * reflected.mLobe,
-                LUMINANCE_WEIGHTS);
-        }
-
-        considerLamp(kept, state, from, unshadowed, weight, row);
+        considerLamp(kept, state, from,
+            surfaceCandidate(unshadowed, dot(unshadowed, LUMINANCE_WEIGHTS), held.mIntensity * lamp.mReaching,
+                lamp.mTowards, gloss, side, diffuse),
+            row);
     }
 }
 
@@ -475,8 +583,8 @@ void aimLampFrom(inout Reservoir kept, vec3 from)
 /// What every lamp a reservoir stands for delivers, once the one it held has been traced to.
 ///
 /// @param share what the held lamp's own light is worth to the estimate: the reservoir's weight over
-///        the held one's, times what the world left of it. Nought where nothing was held. What an
-///        asker that weighs the same lamp a second way multiplies by, which keeps that estimate the
+///        the held one's, times what the world left of it. Nought where nothing was held. What the
+///        held lamp's lobe, `Reservoir::mSpecular`, is multiplied by, which keeps that estimate the
 ///        unbiased one this is.
 vec3 lampsThrough(Reservoir kept, vec2 draw, out float share)
 {

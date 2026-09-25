@@ -662,7 +662,13 @@ Surface noSurface(vec3 origin)
 ///        such hit can arrive at. A closest-hit shader is picked by the instance's own material
 ///        kind, so the two that are not terrain's know the answer is no — register relief no
 ///        driver here will report a number for.
-Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
+/// @param detailed whether the hit is a picture: the eye's own, a reflection's, the bed under a
+///        waterline — `trace`'s `draws`. **A diffuse bounce's far hit is not**, and reads no normal
+///        map and no parallax: what it sends back is averaged over a hemisphere and then filtered,
+///        and relief read there moved nothing a 1024-frame reference could tell from its own noise,
+///        at Balmora or in the census office. The albedo, the reflectance and the roughness are read
+///        either way, because the energy the hit sends back is theirs.
+Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered, bool detailed)
 {
     Surface surface = noSurface(origin);
 
@@ -742,7 +748,7 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
     // no orthogonalisation between them — which is what the maps were checked against. Built on
     // the normal as the mesh states it and then turned with it, so a sheet met from behind sees
     // the map's relief from behind. A mesh the map reached with no tangents keeps its normal.
-    if (HAS_MAPS && holdsTexture(material.mNormal) && dot(hit.mTangent.xyz, hit.mTangent.xyz) > 0.0)
+    if (HAS_MAPS && detailed && holdsTexture(material.mNormal) && dot(hit.mTangent.xyz, hit.mTangent.xyz) > 0.0)
     {
         const vec3 tangent = normalize(hit.mTangent.xyz);
         const vec3 bitangent = cross(normal, tangent) * hit.mTangent.w;
@@ -808,7 +814,7 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
         vec3 layerTangent = vec3(0.0);
         vec3 layerBitangent = vec3(0.0);
         vec3 layerEye = vec3(0.0);
-        if (HAS_MAPS)
+        if (HAS_MAPS && detailed)
         {
             const vec3 across = vec3(1.0, 0.0, 0.0);
             layerTangent = normalize(across - normal * dot(normal, across));
@@ -826,7 +832,7 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
             // Shifted as `terrain.frag` shifts the layer, before any read of it, by the height read
             // where the layer was.
             TexturePoint at = texturePoint(uv, hit.mBary, layer.mDiffuseTransform, cone, surface.mFootprint);
-            if (HAS_MAPS && (layer.mFlags & LAYER_PARALLAX) != 0u && holdsTexture(layer.mNormal))
+            if (HAS_MAPS && detailed && (layer.mFlags & LAYER_PARALLAX) != 0u && holdsTexture(layer.mNormal))
                 at.mAt += parallaxShift(layerEye, sampleDiffuse(layer.mNormal, at).a);
 
             const bool authored = HAS_MAPS && layerAuthored(layer, sceneTexels());
@@ -840,7 +846,7 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
                 if (authored)
                     reflecting += showing;
 
-                const bool mapped = holdsTexture(layer.mNormal);
+                const bool mapped = detailed && holdsTexture(layer.mNormal);
                 painted += showing * (mapped ? sampleNormalMap(layer.mNormal, at) : vec3(0.0, 0.0, 1.0));
                 relief = relief || mapped;
             }
@@ -977,9 +983,11 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
 
 /// The same, for a ray that could have landed on anything. Every inline query in the frame — a
 /// bounce, a reflection, the bed under a waterline pixel — is one of these.
-Surface resolve(Hit hit, vec3 origin, vec3 direction)
+///
+/// @param draws whether the ray draws the picture, which is whether the hit is `detailed`.
+Surface resolve(Hit hit, vec3 origin, vec3 direction, bool draws)
 {
-    return resolveFor(hit, origin, direction, true);
+    return resolveFor(hit, origin, direction, true, draws);
 }
 
 /// Traverses, and answers with what the query committed.
@@ -1004,7 +1012,7 @@ Hit traverse(vec3 origin, vec3 direction, float tmin, float footprint, float spr
 /// anything to put between them, and `visibility.rgen` is where it does.
 Surface trace(vec3 origin, vec3 direction, float tmin, float footprint, float spread, uint mask, bool draws)
 {
-    return resolve(traverse(origin, direction, tmin, footprint, spread, mask, draws), origin, direction);
+    return resolve(traverse(origin, direction, tmin, footprint, spread, mask, draws), origin, direction, draws);
 }
 
 #endif

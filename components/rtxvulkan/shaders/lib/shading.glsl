@@ -137,49 +137,33 @@ DirectLight gather(Surface surface, Gloss gloss, uint seed, uint path)
     // indirect term nothing resolves on its own, so a moon reaching it through a shadow ray of its
     // own was the dimmest half of the dimmest thing in the frame.
     //
-    // **The pick is made against the weights and never against a quotient**, for the reason
-    // `fogSourcesFrom` gives: a share one ulp under one and the largest draw picked a source of no
-    // weight, whose chance divided the radiance by nought. A source that weighs nothing is never
-    // the draw, so the fallback past every comparison is the last source that weighs anything, and
-    // each comparison is a correctly rounded product against a running sum. The draw is the
-    // moons' and the ray's pair is the sun's, so every lamp draw below keeps its place.
-    // **The three are named and not indexed**, for the reason `SkyChoice` gives: the pick is a value
-    // the compiler cannot fold, and a local array read at one is a spill. The additions below are
-    // the ones the loop made, in the order it made them, so the draw picks what it always picked.
+    // **The pick is `pickByWeight`'s**, which says why it is made against the weights. The draw is
+    // the moons' and the ray's pair is the sun's, so every lamp draw below keeps its place. **The
+    // three are named and not indexed**, for the reason `SkyChoice` gives: the pick is a value the
+    // compiler cannot fold, and a local array read at one is a spill.
     const bool lunar = HAS_MOONS && path == PATH_SEEN;
-    const SkyChoice sun = skyChoiceAt(SKY_SOURCE_SUN, normal, side, transmission, sunUp());
-    const SkyChoice masser = skyChoiceAt(SKY_SOURCE_MASSER, normal, side, transmission, lunar);
-    const SkyChoice secunda = skyChoiceAt(SKY_SOURCE_SECUNDA, normal, side, transmission, lunar);
+    const vec3 diffuse = surface.mAlbedo;
+    const SkyChoice sun = skyChoiceAt(SKY_SOURCE_SUN, normal, side, transmission, sunUp(), gloss, diffuse);
+    const SkyChoice masser = skyChoiceAt(SKY_SOURCE_MASSER, normal, side, transmission, lunar, gloss, diffuse);
+    const SkyChoice secunda = skyChoiceAt(SKY_SOURCE_SECUNDA, normal, side, transmission, lunar, gloss, diffuse);
 
-    const float total = sun.mWeight + masser.mWeight + secunda.mWeight;
-    if (total > 0.0)
+    const WeightedPick pick
+        = pickByWeight(sun.mLight.mWeight, masser.mLight.mWeight, secunda.mLight.mWeight, moonDraw[1].x);
+    if (pick.mTotal > 0.0)
     {
-        const float scaled = moonDraw[1].x * total;
-
-        SkyChoice picked = secunda.mWeight > 0.0 ? secunda : (masser.mWeight > 0.0 ? masser : sun);
-        if (sun.mWeight > 0.0 && scaled < sun.mWeight)
-            picked = sun;
-        else if (masser.mWeight > 0.0 && scaled < sun.mWeight + masser.mWeight)
-            picked = masser;
-
-        // **A source that holds all the weight is taken whole, and not divided by a chance of one.**
-        // Vulkan bounds a division by 2.5 ulp and does not round it, so a weight over itself need
-        // not be one — and the sums it is over are exact, since a source not asked weighs nought.
-        const float chance = picked.mWeight / total;
-        const bool whole = !(picked.mWeight < total);
+        const SkyChoice picked = pick.mIndex == 0u ? sun : (pick.mIndex == 1u ? masser : secunda);
 
         const float skySeen = skyVisible(picked.mSky, position, sunDraw);
-        const vec3 skyArriving
-            = picked.mSky.mIrradiance * lightThroughWater(position, picked.mSky.mDirection, surface.mFootprint);
+        const vec3 water = lightThroughWater(position, picked.mSky.mDirection, surface.mFootprint);
+        const vec3 skyArriving = picked.mSky.mIrradiance * water;
         const float skyLit = picked.mCosine * INV_PI * skySeen;
-        const vec3 skyDiffuse = skyArriving * (whole ? skyLit : skyLit / chance);
+        const vec3 skyDiffuse = skyArriving * (pick.mWhole ? skyLit : skyLit / pick.mChance);
         radiance += skyDiffuse;
 
         if (gloss.mGlossy)
         {
-            const Reflection reflected = reflectionAt(gloss, side, picked.mSky.mDirection);
-            specular += skyArriving * (whole ? skySeen : skySeen / chance) * reflected.mLobe;
-            taken += skyDiffuse * reflected.mFresnel;
+            specular += water * picked.mLight.mSpecular * (pick.mWhole ? skySeen : skySeen / pick.mChance);
+            taken += skyDiffuse * picked.mLight.mFresnel;
         }
     }
 
@@ -199,24 +183,21 @@ DirectLight gather(Surface surface, Gloss gloss, uint seed, uint path)
     // **With one lamp in the cell it is exactly the arithmetic that was here before**: the sum is
     // that lamp's weight, the ratio is one, and what is left is the term that was always there.
     //
-    // **The lobe takes the held lamp at the lamp's own falloff**, off its row, and the reservoir's
-    // share: the estimate of the lobe over every lamp is then the one the diffuse half makes, with
-    // the lobe where the cosine was. A glossy surface weighs each lamp by both — `weighLamps` says
-    // why — and either estimate is unbiased under any weight positive where its term is.
+    // **The lobe takes the held lamp's own lobe, kept from the weighing**, and the reservoir's share:
+    // the estimate of the lobe over every lamp is then the one the diffuse half makes, with the lobe
+    // where the cosine was. A glossy surface weighs each lamp by both — `surfaceCandidate` says why —
+    // and either estimate is unbiased under any weight positive where its term is.
     Reservoir kept = noLamps();
-    weighLamps(kept, state, position, normal, side, INV_PI, transmission, gloss, surface.mAlbedo);
+    weighLamps(kept, state, position, normal, side, INV_PI, transmission, gloss, diffuse);
 
     float lampShare;
     const vec3 lampDiffuse = lampsThrough(kept, lampDraw, lampShare);
     radiance += lampDiffuse;
 
-    if (gloss.mGlossy && lampShare > 0.0)
+    if (gloss.mGlossy)
     {
-        const GpuLight held = lightAt(kept.mLamp);
-        const Lamp lamp = lampAt(held, position);
-        const Reflection reflected = reflectionAt(gloss, side, lamp.mTowards);
-        specular += held.mIntensity * (lamp.mReaching * lampShare) * reflected.mLobe;
-        taken += lampDiffuse * reflected.mFresnel;
+        specular += kept.mSpecular * lampShare;
+        taken += lampDiffuse * kept.mFresnel;
     }
 
     return DirectLight((radiance - taken) * rated, specular * rated);

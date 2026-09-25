@@ -183,7 +183,7 @@ void main()
     Answer answer = noAnswer();
 
     const Surface surface
-        = resolveFor(stageHit(barycentrics), gl_WorldRayOriginEXT, gl_WorldRayDirectionEXT, LAYERED);
+        = resolveFor(stageHit(barycentrics), gl_WorldRayOriginEXT, gl_WorldRayDirectionEXT, LAYERED, true);
 
     if (WATER && HAS_SEA)
         answerWater(answer, surface);

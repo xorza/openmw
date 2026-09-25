@@ -375,24 +375,16 @@ FogSources fogSourcesFrom(MoonTerms terms, float draw)
     const float masser = dot(terms.mMasser, LUMINANCE_WEIGHTS);
     const float secunda = dot(terms.mSecunda, LUMINANCE_WEIGHTS);
 
-    const float total = masser + secunda;
     const float worthARay = FOG_SHAFT_FLOOR * brightest(frame.mFogColour);
 
-    // **The pick is made against the weights and never against a quotient**, which is the rule
-    // `considerLamp` keeps too: a moon of no weight is never the draw, and one carrying all of it
-    // always is. `draw < masser / total` said the same on paper and not on the card: a divide is
-    // allowed 2.5 ULP here, `masser / masser` came back one ulp under one, and the one draw in
-    // sixteen million that equals it picked Secunda while she was down — a chance of nought, a
-    // `0 / 0` in the froxel, and a NaN the volume's history then spread across the frame in
-    // eight-pixel blocks. A product is correctly rounded and never exceeds `total`, so the guard
-    // on `secunda` is what settles the whole-weight case and the product settles the rest.
-    const bool drewMasser = masser > 0.0 && (!(secunda > 0.0) || draw * total < masser);
+    const WeightedPick pick = pickByWeight(masser, secunda, 0.0, draw);
+    const bool drewMasser = pick.mIndex == 0u;
 
     // **Each flag carries its own constant and not only the terms behind it.** A moon's share folds
     // to nothing without one, but the comparison against a uniform does not fold with it — so the
     // block it guards stays in the kernel, which is the whole of what the constant is for.
     return FogSources(sunUp(), terms, HAS_MOONS && brightest(terms.mMasser + terms.mSecunda) > worthARay,
-        drewMasser ? terms.mMasser : terms.mSecunda, total > 0.0 ? (drewMasser ? masser : secunda) / total : 1.0,
+        drewMasser ? terms.mMasser : terms.mSecunda, pick.mChance,
         drewMasser ? skySourceAt(SKY_SOURCE_MASSER) : skySourceAt(SKY_SOURCE_SECUNDA));
 }
 
@@ -713,7 +705,7 @@ vec3 lampsInAir(inout Reservoir kept, inout uint state, vec3 origin, vec3 direct
 
             const vec3 share = held.mIntensity * (INV_FOUR_PI * crossed);
             scattered += share;
-            considerLamp(kept, state, place, share, dot(share, LUMINANCE_WEIGHTS), row);
+            considerLamp(kept, state, place, airCandidate(share), row);
         }
 
         if (leave >= exit)
