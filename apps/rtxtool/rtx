@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # The one way in: a build flavour, then what to do with it.
 #
-#   rtx <flavour> build [targets]        configure once, build the harness, the game and the tests,
-#                                        or the targets named
+#   rtx <flavour> build [targets]        configure where the presets changed, then build the harness,
+#                                        the game and the tests where the build has them, or the
+#                                        targets named
 #   rtx <flavour> test [gtest args]      components-tests Rtx* Sky*, rtx-gpu-tests, then openmw-tests
 #                                        Rtx*; `--without-device` leaves the GPU binary out, for a
 #                                        box with no driver that says so
@@ -81,7 +82,7 @@ shift 2
 
 # What a flavour is for once it is built: where it is, which layers a run of it takes, and which
 # targets `build` builds by default. How it is configured is `CMakePresets.json`'s, under the
-# same name.
+# same name — and so is whether it has tests, which `buildsTests` asks the build itself.
 #
 # A function, because the gate reaches for a second flavour: what a build without asserts compiles
 # is a question the debug build cannot answer.
@@ -91,7 +92,7 @@ describeFlavour() {
     case "$flavour" in
         debug)
             validation=sync
-            targets=(openmw-rtxtool openmw components-tests rtx-gpu-tests openmw-tests)
+            targets=(openmw-rtxtool openmw)
             ;;
         release)
             validation=off
@@ -103,7 +104,7 @@ describeFlavour() {
                 exit 2
             fi
             validation=sync
-            targets=(openmw-rtxtool openmw components-tests rtx-gpu-tests openmw-tests)
+            targets=(openmw-rtxtool openmw)
 
             # **`protect_shadow_gap=0` is not a preference — without it there is no device at all.**
             # The NVIDIA driver maps its own enormous address ranges, ASan's shadow gap is mapped
@@ -123,7 +124,7 @@ describeFlavour() {
             ;;
         nodlss)
             validation=sync
-            targets=(openmw-rtxtool openmw components-tests rtx-gpu-tests openmw-tests)
+            targets=(openmw-rtxtool openmw)
             ;;
         package)
             validation=off
@@ -324,19 +325,56 @@ fetchWindowsQt() {
     rm -f "$root/deps/Qt/aqt_x64.exe"
 }
 
-# Configured once, which is the one moment the SDK is looked for: `NGX_ROOT` in the environment
-# names the checkout, as CMake's own `find_package` reads it, and a build directory remembers what
-# it found. `--clean-first` is never used here: it deletes files/lang/*.ts, which are source.
-# "Once" is judged by `build.ninja`, the last file a configure writes: a configure that failed
-# leaves a cache behind and no build file, and a directory in that state is configured again
-# rather than handed to ninja to find nothing in.
+# **Everything a preset is expanded from**: the preset files, and the value of every environment
+# variable they read. Two directories configured from equal digests were handed the same cache
+# variables.
+presetDigest() {
+    local files=("$root/CMakePresets.json") name
+    if [ -f "$root/CMakeUserPresets.json" ]; then
+        files+=("$root/CMakeUserPresets.json")
+    fi
+    if grep -q '"include"' "${files[@]}"; then
+        echo "rtx: a presets file includes another, which presetDigest does not read" >&2
+        exit 2
+    fi
+    {
+        cat "${files[@]}"
+        for name in $(grep -ohE '\$p?env\{[A-Za-z_][A-Za-z0-9_]*\}' "${files[@]}" | sed -E 's/^\$p?env\{(.*)\}$/\1/' | sort -u); do
+            printf '%s=%s\n' "$name" "${!name-}"
+        done
+    } | sha256sum | cut -d' ' -f1
+}
+
+# **Configured again whenever what its preset expands from changes, and from nothing else.** A
+# directory configured once and never again keeps the cache it was first given, so a preset
+# edited later never reached it: `build-release` went on building the tests its preset had since
+# turned off. `rtx-preset.sha256` is the digest the directory was last configured from, written
+# once a configure has succeeded, so a failed one is tried again rather than handed to ninja.
+#
+# **Fresh, and not the preset laid over the old cache**: a variable a preset stops naming would
+# otherwise keep the value it last set, and the directory would be neither the old configuration
+# nor the new one. The SDK is the one thing carried over, as every `NGX_` entry the cache holds a
+# value in: `NGX_ROOT` where a `-D` named the checkout, and what `FindNGX` found with it, which is
+# all that is left of a checkout the environment named once and does not name now.
+#
+# **Neither `--clean-first` nor `ninja -t cleandead`**: files/lang/*.ts are source that a Qt
+# translation rule writes into the tree, so ninja logs them as outputs, and both delete them.
 #
 # What the platform supplies, and what each flavour asks, is the preset's to say. Windows's names
 # the dependency set and SDL's package by version, through `VCPKG_TAG` and `RTX_SDL2_VERSION` in
 # the environment, and both are fetched first.
 configureIfNeeded() {
-    if [ -f "$build/build.ninja" ]; then
+    local digest configuredFrom="$build/rtx-preset.sha256"
+    digest="$(presetDigest)"
+    if [ -f "$build/build.ninja" ] && [ "$(cat "$configuredFrom" 2> /dev/null)" = "$digest" ]; then
         return
+    fi
+
+    local carried=() entry
+    if [ -f "$build/CMakeCache.txt" ]; then
+        while IFS= read -r entry; do
+            carried+=("-D$entry")
+        done < <(sed -nE '/^NGX_[A-Za-z_]*:(PATH|FILEPATH|STRING|UNINITIALIZED)=/{/-NOTFOUND$/d;p}' "$build/CMakeCache.txt")
     fi
 
     if onWindows; then
@@ -347,7 +385,7 @@ configureIfNeeded() {
         fi
     fi
 
-    cmake -S "$root" --preset "$flavour-$system"
+    cmake -S "$root" --preset "$flavour-$system" --fresh "${carried[@]}"
 
     if onWindows; then
         placeWindowsRuntime
@@ -355,6 +393,8 @@ configureIfNeeded() {
             placeWindowsQt
         fi
     fi
+
+    echo "$digest" > "$configuredFrom"
 }
 
 # **What vcpkg's own copy step misses, placed the way upstream's MSVC script places it.** The
@@ -405,6 +445,41 @@ configureIfNeeded
 # round trip through CI and five.
 buildTargets() {
     cmake --build "$build" -j"$(nproc)" --target "$@" -- -k 0
+}
+
+testTargets=(components-tests rtx-gpu-tests openmw-tests)
+
+# **Whether this build has the tests, asked of its own build graph**: not of the flavour's name,
+# and not of a binary on disk. A binary on disk is only what some earlier build left there, and a
+# gate that ran one because it existed reported an earlier tree's tests as this tree's. Each
+# binary is asked for, since two switches decide them, and a build that has some and not all is
+# refused rather than tested in part. Asked of the Ninja the cache names, which is the one
+# `cmake --build` runs, and refused outright where it names none: every caller asks inside an
+# `if`, where `set -e` stops nothing and an empty answer would read as "no tests".
+buildsTests() {
+    local ninja target built=0
+    ninja="$(sed -n 's/^CMAKE_MAKE_PROGRAM:[A-Z]*=//p' "$build/CMakeCache.txt")"
+    if [ -z "$ninja" ]; then
+        echo "rtx: $build/CMakeCache.txt names no CMAKE_MAKE_PROGRAM" >&2
+        exit 2
+    fi
+    for target in "${testTargets[@]}"; do
+        if "$ninja" -C "$build" -t query "$target" > /dev/null 2>&1; then
+            built=$((built + 1))
+        fi
+    done
+    if [ "$built" -ne 0 ] && [ "$built" -ne "${#testTargets[@]}" ]; then
+        echo "rtx: the $flavour build has $built of the ${#testTargets[@]} test binaries —" \
+            "its BUILD_COMPONENTS_TESTS and BUILD_OPENMW_TESTS disagree" >&2
+        exit 2
+    fi
+    [ "$built" -ne 0 ]
+}
+
+addTestTargets() {
+    if buildsTests; then
+        targets+=("${testTargets[@]}")
+    fi
 }
 
 # Where the game keeps its saves, and where it reads its own openmw.cfg and settings.cfg,
@@ -555,11 +630,6 @@ runGpuTests() {
 # refuses to start where there is no device, so a box without a driver names `--without-device`
 # and gets the other two; a run that says nothing about its device is one that has one.
 runTests() {
-    if [ ! -x "$build/components-tests" ]; then
-        echo "the $flavour build has no tests: \`rtx debug test\` runs them" >&2
-        return 1
-    fi
-
     local withDevice=1 args=()
     for arg in "$@"; do
         case "$arg" in
@@ -927,10 +997,18 @@ case "$what" in
     build)
         # The flavour's own targets, or the ones the line names: CI compiles the backend alone in
         # the `nodlss` flavour, the way the gate does.
-        buildTargets "${@:-${targets[@]}}"
+        if [ $# -eq 0 ]; then
+            addTestTargets
+            set -- "${targets[@]}"
+        fi
+        buildTargets "$@"
         ;;
     test)
-        buildTargets components-tests rtx-gpu-tests openmw-tests
+        if ! buildsTests; then
+            echo "rtx: the $flavour build has no tests: \`rtx debug test\` runs them" >&2
+            exit 1
+        fi
+        buildTargets "${testTargets[@]}"
         runTests "$@"
         ;;
     setup)
@@ -974,11 +1052,14 @@ case "$what" in
         # machine. In order of cost, so a formatting slip is found in seconds and not after the
         # walk. `check` writes its pictures where it always does, under `check/`.
         checkFormat
+        addTestTargets
         buildTargets "${targets[@]}"
         compileWithoutAsserts
         compileWithoutDlss
-        if [ -x "$build/components-tests" ]; then
+        if buildsTests; then
             runTests
+        else
+            echo "tests: the $flavour build has none — \`rtx debug gate\` runs them"
         fi
         (cd "$build" && ./openmw-rtxtool check "--validation=$validation")
         runRepeat --pairs=1
