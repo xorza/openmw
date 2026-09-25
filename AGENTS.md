@@ -105,6 +105,10 @@ the posture behind them does.
   so a spike taken at load is a spike a player feels.
 - **Whatever can be computed once is computed once** — at initialization or at load. A frame reads
   what it was handed.
+- **A shader's float arithmetic is the build's, not the driver's.** Every module is pinned
+  (`components/rtxvulkan/spirvpin.hpp`), so GLSL is written as usual; an operation the pinning
+  refuses stops the build, and the message says what it is. `precise` is for a value two shaders
+  must compute to the bit.
 - **One path through a shader.** A single computation covering every case beats a tree that skips
   work per lane: a factor of zero, a table lookup, a value selected without a jump. Divergence needs
   a measurement saying the branch pays for itself, named where the branch lands.

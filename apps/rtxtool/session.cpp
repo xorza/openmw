@@ -804,8 +804,10 @@ namespace RtxTool
 
         // **A still is one frame traced again, and its depth and motion cannot move unless the
         // code under them did.** Asked of every hashed still that nothing jittered and nothing
-        // flew: a frame where either moved is the driver swapping its code in mid-stop
-        // (`Rtx::DriverCache`), and the stop's frames are then two codes' and no reference.
+        // flew. The build pins the float arithmetic the driver's second code could otherwise take
+        // apart (`Rtx::pinFloatArithmetic`), so a frame where either moved is a swapped code
+        // computing one of the operations left to the device — a division, a root, a
+        // transcendental — otherwise, and the stop's frames are then two codes' and no reference.
         if (stop.mSchedule.mFrozen && !stop.mSchedule.mRoute.has_value() && stop.mActions.mHash
             && !report.mReconstruction.mJitter)
             if (const std::optional<std::uint32_t> moved = mRecord.getHashes().findStillMoved(stop.mName))

@@ -36,3 +36,4 @@ that owns each. Read this once and the headers read as the field's.
 | fold, folded shape | a mesh's shape reduced to a hash | `ShapeFold` |
 | knobs | the mirror's settings | `MirrorKnobs` |
 | profile | the run's rendering settings | `RenderProfile` |
+| pin, pinned | float arithmetic every compile computes alike, invariance | `Rtx::pinFloatArithmetic` |

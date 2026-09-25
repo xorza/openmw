@@ -46,6 +46,12 @@ namespace Rtx
             // hold that fell back to a count would be the one that misses on the first frames of
             // every run — the frames the hold is for.
             RequiredExtension{ VK_KHR_SHADER_CLOCK_EXTENSION_NAME, {} },
+            // The one fused multiply-add the specification rounds once and exactly, which is how the
+            // build fuses what it pins (`Rtx::pinFloatArithmetic`); `fma()` of the GLSL set may be
+            // two roundings or one. The Vulkan beta drivers carried it from 580.94; of the release
+            // drivers, the Vulkan Hardware Database's reports list it from 595.02 on and not at
+            // 591.86 — the same branch as hit objects above.
+            RequiredExtension{ VK_KHR_SHADER_FMA_EXTENSION_NAME, "595" },
         };
 
         constexpr std::array sFaultReport{ VK_EXT_DEVICE_FAULT_EXTENSION_NAME };
@@ -173,6 +179,8 @@ namespace Rtx
                 +[](DeviceFeatures& f) -> VkBool32& { return f.mPipelineExecutable.pipelineExecutableInfo; } },
             RequiredFeature{
                 "shaderDeviceClock", +[](DeviceFeatures& f) -> VkBool32& { return f.mShaderClock.shaderDeviceClock; } },
+            RequiredFeature{
+                "shaderFmaFloat32", +[](DeviceFeatures& f) -> VkBool32& { return f.mShaderFma.shaderFmaFloat32; } },
         };
     }
 
@@ -195,6 +203,7 @@ namespace Rtx
     DeviceFeatures::DeviceFeatures()
     {
         void* next = nullptr;
+        chain(next, mShaderFma, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FMA_FEATURES_KHR);
         chain(next, mShaderClock, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_CLOCK_FEATURES_KHR);
         chain(next, mPipelineExecutable, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PIPELINE_EXECUTABLE_PROPERTIES_FEATURES_KHR);
         chain(next, mInvocationReorder, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_INVOCATION_REORDER_FEATURES_EXT);

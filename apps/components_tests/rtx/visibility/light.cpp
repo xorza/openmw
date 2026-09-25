@@ -2,6 +2,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <numbers>
 #include <optional>
 #include <span>
@@ -716,8 +717,14 @@ namespace Rtx::Testing
             const float tinted = expected(normal, 0.0f, 0.25f);
             EXPECT_NEAR(lit(0, false, Shaders::SHOW_SHADED, 0.25f).x(), tinted, tinted * 1e-4f)
                 << "a tinted dielectric";
-            EXPECT_EQ(lit(0, false, Shaders::SHOW_SPECULAR, 0.25f), osg::Vec3f(0.01f, 0.01f, 0.01f))
-                << "the tint on the reflectance";
+            // **To an ulp and no closer**: the tint is interpolated with the corner weights
+            // `1 - b.x - b.y`, `b.x` and `b.y`, which need not sum to exactly one, so a tint the same at
+            // every corner can arrive an ulp low (`.notes/ISSUES.md`).
+            const auto withinAnUlp = [](const osg::Vec3f& got, float wanted, const char* what) {
+                for (int axis = 0; axis < 3; ++axis)
+                    EXPECT_NEAR(got[axis], wanted, wanted * std::numeric_limits<float>::epsilon()) << what << axis;
+            };
+            withinAnUlp(lit(0, false, Shaders::SHOW_SPECULAR, 0.25f), 0.01f, "the tint on the reflectance");
 
             // The same through the leaning map, decoded as `2 * byte / 255 - 1`.
             const osg::Vec3f painted(
@@ -735,7 +742,7 @@ namespace Rtx::Testing
             for (int axis = 0; axis < 3; ++axis)
                 EXPECT_NEAR(shownNormal[axis], wantedNormal[axis], 1e-5f) << axis;
             EXPECT_EQ(lit(0, false, Shaders::SHOW_ROUGHNESS), osg::Vec3f(roughness, roughness, roughness));
-            EXPECT_EQ(lit(255, false, Shaders::SHOW_SPECULAR), osg::Vec3f(base, base, base));
+            withinAnUlp(lit(255, false, Shaders::SHOW_SPECULAR), base, "a metal's reflectance");
         }
 
         /// Which side of a surface the light may come from is the triangle's plane's answer, and a

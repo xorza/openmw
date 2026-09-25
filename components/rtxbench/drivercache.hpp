@@ -14,9 +14,10 @@ namespace Rtx
     /// bytes it is handed and never drops one: a directory each build kept across its shader edits
     /// grew past a gigabyte. A changed set is a new directory, and `sweep` removes the old one.
     ///
-    /// **Nothing here settles which code the driver runs.** The driver builds a launch's code again
-    /// from its own profile and swaps it in at a frame of some processes, and the two codes give
-    /// other frames; `.notes/ISSUES.md` holds what is known of it.
+    /// **Nothing here settles which code the driver runs, and nothing has to.** The driver builds a
+    /// launch's code again from its own profile and swaps it in at a frame of some processes, and
+    /// the build pins every shader's float arithmetic (`Rtx::pinFloatArithmetic`) so that both codes
+    /// trace the same frame.
     class DriverCache
     {
     public:

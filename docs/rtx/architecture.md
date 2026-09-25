@@ -99,11 +99,19 @@ public `OPENMW_RTX` definition, read by `#ifdef OPENMW_RTX` in `mwrender/rendere
 | `openmw-rtx-mygui`          | `components/myguirtx`  | `openmw-rtx`, `components`                                    |
 | `openmw-rtxtool-lib`        | `apps/rtxtool`         | the three component libraries, `components`, Boost, SDL2      |
 | `openmw-rtxtool`            | `apps/rtxtool`         | `openmw-rtxtool-lib`, `openmw-lib`                            |
+| `openmw-rtx-spirv`          | `components/rtxvulkan` | nothing; the SPIR-V headers as `PRIVATE`                      |
+| `openmw-rtx-spirv-pin`      | `components/rtxvulkan` | `openmw-rtx-spirv`                                            |
 | `openmw-rtx-vulkan-shaders` | `components/rtxvulkan` | each module in `rtx/shaders/` and `rtx/shaders-source/`       |
 
 `openmw-lib` links the four component libraries and compiles `mwrender/rtx/*.cpp` with the
-seam files. Shaders are compiled by `glslc` for Vulkan 1.4 and validated by `spirv-val` in one
-command, so an invalid module fails the build. `spirv-opt` strips each module's source into
+seam files. Shaders are compiled by `glslc` for Vulkan 1.4, pinned by `openmw-rtx-spirv-pin` and
+validated by `spirv-val` in one command, so an invalid module fails the build. The pinning
+(`Rtx::pinFloatArithmetic`) takes away the freedom the Vulkan specification gives a compile over
+the order and the fusion of float arithmetic: each operation whose order a compile may choose is
+written out in one order, each multiply read by nothing but one add is fused with it as
+`OpFmaKHR`, and every other rounding step is `NoContraction`. Division, roots and
+transcendentals, which no instruction computes exactly, stay the device's; an operation it
+cannot pin stops the build. `spirv-opt` strips each module's source into
 `resources/rtx/shaders/`, which every renderer reads, because the driver keys its cache on the
 bytes it is handed; `shaders-source/` keeps the source for a profiler (`--shader-source`). Every
 fork directory checks its hand-written lists against the files it holds
@@ -1073,7 +1081,7 @@ the presenter whether the swapchain wants a rebuild before it compares the exten
 |------------------------------|-----------------------------|----------------------------------------------------------------------------------|
 | the main thread              | the engine                  | every seam call, every walk, every Vulkan submit and wait, the GUI                |
 | the cell reader              | `Rtx::CellSupply` (`Worker`) | `CellReader`, the land and object storages, templates and images through `ContentSource`; `Monitor` in between |
-| the driver's compile threads | the driver                  | rebuild the launches from what they measured and swap them in; a hashed still's check sees it |
+| the driver's compile threads | the driver                  | rebuild the launches from what they measured and swap them in; the pinned arithmetic traces the same frame on either |
 | the work queue, the Lua worker | upstream                  | preloading, the screenshot writer; scripts                                        |
 
 `OwnedBy` asserts which thread a member belongs to. A worker that throws closes the monitor
@@ -1136,11 +1144,12 @@ card's clock and who held the card, the driver's cache. It knows nothing about a
 
 **The driver's cache of each shader set is its own.** `Rtx::DriverCache` points the driver at a
 directory beside the modules, named by their digest, and removes the one before it when a build
-changes them. It does not settle which code the driver runs: the NVIDIA driver builds a launch
-again from its own profile and swaps it in at a frame of some processes, and the second code
-orders and fuses its float arithmetic otherwise, so the two give other frames
-(`.notes/ISSUES.md`). A hashed still nothing jittered and nothing flew fails where
-its depth or motion moved between frames, which is that swap. A stepped run also never
+changes them. It does not settle which code the driver runs, and nothing has to: the NVIDIA
+driver builds a launch again from its own profile and swaps it in at a frame of some processes,
+and with the arithmetic pinned both codes trace the same frame. What the pinning leaves to the
+device — division, roots, transcendentals, packing and whether a denormal is flushed — is guarded
+here: a hashed still nothing jittered and nothing flew fails where its depth or motion moved
+between frames, which would be a swapped code computing one of those otherwise. A stepped run also never
 expires the resource caches (`RtxRenderer::setResourceExpiry`): an expiry runs on a loading
 thread, and what it kept was that thread's timing.
 
@@ -1189,4 +1198,5 @@ tuple of their constants, from the modules alone: a tuple that did not move is t
 | the settings a player sees                     | `docs/source/reference/modding/settings/rtx.rst`, `files/settings-default.cfg` |
 | the build                                      | `components/rtx/build.cmake`, `components/rtxvulkan/CMakeLists.txt`, `CMakePresets.json`, `apps/rtxtool/rtx` |
 | the driver's cache of a shader set             | `components/rtxbench/drivercache.hpp`, `components/rtx/shaderdirectory.hpp` |
+| the pinned float arithmetic of every shader    | `components/rtxvulkan/spirvpin.hpp`, `components/rtx/shaders/pinning.h`  |
 | the words                                      | `components/rtx/GLOSSARY.md`                                             |

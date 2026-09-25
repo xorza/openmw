@@ -1054,8 +1054,11 @@ elseif(NOT APPLE)
     endif ()
 
     # The ray tracer's harness keeps the driver's cache of each shader set beside it
-    # (`Rtx::DriverCache`), and a cache is this machine's and nobody else's.
-    install(DIRECTORY "${RUNTIME_OUTPUT_DIRECTORY}/resources" TYPE DATA PATTERN "*-driver-cache" EXCLUDE)
+    # (`Rtx::DriverCache`), and a cache is this machine's and nobody else's. The shaders with their
+    # source in them are the harness's too (`--shader-source`), and no install carries the harness.
+    install(DIRECTORY "${RUNTIME_OUTPUT_DIRECTORY}/resources" TYPE DATA
+        PATTERN "*-driver-cache" EXCLUDE
+        PATTERN "shaders-source" EXCLUDE)
 endif(APPLE)
 
 # what is necessary to build documentation

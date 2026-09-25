@@ -180,13 +180,13 @@ RTX_SHADER Ray rayAt(Camera camera, vec2 pixel)
     //
     // **And `precise`, because every shader that recomputes the trace's ray has to land on the
     // trace's bits.** The wavelet, the sprite composite, the tone pass and the fog each call
-    // `rayAt` for the ray the trace shot, and each is a compile of its own. A compiler is free to
-    // fuse these multiplies and adds into multiply-adds, and which it fuses is that compile's:
-    // the driver's second compile of the trace fused them differently from its first, and a
-    // direction an ulp away is a hit distance an ulp away on the surfaces it reaches and another
-    // sample on a few hundred pixels. `precise` forbids the fusion, so every compile of this sum
-    // is the written sum. The `normalize` under it is not pinned: Vulkan lets each compile add the
-    // squares inside it in any order, so two compiles can still hand back directions an ulp apart.
+    // `rayAt` for the ray the trace shot, and each is a module of its own. The build fuses a
+    // multiply into the one add that reads it (`Rtx::pinFloatArithmetic`), and whether a multiply
+    // here has one reader is a fact of how each module was optimised and not of this line — fused
+    // in one module and not in another, a direction an ulp away is a hit distance an ulp away on
+    // the surfaces it reaches and another sample on a few hundred pixels. `precise` keeps these
+    // steps apart in every module, so each computes the written sum; the `normalize` under it the
+    // build writes out in one order for all of them.
     RTX_PRECISE vec3 summed = camera.mForward + camera.mRight * uv.x - camera.mUp * uv.y;
     ray.mDirection = normalize(summed);
 

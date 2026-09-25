@@ -146,7 +146,11 @@ endfunction()
 # it, and two directories link this one: the backend, and the tests that reach into the backend's
 # own headers, which a host never does — the backend keeps Vulkan private behind
 # `createrenderer.hpp`. Found here, both see the same target.
-find_package(Vulkan REQUIRED)
+#
+# **1.4.329 at least**, the headers that first name `VK_KHR_shader_fma`: every shader's fusions are
+# `OpFmaKHR` (`Rtx::pinFloatArithmetic`), and an older SDK is a configure that says so rather than a
+# compile that stops inside `requirements.cpp`.
+find_package(Vulkan 1.4.329 REQUIRED)
 
 # Where the RTX resources land. Not `OPENMW_RESOURCES_ROOT`: the top level only defines that for
 # non-Apple builds, and macOS derives its own — the bundle's `Contents/Resources` — inside

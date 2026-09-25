@@ -65,6 +65,7 @@ set(RTX_TEST_FILES
     rtx/slots.cpp
     rtx/sourcetree.cpp
     rtx/specularalbedo.cpp
+    rtx/spirvpin.cpp
     rtx/spritelight.cpp
     rtx/spritelistsize.cpp
     rtx/stepped.cpp
@@ -130,6 +131,7 @@ set(RTX_GPU_TEST_FILES
     rtx/harness.hpp
     rtx/memory.cpp
     rtx/mipchainpass.cpp
+    rtx/pinnedarithmetic.cpp
     rtx/pipelinecache.cpp
     rtx/probe.cpp
     rtx/readstamp.cpp

@@ -57,6 +57,10 @@ namespace Rtx
         /// The device's real-time clock, read from a shader: what `StressPass` holds a queue
         /// against.
         VkPhysicalDeviceShaderClockFeaturesKHR mShaderClock{};
+
+        /// `OpFmaKHR` on 32-bit floats: the fusions `Rtx::pinFloatArithmetic` chooses for every
+        /// shader, each rounded once whichever compile of it runs.
+        VkPhysicalDeviceShaderFmaFeaturesKHR mShaderFma{};
     };
 
     /// The properties worth reporting or budgeting against: one chained query, and the memory

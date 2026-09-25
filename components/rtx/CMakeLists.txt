@@ -199,6 +199,7 @@ set(RTX_SHADER_HEADERS
     shaders/look.h
     shaders/mipchain.h
     shaders/portable.h
+    shaders/pinning.h
     shaders/probe.h
     shaders/ripple.h
     shaders/scene.h

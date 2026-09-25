@@ -1,0 +1,76 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive : require
+
+// Each operation the build pins by rewriting it, computed on one case a thread and written out one
+// float at a time, for `RtxPinningTest` to hold against the order `spirvpin.hpp` states. The GLSL is
+// the built-ins themselves: what the device runs is what the build made of them, which is the point.
+
+#include "pinning.h"
+#include "sets.h"
+
+layout(local_size_x = PINNING_WORKGROUP) in;
+
+layout(set = SET_PASS, binding = 0, scalar) readonly buffer Cases
+{
+    PinningCase cases[];
+};
+
+layout(set = SET_PASS, binding = 1, scalar) writeonly buffer Results
+{
+    float results[];
+};
+
+layout(push_constant, scalar) uniform Push
+{
+    PinningConstants pinning;
+};
+
+void main()
+{
+    const uint at = gl_GlobalInvocationID.x;
+    if (at >= pinning.mCount)
+        return;
+
+    const PinningCase one = cases[at];
+    const vec3 a = one.mA.xyz;
+    const vec3 b = one.mB.xyz;
+    const vec3 c = one.mC.xyz;
+    const uint into = at * PINNING_RESULTS;
+
+    results[into] = dot(a, b);
+    results[into + 1u] = dot(one.mA, one.mB);
+
+    const vec3 crossed = cross(a, b);
+    const vec3 mixed = mix(a, b, one.mC.w);
+    const vec3 turned = mat3(a, b, c) * vec3(one.mA.w, one.mB.w, one.mC.w);
+    const vec3 reflected = reflect(a, b);
+    const vec3 facing = faceforward(a, b, c);
+    for (uint axis = 0u; axis < 3u; ++axis)
+    {
+        results[into + 2u + axis] = crossed[axis];
+        results[into + 5u + axis] = mixed[axis];
+        results[into + 8u + axis] = turned[axis];
+        results[into + 11u + axis] = reflected[axis];
+        results[into + 15u + axis] = facing[axis];
+    }
+
+    results[into + 14u] = one.mA.x * one.mB.x + one.mC.x;
+
+    // Each of these beside the core the device computes inside it, from the same steps: the inverse
+    // square root, the division, the square root and the floor.
+    const vec3 normalized = normalize(a);
+    const float cosine = dot(b, a);
+    const vec3 refracted = refract(a, b, one.mC.w);
+    for (uint axis = 0u; axis < 3u; ++axis)
+    {
+        results[into + 18u + axis] = normalized[axis];
+        results[into + 24u + axis] = refracted[axis];
+    }
+    results[into + 21u] = inversesqrt(dot(a, a));
+    results[into + 22u] = smoothstep(a.x, b.x, c.x);
+    results[into + 23u] = (c.x - a.x) / (b.x - a.x);
+    results[into + 27u] = sqrt(max(1.0 - one.mC.w * one.mC.w * (1.0 - cosine * cosine), 0.0));
+    results[into + 28u] = mod(a.y, b.y);
+    results[into + 29u] = floor(a.y / b.y);
+}

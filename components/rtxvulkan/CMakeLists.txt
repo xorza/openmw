@@ -30,6 +30,28 @@ find_program(OPENMW_SPIRV_VAL NAMES spirv-val REQUIRED
     DOC "spirv-val, from SPIRV-Tools — validates every module the build produces")
 find_program(OPENMW_SPIRV_OPT NAMES spirv-opt REQUIRED
     DOC "spirv-opt, from SPIRV-Tools — takes the source out of the modules the driver is handed")
+find_path(OPENMW_SPIRV_HEADERS NAMES spirv/unified1/spirv.hpp HINTS ${Vulkan_INCLUDE_DIRS} REQUIRED
+    DOC "SPIRV-Headers, from Khronos — the opcodes every shader's float arithmetic is pinned by")
+# Headers old enough to lack the fused multiply-add the pinning writes are a configure that says so,
+# rather than a compile that stops inside `spirvpin.cpp`. The headers carry no version to ask.
+file(STRINGS "${OPENMW_SPIRV_HEADERS}/spirv/unified1/spirv.hpp" _openmw_spirv_fma REGEX "OpFmaKHR = ")
+if (NOT _openmw_spirv_fma)
+    message(FATAL_ERROR "${OPENMW_SPIRV_HEADERS}/spirv/unified1/spirv.hpp names no OpFmaKHR: the shaders' "
+                        "float arithmetic is pinned with SPV_KHR_fma, from the Vulkan SDK 1.4.329 on")
+endif()
+unset(_openmw_spirv_fma)
+
+# **The step every shader takes between glslc and the validator**, `spirvpin.hpp` says why: a
+# library the tests reach into, and the tool the build runs on each module. It links nothing of the
+# renderer's, because every shader waits for the tool and the renderer waits for the shaders; and the
+# tool stays in this directory's build tree, which no install and no archive reads.
+set(RTX_SPIRV_PIN_FILES spirvpin.cpp spirvpin.hpp)
+openmw_rtx_library(openmw-rtx-spirv ${RTX_SPIRV_PIN_FILES})
+target_include_directories(openmw-rtx-spirv SYSTEM PRIVATE "${OPENMW_SPIRV_HEADERS}")
+add_executable(openmw-rtx-spirv-pin spirvpintool.cpp)
+openmw_rtx_target(openmw-rtx-spirv-pin)
+target_link_libraries(openmw-rtx-spirv-pin PRIVATE openmw-rtx-spirv)
+set_target_properties(openmw-rtx-spirv-pin PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
 
 set(RTX_SHADERS
     shaders/accumulate.comp
@@ -77,20 +99,20 @@ set(RTX_SHADERS
 # The device-behaviour probes, compiled only where something is going to run them. Nothing the
 # renderer draws reaches these: they state an assumption about the hardware so that it can fail as a
 # test rather than as a rendering mystery.
-set(RTX_SHADER_PROBES shaders/probe.comp shaders/traceprobe.rgen shaders/traceprobe.rmiss)
+set(RTX_SHADER_PROBES shaders/pinning.comp shaders/probe.comp shaders/traceprobe.rgen shaders/traceprobe.rmiss)
 if (BUILD_COMPONENTS_TESTS)
     list(APPEND RTX_SHADERS ${RTX_SHADER_PROBES})
 endif()
 
-# Compiling and validating in one custom command is deliberate: an invalid module must fail the
-# build, never the frame. -MD gives ninja the include graph so editing a shared header rebuilds every
+# Compiling, pinning and validating in one custom command is deliberate: an invalid module, and one
+# whose arithmetic cannot be pinned, must fail the build, never the frame. -MD gives ninja the include graph so editing a shared header rebuilds every
 # shader that includes it.
 set(RTX_SHADER_OUTPUTS)
 
 # -g always, into the source set: source correlation in Nsight is what makes a shader debuggable.
 # The set every renderer reads is the same module with the source stripped, for the reason
 # `RTX_SPIRV_DIR` gives — and stripped rather than compiled twice, so the two can differ in nothing
-# else.
+# else. Pinned before either is validated, so the validator reads what the driver is handed.
 set(RTX_GLSLC_FLAGS -g $<IF:$<CONFIG:Debug>,-O0,-O>)
 
 foreach (shader ${RTX_SHADERS})
@@ -105,14 +127,16 @@ foreach (shader ${RTX_SHADERS})
         COMMAND "${CMAKE_COMMAND}" -E make_directory "${RTX_SPIRV_DIR}" "${RTX_SPIRV_SOURCE_DIR}"
         COMMAND "${OPENMW_GLSLC}" ${RTX_GLSLC_FLAGS} --target-env=vulkan1.4 -I "${RTX_SHADER_INCLUDE}"
                 -MD -MF "${depfile}" -o "${sourced}" "${CMAKE_CURRENT_SOURCE_DIR}/${shader}"
+        COMMAND openmw-rtx-spirv-pin "${sourced}"
         # --scalar-block-layout because the shared C++/GLSL headers rely on the feature the
         # device enables; without the flag the validator applies std430 straddling rules.
         COMMAND "${OPENMW_SPIRV_VAL}" --target-env vulkan1.4 --scalar-block-layout "${sourced}"
         # The validator has just read this module, so the optimizer need not read it again.
         COMMAND "${OPENMW_SPIRV_OPT}" --skip-validation --strip-debug --strip-nonsemantic -o "${spv}" "${sourced}"
-        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/${shader}"
+        # The tool as well as the shader, so a change to what pinning does compiles every shader again.
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/${shader}" openmw-rtx-spirv-pin
         DEPFILE "${depfile}"
-        COMMENT "Compiling and validating ${name}"
+        COMMENT "Compiling, pinning and validating ${name}"
         VERBATIM)
 
     list(APPEND RTX_SHADER_OUTPUTS "${spv}" "${sourced}")
@@ -334,8 +358,8 @@ endif()
 
 openmw_rtx_library(openmw-rtx-vulkan ${RTX_VULKAN_FILES})
 openmw_rtx_expect_listed("${CMAKE_CURRENT_SOURCE_DIR}" MATCHING *.cpp *.hpp shaders/*
-    LISTED ${RTX_VULKAN_FILES} ${RTX_VULKAN_DLSS_FILES} ${RTX_VULKAN_NO_DLSS_FILES}
-           ${RTX_SHADERS} ${RTX_SHADER_PROBES} ${RTX_SHADER_LIB})
+    LISTED ${RTX_VULKAN_FILES} ${RTX_VULKAN_DLSS_FILES} ${RTX_VULKAN_NO_DLSS_FILES} ${RTX_SPIRV_PIN_FILES}
+           spirvpintool.cpp ${RTX_SHADERS} ${RTX_SHADER_PROBES} ${RTX_SHADER_LIB})
 
 # Vulkan is private: a host reaches the backend through `createrenderer.hpp`, which names no
 # Vulkan type, so nothing a host compiles needs the headers.

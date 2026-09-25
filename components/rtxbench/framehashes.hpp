@@ -135,8 +135,9 @@ namespace Rtx
         /// The first frame of `view` whose depth or motion differs from the view's first frame, or
         /// nothing where every frame pictured so far agrees on both. For a still nothing jittered,
         /// whose frames are one camera's: its depth and motion are then one frame's whatever the
-        /// noise did to the light, and a frame where either moved was traced on other code — the
-        /// driver swapping its own in (`Rtx::DriverCache`).
+        /// noise did to the light, and a frame where either moved was traced on other code: the
+        /// driver swapping in one that computes an operation the build leaves to the device
+        /// otherwise (`Rtx::pinFloatArithmetic`).
         std::optional<std::uint32_t> findStillMoved(std::string_view view) const;
 
     private:
