@@ -153,6 +153,18 @@ namespace RtxTool
         Rtx::Stop& stood = *mStood;
         stood.mStand.mEye = osg::Vec3f(at);
 
+        // **The cell the player stands in now, and not the one the stop began in**: a window walked
+        // through a door stands in the interior, whose coordinates are its own, and a note naming
+        // the exterior it left puts them somewhere else. Spelt again only where the cell changed,
+        // so a frame that stays in one builds no string.
+        const MWWorld::CellStore* const standing = world.getPlayerPtr().getCell();
+        if (standing != nullptr && standing->getCell()->getId() != mNotedCell)
+        {
+            const MWWorld::Cell& cell = *standing->getCell();
+            stood.mStand.mCell = cellArgument(cell.isExterior(), cell.getGridX(), cell.getGridY(), cell.getNameId());
+            mNotedCell = cell.getId();
+        }
+
         // A point far along the direction and not one a unit ahead: a float ulp where Morrowind's
         // cells are is a hundredth of a unit, so two points a unit apart name a direction a fifth
         // of a degree out. A view file holds a `look`, and a landmark's distance is what makes one
@@ -432,15 +444,8 @@ namespace RtxTool
         stood.mNote = stop.mNote;
         stood.mStand.mCell = stop.mStand.mCell;
 
-        // A stop from a save names no cell, so the one the player stands in is written down
-        // instead, spelt as `--cell` takes it: a grid pair outdoors and the name indoors.
-        if (stood.mStand.mCell.empty())
-        {
-            const MWWorld::Cell& cell = *world.getPlayerPtr().getCell()->getCell();
-            stood.mStand.mCell = cell.isExterior()
-                ? std::to_string(cell.getGridX()) + "," + std::to_string(cell.getGridY())
-                : std::string(cell.getNameId());
-        }
+        // Where the player stands is noted with the eye, every frame: `noteStanding` says why.
+        mNotedCell = ESM::RefId();
 
         mStarted = true;
 

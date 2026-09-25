@@ -181,6 +181,16 @@ namespace RtxTool
             EXPECT_EQ(read.front().mStand.mCell, spot.mStand.mCell);
         }
 
+        /// **A cell is spelt as `--cell` reads it**: the grid pair out of doors, negative halves and
+        /// all, and the name indoors, where the grid pair a cell also carries is not where its
+        /// coordinates are.
+        TEST(RtxViewpointTest, aCellIsSpeltAsTheCellSwitchReadsIt)
+        {
+            EXPECT_EQ(cellArgument(true, -2, -9, "Seyda Neen"), "-2,-9");
+            EXPECT_EQ(cellArgument(false, 0, 0, "Seyda Neen, Census and Excise Office"),
+                "Seyda Neen, Census and Excise Office");
+        }
+
         /// The title's note: the weather and the clock, and the weather crossing in while one is,
         /// so a key that asked for a change is answered in the second and not a minute later.
         TEST(RtxViewpointTest, theTitleNoteSaysWhatIsCrossingIn)

@@ -51,6 +51,10 @@ namespace RtxTool
     /// command for the next run. What a window prints on the key and again where it was left.
     std::string describeStanding(const Rtx::Stop& stop);
 
+    /// A cell spelt as `--cell` takes it: the grid pair out of doors and the name indoors, where the
+    /// coordinates a stand holds are the interior's own and the grid pair would put them elsewhere.
+    std::string cellArgument(bool exterior, int gridX, int gridY, std::string_view name);
+
     /// How long a sky asked to turn takes to cross into each weather, in seconds of world, which is
     /// also how often the next is asked for.
     ///

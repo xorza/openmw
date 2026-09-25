@@ -259,8 +259,10 @@ Built in phase 3.
   seen from behind sees the relief from behind. **Two-channel maps are found by their blue**: BC5 and
   RG formats read nought there and no three-channel map does, so `sampleNormalMap` rebuilds Z where
   blue is nought and needs no flag.
-- **Facing.** A mapped normal that faces the ray less than `MAPPED_MIN_FACING` (0.03) is tilted
-  toward the interpolated normal: `facingRay` in `basis.glsl`, which the water now calls too.
+- **Facing.** A mapped normal that faces the ray less than `SHADING_MIN_FACING` (0.03) is tilted
+  toward the interpolated normal: `facingRay` in `basis.glsl`, which the water now calls too. The
+  lobe's normal is then tilted toward the plane the same way, because the interpolated normal leans
+  past the eye across whole faces. A lobe dropped there drew a hard curve on the census office door.
 - **Side.** `Surface::mSmooth` is the interpolated normal, turned. `gather` takes a closed shape's
   light side from it.
 - **Specular map.** Metalness in R, perceptual roughness in G. **A material with one is not delit**,

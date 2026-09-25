@@ -13,6 +13,7 @@
 #include <apps/openmw/engine.hpp>
 #include <apps/openmw/mwrender/rtx/framereport.hpp>
 #include <apps/openmw/mwrender/rtx/rtxrun.hpp>
+#include <components/esm/refid.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/scratch.hpp>
 #include <components/rtxbench/benchrecord.hpp>
@@ -251,6 +252,11 @@ namespace RtxTool
         /// the title's alone. Empty while nothing is.
         std::string_view mArriving;
         float mCrossed = 0.0f;
+
+        /// The cell `mStood` names, by id: what a frame compares against to spell it only when the
+        /// player crosses into another. An id and not the store, since a load frees every store and
+        /// may build the next where the last one was.
+        ESM::RefId mNotedCell;
 
         /// Whether Home was down on the last frame, so a press prints once.
         bool mPrintKeyHeld = false;

@@ -89,10 +89,11 @@ bool isSeenThrough(float opacity)
     return opacity < 1.0;
 }
 
-/// How squarely a mapped normal has to face the ray that found the surface before it is tilted back
-/// toward the interpolated normal: `facingRay`. Small, as the water's is — a guard against a normal
-/// the map leans past the ray, and not a limit on the map.
-const float MAPPED_MIN_FACING = 0.03;
+/// How squarely a shading normal has to face the ray that found the surface before it is tilted back
+/// toward one that faces it more, `facingRay`: a mapped normal toward the interpolated one, and the
+/// lobe's normal toward the plane. Small, as the water's is — a guard against a normal leaning past
+/// the ray, and not a limit on the map.
+const float SHADING_MIN_FACING = 0.03;
 
 /// How much of a see-through surface is there, where a ray met it.
 ///
@@ -762,7 +763,7 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
         const vec3 painted = sampleNormalMap(material.mNormal, point);
         const vec3 mapped = normalize(tangent * painted.x + bitangent * painted.y + normal * painted.z);
 
-        surface.mNormal = facingRay(turned ? -mapped : mapped, surface.mSmooth, direction, MAPPED_MIN_FACING);
+        surface.mNormal = facingRay(turned ? -mapped : mapped, surface.mSmooth, direction, SHADING_MIN_FACING);
     }
 
     // **Ground that kept its stack**, which is every chunk near enough to be worth the sharpness,
@@ -854,7 +855,7 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
             const vec3 mapped
                 = normalize(layerTangent * painted.x + layerBitangent * painted.y + normal * painted.z);
 
-            surface.mNormal = facingRay(turned ? -mapped : mapped, surface.mSmooth, direction, MAPPED_MIN_FACING);
+            surface.mNormal = facingRay(turned ? -mapped : mapped, surface.mSmooth, direction, SHADING_MIN_FACING);
         }
     }
     else if (HAS_MAPS && holdsTexture(material.mSpecular))

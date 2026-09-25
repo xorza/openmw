@@ -138,6 +138,11 @@ namespace RtxTool
         return describeSpot(stop) + describeBlock(stop) + describeCommand(stop);
     }
 
+    std::string cellArgument(const bool exterior, const int gridX, const int gridY, const std::string_view name)
+    {
+        return exterior ? std::format("{},{}", gridX, gridY) : std::string(name);
+    }
+
     void setTurnCrossings(const std::span<const std::string> turnThrough, std::map<std::string, std::string>& fallback)
     {
         const std::string delta = std::format("{}", 1.0f / sTurnSeconds);

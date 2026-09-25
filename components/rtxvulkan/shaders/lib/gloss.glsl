@@ -35,11 +35,17 @@ vec2 specularAlbedoAt(float cosine, float roughness)
 /// depends on the light only through its direction.
 struct Gloss
 {
-    /// Whether there is a specular half at all: a reflectance, and a normal that faces the ray. A
-    /// normal map tilts its normal to face it — `facingRay` — and an interpolated normal on this
-    /// content can still lean away, where the lobe has nothing to give back along the ray.
+    /// Whether there is a specular half at all: a reflectance, and a lobe normal that faces the ray,
+    /// which fails only where the plane itself is met edge-on.
     bool mGlossy;
 
+    /// The shading normal tilted until it faces the eye, which the lobe is evaluated about.
+    ///
+    /// **Toward the plane, and not dropped where it leans away.** An interpolated normal on this
+    /// content leans past the eye across whole faces — a door's, bent toward its bevels — and a lobe
+    /// dropped there switches off along the curve where the lean crosses the ray: a hard edge between
+    /// a surface reflecting at grazing and one reflecting nothing. The diffuse half keeps the normal
+    /// as it was, since Lambert has no eye to face.
     vec3 mNormal;
     vec3 mToEye;
     float mToEyeCosine;
@@ -72,8 +78,12 @@ Gloss glossOf(Surface surface)
     gloss.mCompensation = vec3(1.0);
     gloss.mAlbedo = vec3(0.0);
 
-    if (!HAS_MAPS || !(max(max(surface.mSpecular.r, surface.mSpecular.g), surface.mSpecular.b) > 0.0)
-        || !(gloss.mToEyeCosine > 0.0))
+    if (!HAS_MAPS || !(max(max(surface.mSpecular.r, surface.mSpecular.g), surface.mSpecular.b) > 0.0))
+        return gloss;
+
+    gloss.mNormal = facingRay(surface.mNormal, surface.mGeometric, surface.mIncident, SHADING_MIN_FACING);
+    gloss.mToEyeCosine = dot(gloss.mNormal, gloss.mToEye);
+    if (!(gloss.mToEyeCosine > 0.0))
         return gloss;
 
     gloss.mGlossy = true;
