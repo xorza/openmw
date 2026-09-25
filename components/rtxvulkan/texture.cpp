@@ -4,8 +4,11 @@
 #include <array>
 #include <bit>
 #include <cassert>
+#include <cstddef>
+#include <iterator>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -34,6 +37,22 @@ namespace Rtx
 {
     namespace
     {
+        /// The file the last texture upload staged, for a crash inside a staging copy to name.
+        ///
+        /// **Where a player's crash dump can read it.** The dump a crash catcher writes carries the
+        /// stacks and the data segments and not the heap, so a fault in a copy from a texture's
+        /// bytes leaves no name in it — and this array is in the data segment. `volatile`, because
+        /// nothing reads it and a compiler may otherwise drop every write.
+        volatile char sLastStaged[256] = {};
+
+        void noteStaging(std::string_view name)
+        {
+            const std::size_t length = std::min(name.size(), std::size(sLastStaged) - 1);
+            for (std::size_t at = 0; at < length; ++at)
+                sLastStaged[at] = name[at];
+            sLastStaged[length] = '\0';
+        }
+
         /// The map beside a texture: one level and no chain, because the map is read at level
         /// nought whatever the cone and has no detail for a level to lose. Left undefined, for a
         /// dispatch to write or `clearNeutral` to fill.
@@ -219,6 +238,8 @@ namespace Rtx
     {
         assert(first < data.mLevels.size() && "a texture begun past the file's last level");
         assert((first == 0 || !data.mCompleteChain) && "a chain completed from a level the file did not begin at");
+
+        noteStaging(data.mName);
 
         const MipLevel& top = data.mLevels[first];
         const auto levels = static_cast<std::uint32_t>(data.mLevels.size()) - first;

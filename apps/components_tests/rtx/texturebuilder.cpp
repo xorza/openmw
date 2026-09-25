@@ -98,10 +98,11 @@ namespace Rtx
         TEST(RtxTextureBuilderTest, bothSpellingsOfDxt1ReadTheAlphaBit)
         {
             std::vector<Rtx::MipLevel> levels;
+            std::vector<std::byte> texels;
 
-            EXPECT_EQ(describeImage(*makeBlock(GL_COMPRESSED_RGB_S3TC_DXT1_EXT), levels).value().mFormat,
+            EXPECT_EQ(describeImage(*makeBlock(GL_COMPRESSED_RGB_S3TC_DXT1_EXT), levels, texels).value().mFormat,
                 Rtx::TextureFormat::Bc1RgbaSrgb);
-            EXPECT_EQ(describeImage(*makeBlock(GL_COMPRESSED_RGBA_S3TC_DXT1_EXT), levels).value().mFormat,
+            EXPECT_EQ(describeImage(*makeBlock(GL_COMPRESSED_RGBA_S3TC_DXT1_EXT), levels, texels).value().mFormat,
                 Rtx::TextureFormat::Bc1RgbaSrgb);
         }
 
@@ -110,10 +111,11 @@ namespace Rtx
         TEST(RtxTextureBuilderTest, theOtherBlockFormatsKeepTheirOwnMapping)
         {
             std::vector<Rtx::MipLevel> levels;
+            std::vector<std::byte> texels;
 
-            EXPECT_EQ(describeImage(*makeBlock(GL_COMPRESSED_RGBA_S3TC_DXT3_EXT), levels).value().mFormat,
+            EXPECT_EQ(describeImage(*makeBlock(GL_COMPRESSED_RGBA_S3TC_DXT3_EXT), levels, texels).value().mFormat,
                 Rtx::TextureFormat::Bc2Srgb);
-            EXPECT_EQ(describeImage(*makeBlock(GL_COMPRESSED_RGBA_S3TC_DXT5_EXT), levels).value().mFormat,
+            EXPECT_EQ(describeImage(*makeBlock(GL_COMPRESSED_RGBA_S3TC_DXT5_EXT), levels, texels).value().mFormat,
                 Rtx::TextureFormat::Bc3Srgb);
         }
 
@@ -123,23 +125,26 @@ namespace Rtx
         TEST(RtxTextureBuilderTest, dataIsDescribedWithoutTheCurveAndWithNeutralShading)
         {
             std::vector<Rtx::MipLevel> levels;
+            std::vector<std::byte> texels;
 
-            const Rtx::TextureData normal
-                = describeImage(*makeBlock(GL_COMPRESSED_RGBA_S3TC_DXT5_EXT), levels, Rtx::TextureEncoding::Data)
-                      .value();
+            const Rtx::TextureData normal = describeImage(
+                *makeBlock(GL_COMPRESSED_RGBA_S3TC_DXT5_EXT), levels, texels, Rtx::TextureEncoding::Data)
+                                                .value();
             EXPECT_EQ(normal.mFormat, Rtx::TextureFormat::Bc3Unorm);
             EXPECT_EQ(normal.mEncoding, Rtx::TextureEncoding::Data);
             EXPECT_TRUE(normal.hasNeutralShading());
 
-            const Rtx::TextureData colour = describeImage(*makeBlock(GL_COMPRESSED_RGBA_S3TC_DXT5_EXT), levels).value();
+            const Rtx::TextureData colour
+                = describeImage(*makeBlock(GL_COMPRESSED_RGBA_S3TC_DXT5_EXT), levels, texels).value();
             EXPECT_EQ(colour.mEncoding, Rtx::TextureEncoding::Colour);
             EXPECT_FALSE(colour.hasNeutralShading()) << "a colour file's painted light is estimated";
 
-            EXPECT_EQ(describeImage(*makeBlock(GL_COMPRESSED_RED_GREEN_RGTC2_EXT), levels, Rtx::TextureEncoding::Data)
-                          .value()
-                          .mFormat,
+            EXPECT_EQ(
+                describeImage(*makeBlock(GL_COMPRESSED_RED_GREEN_RGTC2_EXT), levels, texels, Rtx::TextureEncoding::Data)
+                    .value()
+                    .mFormat,
                 Rtx::TextureFormat::Bc5Unorm);
-            EXPECT_FALSE(describeImage(*makeBlock(GL_COMPRESSED_RED_GREEN_RGTC2_EXT), levels).isOk())
+            EXPECT_FALSE(describeImage(*makeBlock(GL_COMPRESSED_RED_GREEN_RGTC2_EXT), levels, texels).isOk())
                 << "two channels are no colour";
         }
 
@@ -156,10 +161,11 @@ namespace Rtx
             // Reserved up front for the same reason `SceneTextures` does it: the spans below point
             // into this, so it must not reallocate between the two calls.
             std::vector<Rtx::MipLevel> levels;
+            std::vector<std::byte> texels;
             levels.reserve(first->getNumMipmapLevels() + second->getNumMipmapLevels());
 
-            const Rtx::TextureData a = describeImage(*first, levels).value();
-            const Rtx::TextureData b = describeImage(*second, levels).value();
+            const Rtx::TextureData a = describeImage(*first, levels, texels).value();
+            const Rtx::TextureData b = describeImage(*second, levels, texels).value();
 
             // A 4x4 block allocated without a chain is one level, so the table holds exactly two and
             // the second description begins where the first ends.
@@ -187,9 +193,12 @@ namespace Rtx
         TEST(RtxTextureBuilderTest, theUncompressedSpellingsAreTakenAndKeepTheirChannelOrder)
         {
             std::vector<Rtx::MipLevel> levels;
+            std::vector<std::byte> texels;
 
-            EXPECT_EQ(describeImage(*makeBlock(GL_RGBA), levels).value().mFormat, Rtx::TextureFormat::Rgba8Srgb);
-            EXPECT_EQ(describeImage(*makeBlock(GL_BGRA), levels).value().mFormat, Rtx::TextureFormat::Bgra8Srgb);
+            EXPECT_EQ(
+                describeImage(*makeBlock(GL_RGBA), levels, texels).value().mFormat, Rtx::TextureFormat::Rgba8Srgb);
+            EXPECT_EQ(
+                describeImage(*makeBlock(GL_BGRA), levels, texels).value().mFormat, Rtx::TextureFormat::Bgra8Srgb);
 
             // **Display-encoded, which every content format is.** The one uncompressed format that
             // is not exists for tests asserting an exact texel, and a cloud texture read through it
@@ -207,7 +216,8 @@ namespace Rtx
         TEST(RtxTextureBuilderTest, aFormatWithNoAlphaChannelOrAnImageOfNoSizeIsRefusedAndSaysWhich)
         {
             std::vector<Rtx::MipLevel> levels;
-            const Result<Rtx::TextureData, std::string> rgb = describeImage(*makeBlock(GL_RGB), levels);
+            std::vector<std::byte> texels;
+            const Result<Rtx::TextureData, std::string> rgb = describeImage(*makeBlock(GL_RGB), levels, texels);
             ASSERT_FALSE(rgb.isOk());
             EXPECT_EQ(rgb.error(), "its format is RGB8 (6407), which this renderer does not upload");
 
@@ -215,7 +225,7 @@ namespace Rtx
             osg::ref_ptr<osg::Image> empty = new osg::Image;
             empty->setFileName("textures/tx_empty.dds");
             empty->setImage(0, 4, 1, GL_RGBA, GL_RGBA, GL_UNSIGNED_BYTE, nullptr, osg::Image::NO_DELETE);
-            const Result<Rtx::TextureData, std::string> unsized = describeImage(*empty, levels);
+            const Result<Rtx::TextureData, std::string> unsized = describeImage(*empty, levels, texels);
             ASSERT_FALSE(unsized.isOk()) << "an image of no size was described";
             EXPECT_EQ(unsized.error(), "it is 0 by 4 texels, which no device holds");
             EXPECT_TRUE(levels.empty()) << "a refusal adds no level";
@@ -236,7 +246,8 @@ namespace Rtx
             ASSERT_EQ(image->getNumMipmapLevels(), 5u) << "the header's count, which is what this is about";
 
             std::vector<Rtx::MipLevel> levels;
-            const Rtx::TextureData described = describeImage(*image, levels).value();
+            std::vector<std::byte> texels;
+            const Rtx::TextureData described = describeImage(*image, levels, texels).value();
 
             ASSERT_EQ(described.mLevels.size(), 3u);
             EXPECT_EQ(described.mLevels[0].mOffset, 0u);
@@ -245,6 +256,127 @@ namespace Rtx
             EXPECT_EQ(described.mLevels[1].mWidth, 2u);
             EXPECT_EQ(described.mLevels[2].mWidth, 1u);
             EXPECT_EQ(described.mLevels[2].mHeight, 1u);
+        }
+
+        /// A two-by-two sixteen-bit image with its one-texel level, the five words little-endian —
+        /// the two levels' offsets are nought and eight bytes.
+        osg::ref_ptr<osg::Image> makeSixteenBit(GLenum type, GLint internal, const std::array<std::uint16_t, 5>& words)
+        {
+            auto* bytes = new unsigned char[words.size() * 2];
+            for (std::size_t at = 0; at < words.size(); ++at)
+            {
+                bytes[at * 2] = static_cast<unsigned char>(words[at] & 0xFF);
+                bytes[at * 2 + 1] = static_cast<unsigned char>(words[at] >> 8);
+            }
+
+            osg::ref_ptr<osg::Image> image = new osg::Image;
+            image->setFileName("textures/tx_sixteen.dds");
+            image->setImage(2, 2, 1, internal, type == GL_UNSIGNED_SHORT_5_6_5 ? GL_RGB : GL_BGRA, type, bytes,
+                osg::Image::USE_NEW_DELETE);
+            image->setMipmapLevels(osg::Image::MipmapDataType{ 8 });
+            return image;
+        }
+
+        /// A sixteen-bit file is widened to RGBA8 in the encoding its slot asks for, every channel
+        /// exactly: the byte nearest the channel's value over its top, so nought stays nought and a
+        /// channel's top is 255.
+        ///
+        /// Hand-computed. `0x8410` is R5G6B5's 16, 32 and 16: `16 × 255 / 31 = 131.6` is 132 and
+        /// `32 × 255 / 63 = 129.5` is 130. `0x1960` is 3, 11 and nought, where the nearest bytes
+        /// part from the bits repeated: `3 × 255 / 31 = 24.7` is 25 and not 24, and
+        /// `11 × 255 / 63 = 44.5` is 45 and not 44. Four bits of `v` are `17 v` either way.
+        /// A1R5G5B5 keeps its alpha bit where X1R5G5B5 is opaque whatever the bit says, and the
+        /// same for the four-bit pair. The levels begin at twice their offsets, nought and 16.
+        TEST(RtxTextureBuilderTest, aSixteenBitFileIsWidenedToRgba8ExactlyInItsSlotsEncoding)
+        {
+            struct Case
+            {
+                GLenum mType;
+                GLint mInternal;
+                std::array<std::uint16_t, 5> mWords;
+                std::array<std::uint8_t, 20> mTexels;
+            };
+            const std::array<Case, 5> cases{ {
+                { GL_UNSIGNED_SHORT_5_6_5, GL_RGB, { 0xF800, 0x07E0, 0x001F, 0x8410, 0x1960 },
+                    { 255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 132, 130, 132, 255, 25, 45, 0, 255 } },
+                { GL_UNSIGNED_SHORT_1_5_5_5_REV, GL_RGBA, { 0x8000, 0x7C00, 0x03E0, 0x001F, 0xFFFF },
+                    { 0, 0, 0, 255, 255, 0, 0, 0, 0, 255, 0, 0, 0, 0, 255, 0, 255, 255, 255, 255 } },
+                { GL_UNSIGNED_SHORT_1_5_5_5_REV, GL_RGB, { 0x8000, 0x7C00, 0x03E0, 0x001F, 0x7FFF },
+                    { 0, 0, 0, 255, 255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255 } },
+                { GL_UNSIGNED_SHORT_4_4_4_4_REV, GL_RGBA, { 0xF000, 0x0F00, 0x00F0, 0x0008, 0x1234 },
+                    { 0, 0, 0, 255, 255, 0, 0, 0, 0, 255, 0, 0, 0, 0, 136, 0, 34, 51, 68, 17 } },
+                { GL_UNSIGNED_SHORT_4_4_4_4_REV, GL_RGB, { 0xF000, 0x0F00, 0x00F0, 0x0008, 0x1234 },
+                    { 0, 0, 0, 255, 255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 136, 255, 34, 51, 68, 255 } },
+            } };
+
+            for (const Case& one : cases)
+            {
+                const osg::ref_ptr<osg::Image> image = makeSixteenBit(one.mType, one.mInternal, one.mWords);
+                std::vector<Rtx::MipLevel> levels;
+                std::vector<std::byte> texels;
+
+                const Rtx::TextureData described = describeImage(*image, levels, texels).value();
+                EXPECT_EQ(described.mFormat, Rtx::TextureFormat::Rgba8Srgb) << "type " << one.mType;
+                ASSERT_EQ(described.mBytes.size(), one.mTexels.size()) << "type " << one.mType;
+                for (std::size_t at = 0; at < one.mTexels.size(); ++at)
+                    EXPECT_EQ(std::to_integer<std::uint32_t>(described.mBytes[at]), one.mTexels[at])
+                        << "type " << one.mType << ", byte " << at;
+
+                ASSERT_EQ(described.mLevels.size(), 2u);
+                EXPECT_EQ(described.mLevels[1].mOffset, 16u);
+                EXPECT_EQ(described.mLevels[1].mWidth, 1u);
+            }
+
+            // As data, the same texels read linearly.
+            const osg::ref_ptr<osg::Image> image = makeSixteenBit(GL_UNSIGNED_SHORT_5_6_5, GL_RGB, cases[0].mWords);
+            std::vector<Rtx::MipLevel> levels;
+            std::vector<std::byte> texels;
+            EXPECT_EQ(describeImage(*image, levels, texels, Rtx::TextureEncoding::Data).value().mFormat,
+                Rtx::TextureFormat::Rgba8Unorm);
+        }
+
+        /// An image whose levels its format and OpenSceneGraph count differently is refused by
+        /// name before a byte of it is read, and one they agree on is described at its format's
+        /// size.
+        ///
+        /// Three A1R5G5B5 texels a row are six bytes, and packed to four they are eight: the reader
+        /// would walk the second row two bytes early. A second level stated at byte 20 of a
+        /// two-by-two RGBA8 is four past where the first level ends. And a two-by-two BC3 with no
+        /// chain is its one sixteen-byte block, which `getTotalSizeInBytes` counts as four.
+        TEST(RtxTextureBuilderTest, aLevelTheFormatAndTheLoaderCountDifferentlyIsRefusedByName)
+        {
+            std::vector<Rtx::MipLevel> levels;
+            std::vector<std::byte> texels;
+
+            osg::ref_ptr<osg::Image> padded = new osg::Image;
+            padded->setFileName("textures/tx_padded.dds");
+            padded->setImage(3, 1, 1, GL_RGBA, GL_BGRA, GL_UNSIGNED_SHORT_1_5_5_5_REV, new unsigned char[8],
+                osg::Image::USE_NEW_DELETE, 4);
+            const Result<Rtx::TextureData, std::string> rows = describeImage(*padded, levels, texels);
+            ASSERT_FALSE(rows.isOk());
+            EXPECT_EQ(rows.error(), "its level 0 is 8 bytes at byte 0, where A1R5G5B5 at 3 by 1 is 6 at byte 0");
+
+            padded->setPacking(1);
+            EXPECT_TRUE(describeImage(*padded, levels, texels).isOk()) << "the packing made no difference";
+            levels.clear();
+
+            osg::ref_ptr<osg::Image> shifted = new osg::Image;
+            shifted->setFileName("textures/tx_shifted.dds");
+            shifted->setImage(
+                2, 2, 1, GL_RGBA, GL_RGBA, GL_UNSIGNED_BYTE, new unsigned char[24], osg::Image::USE_NEW_DELETE);
+            shifted->setMipmapLevels(osg::Image::MipmapDataType{ 20 });
+            const Result<Rtx::TextureData, std::string> offset = describeImage(*shifted, levels, texels);
+            ASSERT_FALSE(offset.isOk());
+            EXPECT_EQ(offset.error(), "its level 1 is 4 bytes at byte 20, where RGBA8 at 1 by 1 is 4 at byte 16");
+            EXPECT_TRUE(levels.empty()) << "a refusal adds no level";
+
+            shifted->setMipmapLevels(osg::Image::MipmapDataType{ 16 });
+            EXPECT_EQ(describeImage(*shifted, levels, texels).value().mBytes.size(), 20u);
+
+            osg::ref_ptr<osg::Image> block = new osg::Image;
+            block->allocateImage(2, 2, 1, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT, GL_UNSIGNED_BYTE);
+            ASSERT_EQ(block->getTotalSizeInBytesIncludingMipmaps(), 4u) << "what the old span staged";
+            EXPECT_EQ(describeImage(*block, levels, texels).value().mBytes.size(), 16u);
         }
 
         /// Describing an arrival a second time reaches the heap not at all.
@@ -269,13 +401,19 @@ namespace Rtx
             ASSERT_EQ(image->getFileName(), path.value()) << "the slot and the image name a different file";
             images.hold(path, image);
 
+            // And one widened, whose texels the class holds as it holds the levels.
+            constexpr VFS::Path::NormalizedView sixteen("textures/tx_sixteen.dds");
+            images.hold(sixteen, makeSixteenBit(GL_UNSIGNED_SHORT_5_6_5, GL_RGB, { 0, 0, 0, 0, 0 }));
+
             Rtx::SceneDesc scene;
             Testing::addModel(scene, path);
+            Testing::addModel(scene, sixteen);
 
             SceneTextures described;
             described.describeAll(scene, images);
-            ASSERT_TRUE(described.getRefusals().empty()) << "the image did not come back from the cache";
-            ASSERT_EQ(described.getDescriptions().size(), std::size_t{ 1 });
+            ASSERT_TRUE(described.getRefusals().empty()) << "an image did not come back from the cache";
+            ASSERT_EQ(described.getDescriptions().size(), std::size_t{ 2 });
+            ASSERT_EQ(described.getDescriptions()[1].mBytes.size(), 20u) << "the widened texels were not described";
 
             // Four texels across and one level in the file, which is the level described: the rest
             // are the device's to make.
@@ -289,7 +427,7 @@ namespace Rtx
 
             // And it answered, rather than reaching the heap not at all by doing nothing.
             EXPECT_TRUE(described.getRefusals().empty());
-            ASSERT_EQ(described.getDescriptions().size(), std::size_t{ 1 });
+            ASSERT_EQ(described.getDescriptions().size(), std::size_t{ 2 });
         }
 
         /// A slot the scene has given up is described by nobody, and the gap it leaves is survived.

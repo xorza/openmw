@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cassert>
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -61,6 +62,7 @@ namespace Rtx
     struct AlphaScratch
     {
         std::vector<MipLevel> mLevels;
+        std::vector<std::byte> mTexels;
         AlphaImage mAlpha;
     };
 

@@ -158,6 +158,44 @@ namespace Rtx
             EXPECT_EQ(std::distance(values.begin() + row, darkest), sSide / 2);
         }
 
+        /// A loose texture's channels are read in the order its format states them.
+        ///
+        /// The map is built from luminance, where red weighs 0.2126 and blue 0.0722, so a gradient
+        /// is a stronger correction in red than in blue. The same bytes with the gradient in the
+        /// first read as BGRA are a blue gradient, and must give exactly the map a gradient in the
+        /// third byte read as RGBA gives — and not the red one a reader that took one order for both
+        /// saw.
+        TEST(RtxShadingMapTest, aLooseTexturesChannelsAreReadInItsOwnOrder)
+        {
+            const auto ramped = [](std::size_t channel, TextureFormat format) {
+                Testing::TestTexture texture;
+                texture.mBytes.assign(std::size_t{ 256 } * 256 * 4, 128);
+                for (std::uint32_t y = 0; y < 256; ++y)
+                    for (std::uint32_t x = 0; x < 256; ++x)
+                    {
+                        const std::size_t at = (std::size_t{ y } * 256 + x) * 4;
+                        texture.mBytes[at + channel] = static_cast<std::uint8_t>(60 + x / 2);
+                        texture.mBytes[at + 3] = 255;
+                    }
+
+                texture.mLevels.assign(1, MipLevel{ 0, 256, 256 });
+                texture.describe(256, 256, "ramped", format);
+                return texture;
+            };
+
+            const ShadingMap blueFirst(ramped(0, TextureFormat::Bgra8Unorm).mData);
+            const ShadingMap blueThird(ramped(2, TextureFormat::Rgba8Unorm).mData);
+            const ShadingMap redFirst(ramped(0, TextureFormat::Rgba8Unorm).mData);
+
+            const std::span<const float> first = blueFirst.getValues();
+            const std::span<const float> third = blueThird.getValues();
+            ASSERT_EQ(first.size(), third.size());
+            for (std::size_t at = 0; at < first.size(); ++at)
+                ASSERT_EQ(first[at], third[at]) << "cell " << at;
+
+            EXPECT_GT(furthestFromNeutral(redFirst), furthestFromNeutral(blueFirst)) << "red and blue weighed the same";
+        }
+
         /// The clamps, on a texture that swings further than any lighting would.
         TEST(RtxShadingMapTest, theCorrectionIsBoundedBothWays)
         {

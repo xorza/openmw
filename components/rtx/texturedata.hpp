@@ -73,11 +73,12 @@ namespace Rtx
     };
 
     /// Every format OpenSceneGraph decodes a texture into: the ones this renderer uploads first,
-    /// then the ones it only counts, because a file the uploader refuses is still a file the report
-    /// has to name. A colour's formats are sRGB, because the files hold display-encoded bytes and
-    /// the hardware converts inside the filter; data's are the same blocks read linearly
-    /// (`TextureEncoding`). Nothing uploads under `Unnamed`: `describeImage` refuses every format
-    /// past `Bgra8Unorm` with the file's name in the message.
+    /// then the ones it widens to one of those on the way in, then the ones it only counts, because
+    /// a file the uploader refuses is still a file the report has to name. A colour's formats are
+    /// sRGB, because the files hold display-encoded bytes and the hardware converts inside the
+    /// filter; data's are the same blocks read linearly (`TextureEncoding`). `readFormat` names one
+    /// by the image's pixel format and its data type together, because the pixel format alone says
+    /// which channels and not how many bytes they take.
     enum class TextureFormat : std::uint8_t
     {
         /// BC1 with its punch-through alpha bit read. Both DXT1 spellings land here, and
@@ -108,9 +109,18 @@ namespace Rtx
         /// file bound as a colour has lost its blue, and is refused as a colour.
         Bc5Unorm,
 
-        /// Read by the census and never uploaded. Three-channel and single-channel spellings are
-        /// refused deliberately: uploading one would need the missing channels written in, which
-        /// means owning a buffer, and nothing this renderer reads stores a texture without them.
+        /// Sixteen bits a texel, as the old mods' `.dds` files hold them, in the channel order the
+        /// file states from the high bit down: `describeImage` widens each to RGBA8 in the encoding
+        /// the slot asks for, because a device's sixteen-bit formats have no sRGB spelling. The `X`
+        /// ones carry a bit the file leaves undefined, and are opaque.
+        Rgb565,
+        Argb1555,
+        Xrgb1555,
+        Argb4444,
+        Xrgb4444,
+
+        /// Read by the census and never uploaded: `describeImage` refuses them by name, and does
+        /// not write the missing channels in as it widens the sixteen-bit ones.
         Rgb8,
         Luminance,
         LuminanceAlpha,
@@ -121,40 +131,82 @@ namespace Rtx
 
     inline constexpr std::size_t sTextureFormatCount = static_cast<std::size_t>(TextureFormat::Unnamed) + 1;
 
-    /// Whether this renderer uploads a format at all — every one before `Rgb8` — or only counts it.
+    /// Whether a backend takes a format as it is — every one before `Rgb565`.
     inline bool isUploadable(const TextureFormat format)
     {
-        return format < TextureFormat::Rgb8;
+        return format < TextureFormat::Rgb565;
     }
 
-    /// How many bytes one block of a format occupies, or zero where its texels are not blocked.
-    /// Exhaustive rather than defaulted, so that a format added to the enum is a build failure
-    /// here rather than a block format quietly read as though its texels were loose bytes.
-    inline std::uint32_t blockBytes(TextureFormat format)
+    /// Whether `describeImage` widens a format to RGBA8 on the way in.
+    inline bool isWidened(const TextureFormat format)
+    {
+        return format >= TextureFormat::Rgb565 && format < TextureFormat::Rgb8;
+    }
+
+    /// How a format lays its texels out: square blocks `mSide` texels across of `mBytes` bytes
+    /// each, rows tight. A loose format is a block of one texel.
+    ///
+    /// **The one statement of how many bytes a texel takes**, which the level arithmetic, the
+    /// upload and every reader of a description's bytes go through. `describeImage` holds it
+    /// against what OpenSceneGraph says of the same image, so a format whose bytes the two count
+    /// differently is refused by name before any of them is read.
+    struct TexelLayout
+    {
+        std::uint32_t mSide = 1;
+        std::uint32_t mBytes = 0;
+
+        bool isBlocked() const { return mSide > 1; }
+
+        /// How many bytes a level `width` by `height` texels takes.
+        std::size_t levelBytes(std::uint32_t width, std::uint32_t height) const
+        {
+            return std::size_t{ (width + mSide - 1) / mSide } * ((height + mSide - 1) / mSide) * mBytes;
+        }
+    };
+
+    /// Exhaustive rather than defaulted, so a format added to the enum is a build failure here
+    /// rather than a format read at some other one's size. `Unnamed` has none: nothing knows it.
+    inline TexelLayout layoutOf(TextureFormat format)
     {
         switch (format)
         {
             case TextureFormat::Bc1RgbaSrgb:
             case TextureFormat::Bc1RgbaUnorm:
-                return 8;
+                return TexelLayout{ .mSide = 4, .mBytes = 8 };
             case TextureFormat::Bc2Srgb:
             case TextureFormat::Bc3Srgb:
             case TextureFormat::Bc2Unorm:
             case TextureFormat::Bc3Unorm:
             case TextureFormat::Bc5Unorm:
-                return 16;
+                return TexelLayout{ .mSide = 4, .mBytes = 16 };
             case TextureFormat::Rgba8Unorm:
             case TextureFormat::Rgba8Srgb:
             case TextureFormat::Bgra8Srgb:
             case TextureFormat::Bgra8Unorm:
-            case TextureFormat::Rgb8:
-            case TextureFormat::Luminance:
+                return TexelLayout{ .mBytes = 4 };
+            case TextureFormat::Rgb565:
+            case TextureFormat::Argb1555:
+            case TextureFormat::Xrgb1555:
+            case TextureFormat::Argb4444:
+            case TextureFormat::Xrgb4444:
             case TextureFormat::LuminanceAlpha:
+                return TexelLayout{ .mBytes = 2 };
+            case TextureFormat::Rgb8:
+                return TexelLayout{ .mBytes = 3 };
+            case TextureFormat::Luminance:
+                return TexelLayout{ .mBytes = 1 };
             case TextureFormat::Unnamed:
-                return 0;
+                break;
         }
 
-        broken("unknown texture format");
+        broken("a texture format with no layout");
+    }
+
+    /// Whether a loose format states its colours blue first, which every reader of its bytes has
+    /// to know to read red as red.
+    inline bool isBgr(TextureFormat format)
+    {
+        return format == TextureFormat::Bgra8Srgb || format == TextureFormat::Bgra8Unorm;
     }
 
     /// Whether a format's bytes are display-encoded, which every colour format's are. A data format
@@ -176,6 +228,11 @@ namespace Rtx
             case TextureFormat::Bc3Unorm:
             case TextureFormat::Bgra8Unorm:
             case TextureFormat::Bc5Unorm:
+            case TextureFormat::Rgb565:
+            case TextureFormat::Argb1555:
+            case TextureFormat::Xrgb1555:
+            case TextureFormat::Argb4444:
+            case TextureFormat::Xrgb4444:
             case TextureFormat::Rgb8:
             case TextureFormat::Luminance:
             case TextureFormat::LuminanceAlpha:

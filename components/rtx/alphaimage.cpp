@@ -107,16 +107,18 @@ namespace Rtx
         bool forEachAlpha(TextureFormat format, std::span<const std::byte> bytes, std::uint32_t width,
             std::uint32_t height, Visit visit)
         {
-            const std::uint32_t bytesPerBlock = blockBytes(format);
+            const TexelLayout layout = layoutOf(format);
+            const std::uint32_t bytesPerBlock = layout.mBytes;
 
-            if (bytesPerBlock == 0)
+            if (!layout.isBlocked())
             {
-                // Four bytes a texel in every uncompressed spelling, and alpha is the last of them
-                // whichever order the three colours are stated in.
+                // Alpha is the last byte of a loose texel whichever order the three colours are
+                // stated in, and every loose format a description carries is four bytes a texel.
+                assert(bytesPerBlock == 4 && "a loose texel read as four bytes that is not");
                 for (std::uint32_t y = 0; y < height; ++y)
                     for (std::uint32_t x = 0; x < width; ++x)
                     {
-                        const std::size_t at = (std::size_t{ y } * width + x) * 4 + 3;
+                        const std::size_t at = (std::size_t{ y } * width + x) * bytesPerBlock + 3;
                         if (at < bytes.size() && visit(x, y, static_cast<std::uint8_t>(bytes[at])))
                             return true;
                     }
@@ -192,11 +194,12 @@ namespace Rtx
     {
         std::vector<MipLevel>& levels = scratch.mLevels;
         levels.clear();
+        scratch.mTexels.clear();
 
         // An image this cannot describe is the same image whose arrival in the texture table
         // refuses it by name. What comes back here is the answer that changes nothing about how
         // the surface is traced.
-        const Result<TextureData, std::string> read = describeImage(image, levels);
+        const Result<TextureData, std::string> read = describeImage(image, levels, scratch.mTexels);
         if (!read.isOk())
             return true;
 

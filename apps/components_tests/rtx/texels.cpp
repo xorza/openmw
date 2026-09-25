@@ -33,6 +33,28 @@ namespace Rtx
             return image;
         }
 
+        /// A loose texel is read in the order its format states the colours, in either encoding: a
+        /// BGRA8 texel of bytes `(10, 20, 30, 255)` is red 30 and blue 10, linear or display-encoded.
+        TEST(RtxTexelTest, aLooseTexelIsReadInItsFormatsOrderInEitherEncoding)
+        {
+            const std::array<std::byte, 4> bytes{ std::byte{ 10 }, std::byte{ 20 }, std::byte{ 30 }, std::byte{ 255 } };
+            const std::array levels{ MipLevel{ 0, 1, 1 } };
+
+            for (const TextureFormat format : { TextureFormat::Bgra8Srgb, TextureFormat::Bgra8Unorm })
+            {
+                const TextureData texture{
+                    .mFormat = format, .mWidth = 1, .mHeight = 1, .mBytes = bytes, .mLevels = levels
+                };
+                EXPECT_EQ(texelAt(texture, levels[0], 0, 0), osg::Vec3f(30 / 255.0f, 20 / 255.0f, 10 / 255.0f))
+                    << nameOf(format);
+            }
+
+            const TextureData rgba{
+                .mFormat = TextureFormat::Rgba8Unorm, .mWidth = 1, .mHeight = 1, .mBytes = bytes, .mLevels = levels
+            };
+            EXPECT_EQ(texelAt(rgba, levels[0], 0, 0), osg::Vec3f(10 / 255.0f, 20 / 255.0f, 30 / 255.0f));
+        }
+
         /// A texel's worth of an image is its own colour in light, times how much of it is there.
         ///
         /// **Both halves are the point.** The colour is display-encoded in every format the game ships,
@@ -157,11 +179,14 @@ namespace Rtx
 
     namespace
     {
-        /// One block's worth of image in `spelling`, which is all the format reader looks at.
-        osg::ref_ptr<osg::Image> makeImage(GLenum spelling)
+        /// One block's worth of image in `spelling` and `type`, stated as `internal` where that is
+        /// not nought, which is all the format reader looks at.
+        osg::ref_ptr<osg::Image> makeImage(GLenum spelling, GLenum type = GL_UNSIGNED_BYTE, GLint internal = 0)
         {
             osg::ref_ptr<osg::Image> image = new osg::Image;
-            image->allocateImage(4, 4, 1, spelling, GL_UNSIGNED_BYTE);
+            image->allocateImage(4, 4, 1, spelling, type);
+            if (internal != 0)
+                image->setInternalTextureFormat(internal);
             return image;
         }
 
@@ -171,6 +196,8 @@ namespace Rtx
             TextureEncoding mEncoding;
             TextureFormat mFormat;
             std::string_view mName;
+            GLenum mType = GL_UNSIGNED_BYTE;
+            GLint mInternal = 0;
         };
 
         /// Every spelling OpenSceneGraph hands over, the format it reads as under each encoding, and
@@ -185,10 +212,16 @@ namespace Rtx
         /// `GL_ALPHA` stands for the formats nothing here names. `ESMTerrain` builds its blend maps
         /// in it, which is a real format that reaches no uploader, so the count it lands in is the
         /// canary rather than a hole.
+        ///
+        /// **A loose format is its pixel format and its data type together.** OpenSceneGraph's DDS
+        /// loader hands an A1R5G5B5 file over as `GL_BGRA` of `GL_UNSIGNED_SHORT_1_5_5_5_REV`, and
+        /// read by its pixel format alone it was BGRA8 — four bytes a texel for a file of two. The
+        /// sixteen-bit spellings the loader makes are named, the `X` ones by the internal format it
+        /// states them in; every other data type under a loose pixel format is unnamed.
         TEST(RtxTextureFormatTest, everySpellingReadsAsItsFormatAndNamesItself)
         {
             using enum TextureEncoding;
-            constexpr std::array<FormatCase, 19> sCases{ {
+            constexpr std::array<FormatCase, 30> sCases{ {
                 { GL_COMPRESSED_RGB_S3TC_DXT1_EXT, Colour, TextureFormat::Bc1RgbaSrgb, "BC1 (DXT1)" },
                 { GL_COMPRESSED_RGBA_S3TC_DXT1_EXT, Colour, TextureFormat::Bc1RgbaSrgb, "BC1 (DXT1)" },
                 { GL_COMPRESSED_RGBA_S3TC_DXT3_EXT, Colour, TextureFormat::Bc2Srgb, "BC2 (DXT3)" },
@@ -208,14 +241,29 @@ namespace Rtx
                 { GL_RGBA, Data, TextureFormat::Rgba8Unorm, "RGBA8 (linear)" },
                 { GL_BGRA, Data, TextureFormat::Bgra8Unorm, "BGRA8 (linear)" },
                 { GL_RGB, Data, TextureFormat::Rgb8, "RGB8" },
+                { GL_RGB, Colour, TextureFormat::Rgb565, "R5G6B5", GL_UNSIGNED_SHORT_5_6_5 },
+                { GL_BGRA, Colour, TextureFormat::Argb1555, "A1R5G5B5", GL_UNSIGNED_SHORT_1_5_5_5_REV },
+                { GL_BGRA, Colour, TextureFormat::Xrgb1555, "X1R5G5B5", GL_UNSIGNED_SHORT_1_5_5_5_REV, GL_RGB },
+                { GL_BGRA, Data, TextureFormat::Argb4444, "A4R4G4B4", GL_UNSIGNED_SHORT_4_4_4_4_REV },
+                { GL_BGRA, Colour, TextureFormat::Xrgb4444, "X4R4G4B4", GL_UNSIGNED_SHORT_4_4_4_4_REV, GL_RGB },
+                { GL_RGBA, Colour, TextureFormat::Unnamed, "an unnamed pixel format", GL_UNSIGNED_SHORT_4_4_4_4 },
+                { GL_BGRA, Colour, TextureFormat::Unnamed, "an unnamed pixel format", GL_UNSIGNED_INT_2_10_10_10_REV },
+                { GL_RGBA, Data, TextureFormat::Unnamed, "an unnamed pixel format", GL_UNSIGNED_SHORT },
+                { GL_RGBA, Colour, TextureFormat::Unnamed, "an unnamed pixel format", GL_HALF_FLOAT },
+                { GL_LUMINANCE, Colour, TextureFormat::Unnamed, "an unnamed pixel format", GL_UNSIGNED_SHORT },
+                { GL_RGB, Colour, TextureFormat::Unnamed, "an unnamed pixel format", GL_UNSIGNED_BYTE_3_3_2 },
             } };
 
             std::array<bool, sTextureFormatCount> met{};
             for (const FormatCase& one : sCases)
             {
-                EXPECT_EQ(readFormat(*makeImage(one.mSpelling), one.mEncoding), one.mFormat) << one.mName;
+                EXPECT_EQ(readFormat(*makeImage(one.mSpelling, one.mType, one.mInternal), one.mEncoding), one.mFormat)
+                    << one.mName << " of type " << one.mType;
                 EXPECT_EQ(nameOf(one.mFormat), one.mName);
-                EXPECT_EQ(isUploadable(one.mFormat), one.mFormat < TextureFormat::Rgb8) << one.mName;
+                EXPECT_EQ(isUploadable(one.mFormat), one.mFormat < TextureFormat::Rgb565) << one.mName;
+                EXPECT_EQ(
+                    isWidened(one.mFormat), one.mFormat >= TextureFormat::Rgb565 && one.mFormat < TextureFormat::Rgb8)
+                    << one.mName;
                 EXPECT_EQ(isSrgb(one.mFormat), one.mEncoding == Colour && isUploadable(one.mFormat)) << one.mName;
                 EXPECT_EQ(isBc1(one.mFormat),
                     one.mSpelling == GL_COMPRESSED_RGB_S3TC_DXT1_EXT

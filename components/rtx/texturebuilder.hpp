@@ -39,13 +39,15 @@ namespace Rtx
     Result<void, std::string> checkUploadable(
         const osg::Image& image, TextureEncoding encoding = TextureEncoding::Colour);
 
-    /// Describes one image for a backend's uploader without copying a byte of it. Levels are
-    /// appended to `levels`, and the returned description spans the ones it added, so `levels`
-    /// must not grow again while the description is alive. The levels are the file's own; a
-    /// backend completes a chain the file did not carry, on the device. An error, adding no level,
-    /// where `checkUploadable` answers one.
-    Result<TextureData, std::string> describeImage(
-        const osg::Image& image, std::vector<MipLevel>& levels, TextureEncoding encoding = TextureEncoding::Colour);
+    /// Describes one image for a backend's uploader: spanning its bytes where its format uploads as
+    /// it is, and widening them into `texels` where it is sixteen bits a texel. Levels are appended
+    /// to `levels` and widened texels to `texels`, and the description spans what it added, so
+    /// neither may grow again while it is alive. The levels are the file's own; a backend
+    /// completes a chain the file did not carry, on the device. An error, adding nothing, where
+    /// `checkUploadable` answers one, or where the format's layout and OpenSceneGraph's count the
+    /// image's bytes differently.
+    Result<TextureData, std::string> describeImage(const osg::Image& image, std::vector<MipLevel>& levels,
+        std::vector<std::byte>& texels, TextureEncoding encoding = TextureEncoding::Colour);
 
     /// The image at `path`, or why nothing reads there — an error and not an exception, because a
     /// live scene graph names textures that were never files and a renderer that fell over on one
@@ -122,6 +124,9 @@ namespace Rtx
         /// Every image's levels, back to back. One table rather than one vector each: a cell reaches
         /// a couple of hundred textures, and the descriptions want a span into something stable.
         std::vector<MipLevel> mLevels;
+
+        /// Every widened image's texels, back to back, for the same reason.
+        std::vector<std::byte> mTexels;
 
         std::vector<TextureData> mDescriptions;
 

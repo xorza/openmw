@@ -64,8 +64,10 @@ namespace Rtx
             const std::uint32_t height = std::max(level.mHeight, 1u);
             const bool srgb = isSrgb(texture.mFormat);
 
-            if (const std::uint32_t bytes = blockBytes(texture.mFormat); bytes > 0)
+            const TexelLayout layout = layoutOf(texture.mFormat);
+            if (layout.isBlocked())
             {
+                const std::uint32_t bytes = layout.mBytes;
                 const std::uint32_t columns = (width + 3) / 4;
                 const std::uint32_t rows = (height + 3) / 4;
 
@@ -85,14 +87,16 @@ namespace Rtx
                 return;
             }
 
+            assert(layout.mBytes == 4 && "a loose texel read as four bytes that is not");
+            const std::size_t red = isBgr(texture.mFormat) ? 2 : 0;
             for (std::uint32_t y = 0; y < height; ++y)
                 for (std::uint32_t x = 0; x < width; ++x)
                 {
-                    const std::size_t at = level.mOffset + (std::size_t{ y } * width + x) * 4;
+                    const std::size_t at = level.mOffset + (std::size_t{ y } * width + x) * layout.mBytes;
                     const auto channel = [&](std::size_t offset) {
                         return std::to_integer<std::uint32_t>(texture.mBytes[at + offset]) / 255.0f;
                     };
-                    sink(x, y, TexelSum{ linearOf(osg::Vec3f(channel(0), channel(1), channel(2)), srgb), 1 });
+                    sink(x, y, TexelSum{ linearOf(osg::Vec3f(channel(red), channel(1), channel(2 - red)), srgb), 1 });
                 }
         }
     }

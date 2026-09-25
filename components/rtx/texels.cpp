@@ -30,17 +30,18 @@ namespace Rtx
     {
         assert(x < level.mWidth && y < level.mHeight);
 
-        const std::uint32_t bytes = blockBytes(texture.mFormat);
-        if (bytes == 0)
+        const TexelLayout layout = layoutOf(texture.mFormat);
+        if (!layout.isBlocked())
         {
-            const std::size_t at = level.mOffset + (std::size_t{ y } * level.mWidth + x) * 4;
+            assert(layout.mBytes == 4 && "a loose texel read as four bytes that is not");
+            const std::size_t at = level.mOffset + (std::size_t{ y } * level.mWidth + x) * layout.mBytes;
             const auto channel = [&](std::size_t offset) {
                 return std::to_integer<std::uint32_t>(texture.mBytes[at + offset]) / 255.0f;
             };
 
             // The two loose spellings differ only in which end the three colours are stated from,
             // and a reader that took one order for both draws the sky with its red and blue swapped.
-            if (texture.mFormat == TextureFormat::Bgra8Srgb)
+            if (isBgr(texture.mFormat))
                 return osg::Vec3f(channel(2), channel(1), channel(0));
 
             return osg::Vec3f(channel(0), channel(1), channel(2));
@@ -49,7 +50,8 @@ namespace Rtx
         // The colour half is the last eight bytes of a block whichever format it is: BC2 and BC3 put
         // their alpha in front of it and BC1 has none.
         const std::uint32_t columns = (level.mWidth + 3) / 4;
-        const std::size_t at = level.mOffset + (std::size_t{ y / 4 } * columns + x / 4) * bytes + (bytes - 8);
+        const std::size_t at
+            = level.mOffset + (std::size_t{ y / 4 } * columns + x / 4) * layout.mBytes + (layout.mBytes - 8);
         const ColourBlock block = ColourBlock::read(texture.mBytes.subspan(at).first<8>(), isBc1(texture.mFormat));
 
         return block.mPalette[block.indexAt(std::size_t{ y % 4 } * 4 + x % 4)];
@@ -73,11 +75,12 @@ namespace Rtx
     {
         std::vector<MipLevel>& levels = scratch.mLevels;
         levels.clear();
+        scratch.mTexels.clear();
 
         // An image this cannot describe is the same image whose arrival in the texture table
         // refuses it by name. The caller gets nothing and carries on without whatever this was
         // worth.
-        const Result<TextureData, std::string> read = describeImage(image, levels);
+        const Result<TextureData, std::string> read = describeImage(image, levels, scratch.mTexels);
         if (!read.isOk())
             return MeanTexel();
 
@@ -124,6 +127,18 @@ namespace Rtx
     {
         const bool colour = encoding == TextureEncoding::Colour;
 
+        // **A loose format is its pixel format and its data type together.** The pixel format says
+        // which channels and the data type how many bits they take: `GL_BGRA` is four bytes a texel
+        // under `GL_UNSIGNED_BYTE` and two under `GL_UNSIGNED_SHORT_1_5_5_5_REV`, and naming both
+        // BGRA8 created every A1R5G5B5 file at twice its size. A pair not listed is `Unnamed`. A
+        // block states its own size, and its data type means nothing.
+        const GLenum type = image.getDataType();
+        const bool bytes = type == GL_UNSIGNED_BYTE;
+
+        // A sixteen-bit file whose header gave its spare bit no mask: OpenSceneGraph keeps the
+        // four-channel pixel format and says so in the internal one.
+        const bool opaque = image.getInternalTextureFormat() == GL_RGB;
+
         switch (image.getPixelFormat())
         {
             // One format for both spellings: whether the file's header claimed alpha decides
@@ -142,18 +157,28 @@ namespace Rtx
             case GL_COMPRESSED_RED_GREEN_RGTC2_EXT:
                 return colour ? TextureFormat::Unnamed : TextureFormat::Bc5Unorm;
             case GL_RGB:
-                return TextureFormat::Rgb8;
+                return bytes                          ? TextureFormat::Rgb8
+                    : type == GL_UNSIGNED_SHORT_5_6_5 ? TextureFormat::Rgb565
+                                                      : TextureFormat::Unnamed;
             // Not every file the game ships is a block. The sky's cloud decks are plain 32-bit
             // `DDPF_RGB`, which is what a texture painted for a full-screen dome would be, and
             // taking only the compressed formats would draw every weather's clouds grey.
             case GL_RGBA:
+                if (!bytes)
+                    return TextureFormat::Unnamed;
                 return colour ? TextureFormat::Rgba8Srgb : TextureFormat::Rgba8Unorm;
             case GL_BGRA:
+                if (type == GL_UNSIGNED_SHORT_1_5_5_5_REV)
+                    return opaque ? TextureFormat::Xrgb1555 : TextureFormat::Argb1555;
+                if (type == GL_UNSIGNED_SHORT_4_4_4_4_REV)
+                    return opaque ? TextureFormat::Xrgb4444 : TextureFormat::Argb4444;
+                if (!bytes)
+                    return TextureFormat::Unnamed;
                 return colour ? TextureFormat::Bgra8Srgb : TextureFormat::Bgra8Unorm;
             case GL_LUMINANCE:
-                return TextureFormat::Luminance;
+                return bytes ? TextureFormat::Luminance : TextureFormat::Unnamed;
             case GL_LUMINANCE_ALPHA:
-                return TextureFormat::LuminanceAlpha;
+                return bytes ? TextureFormat::LuminanceAlpha : TextureFormat::Unnamed;
             default:
                 return TextureFormat::Unnamed;
         }
@@ -192,6 +217,16 @@ namespace Rtx
                 return "BGRA8 (linear)";
             case TextureFormat::Bc5Unorm:
                 return "BC5 (ATI2, linear)";
+            case TextureFormat::Rgb565:
+                return "R5G6B5";
+            case TextureFormat::Argb1555:
+                return "A1R5G5B5";
+            case TextureFormat::Xrgb1555:
+                return "X1R5G5B5";
+            case TextureFormat::Argb4444:
+                return "A4R4G4B4";
+            case TextureFormat::Xrgb4444:
+                return "X4R4G4B4";
             case TextureFormat::Luminance:
                 return "L8";
             case TextureFormat::LuminanceAlpha:
