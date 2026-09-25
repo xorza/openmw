@@ -8,3 +8,4 @@
 - postprocessing
 - balmora house appears on distant terrain
 - remove lit npc with light spell
+- physical brightness
