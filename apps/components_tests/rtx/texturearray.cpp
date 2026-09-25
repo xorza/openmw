@@ -10,6 +10,7 @@
 #include <vulkan/vulkan_core.h>
 
 #include <components/rtx/refusal.hpp>
+#include <components/rtx/shaders/scene.h>
 #include <components/rtx/texturedata.hpp>
 #include <components/rtxvulkan/commands.hpp>
 #include <components/rtxvulkan/device.hpp>
@@ -156,6 +157,10 @@ namespace Rtx
         /// **One texel wider than the device takes**, so the case is the device's own and no
         /// larger than a row: the second level is half that, within the side, and is what stands —
         /// four bytes a texel and the map's 2048.
+        ///
+        /// **The slot's texel word says which stands**: the level's count, and the stand-in's four by
+        /// four with `TEXTURE_STANDS_IN` over it — as it does for a slot described as the stand-in,
+        /// which is how the builder describes a file that does not read.
         TEST_F(RtxTextureArrayTest, aTexturePastTheDevicesSideBeginsAtItsFirstLevelWithinIt)
         {
             Device& device = getDevice();
@@ -172,8 +177,12 @@ namespace Rtx
             Testing::TestTexture single;
             Testing::paintLevels(single, limit + 1, 1, 1, "single");
             single.mData.mSlot = 1;
+            Testing::TestTexture unread;
+            Testing::paintLevels(unread, 4, 4, 1, "unread");
+            unread.mData.mSlot = 2;
+            unread.mData.mSource = TextureSource::StandIn;
 
-            const std::array arrived{ wide.mData, single.mData };
+            const std::array arrived{ wide.mData, single.mData, unread.mData };
             std::vector<Refusal> refused;
             Batch arrival(getPool());
             textures.write(arrival, arrived, refused);
@@ -191,6 +200,10 @@ namespace Rtx
             EXPECT_EQ(held.mBytes, VkDeviceSize{ 4 } * ((limit + 1) >> 1) + 2048);
             EXPECT_EQ(held.mReduced, 1u) << "a texture standing from its second level was not counted as smaller";
             EXPECT_EQ(textures.getSide(), limit) << "the device's side is not the room's";
+
+            EXPECT_EQ(textures.getTexels(0), (limit + 1) >> 1) << "the level that stands";
+            EXPECT_EQ(textures.getTexels(1), Shaders::TEXTURE_STANDS_IN | 16u) << "past the side";
+            EXPECT_EQ(textures.getTexels(2), Shaders::TEXTURE_STANDS_IN | 16u) << "described as the stand-in";
         }
 
         /// A texture the device has no room for comes down a level at a time, and one it has room
@@ -201,7 +214,8 @@ namespace Rtx
         /// first and opens the block, which leaves a megabyte under the ceiling, and the level is
         /// refused although the side chosen for the arrival counted the block as room for it. Its
         /// second level, 1536 square, is 9 MiB and fits the block: 9437184 bytes and the map's 2048.
-        /// The single level of the same 36 MiB has nothing further down.
+        /// The single level of the same 36 MiB has nothing further down. The slot's texel word says
+        /// the stand-in while it stands in, and is the file's own count once it stands.
         TEST_F(RtxTextureArrayTest, aTextureTheDeviceHasNoRoomForComesDownALevelOrDrawsTheStandIn)
         {
             Device& device = getDevice();
@@ -244,6 +258,8 @@ namespace Rtx
             EXPECT_EQ(refused[0].mName, "lone");
             EXPECT_EQ(refused[0].mWhy, "no device memory is left for it");
             EXPECT_EQ(textures.getHeld().mCount, 1u) << "a texture with no room stood";
+            EXPECT_EQ(textures.getTexels(0), 1536u * 1536u);
+            EXPECT_EQ(textures.getTexels(1), Shaders::TEXTURE_STANDS_IN | 16u) << "no room";
 
             refused.clear();
             {
@@ -255,6 +271,7 @@ namespace Rtx
             EXPECT_TRUE(refused.empty());
             EXPECT_EQ(textures.getHeld().mCount, 2u);
             EXPECT_EQ(textures.getHeld().mReduced, 1u) << "a texture standing as its file was counted as smaller";
+            EXPECT_EQ(textures.getTexels(1), 3072u * 3072u) << "a slot that stands at last still says the stand-in";
 
             // Before the array goes: what the writes replaced is buried, and the fillers give their
             // room back after it.

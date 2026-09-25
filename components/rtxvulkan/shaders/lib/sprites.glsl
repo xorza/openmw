@@ -658,7 +658,7 @@ PuffLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit, Co
 
             wrapped = ballPuff(normal, thrownForward);
 
-            if (emitter.mLighting != NO_TEXTURE)
+            if (holdsTexture(emitter.mLighting))
             {
                 // **What the puff's own texture leaves of each light**, thinned as the puff's own
                 // fade thins it: a wisp near the end of its life shadows itself less than the puff

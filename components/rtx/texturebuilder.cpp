@@ -52,7 +52,8 @@ namespace Rtx
     TextureData describeStandIn()
     {
         // Mid grey and not magenta, because a live graph's unreadable textures are mostly things
-        // that were never files, and the refusal already names each. One opaque BC1 block with both
+        // that were never files, and the refusal already names each. Only a base colour draws it;
+        // every other reader reads the slot as none, `TEXTURE_STANDS_IN`. One opaque BC1 block with both
         // endpoints the same grey: 0x8410 is RGB565 for (16, 16, 16) out of (31, 63, 31) — a touch
         // above half, which is mid grey once the sRGB curve is undone.
         static constexpr std::array<std::byte, 8> sBlock{ std::byte{ 0x10 }, std::byte{ 0x84 }, std::byte{ 0x10 },

@@ -197,8 +197,8 @@ namespace Rtx
         void sync(FrameSlot slot);
 
         /// Records the bake of every composite that arrived since the last call, into the
-        /// composites themselves, reading `slot`'s set and the tables `tables` names — the copy
-        /// the placement recording this has just written. After `sync(slot)`, so the set holds the
+        /// composites themselves, reading `slot`'s set and texel counts and the tables `tables`
+        /// names — the copy the placement recording this has just written. After `sync(slot)`, so the set holds the
         /// layers' textures and the composites alike. True where a bake was recorded, because a
         /// placement that recorded nothing else is not submitted.
         bool bakeComposites(VkCommandBuffer commands, const GroundCompositePass& pass, FrameSlot slot,
@@ -224,6 +224,10 @@ namespace Rtx
         /// Where `slot`'s copy of the texel counts is — `GpuTables::mTextureTexels` — named for
         /// the next submit, which `sync(slot)` brought up to date.
         VkDeviceAddress getTexelsAddress(FrameSlot slot) const { return mTexels.addressFor(slot); }
+
+        /// `slot`'s word in those counts, as every copy is brought up to: how many texels stand in
+        /// it, with `TEXTURE_STANDS_IN` over the count where they are the stand-in's.
+        std::uint32_t getTexels(std::uint32_t slot) const { return mTexels.getRows()[slot]; }
 
         /// What the array actually stands. A slot the scene gave back holds nothing and costs
         /// nothing, and neither is counted here.
@@ -320,7 +324,8 @@ namespace Rtx
         std::uint32_t mSaidSide = 0;
 
         /// One word per slot of the array, `TEXTURE_SLOTS` long: how many texels the texture in
-        /// it holds, which `coneLod` reads where it asked the driver for a size.
+        /// it holds, which `coneLod` reads where it asked the driver for a size, and
+        /// `TEXTURE_STANDS_IN` over it where they are the stand-in's.
         ///
         /// **A copy per frame in flight, owed and paid the way the descriptors are.** A slot the
         /// sweep freed and an arrival took over is one the frame behind still reads through its

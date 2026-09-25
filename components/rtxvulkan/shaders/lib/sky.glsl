@@ -61,13 +61,15 @@ vec2 cloudUvAt(vec2 crossing, vec2 bearing)
 /// the band it takes the deck out over.
 vec4 cloudSheetAt(vec2 crossing)
 {
-    // Unconditionally, and with no test on the sheet ahead: the host names the near sheet twice
-    // where the weather ahead has none — `CloudDeck::mNext` — so the mix is one path however the
-    // weather stands.
+    // With no test on the weather ahead: the host names the near sheet twice where the weather
+    // ahead has none — `CloudDeck::mNext` — so the mix is one path however the weather stands. A
+    // sheet ahead that stands in is the near one again, as one that was never named is: the deck
+    // is there, and a grey stand-in blended into it would be sky that is not.
     const vec4 near
         = textureLod(textures[nonuniformEXT(frame.mClouds.mTexture)], cloudUvAt(crossing, frame.mClouds.mBearing), 0.0);
-    const vec4 far = textureLod(
-        textures[nonuniformEXT(frame.mClouds.mNext)], cloudUvAt(crossing, frame.mClouds.mNextBearing), 0.0);
+    const bool ahead = holdsTexture(frame.mClouds.mNext);
+    const vec4 far = textureLod(textures[nonuniformEXT(ahead ? frame.mClouds.mNext : frame.mClouds.mTexture)],
+        cloudUvAt(crossing, ahead ? frame.mClouds.mNextBearing : frame.mClouds.mBearing), 0.0);
 
     return mix(near, far, frame.mClouds.mBlend);
 }
@@ -82,7 +84,7 @@ vec4 cloudSheetAt(vec2 crossing)
 /// **One statement of whether there is a deck**, asked by the eye and by a shadow ray alike.
 float deckOver(vec3 at)
 {
-    if (!(frame.mClouds.mOpacity > 0.0) || frame.mClouds.mTexture == NO_TEXTURE)
+    if (!(frame.mClouds.mOpacity > 0.0) || !holdsTexture(frame.mClouds.mTexture))
         return 0.0;
 
     return max(frame.mClouds.mAltitude - at.z, 0.0);
@@ -248,7 +250,7 @@ vec3 skyPatches(vec3 direction)
 
         // The hemisphere test is not optional: the offsets below are the same for a direction and
         // its opposite, so without it every ray pointing away lands in the middle of the face.
-        if (sheet.mTexture == NO_TEXTURE || dot(direction, sheet.mDirection) <= 0.0)
+        if (!holdsTexture(sheet.mTexture) || dot(direction, sheet.mDirection) <= 0.0)
             continue;
 
         const vec2 at = discAt(direction, sheet.mRight, sheet.mUp, max(sheet.mLimb, 1.0e-4));
@@ -327,7 +329,7 @@ vec3 moonFace(MoonDisc moon, vec3 direction, float blur, out float covered)
     // the maria and the silhouette, `MOON_RADIANCE` decides how bright a full moon is, and neither
     // is scaling the other.
     vec3 base = moon.mColour;
-    if (moon.mFace != NO_TEXTURE)
+    if (holdsTexture(moon.mFace))
     {
         // `u` runs with the face's right and `v` against its up, which is the Y-down convention the
         // quad the game draws is authored in.

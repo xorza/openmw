@@ -741,7 +741,7 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
     // no orthogonalisation between them — which is what the maps were checked against. Built on
     // the normal as the mesh states it and then turned with it, so a sheet met from behind sees
     // the map's relief from behind. A mesh the map reached with no tangents keeps its normal.
-    if (HAS_MAPS && material.mNormal != NO_TEXTURE && dot(hit.mTangent.xyz, hit.mTangent.xyz) > 0.0)
+    if (HAS_MAPS && holdsTexture(material.mNormal) && dot(hit.mTangent.xyz, hit.mTangent.xyz) > 0.0)
     {
         const vec3 painted = sampleNormalMap(material.mNormal, point);
         const vec3 tangent = normalize(hit.mTangent.xyz);
@@ -770,7 +770,12 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
     vec3 painted = vec3(0.0);
     bool relief = false;
 
-    if (layered && (material.mFlags & MATERIAL_STACKED) != 0u)
+    // **A chunk whose composite stands in is summed from its stack**, which is still the scene's: the
+    // composites are what give way first where the device runs out of room, and the grey stand-in
+    // would be the whole chunk.
+    if (layered
+        && ((material.mFlags & MATERIAL_STACKED) != 0u
+            || (material.mLayerCount > 0u && !holdsTexture(material.mDiffuse))))
     {
         // Each layer is a tiling texture masked by its own grid of weights, and the stack sums to
         // one where the masks were built to — the same sum the rasterizer reaches by drawing the
@@ -784,17 +789,18 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
                 continue;
 
             const TexturePoint at = texturePoint(uv, hit.mBary, layer.mDiffuseTransform, cone, surface.mFootprint);
-            const vec4 shown = layerTexel(layer, at.mAt, coneLod(layer.mDiffuse, at), frame.mDelight, HAS_MAPS);
+            const bool authored = HAS_MAPS && layerAuthored(layer, sceneTexels());
+            const vec4 shown = layerTexel(layer, at.mAt, coneLod(layer.mDiffuse, at), frame.mDelight, authored);
             albedo += showing * shown.rgb;
 
             if (HAS_MAPS)
             {
                 weights += showing;
                 roughness += showing * shown.a;
-                if ((layer.mFlags & LAYER_AUTHORED) != 0u)
+                if (authored)
                     reflecting += showing;
 
-                const bool mapped = layer.mNormal != NO_TEXTURE;
+                const bool mapped = holdsTexture(layer.mNormal);
                 painted += showing * (mapped ? sampleNormalMap(layer.mNormal, at) : vec3(0.0, 0.0, 1.0));
                 relief = relief || mapped;
             }
@@ -817,7 +823,7 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
             surface.mNormal = facingRay(turned ? -mapped : mapped, surface.mSmooth, direction, MAPPED_MIN_FACING);
         }
     }
-    else if (HAS_MAPS && material.mSpecular != NO_TEXTURE)
+    else if (HAS_MAPS && holdsTexture(material.mSpecular))
         albedo = sampleDiffuse(material.mDiffuse, point).rgb;
     else
         albedo = sampleAlbedo(material.mDiffuse, point);
@@ -849,13 +855,13 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
         surface.mSpecular = vec3(DIELECTRIC_F0 * (reflecting / weights)) * tint;
         surface.mRoughness = roughness / weights;
     }
-    else if (HAS_MAPS && material.mSpecular != NO_TEXTURE && surface.mGround)
+    else if (HAS_MAPS && holdsTexture(material.mSpecular) && surface.mGround)
     {
         const vec2 gloss = sampleSpecularMap(material.mSpecular, point);
         surface.mSpecular = vec3(DIELECTRIC_F0 * gloss.x) * tint;
         surface.mRoughness = gloss.y;
     }
-    else if (HAS_MAPS && material.mSpecular != NO_TEXTURE)
+    else if (HAS_MAPS && holdsTexture(material.mSpecular))
     {
         const vec2 painted = sampleSpecularMap(material.mSpecular, point);
         surface.mSpecular = mix(vec3(DIELECTRIC_F0), albedo, painted.x) * tint;
@@ -874,7 +880,7 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
     // **The dark map multiplies the whole of it**, colour and alpha, which is where `objects.frag`
     // puts it. At the unit the content bound it at, on whichever set that unit reads: the Sixth
     // House banners read their second set and the durzog its first.
-    if (material.mDark != NO_TEXTURE)
+    if (holdsTexture(material.mDark))
     {
         const uint unit = (material.mFlags >> MATERIAL_DARK_UNIT_SHIFT) & MATERIAL_DARK_UNIT_MASK;
         TexturePoint darkPoint = point;
@@ -898,7 +904,7 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
             surface.mOpacity *= dark.a;
     }
 
-    if (material.mEmissive != NO_TEXTURE)
+    if (holdsTexture(material.mEmissive))
         surface.mEmitted = EMISSIVE_INTENSITY * sampleDiffuse(material.mEmissive, point).rgb;
 
     // **A sphere-mapped sheet, added past the albedo and indexed by where the eye is.** The
@@ -908,7 +914,7 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
     // rasterizer's own — `objects.vert` reflects the eye-space view vector about the eye-space
     // normal and folds it onto the sheet — in the frame camera's basis, so a bounce that lands on
     // glass armour sees the sheet the way the reflection camera would.
-    if (material.mEnvironment != NO_TEXTURE)
+    if (holdsTexture(material.mEnvironment))
     {
         // The camera's axes are scaled by the image plane's half extents and are taken unit here;
         // the eye space is OpenGL's, looking down its own -Z.

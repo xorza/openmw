@@ -615,6 +615,9 @@ namespace Rtx::Testing
         /// behind the sprite `0.64 / 0.16^1.5 = 10`. The side cases carry the first, and the two
         /// sides of the ball the other two — which is what makes them differ by sixty-four and not
         /// by six.
+        ///
+        /// **A bake that stands in is no bake**: the puff is lit as a card, where the stand-in's grey
+        /// would shut the sun to a quarter.
         TEST_F(RtxVisibilityTest, aPuffIsLitByItsSideAndByWhatItsTextureLetsThrough)
         {
             constexpr std::uint32_t size = 33;
@@ -622,8 +625,10 @@ namespace Rtx::Testing
 
             constexpr std::array<std::uint8_t, 4> half{ 255, 255, 255, 128 };
 
-            const auto lit = [&](const osg::Vec3f& sun, std::array<std::uint8_t, 4> through) {
-                const std::array<TextureData, 2> textures{ describeTexel(half), describeTexel(through) };
+            const auto lit = [&](const osg::Vec3f& sun, std::array<std::uint8_t, 4> through, bool standsIn = false) {
+                std::array<TextureData, 2> textures{ describeTexel(half), describeTexel(through) };
+                if (standsIn)
+                    textures[1].mSource = TextureSource::StandIn;
 
                 SceneDesc scene;
                 const Index cut = scene.textures().add(VFS::Path::NormalizedView("sprite.dds"));
@@ -659,6 +664,8 @@ namespace Rtx::Testing
                 << "a card's worth from the side, thrown";
             EXPECT_NEAR(lit(osg::Vec3f(1.0f, 0.0f, 0.0f), { 0, 255, 255, 255 }), 0.0f, 0.005f)
                 << "the sun from +u, and +u shut";
+            EXPECT_NEAR(lit(osg::Vec3f(1.0f, 0.0f, 0.0f), { 0, 255, 255, 255 }, true), card * sideways, 0.005f)
+                << "a bake that stands in, read as the card it is without one";
             EXPECT_NEAR(lit(osg::Vec3f(-1.0f, 0.0f, 0.0f), { 0, 255, 255, 255 }), card * sideways, 0.005f)
                 << "the sun from -u, which +u does not shut";
             EXPECT_NEAR(lit(osg::Vec3f(0.0f, 0.0f, 1.0f), { 255, 255, 0, 255 }), 0.0f, 0.005f)

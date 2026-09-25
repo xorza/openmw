@@ -739,6 +739,114 @@ namespace Rtx::Testing
             EXPECT_EQ(lit(255, false, Shaders::SHOW_SPECULAR), osg::Vec3f(base, base, base));
         }
 
+        /// **A map that stands in is read as no map**, in every role an object's map has: a normal
+        /// map, a specular map, a dark map, an emissive map and an environment sheet. The slot is
+        /// described as the stand-in, as the builder describes a file that does not read and as the
+        /// backend stands a texture it has no room for, and the lit wall of the test above is then
+        /// the same pixel as with no map at all, to the bit. A real map in the same slot moves the
+        /// pixel, which is what says each role reaches it.
+        ///
+        /// **A second wall wears a specular map in every render**, so every render runs the variant
+        /// with the maps compiled in and the renders differ by the slot alone. It stands a thousand
+        /// units behind the first, where no ray the pixel sends can reach: the bounce leaves the
+        /// front face, and the lamp and the eye are on that side too.
+        TEST_F(RtxVisibilityTest, aMapThatStandsInIsReadAsNoMap)
+        {
+            constexpr std::uint32_t size = 33;
+            constexpr std::size_t centre = centreValueOf(size);
+
+            constexpr std::array<std::uint8_t, 4> sBaseTexel{ 128, 128, 128, 255 };
+            constexpr std::array<std::uint8_t, 4> sMapTexel{ 64, 96, 160, 255 };
+            const Shaders::VisibilityConstants camera = Testing::makeCamera(
+                osg::Vec3f(100.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
+
+            const osg::Vec3f normal(0.0f, -1.0f, 0.0f);
+            const osg::Vec4f tangent(1.0f, 0.0f, 0.0f, 1.0f);
+            const std::array<osg::Vec3f, 4> normals{ normal, normal, normal, normal };
+            const std::array<osg::Vec4f, 4> tangents{ tangent, tangent, tangent, tangent };
+
+            enum class Role
+            {
+                Normal,
+                Specular,
+                Dark,
+                Emissive,
+                Environment,
+            };
+            enum class Held
+            {
+                Nothing,
+                StandIn,
+                Map,
+            };
+
+            const auto lit = [&](Role role, Held held) {
+                std::array<TextureData, 3> textures{ describeTexel(sBaseTexel, 0), describeTexel(sMapTexel, 1),
+                    describeTexel(sMapTexel, 2) };
+                if (held == Held::StandIn)
+                    textures[1].mSource = TextureSource::StandIn;
+
+                SceneDesc scene;
+                const Index mesh = scene.addMesh(MeshArrays{ .mPositions = sWallQuad,
+                    .mNormals = normals,
+                    .mTexCoords = sQuadUv,
+                    .mTangents = tangents,
+                    .mIndices = sQuadIndices });
+                const bool data = role == Role::Normal || role == Role::Specular;
+                const Index diffuse = scene.textures().add(VFS::Path::NormalizedView("base.dds"));
+                const Index map = scene.textures().add(VFS::Path::NormalizedView("map.dds"), TextureWrap::Repeat,
+                    data ? TextureEncoding::Data : TextureEncoding::Colour);
+                const Index behind = scene.textures().add(
+                    VFS::Path::NormalizedView("behind_spec.dds"), TextureWrap::Repeat, TextureEncoding::Data);
+
+                Material material{ .mDiffuse = diffuse };
+                const Index named = held == Held::Nothing ? sNoIndex : map;
+                switch (role)
+                {
+                    case Role::Normal:
+                        material.mNormal = named;
+                        break;
+                    case Role::Specular:
+                        material.mSpecular = named;
+                        break;
+                    case Role::Dark:
+                        material.mDark = named;
+                        break;
+                    case Role::Emissive:
+                        material.mEmissive = named;
+                        break;
+                    case Role::Environment:
+                        material.mEnvironment = named;
+                        break;
+                }
+
+                scene.addInstance(MeshInstance{
+                    .mTransform = osg::Matrixf::identity(), .mMesh = mesh, .mMaterial = scene.addMaterial(material) });
+                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::translate(0.0f, 1000.0f, 0.0f),
+                    .mMesh = mesh,
+                    .mMaterial = scene.addMaterial(Material{ .mDiffuse = diffuse, .mSpecular = behind }) });
+                scene.addLight(Light{
+                    .mPosition = osg::Vec3f(0.0f, -50.0f, 0.0f),
+                    .mIntensity = osg::Vec3f(4000.0f, 4000.0f, 4000.0f),
+                    .mReach = 500.0f,
+                });
+
+                std::vector<std::uint8_t> pixels;
+                EXPECT_GT(countHits(scene, textures, camera, size, pixels), 0u);
+                return osg::Vec3f(mRadiance[centre], mRadiance[centre + 1], mRadiance[centre + 2]);
+            };
+
+            for (const auto& [role, name] :
+                { std::pair(Role::Normal, "a normal map"), std::pair(Role::Specular, "a specular map"),
+                    std::pair(Role::Dark, "a dark map"), std::pair(Role::Emissive, "an emissive map"),
+                    std::pair(Role::Environment, "an environment sheet") })
+            {
+                const osg::Vec3f none = lit(role, Held::Nothing);
+                EXPECT_EQ(lit(role, Held::StandIn), none) << name << " that stands in";
+                EXPECT_NE(lit(role, Held::Map), none) << name << " held moves nothing, so this proves nothing";
+            }
+        }
+
         /// Which side of a surface the light may come from is the triangle's plane's answer, and a
         /// vertex normal that disagrees does not get to overrule it.
         ///

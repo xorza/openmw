@@ -33,11 +33,13 @@
 ///
 /// @param stars the field to draw, rather than the frame's — which is what lets the display pass
 ///        draw one it was handed on a grid the frame's camera does not describe.
+/// @param texels the array's texel counts, which say whether the field's sheet stands in: a grey
+///        sheet would be a star in every direction.
 /// @param blur how far this ray's cone has spread from its axis, in radians, which is what decides
 ///        how wide a star's edge is drawn.
-vec3 starField(StarField stars, vec3 direction, float blur)
+vec3 starField(StarField stars, TexelTable texels, vec3 direction, float blur)
 {
-    if (!(stars.mFade > 0.0) || stars.mTexture == NO_TEXTURE || direction.z <= 0.0)
+    if (!(stars.mFade > 0.0) || !holdsTexture(texels, stars.mTexture) || direction.z <= 0.0)
         return vec3(0.0);
 
     const float elevation = asin(clamp(direction.z, -1.0, 1.0));

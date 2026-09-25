@@ -70,17 +70,24 @@ vec3 sampleAlbedoLod(uint slot, vec2 at, float lod, float delight)
     return texel / mix(1.0, paintedLight(slot, at), delight);
 }
 
-/// What one layer shows at `at`, read at `lod`: its albedo in rgb and its perceptual roughness in
-/// alpha. **An authored layer** (`LAYER_AUTHORED`) is read as it stands, its alpha its roughness;
-/// **any other** has `delight` of its painted light divided out and is a Lambert layer, as rough as
-/// a surface is. The two readers of a stack call this and nothing else for a layer, so a flattened
-/// chunk is the stack it replaces.
-///
-/// @param maps whether a layer can be authored at all — the trace's `HAS_MAPS`, which takes the
-///        test out of a frame with no map, and true in the bake.
-vec4 layerTexel(GpuLayer layer, vec2 at, float lod, float delight, bool maps)
+/// Whether `layer` is authored (`LAYER_AUTHORED`) and its texture holds what it was: a layer whose
+/// `_diffusespec` stands in is a Lambert layer under the grey, and reflects nothing. The two readers
+/// of a stack ask this and nothing else, the sum of what reflects included.
+bool layerAuthored(GpuLayer layer, TexelTable texels)
 {
-    if (maps && (layer.mFlags & LAYER_AUTHORED) != 0u)
+    return (layer.mFlags & LAYER_AUTHORED) != 0u && holdsTexture(texels, layer.mDiffuse);
+}
+
+/// What one layer shows at `at`, read at `lod`: its albedo in rgb and its perceptual roughness in
+/// alpha. **An authored layer** is read as it stands, its alpha its roughness; **any other** has
+/// `delight` of its painted light divided out and is a Lambert layer, as rough as a surface is. The
+/// two readers of a stack call this and nothing else for a layer, so a flattened chunk is the stack
+/// it replaces.
+///
+/// @param authored `layerAuthored`, which the trace asks only where `HAS_MAPS` says a layer can be.
+vec4 layerTexel(GpuLayer layer, vec2 at, float lod, float delight, bool authored)
+{
+    if (authored)
         return textureLod(textures[nonuniformEXT(layer.mDiffuse)], at, lod);
 
     return vec4(sampleAlbedoLod(layer.mDiffuse, at, lod, delight), 1.0);

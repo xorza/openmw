@@ -222,7 +222,8 @@ namespace Rtx
 
         /// What a slot is drawn as where what it names cannot stand: `describeStandIn`, whose
         /// bytes it carries. A backend stands one image for every such slot, and for a slot it has
-        /// no room for, so a refusal costs the device nothing.
+        /// no room for, so a refusal costs the device nothing. Drawn only as a base colour: a reader
+        /// of an optional map reads the slot as none, `TEXTURE_STANDS_IN`.
         StandIn,
     };
 

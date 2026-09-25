@@ -655,7 +655,9 @@ targets, its tables, the geometry a hit reads — is `Essential`, taken with `ta
 refused here. A mesh's structure (`Structure`) and a texture's images (`Texture`) are content,
 taken with `tryTake`, which answers a `Result`: a refused structure leaves its mesh out, and every
 placement of it names no structure, which the top level skips; a refused texture draws the one
-stand-in the array holds. Content has blocks of its own and never shares one with the frame's,
+stand-in the array holds, and only as a base colour: its slot's texel word carries
+`TEXTURE_STANDS_IN`, and every reader of an optional map (`holdsTexture`) reads it as none, and a
+distant chunk whose composite stands in is summed from its stack. Content has blocks of its own and never shares one with the frame's,
 and new memory for it is exactly a block or, past half a block, the resource's own allocation.
 Each use stops where the uses before it could be made once more, measured on the driver's budget
 (`VK_EXT_memory_budget`), or on `RendererOptions::mMemoryBudget` where that is less: a structure

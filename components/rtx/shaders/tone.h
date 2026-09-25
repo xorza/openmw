@@ -49,6 +49,11 @@ namespace Rtx::Shaders
         /// nothing and the frame's alpha is not the puffs' — `puffsCoverNothing`. First, so the
         /// address lands eight-aligned on both sides.
         uint64 mSpriteTileList;
+
+        /// The array's texel counts, `VisibilityInputs::mTextureTexels`, which say whether the star
+        /// field's sheet stands in.
+        uint64 mTextureTexels;
+
         uint mAdditiveInFrame;
 
         /// The trace's own extent, which is what `Channel::StarsShown` is written at.

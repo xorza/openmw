@@ -68,12 +68,13 @@ void main()
         if (showing <= 0.0)
             continue;
 
+        const bool authored = layerAuthored(layer, TexelTable(chunk.mTexels));
         const vec4 shown = layerTexel(layer, layerUv(layer, chunkUv),
-            groundLod(layer.mDiffuse, layer, GROUND_COMPOSITE_EXTENT), GROUND_COMPOSITE_DELIGHT, true);
+            groundLod(layer.mDiffuse, layer, GROUND_COMPOSITE_EXTENT), GROUND_COMPOSITE_DELIGHT, authored);
         albedo += showing * shown.rgb;
         weights += showing;
         roughness += showing * shown.a;
-        if ((layer.mFlags & LAYER_AUTHORED) != 0u)
+        if (authored)
             reflecting += showing;
     }
 

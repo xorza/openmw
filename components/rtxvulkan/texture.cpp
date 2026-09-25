@@ -673,10 +673,13 @@ namespace Rtx
                 .mOutput = texture.mSource == TextureSource::GroundGloss ? Shaders::GROUND_COMPOSITE_GLOSS
                                                                          : Shaders::GROUND_COMPOSITE_ALBEDO });
 
-        // How many texels the slot now holds, for `coneLod`, owed to every copy beside the
-        // descriptor owed to every set.
+        // How many texels the slot now holds, for `coneLod`, and whether they are the stand-in's,
+        // which every reader of an optional map asks — `TEXTURE_STANDS_IN`. Owed to every copy
+        // beside the descriptor owed to every set.
         const Image& stood = standingIn(slot).getImage();
-        mTexels.write(texture.mSlot) = stood.getWidth() * stood.getHeight();
+        const std::uint32_t texels = stood.getWidth() * stood.getHeight();
+        assert(texels < Shaders::TEXTURE_STANDS_IN && "a texel count that reaches the stand-in bit");
+        mTexels.write(texture.mSlot) = texels | (slot.mStandIn ? Shaders::TEXTURE_STANDS_IN : 0u);
 
         for (SlotSet& owed : mOwed.live())
             owed.addMakingRoom(texture.mSlot);
@@ -758,6 +761,7 @@ namespace Rtx
                     .mMasks = tables.mMasks,
                     .mMaterial = pending.mMaterial,
                     .mOutput = pending.mOutput,
+                    .mTexels = getTexelsAddress(slot),
                 });
             baked = true;
         }

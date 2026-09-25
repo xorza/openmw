@@ -25,9 +25,26 @@ namespace Rtx::Shaders
     /// **Every optional map, and never a material's diffuse.** A cloud deck, a star sheet, a moon's
     /// face, a dark, an emissive and an environment map index the same array a diffuse does, so
     /// what stands for *nothing loaded* is one value with one meaning — and a reader of any of
-    /// them tests for it before the read. The diffuse is not optional: a material with none names
-    /// `TEXTURE_NEUTRAL`, so the albedo, the opacity, the cutout and the crossing read one path.
+    /// them tests for it before the read, and for `TEXTURE_STANDS_IN` with it (`holdsTexture`).
+    /// The diffuse is not optional: a material with none names `TEXTURE_NEUTRAL`, so the albedo,
+    /// the opacity, the cutout and the crossing read one path.
     const uint NO_TEXTURE = 0xFFFFFFFFu;
+
+    /// The bit over a slot's texel count (`GpuTables::mTextureTexels`) that says the slot draws the
+    /// backend's stand-in and not what was named for it: its file did not read, it is past the side
+    /// the device takes, or the device had no room for it.
+    ///
+    /// **A reader of an optional map reads such a slot as `NO_TEXTURE`.** The stand-in is a grey
+    /// picture, and what a missing map means is the reader's to say: a normal map is no relief, a
+    /// specular map no lobe and no base colour, a dark map no darkening, a cloud deck no deck — and
+    /// each already has its exact path for none. Grey read as any of those is a wrong value and not
+    /// a placeholder. Only a base colour draws the grey, where it is one, and the refusal names the
+    /// file; a distant chunk's composite that stands in is summed from its stack instead.
+    ///
+    /// On the device and not in the rows, because it is the backend that decides, as each texture
+    /// arrives and as its room comes and goes, and one word per slot follows that where every row
+    /// naming the slot would not.
+    const uint TEXTURE_STANDS_IN = 0x80000000u;
 
     /// How many slots the bindless array holds, which is what the backend's descriptor count and
     /// the scene's table are both bounded by.
@@ -682,7 +699,8 @@ namespace Rtx::Shaders
         /// the one term of a mip level that is the texture's own — `coneLod`. A load where a
         /// `textureSize` was a texture-header read on every sample, and stated over the same
         /// integer so the level the shader takes its logarithm of is the number it always was.
-        /// The backend's texture array owns and writes it, a slot at a time as textures arrive.
+        /// The backend's texture array owns and writes it, a slot at a time as textures arrive, with
+        /// `TEXTURE_STANDS_IN` over the count of a slot that draws the stand-in.
         uint64 mTextureTexels;
     };
 

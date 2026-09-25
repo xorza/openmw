@@ -297,12 +297,6 @@ layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_ROWS) read
     vec2 at[];
 };
 
-/// How many texels each slot of the bindless array holds — `GpuTables::mTextureTexels`.
-layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_ROWS) readonly buffer TexelTable
-{
-    uint at[];
-};
-
 GpuMesh meshAt(uint index)
 {
     return MeshTable(frame.mTables.mMeshes).at[index];
@@ -350,10 +344,22 @@ vec2 specularAlbedoCell(uint column, uint row)
     return SpecularAlbedoTable(frame.mTables.mSpecularAlbedo).at[row * SPECULAR_TABLE_SIZE + column];
 }
 
+/// The frame's texel counts, for a function that takes them because another pass calls it too.
+TexelTable sceneTexels()
+{
+    return TexelTable(frame.mTables.mTextureTexels);
+}
+
 /// How many texels the texture in `slot` holds, which is what its mip level owes its own size.
 uint textureTexelsAt(uint slot)
 {
-    return TexelTable(frame.mTables.mTextureTexels).at[slot];
+    return sceneTexels().at[slot] & ~TEXTURE_STANDS_IN;
+}
+
+/// Whether `slot` holds what was named for it, in this frame's array.
+bool holdsTexture(uint slot)
+{
+    return holdsTexture(sceneTexels(), slot);
 }
 
 /// Every live particle in the scene, one emitter's run after another's.

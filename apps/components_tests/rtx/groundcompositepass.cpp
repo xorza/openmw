@@ -50,8 +50,8 @@ namespace Rtx
             /// The chunk: a solid red under the mip ladder, masked by a two-weight grid that ramps
             /// from all red at the first texel centre to all ladder at the second, with the ladder
             /// tiled `tiling` times across the chunk. For the gloss the ladder is authored, so its
-            /// alpha — its grey — is a roughness.
-            std::vector<std::uint8_t> bakeOf(float tiling, std::uint32_t output)
+            /// alpha — its grey — is a roughness; `standsIn` describes it as the stand-in.
+            std::vector<std::uint8_t> bakeOf(float tiling, std::uint32_t output, bool standsIn = false)
             {
                 const bool gloss = output == Shaders::GROUND_COMPOSITE_GLOSS;
                 Device& device = getDevice();
@@ -64,6 +64,8 @@ namespace Rtx
                 Testing::paintMipLadder(ladder);
                 std::array<TextureData, 2> textures{ Testing::describeTexel(red, 0), ladder.mData };
                 textures[1].mSlot = 1;
+                if (standsIn)
+                    textures[1].mSource = TextureSource::StandIn;
 
                 constexpr std::array<float, 2> firstMask{ 1.0f, 0.0f };
                 constexpr std::array<float, 2> secondMask{ 0.0f, 1.0f };
@@ -103,6 +105,7 @@ namespace Rtx
                         .mMasks = tables.mMasks,
                         .mMaterial = material,
                         .mOutput = output,
+                        .mTexels = array.getTexelsAddress(FrameSlot{}),
                     });
                 setup.flush();
 
@@ -147,7 +150,9 @@ namespace Rtx
         ///
         /// **The gloss is the same sum**, of how much of the ground reflects and how rough, with the
         /// ladder authored: its share is the ramp, and its roughness the grey of the level the
-        /// footprint calls for, so the gloss is held to the same level as the albedo.
+        /// footprint calls for, so the gloss is held to the same level as the albedo. An authored
+        /// ladder that stands in is a Lambert layer, as the trace reads it: nothing reflects, at a
+        /// roughness of one, in every texel.
         ///
         /// Within a byte, because the device sums in its own float order and rounds once at the
         /// store where the host rounds once at the end.
@@ -157,10 +162,12 @@ namespace Rtx
             const std::vector<std::uint8_t> sixteen = bakeOf(16.0f, Shaders::GROUND_COMPOSITE_ALBEDO);
             const std::vector<std::uint8_t> glossOnce = bakeOf(1.0f, Shaders::GROUND_COMPOSITE_GLOSS);
             const std::vector<std::uint8_t> glossSixteen = bakeOf(16.0f, Shaders::GROUND_COMPOSITE_GLOSS);
+            const std::vector<std::uint8_t> glossStandingIn = bakeOf(1.0f, Shaders::GROUND_COMPOSITE_GLOSS, true);
             ASSERT_EQ(once.size(), std::size_t{ sExtent } * sExtent * 4);
             ASSERT_EQ(sixteen.size(), once.size());
             ASSERT_EQ(glossOnce.size(), once.size());
             ASSERT_EQ(glossSixteen.size(), once.size());
+            ASSERT_EQ(glossStandingIn.size(), once.size());
 
             // Every texel of the first row, and a stride of rows after it: the mask is one weight
             // tall, so every row is the first.
@@ -179,6 +186,8 @@ namespace Rtx
                             << "gloss tiled once at " << x << ", " << y << " channel " << channel;
                         EXPECT_NEAR(int{ glossSixteen[at] }, expectedGloss(x, channel, 70), 1)
                             << "gloss tiled sixteen times at " << x << ", " << y << " channel " << channel;
+                        EXPECT_EQ(int{ glossStandingIn[at] }, channel == 0 || channel == 2 ? 0 : 255)
+                            << "gloss of a ladder that stands in at " << x << ", " << y << " channel " << channel;
                     }
 
             // And three texels the doc derives by hand, so the sweep is known to be over a ramp:

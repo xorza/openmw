@@ -39,7 +39,8 @@ namespace Rtx::Shaders
     const uint GROUND_COMPOSITE_GLOSS = 1u;
 
     /// What one bake is told: the three tables the sum reads, by address as the frame's block
-    /// carries them, which chunk, and which of its two images.
+    /// carries them, which chunk, which of its two images, and the array's texel counts, which say
+    /// which layer textures stand in.
     struct GroundCompositeConstants
     {
         uint64 mMaterials;
@@ -51,11 +52,14 @@ namespace Rtx::Shaders
 
         /// `GROUND_COMPOSITE_ALBEDO` or `GROUND_COMPOSITE_GLOSS`.
         uint mOutput;
+
+        /// `GpuTables::mTextureTexels`.
+        uint64 mTexels;
     };
 
 #ifdef RTX_HOST
     static_assert(
-        sizeof(GroundCompositeConstants) == 32, "GroundCompositeConstants must be scalar-packed on every side");
+        sizeof(GroundCompositeConstants) == 40, "GroundCompositeConstants must be scalar-packed on every side");
 }
 #endif
 

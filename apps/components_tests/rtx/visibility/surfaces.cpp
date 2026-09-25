@@ -1442,6 +1442,11 @@ namespace Rtx::Testing
         /// the two images; here they are stood as the textures a bake leaves, a gloss of
         /// `(128, 64)`, since this renderer has no queue and `RtxGroundCompositePassTest` holds the
         /// bake to the stack.
+        ///
+        /// **And a map that stands in is no map**, one slot at a time: the leaning normal map
+        /// standing in leaves the card's own normal in every column, the authored texture standing
+        /// in leaves a Lambert layer that reflects nothing at a roughness of one, and so does the
+        /// gloss standing in under a flattened chunk.
         TEST_F(RtxVisibilityTest, groundSumsItsLayersMapsByTheWeightsItsAlbedoIsSummedBy)
         {
             constexpr std::uint32_t size = 64;
@@ -1461,8 +1466,13 @@ namespace Rtx::Testing
             const Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
 
-            // The three columns of the middle row, in the view `show`.
-            const auto render = [&](std::uint32_t show, bool flattened) {
+            // The three columns of the middle row, in the view `show`, with the texture in slot
+            // `standsIn` described as the stand-in.
+            const auto render = [&](std::uint32_t show, bool flattened, std::optional<Index> standsIn = std::nullopt) {
+                std::array<TextureData, 4> described = textures;
+                if (standsIn.has_value())
+                    described[*standsIn].mSource = TextureSource::StandIn;
+
                 SceneDesc scene;
                 const Index mesh = scene.addMesh(MeshArrays{
                     .mPositions = positions, .mNormals = normals, .mTexCoords = sQuadUv, .mIndices = sQuadIndices });
@@ -1497,7 +1507,7 @@ namespace Rtx::Testing
                 Shaders::VisibilityConstants shown = camera;
                 shown.mShow = show;
                 std::vector<std::uint8_t> pixels;
-                EXPECT_EQ(countHits(scene, textures, shown, size, pixels), size * size);
+                EXPECT_EQ(countHits(scene, described, shown, size, pixels), size * size);
 
                 std::array<osg::Vec3f, 3> columns;
                 for (std::size_t at = 0; at < columns.size(); ++at)
@@ -1553,6 +1563,21 @@ namespace Rtx::Testing
                 EXPECT_NEAR(flatSpecular[at].x(), Shaders::DIELECTRIC_F0 * 128.0f / 255.0f, 1e-7f)
                     << "flattened column " << at;
             }
+
+            const osg::Vec3f cardNormal = facing * 0.5f + osg::Vec3f(0.5f, 0.5f, 0.5f);
+            const std::array noRelief = render(Shaders::SHOW_NORMAL, false, 1);
+            const std::array unauthoredSpecular = render(Shaders::SHOW_SPECULAR, false, 2);
+            const std::array unauthoredRough = render(Shaders::SHOW_ROUGHNESS, false, 2);
+            const std::array noGlossSpecular = render(Shaders::SHOW_SPECULAR, true, 3);
+            const std::array noGlossRough = render(Shaders::SHOW_ROUGHNESS, true, 3);
+            for (std::size_t at = 0; at < 3; ++at)
+            {
+                EXPECT_EQ(noRelief[at], cardNormal) << "a normal map that stands in, column " << at;
+                EXPECT_EQ(unauthoredSpecular[at].x(), 0.0f) << "an authored texture that stands in, column " << at;
+                EXPECT_EQ(unauthoredRough[at].x(), 1.0f) << "an authored texture that stands in, column " << at;
+                EXPECT_EQ(noGlossSpecular[at].x(), 0.0f) << "a gloss that stands in, column " << at;
+                EXPECT_EQ(noGlossRough[at].x(), 1.0f) << "a gloss that stands in, column " << at;
+            }
         }
 
         /// A chunk flattened on the device is the ground its stack sums, whichever way it arrived.
@@ -1566,6 +1591,10 @@ namespace Rtx::Testing
         /// arrives on — a world built from nothing, whose bake is the build's own batch, and an
         /// arrival into a standing world, whose bake is the placement after it — a placement that
         /// records nothing else, because the world stands still, and is submitted for the bake.
+        ///
+        /// **A composite that stands in is summed from the stack**, which is still the scene's: the
+        /// composites give way first where the device runs out of room, and the stand-in's grey would
+        /// be the whole chunk.
         TEST_F(RtxVisibilityTest, aFlattenedChunkDrawsItsCompositeHoweverItArrived)
         {
             constexpr std::uint32_t size = 64;
@@ -1655,6 +1684,13 @@ namespace Rtx::Testing
                 composite };
             EXPECT_EQ(countHits(scene, flattenedTextures, camera, size, pixels), size * size);
             everyPixelIs(pixels, "built from nothing");
+
+            TextureData standingIn = composite;
+            standingIn.mSource = TextureSource::StandIn;
+            const std::array<TextureData, 3> standInTextures{ describeTexel(redTexel), describeTexel(greenTexel),
+                standingIn };
+            EXPECT_EQ(countHits(scene, standInTextures, camera, size, pixels), size * size);
+            everyPixelIs(pixels, "a composite that stands in");
         }
     }
 }

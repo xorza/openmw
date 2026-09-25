@@ -155,13 +155,19 @@ namespace Rtx::Testing
         ///
         /// A full moon of white at the middle of its own disc is `MOON_RADIANCE`: the incidence and
         /// the emission cosines are both one there, so McEwen's term is `2 * 1 / (1 + 1)`, and the
-        /// sky behind it is set to nothing so no gradient is in the way.
+        /// sky behind it is set to nothing so no gradient is in the way. A face painted a quarter
+        /// grey takes it to a quarter, and a face that stands in is no face: the disc is its colour,
+        /// as one with none is.
         TEST_F(RtxVisibilityTest, aMoonHidesWhatStandsBehindIt)
         {
             constexpr std::uint32_t size = 32;
             constexpr std::size_t centre = centreValueOf(size);
 
+            constexpr std::array<std::uint8_t, 4> quarter{ 64, 64, 64, 255 };
+            std::array<TextureData, 1> face{ describeTexel(quarter) };
+
             SceneDesc scene;
+            scene.textures().add(VFS::Path::NormalizedView("face.dds"));
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
                 .mMesh
                 = scene.addMesh(MeshArrays{ .mPositions = sheetAt(4000.0f, -2000.0f), .mIndices = sQuadIndices }) });
@@ -187,13 +193,19 @@ namespace Rtx::Testing
 
             const auto sky = [&](std::size_t at) {
                 std::vector<std::uint8_t> pixels;
-                countHits(scene, {}, camera, size, pixels);
+                countHits(scene, face, camera, size, pixels);
 
                 return mRadiance[at];
             };
 
             camera.mMoons[0] = facing;
             EXPECT_NEAR(sky(centre), Shaders::MOON_RADIANCE, 0.01f) << "the disc is not what it should be";
+
+            camera.mMoons[0].mFace = 0u;
+            EXPECT_NEAR(sky(centre), 64.0f / 255.0f * Shaders::MOON_RADIANCE, 0.01f) << "the face was not read";
+            face[0].mSource = TextureSource::StandIn;
+            EXPECT_NEAR(sky(centre), Shaders::MOON_RADIANCE, 0.01f) << "a face that stands in was drawn";
+            camera.mMoons[0].mFace = Shaders::NO_TEXTURE;
 
             // The sun put exactly behind it, which is what an eclipse is and what the moons used to
             // take their share of alone.
@@ -206,6 +218,54 @@ namespace Rtx::Testing
             camera.mMoons[1] = facing;
             camera.mMoons[1].mColour = osg::Vec3f(0.25f, 0.25f, 0.25f);
             EXPECT_NEAR(sky(centre), 0.25f * Shaders::MOON_RADIANCE, 0.01f) << "two moons were added together";
+        }
+
+        /// A painted patch of the night sky adds its sheet where it stands, and nothing where its
+        /// sheet stands in.
+        ///
+        /// One patch square to the camera's axis, forty-five degrees up, over a sky set to nothing
+        /// and under a star field faded full, which is what the patches are drawn under. A sheet of
+        /// one white texel adds `NEBULA_RADIANCE` at the middle of the patch; the stand-in's grey
+        /// would add a quarter of it, and a patch whose sheet stands in adds nothing at all.
+        TEST_F(RtxVisibilityTest, aSkyPatchAddsItsSheetAndNothingWhereTheSheetStandsIn)
+        {
+            constexpr std::uint32_t size = 32;
+            constexpr std::size_t centre = centreValueOf(size);
+
+            constexpr std::array<std::uint8_t, 4> white{ 255, 255, 255, 255 };
+            std::array<TextureData, 1> sheet{ describeTexel(white) };
+
+            SceneDesc scene;
+            scene.textures().add(VFS::Path::NormalizedView("nebula.dds"));
+            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                .mMesh
+                = scene.addMesh(MeshArrays{ .mPositions = sheetAt(4000.0f, -2000.0f), .mIndices = sQuadIndices }) });
+
+            Shaders::VisibilityConstants camera = Testing::makeCamera(
+                osg::Vec3f(0.0f, 0.0f, 0.0f), osg::Vec3f(0.0f, 1000.0f, 1000.0f), 60.0f, size, size, 100000.0f);
+            camera.mSkyHorizon = osg::Vec3f();
+            camera.mSkyZenith = osg::Vec3f();
+            camera.mSun.mIrradiance = osg::Vec3f();
+            camera.mStars.mFade = 1.0f;
+
+            const float root = std::sqrt(0.5f);
+            camera.mSkyPatches[0] = Shaders::SkyPatch{
+                .mDirection = osg::Vec3f(0.0f, root, root),
+                .mRight = osg::Vec3f(1.0f, 0.0f, 0.0f),
+                .mUp = osg::Vec3f(0.0f, -root, root),
+                .mLimb = 0.2f,
+                .mTexture = 0u,
+            };
+
+            const auto sky = [&]() {
+                std::vector<std::uint8_t> pixels;
+                countHits(scene, sheet, camera, size, pixels);
+                return mRadiance[centre];
+            };
+
+            EXPECT_NEAR(sky(), Shaders::NEBULA_RADIANCE, 1.0e-4f) << "the patch's sheet was not added";
+            sheet[0].mSource = TextureSource::StandIn;
+            EXPECT_EQ(sky(), 0.0f) << "a patch whose sheet stands in was added";
         }
 
         /// The deck shadows the ground under it, and what darkens is the alpha over the sheet's mean.
@@ -267,6 +327,15 @@ namespace Rtx::Testing
             // every frame with no cloud over it passes without knowing it.
             camera.mClouds.mOpacity = 0.0f;
             EXPECT_NEAR(floorUnder(0.0f), 0.31831f, 1.0e-4f);
+
+            // Nor where the sheet stands in, which is no deck: its grey is no cloud to cast.
+            camera.mClouds.mOpacity = 1.0f;
+            camera.mClouds.mCover = 0.0f;
+            std::array<TextureData, 1> standing = sheet;
+            standing[0].mSource = TextureSource::StandIn;
+            std::vector<std::uint8_t> pixels;
+            countHits(scene, standing, camera, size, pixels);
+            EXPECT_NEAR(mRadiance[centre], 0.31831f, 1.0e-4f) << "a deck whose sheet stands in shadowed the floor";
         }
 
         /// The deck takes its shape from what the sheet paints, read against what that sheet averages.
@@ -278,6 +347,11 @@ namespace Rtx::Testing
         /// against a quarter it is over and held there. A sheet nothing could average takes no ratio
         /// and reads as the average cloud it could not measure.
         ///
+        /// **A sheet that stands in is no sheet.** The weather ahead blended in whole, at a quarter
+        /// of the mean, is `0.2 + 0.4 * 0.25 / 2 = 0.25`; the same sheet standing in leaves the near
+        /// one alone at 0.4, and a near sheet that stands in is no deck, which leaves the sky behind
+        /// it: nothing.
+        ///
         /// The sky behind it is set to nothing and the deck covers everything, so what the middle
         /// pixel carries is the deck alone.
         TEST_F(RtxVisibilityTest, theDeckTakesItsShapeFromWhatTheSheetPaints)
@@ -287,12 +361,14 @@ namespace Rtx::Testing
 
             SceneDesc scene;
             scene.textures().add(VFS::Path::NormalizedView("cloud.dds"));
+            scene.textures().add(VFS::Path::NormalizedView("cloud_ahead.dds"));
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
                 .mMesh
                 = scene.addMesh(MeshArrays{ .mPositions = sheetAt(4000.0f, -2000.0f), .mIndices = sQuadIndices }) });
 
             constexpr std::array<std::uint8_t, 4> white{ 255, 255, 255, 255 };
-            const std::array<TextureData, 1> sheet{ describeTexel(white) };
+            constexpr std::array<std::uint8_t, 4> dim{ 64, 64, 64, 255 };
+            std::array<TextureData, 2> sheets{ describeTexel(white, 0), describeTexel(dim, 1) };
 
             // Forty-five degrees up, which puts every ray on the deck and none of them on its pole.
             Shaders::VisibilityConstants camera = Testing::makeCamera(
@@ -320,7 +396,7 @@ namespace Rtx::Testing
                 camera.mClouds.mMean = mean;
 
                 std::vector<std::uint8_t> pixels;
-                countHits(scene, sheet, camera, size, pixels);
+                countHits(scene, sheets, camera, size, pixels);
 
                 return mRadiance[centre];
             };
@@ -329,6 +405,15 @@ namespace Rtx::Testing
             EXPECT_NEAR(deck(0.5f), 0.6f, 1.0e-3f) << "twice the mean is a cloud in full sun";
             EXPECT_NEAR(deck(0.25f), 0.6f, 1.0e-3f) << "and four times over is held there";
             EXPECT_NEAR(deck(0.0f), 0.4f, 1.0e-3f) << "a sheet nobody could average took a ratio anyway";
+
+            camera.mClouds.mNext = 1u;
+            camera.mClouds.mBlend = 1.0f;
+            EXPECT_NEAR(deck(1.0f), 0.25f, 1.0e-3f) << "the weather ahead, blended in whole";
+            sheets[1].mSource = TextureSource::StandIn;
+            EXPECT_NEAR(deck(1.0f), 0.4f, 1.0e-3f) << "a sheet ahead that stands in was blended in";
+            sheets[1].mSource = TextureSource::File;
+            sheets[0].mSource = TextureSource::StandIn;
+            EXPECT_EQ(deck(1.0f), 0.0f) << "a deck whose sheet stands in was drawn";
         }
 
         /// The display pass draws the star field, and draws it only where a ray reached the sky.
@@ -352,7 +437,7 @@ namespace Rtx::Testing
                 = scene.addMesh(MeshArrays{ .mPositions = sheetAt(4000.0f, -400.0f), .mIndices = sQuadIndices }) });
 
             constexpr std::array<std::uint8_t, 4> white{ 255, 255, 255, 255 };
-            const std::array<TextureData, 1> sheet{ describeTexel(white) };
+            std::array<TextureData, 1> sheet{ describeTexel(white) };
 
             Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -2000.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
@@ -414,6 +499,11 @@ namespace Rtx::Testing
             // says the covering was the cause, rather than the black the disc is painted.
             camera.mMoons[0].mAlpha = 0.0f;
             EXPECT_GT(brightest(true)[0], 128) << "the moon was not what put the field out";
+
+            // And a field whose sheet stands in draws nothing, where its grey would be a star in
+            // every direction.
+            sheet[0].mSource = TextureSource::StandIn;
+            EXPECT_EQ(brightest(true)[0], without[0]) << "a field whose sheet stands in drew stars";
         }
 
         /// The sun glare fader washes the whole picture by how much of the sun's quad the eye can

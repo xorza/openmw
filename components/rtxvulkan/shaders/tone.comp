@@ -96,7 +96,8 @@ void main()
     // side of it — which against a sheet that is 99% transparent is a star at the edge of a rock
     // once in a while, and the four taps that would rule it out are four times the traffic for it.
     // The traced pixel under this one's centre, which is the one the puffs' composite read too.
-    if (frame.mStars.mTexture != NO_TEXTURE)
+    TexelTable texels = TexelTable(frame.mTextureTexels);
+    if (holdsTexture(texels, frame.mStars.mTexture))
     {
         const uvec2 traced = tracedPixelUnder(pixel, extent, uvec2(frame.mTracedWidth, frame.mTracedHeight));
         const vec3 shown = imageLoad(starsShown, ivec2(traced)).rgb;
@@ -116,7 +117,7 @@ void main()
 
         if (any(greaterThan(shown, vec3(0.0))) && puffs > 0.0)
             lit.rgb += shown * puffs
-                * starField(frame.mStars, rayAt(frame.mCamera, vec2(pixel)).mDirection, pixelBlur(frame.mCamera));
+                * starField(frame.mStars, texels, rayAt(frame.mCamera, vec2(pixel)).mDirection, pixelBlur(frame.mCamera));
     }
 
     // The curve maps radiance to a display; coverage is not radiance and passes through it, and

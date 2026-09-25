@@ -88,8 +88,9 @@ namespace Rtx
                 continue;
             }
 
-            // Opened and asked here and not left to the upload, which would draw a sheet it cannot
-            // take as the opaque grey stand-in: over a deck, the whole sky.
+            // Opened and asked here, where the deck's mean and cover are read off the image anyway:
+            // a sheet the upload cannot take is left out here, refused as the sky layer it is, and
+            // takes no slot to stand in, which the device would read as no deck.
             const Result<osg::ref_ptr<const osg::Image>, std::string> image
                 = openImage(*scenes.getImageManager(), path);
             if (!image.isOk())

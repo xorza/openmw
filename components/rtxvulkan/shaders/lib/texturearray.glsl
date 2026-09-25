@@ -37,4 +37,18 @@ layout(set = SET_TEXTURES, binding = TEXTURE_BIND_IMAGES) uniform sampler2D text
 /// Stored over the range `SHADING_FLOOR` to `SHADING_CEILING`, which `paintedLight` decodes.
 layout(set = SET_TEXTURES, binding = TEXTURE_BIND_SHADING) uniform sampler2D shadingMaps[];
 
+/// How many texels each slot holds, with `TEXTURE_STANDS_IN` over the count where the slot draws the
+/// stand-in — `GpuTables::mTextureTexels`, handed to each pass by address.
+layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_ROWS) readonly buffer TexelTable
+{
+    uint at[];
+};
+
+/// Whether `slot` holds what was named for it: a slot at all, and not one the backend stands in
+/// for. What a reader of an optional map asks before the read — `TEXTURE_STANDS_IN` says why.
+bool holdsTexture(TexelTable texels, uint slot)
+{
+    return slot != NO_TEXTURE && (texels.at[slot] & TEXTURE_STANDS_IN) == 0u;
+}
+
 #endif

@@ -28,12 +28,15 @@ namespace Rtx
         /// the same test `spritecomposite.rgen` makes — and where that composite drew nothing, the
         /// pass finds out for itself from what it is handed here.
         Shaders::ToneConstants toneFor(const Shaders::VisibilityConstants& frame, const VkDeviceAddress spriteTileList,
-            std::uint32_t width, std::uint32_t height, std::uint32_t tracedWidth, std::uint32_t tracedHeight)
+            const VkDeviceAddress textureTexels, std::uint32_t width, std::uint32_t height, std::uint32_t tracedWidth,
+            std::uint32_t tracedHeight)
         {
             assert(spriteTileList != 0 && "a curve told no tile list to test the puffs by");
+            assert(textureTexels != 0 && "a curve told no texel counts to test the star sheet by");
 
             return Shaders::ToneConstants{
                 .mSpriteTileList = spriteTileList,
+                .mTextureTexels = textureTexels,
                 .mAdditiveInFrame = frame.mAdditiveInFrame,
                 .mTracedWidth = tracedWidth,
                 .mTracedHeight = tracedHeight,
@@ -135,8 +138,8 @@ namespace Rtx
                 .mBloom = what.mBloom ? mBloom.getPyramid() : nullptr,
                 .mTextures = what.mInputs.mTextures,
                 .mTarget = what.mTarget,
-                .mConstants = toneFor(what.mSampled, what.mSpriteTileList, what.mExtent.width, what.mExtent.height,
-                    channels.getWidth(), channels.getHeight()),
+                .mConstants = toneFor(what.mSampled, what.mSpriteTileList, what.mInputs.mTextureTexels,
+                    what.mExtent.width, what.mExtent.height, channels.getWidth(), channels.getHeight()),
             });
         closeZone(what.mTimer, commands);
 
