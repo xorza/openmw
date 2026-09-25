@@ -201,9 +201,10 @@ DirectLight gather(Surface surface, Gloss gloss, uint seed, uint path)
     //
     // **The lobe takes the held lamp at the lamp's own falloff**, off its row, and the reservoir's
     // share: the estimate of the lobe over every lamp is then the one the diffuse half makes, with
-    // the lobe where the cosine was.
+    // the lobe where the cosine was. A glossy surface weighs each lamp by both — `weighLamps` says
+    // why — and either estimate is unbiased under any weight positive where its term is.
     Reservoir kept = noLamps();
-    weighLamps(kept, state, position, normal, side, INV_PI, transmission);
+    weighLamps(kept, state, position, normal, side, INV_PI, transmission, gloss, surface.mAlbedo);
 
     float lampShare;
     const vec3 lampDiffuse = lampsThrough(kept, lampDraw, lampShare);

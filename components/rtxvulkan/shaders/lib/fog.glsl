@@ -713,7 +713,7 @@ vec3 lampsInAir(inout Reservoir kept, inout uint state, vec3 origin, vec3 direct
 
             const vec3 share = held.mIntensity * (INV_FOUR_PI * crossed);
             scattered += share;
-            considerLamp(kept, state, place, share, row);
+            considerLamp(kept, state, place, share, dot(share, LUMINANCE_WEIGHTS), row);
         }
 
         if (leave >= exit)

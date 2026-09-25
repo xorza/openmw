@@ -12,6 +12,7 @@
 #include "scene.h"
 #include "sky.h"
 #include "bindings.glsl"
+#include "gloss.glsl"
 #include "random.glsl"
 #include "sky.glsl"
 #include "traversal.glsl"
@@ -330,12 +331,13 @@ SkyChoice skyChoiceAt(uint source, vec3 normal, vec3 side, float transmission, b
 /// **The reservoir's own rule, written once**, because two walks feed it: the point one below, and
 /// the walk along a ray that `lampsInAir` takes. A second copy of this is a second chance for the
 /// two to disagree about what unbiased means.
+/// @param weight what the candidate is weighed by — the target, a scalar because a colour cannot be
+///        drawn in proportion to — and positive wherever `unshadowed` is anything the asker keeps.
+///        The luminance of what the pixel receives, because what it decides is which lamp this
+///        pixel would most notice the loss of.
 /// @param lamp which row of the light table the candidate is.
-void considerLamp(inout Reservoir kept, inout uint state, vec3 from, vec3 unshadowed, uint lamp)
+void considerLamp(inout Reservoir kept, inout uint state, vec3 from, vec3 unshadowed, float weight, uint lamp)
 {
-    // A scalar to weigh a colour by, which is what a target function has to be. The luminance,
-    // because what it decides is which lamp this pixel would most notice the loss of.
-    const float weight = dot(unshadowed, LUMINANCE_WEIGHTS);
     if (!(weight > 0.0))
         return;
 
@@ -366,8 +368,15 @@ void considerLamp(inout Reservoir kept, inout uint state, vec3 from, vec3 unshad
 ///        `INV_FOUR_PI` times a step's weight for the air.
 /// @param transmission what the far side of a sheet is worth, out of `Surface::mTransmission`.
 ///        Nought for a solid and for a point in a medium, which has no far side.
-void weighLamps(
-    inout Reservoir kept, inout uint state, vec3 from, vec3 normal, vec3 side, float scale, float transmission)
+/// @param gloss the surface's specular half, and `diffuse` its diffuse albedo: **a glossy surface
+///        weighs a lamp by all it sends back**, the diffuse half net of what the lobe took and the
+///        lobe, so a metal — which has no diffuse half — holds the lamps its highlights come from.
+///        Weighed by the cosine alone, it held them as often as the lamps behind its shoulder. A
+///        surface with no lobe keeps the cosine's weight per unit albedo, which is the target every
+///        vanilla picture was drawn with: weighed by its albedo, a coloured lamp would be held more
+///        or less often than before.
+void weighLamps(inout Reservoir kept, inout uint state, vec3 from, vec3 normal, vec3 side, float scale,
+    float transmission, Gloss gloss, vec3 diffuse)
 {
     const bool sided = dot(normal, normal) > 0.0;
 
@@ -394,8 +403,18 @@ void weighLamps(
             ? float(held.mFill) * clamp(1.0 - lamp.mDistance / held.mSourceRadius, 0.0, 1.0)
             : 0.0;
         const float cosine = mix(faced, 1.0, depth);
+        const vec3 unshadowed = held.mIntensity * (cosine * lamp.mReaching * scale);
 
-        considerLamp(kept, state, from, held.mIntensity * (cosine * lamp.mReaching * scale), row);
+        float weight = dot(unshadowed, LUMINANCE_WEIGHTS);
+        if (gloss.mGlossy)
+        {
+            const Reflection reflected = reflectionAt(gloss, side, lamp.mTowards);
+            weight = dot(unshadowed * diffuse * (1.0 - reflected.mFresnel)
+                    + held.mIntensity * lamp.mReaching * reflected.mLobe,
+                LUMINANCE_WEIGHTS);
+        }
+
+        considerLamp(kept, state, from, unshadowed, weight, row);
     }
 }
 

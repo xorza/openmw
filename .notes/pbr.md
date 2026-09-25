@@ -1,6 +1,7 @@
 # PBR materials in the RTX renderer
 
-Status: phases 0 to 6 are built; phase 7, the measured follow-ups, is next.
+Status: phases 0 to 7 are done. Of phase 7, the lamp target is built, specular aliasing is
+deferred, and the AO, SSS and reflection-motion items are measured and not built.
 
 ## 1. Summary
 
@@ -383,6 +384,8 @@ Built in phase 4.
   maps' code compiled in, every vanilla view traced a different frame by a rounding — the driver
   fused the Lambert arithmetic around the new code differently — though not one hit ran it.
 - **The kernel table doubles on the trace's side**: 16 visibility and 8 froxel launches.
+- **The lamp target (phase 7)** costs the trace 0.18 to 0.21 ms in the lit interiors on the PBR
+  profile, and nothing on vanilla.
 - **Parallax (phase 6)** costs the trace 0.08 to 0.11 ms at Balmora, and nothing measurable at the
   ship or in the guild: one more fetch where a layer or a surface carries a height.
 - **Terrain (phase 5)** costs the trace 0.08 to 0.27 ms where ground is in sight with its normal
@@ -619,6 +622,49 @@ plan).
 
 **Phase 7 — measured follow-ups.** The lamp target with specular, specular aliasing, the AO A/B,
 the SSS A/B, the RR specular hit distance.
+- **The lamp target with specular: built.** A glossy surface weighs a lamp by the luminance of
+  all it sends back, `I · reach · (cos / π · c_diff · (1 − F) + lobe)`; a surface with no lobe
+  keeps the cosine per unit albedo, which is every vanilla picture's target. `considerLamp` takes
+  the weight from its caller, and the air keeps its own. Measured against a 1024-frame reference
+  on the PBR profile, a 16-frame accumulation's error over the lit pixels falls from 3.40 to 2.01
+  in the census office (the guard's steel) and stays at 2.70 in the guild. The two targets'
+  1024-frame pictures agree to +0.010 of 255 over the lit pixels, so the new one is unbiased.
+  Test: `aMetalHoldsTheLampsItsLobeReturnsAndIsSampledWithNoNoise` (a grey metal under two lamps
+  is its two lobes summed in one frame, which the old target misses by a factor of five). Vanilla:
+  all 23 views and 184 frame hashes the same. **Bench** (the phase 7 entry of `.notes/bench.txt`):
+  0.20 ms of trace in the census office and 0.18–0.20 in the guild on the PBR profile, five to six
+  per cent, the ship and vanilla inside the spread — the lobe evaluated for every lamp a glossy hit
+  weighs. Kept: in the census office it is the equal of 2.9 times the samples.
+- **Specular aliasing: measured.** Over 120 installed `_n` and `_nh` files, the mean length of the
+  decoded normal falls from 1.009 at level 0 to 0.942 at levels 5–8 (the tenth percentile from
+  0.978 to 0.865): the mips are box-filtered and not renormalized, so Toksvig's variance is there.
+  **But level 0 is not unit**: BC1's 565 endpoints spread it by a few per cent either way, and a
+  length of 0.97 read as variance adds 0.06 to α² — a mirror metal floored at α ≈ 0.24 when fully
+  magnified. The established fix is a variance baked from the renormalized finest level, per mip,
+  which on the device is one more chain per normal map. **Deferred** by decision, with this
+  measurement kept for when it is built.
+- **The AO A/B and the SSS A/B: measured, and neither changes a picture.** Both were built as
+  temporary switches, in the form the maps were authored for (the OpenMW PBR shaders): AO as a
+  factor on the bounce's diffuse half, the ambient term here, and SSS as that shader set's "fake
+  SSS", `(min(c, 1.5 - c) * 4/3)^3 * max(0, 3 (1 - |n.l|) - 2) * 0.1 * sss` of each light. Over the
+  23 PBR views the mean change is at most -0.16 of 255 for AO and nothing for SSS, and the largest
+  local change of either is a scene loaded in another order, not the switch. The content says
+  why: the `_spec` maps' blue averages 0.964 (tenth percentile 0.904, under 1% of files below 0.8
+  on average), and only 24 in 300 carry an SSS alpha, whose term is a tenth of a cubed colour in a
+  narrow band at the terminator. Nothing was kept; whether to read either is the user's choice.
+- **The RR specular hit distance: not needed as such, and a gap found.** The guide asks for the
+  hit distance only where specular motion vectors are not given. They are given, but for water
+  alone (`answer.mWater ? mirrorMotionOf(...) : 0`): every glossy reflection phase 4 added reaches
+  Ray Reconstruction as one that does not move. **Measured, and not worth closing on this
+  content.** The census office, strafed past the guard at 120 units a second over 60 frames and at
+  480 over 15, arriving at a still view, upscaled at `balanced` and measured against that view
+  accumulated 1024 times, over the armour's 29,813 strongest-reflecting pixels: 14.01 and 14.06
+  with no reflection motion, 13.96 and 14.04 with the lobe's hit mirrored about the surface's plane
+  (built as a switch through the answer's mirror record, and reverted), against 13.85 for the still
+  view upscaled with no motion at all. **That last figure bounds any route**, the hit distance
+  handed to Ray Reconstruction included: motion adds a sixth of a point to an error of fourteen,
+  because the installed metals are rough and the network blurs their reflections anyway. Nothing
+  was kept; a mirror-smooth metal would be the case that reopens it.
 
 **Documentation.** `docs/rtx/architecture.md` §7.7 and AGENTS.md change with phase 1 (decision 1).
 `material.hpp` and `surface.hpp` lose the "by decision" text in the same phase.

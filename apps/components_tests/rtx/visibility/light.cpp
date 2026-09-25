@@ -847,6 +847,83 @@ namespace Rtx::Testing
             }
         }
 
+        /// **A glossy surface holds its lamps by what they send back through the lobe**, and a grey
+        /// metal under two lamps is then sampled with no variance at all: its lobe is all it returns,
+        /// so a lamp's weight is its term, and whichever lamp is held, the estimate is the two lobes
+        /// summed. One frame is the host's sum, to float rounding.
+        ///
+        /// The wall, camera and metal of the specular test, and two lamps fifty units from the
+        /// middle of the wall, each delivering that test's `1.59904` square to its direction: one
+        /// along `(0, -1, 0)` and one along `(-0.6, -0.8, 0)`, nearer the eye's mirror direction.
+        /// Weighed by the diffuse cosine instead, a frame holding either is that lamp's lobe times
+        /// `1.8` over its own cosine — which is the sum only where the second lamp's lobe is 0.8 of
+        /// the first's, and at these directions it is more than the first's.
+        TEST_F(RtxVisibilityTest, aMetalHoldsTheLampsItsLobeReturnsAndIsSampledWithNoNoise)
+        {
+            constexpr std::uint32_t size = 33;
+            constexpr std::size_t centre = centreValueOf(size);
+
+            constexpr std::array<std::uint8_t, 4> sBaseTexel{ 128, 128, 128, 255 };
+            constexpr std::array<std::uint8_t, 4> sMetalTexel{ 255, 128, 255, 255 };
+            const std::array<TextureData, 2> textures{ describeTexel(sBaseTexel, 0), describeTexel(sMetalTexel, 1) };
+
+            const osg::Vec3f normal(0.0f, -1.0f, 0.0f);
+            const osg::Vec4f tangent(1.0f, 0.0f, 0.0f, 1.0f);
+            const std::array normals{ normal, normal, normal, normal };
+            const std::array tangents{ tangent, tangent, tangent, tangent };
+
+            SceneDesc scene;
+            const Index mesh = scene.addMesh(MeshArrays{ .mPositions = sWallQuad,
+                .mNormals = normals,
+                .mTexCoords = sQuadUv,
+                .mTangents = tangents,
+                .mIndices = sQuadIndices });
+            const Index diffuse = scene.textures().add(VFS::Path::NormalizedView("base.dds"));
+            const Index map = scene.textures().add(
+                VFS::Path::NormalizedView("base_spec.dds"), TextureWrap::Repeat, TextureEncoding::Data);
+            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                .mMesh = mesh,
+                .mMaterial = scene.addMaterial(Material{ .mDiffuse = diffuse, .mSpecular = map }) });
+
+            const osg::Vec3f toFirst(0.0f, -1.0f, 0.0f);
+            const osg::Vec3f toSecond(-0.6f, -0.8f, 0.0f);
+            for (const osg::Vec3f& towards : { toFirst, toSecond })
+                scene.addLight(Light{
+                    .mPosition = towards * 50.0f,
+                    .mIntensity = osg::Vec3f(4000.0f, 4000.0f, 4000.0f),
+                    .mReach = 500.0f,
+                });
+
+            const Shaders::VisibilityConstants camera = Testing::makeCamera(
+                osg::Vec3f(100.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
+
+            const float irradiance = 4000.0f * 3.99760e-4f;
+            const float reflectance = 128.0f / 255.0f;
+            const float roughness = 128.0f / 255.0f;
+            const osg::Vec3f toEye = osg::Vec3f(1.0f, -1.0f, 0.0f) / std::sqrt(2.0f);
+            const auto lobe = [&](const osg::Vec3f& toLamp) {
+                osg::Vec3f halfway = toEye + toLamp;
+                halfway.normalize();
+                const float toLight = normal * toLamp;
+                const float eyeCosine = normal * toEye;
+                const float alpha = Shaders::ggxAlpha(roughness);
+                const osg::Vec2f table = SpecularAlbedo::shared().at(eyeCosine, roughness);
+                const float fresnel = Shaders::fresnelSchlick(
+                    reflectance, Shaders::specularEdge(reflectance), Shaders::schlickWeight(toEye * halfway));
+                return irradiance * fresnel * Shaders::specularCompensation(reflectance, table.y())
+                    * Shaders::ggxDistribution(alpha, normal * halfway)
+                    * Shaders::smithVisibility(alpha, eyeCosine, toLight) * toLight;
+            };
+
+            const float first = lobe(toFirst);
+            const float second = lobe(toSecond);
+            ASSERT_GT(second, 0.8f * first) << "the directions no longer tell the two targets apart";
+
+            std::vector<std::uint8_t> pixels;
+            EXPECT_GT(countHits(scene, textures, camera, size, pixels), 0u);
+            EXPECT_NEAR(mRadiance[centre], first + second, (first + second) * 1e-4f);
+        }
+
         /// Which side of a surface the light may come from is the triangle's plane's answer, and a
         /// vertex normal that disagrees does not get to overrule it.
         ///
