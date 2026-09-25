@@ -1,6 +1,6 @@
 # PBR materials in the RTX renderer
 
-Status: phases 0 to 3 are built; phase 4, the specular bounce, is next.
+Status: phases 0 to 4 are built; phase 5, terrain, is next.
 
 ## 1. Summary
 
@@ -294,18 +294,34 @@ Built in phase 3.
 
 ### 5.8 The bounce
 
-- One ray, as today. A draw from its own sequence (`SEED_BOUNCE_LOBE`, new) picks the lobe with the
-  chance `p = lum(Es) / (lum(Es) + lum(c_diff))`, where `Es` is the specular albedo from the table.
-  With F0 = 0, `p` is exactly 0, the draw decides nothing, and the diffuse direction draws are the
-  same draws as today. That is the pattern of `SEED_SHEET_SIDE`.
-- Diffuse lobe: the cosine sample of today, weighted by `(1 - F(v·h)) / (1 - p)`.
-- Specular lobe: a VNDF sample (spherical caps) about the mapped normal. The weight is
-  `F · G2 / G1 · compensation / p`. A direction behind the plane returns nothing (`behindTheFace`),
-  as today.
-- The cone opens with the lobe, not with `BOUNCE_SPREAD`. The spread comes from the roughness and
-  must be measured.
-- The bounce rate (`mBounceRate`) applies to both lobes at first. Measure if glossy reflections
-  need every ray.
+Built in phase 4.
+
+- One ray, as before. **A Lambert surface draws nothing new**: its bounce is the cosine sample of
+  before, and the vanilla shots are the same frame for frame.
+- A glossy surface draws which half from its own sequence (`SEED_BOUNCE_LOBE`), with the chance
+  `p = lum(Es) / (lum(Es) + lum(c_diff))`, where `Es` is the compensated specular albedo from the
+  table. Only off a sheet's near face: the far face transmits, and `gather` gives a light behind a
+  sheet no lobe either.
+- Diffuse half: the cosine sample, weighted by `(1 - F(v·h)) / (1 - p)`, into the indirect channel.
+- Specular half: a VNDF sample about the mapped normal, by the spherical caps (`visibleNormal` in
+  `brdf.h`, which the table now integrates by too). The weight is `F · G2 / G1 · compensation / p`
+  (`smithShadowingGivenMasking`), into the direct channel (section 5.9). A reflection below the
+  shading normal's horizon or behind the plane brings nothing back and is not traced.
+- **Changed from the plan: the lobe's far hit is shaded as seen (`PATH_SEEN`), and its ray draws
+  the faces the picture shows**, as the water's reflection does. A reflection is what the pixel
+  shows, and at `PATH_INDIRECT` it lost the moons.
+- **One path through the shader**: both directions are drawn and the chance selects one, and one
+  `shadeAtPathEnd` call takes the path chosen at run time. Two calls, one per path, were two copies
+  of the whole far hit, and a warp whose lanes drew both halves ran both. The path chosen at run
+  time made `gather` divide a lone sun's weight by itself, which a device need not round to one,
+  so `gather` now takes a source that holds all the weight whole.
+- The cone: the pixel's spread and the lobe's width at half its peak, `ggxConeWidth`,
+  `4 atan(α sqrt((√2 - 1) / (1 - √2 α²)))`, derived rather than measured. Held at `BOUNCE_SPREAD`,
+  which it reaches at a roughness of 0.6. RTXPT widens a cone by `sqrt(1 / pdf)` of each sample, a
+  heuristic by its own comment; a width per lobe is what the water and the diffuse bounce use.
+- The escape is `skyGlow` for both halves: `gather` takes the lobe at the sun's centre, so the
+  disc would count the sun twice.
+- The bounce rate (`mBounceRate`) applies to both halves.
 
 ### 5.9 Guides and channels
 
@@ -370,8 +386,8 @@ reaches it.
 4. **AO.** Recommendation: not read, then an A/B.
 5. **Settled in phase 1: the maps load with the models**, on OpenMW's loading threads, as they do
    in GL. There is no pop and no new thread (section 5.4).
-6. **Specular bounce channel.** Recommendation: the direct channel now, a separate channel with
-   the non-RR denoiser.
+6. **Settled in phase 4: the specular bounce goes into the direct channel**, and a separate
+   channel waits for the non-RR denoiser.
 
 ## 7. Implementation plan
 
@@ -474,11 +490,36 @@ what was built, and where it left the plan).
   follows it. Vanilla is inside the spread at every place. The p99 and the worst frame are the
   desktop's in both arms.
 
-**Phase 4 — the specular bounce.**
-- `shading.glsl` `bounceLight`: the lobe draw, the VNDF sample, the weights, the cone. `SEED_BOUNCE_LOBE`.
-- Tests: the sampler's pdf against a histogram on the host, and the weight for F0 = 0.
-- Exit: vanilla pictures do not change. `bench` on the PBR profile reports the cost, with p99 and
-  the worst frame.
+**Phase 4 — the specular bounce.** Done (section 5.8 says what was built, and where it left the
+plan).
+- Built: `visibleNormal`, `smithShadowingGivenMasking` and `ggxConeWidth` in `brdf.h`, with
+  `normalize`, `atan` and `min` on the host's side of the shared headers; `SEED_BOUNCE_LOBE`;
+  `lobeSample` and `fresnelAt` in `gloss.glsl`; `bounceDraw`, `bounceArriving` and the two halves
+  of `Bounce` in `shading.glsl`, and the lobe's half into the direct light in `shadeSolid`.
+- Tests: `theVisibleNormalsAreDrawnByTheirDensity` (2^18 Hammersley draws a case against the
+  density integrated over each of 256 bins, within 2e-4 over nine eyes and roughnesses, where a
+  draw that ignores the eye is 5e-3 to 5e-2 off), `theSmithTermsAreReciprocalAndAgree` (`G2 / G1`
+  against Smith's `Λ`), `theConeWidthIsWhereTheDistributionFallsToHalf`, and the device's white
+  furnace, `aGlossyFloorUnderAnEvenSkyGivesBackWhatItReflects`: a white metal gives an even sky
+  back within 3e-5, and half a metal both of its halves within 2.5e-4. The table test's quadrature
+  moved to `lobeIntegrals` for it. **The weight at F0 = 0 is no weight at all**: a Lambert surface
+  draws nothing new, which the bounce tests and the vanilla shots hold exactly.
+- Vanilla: 9 of the 23 views, every interior among them, are the same as the phase 3 baseline
+  frame for frame, with and without DLSS. **The other 14 move in the direct light alone**, where one
+  sky source holds all the weight: phase 3 divided that source's light by its weight over itself,
+  which this device does not always round to one, and `gather` now takes it whole. At most four
+  pixels in two million move by one byte, in 8 of the 23 pictures without DLSS. The indirect light,
+  which the bounce's far hit shades through the same code, is the same frame for frame. **Decided:
+  the one path stays and the rounding goes**, which is the one place this phase moves a vanilla
+  picture; the two calls kept the rounding and ran the far hit twice in a mixed warp.
+- PBR: 21 of 23 views change. The census office guard's steel reflects the room, where phase 3
+  left a metal in shade dark. The mean moves by -1.2 to +3.8 per cent.
+- `bench`, the phase 4 entry of `.notes/bench.txt`: on the PBR profile the trace moves by under a
+  tenth of a millisecond at the ship, the guild and Balmora, and vanilla is inside the spread. The
+  far hit with a call per path cost 0.85 to 1.2 ms of trace, which is what the one path saves. The
+  tail does not tell the arms apart.
+- `rtx debug gate`: 550 component, 299 GPU and 22 game tests pass, 47 checks, and
+  `repeat --pairs=10` is identical.
 
 **Phase 5 — terrain.** Section 5.10. Tests: the layer normal sum, and `_diffusespec` replacing
 the diffuse.

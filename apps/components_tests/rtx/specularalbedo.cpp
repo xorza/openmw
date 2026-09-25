@@ -5,10 +5,11 @@
 #include <gtest/gtest.h>
 
 #include <osg/Vec2f>
-#include <osg/Vec3f>
 
 #include <components/rtx/shaders/brdf.h>
 #include <components/rtx/specularalbedo.hpp>
+
+#include "lobeintegrals.hpp"
 
 namespace Rtx
 {
@@ -19,41 +20,6 @@ namespace Rtx
         float cellCentre(std::uint32_t at)
         {
             return (static_cast<float>(at) + 0.5f) / static_cast<float>(Shaders::SPECULAR_TABLE_SIZE);
-        }
-
-        /// The table's two integrals at one eye cosine and roughness, by a midpoint rule over the light
-        /// direction's cosine and azimuth — a second way to the same numbers, sharing nothing with
-        /// the table's draws. Half the azimuths, doubled: the lobe is symmetric about the plane the
-        /// eye stands in.
-        osg::Vec2f quadrature(float cosine, float roughness)
-        {
-            constexpr std::uint32_t steps = 500;
-            const float alpha = Shaders::ggxAlpha(roughness);
-            const osg::Vec3f eye(std::sqrt(1.0f - cosine * cosine), 0.0f, cosine);
-
-            double climbing = 0.0;
-            double whole = 0.0;
-            for (std::uint32_t up = 0; up < steps; ++up)
-            {
-                const float lightCosine = (static_cast<float>(up) + 0.5f) / static_cast<float>(steps);
-                const float lightSine = std::sqrt(1.0f - lightCosine * lightCosine);
-                for (std::uint32_t round = 0; round < steps; ++round)
-                {
-                    const float azimuth = Shaders::PI * (static_cast<float>(round) + 0.5f) / static_cast<float>(steps);
-                    const osg::Vec3f light(lightSine * std::cos(azimuth), lightSine * std::sin(azimuth), lightCosine);
-                    osg::Vec3f half = eye + light;
-                    half.normalize();
-
-                    const float term = Shaders::ggxDistribution(alpha, half.z())
-                        * Shaders::smithVisibility(alpha, cosine, lightCosine) * lightCosine;
-                    climbing += static_cast<double>(term * Shaders::schlickWeight(eye * half));
-                    whole += static_cast<double>(term);
-                }
-            }
-
-            // Each cell of the rule is `d(cos) d(azimuth)` of solid angle, over half the circle twice.
-            const double cell = 2.0 * static_cast<double>(Shaders::PI) / (static_cast<double>(steps) * steps);
-            return osg::Vec2f(static_cast<float>(climbing * cell), static_cast<float>(whole * cell));
         }
 
         /// The Ray Reconstruction guide's `EnvBRDFApprox2`, as its scale on the reflectance at normal
@@ -93,7 +59,7 @@ namespace Rtx
                     const float roughness = cellCentre(row);
                     const float cosine = cellCentre(column);
                     const osg::Vec2f read = table.at(cosine, roughness);
-                    const osg::Vec2f expected = quadrature(cosine, roughness);
+                    const osg::Vec2f expected = Testing::lobeIntegrals(cosine, roughness);
 
                     EXPECT_NEAR(read.x(), expected.x(), 3e-4) << "climbing at " << cosine << ' ' << roughness;
                     EXPECT_NEAR(read.y(), expected.y(), 3e-4) << "whole at " << cosine << ' ' << roughness;

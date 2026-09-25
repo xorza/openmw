@@ -54,33 +54,18 @@ namespace Rtx
                 const float cosine = (static_cast<float>(column) + 0.5f) / static_cast<float>(sSize);
                 const osg::Vec3f eye(std::sqrt(1.0f - cosine * cosine), 0.0f, cosine);
 
-                // The eye in the lobe's stretched space, where the normals it can see are a spherical
-                // cap: Dupuy and Benyoub 2023. And how much of the surface it sees, Smith's `G1`.
-                osg::Vec3f stretched(eye.x() * alpha, eye.y() * alpha, eye.z());
-                stretched.normalize();
-                const float seen
-                    = 2.0f * cosine / (cosine + std::sqrt(alpha * alpha + (1.0f - alpha * alpha) * cosine * cosine));
-
                 double climbing = 0.0;
                 double whole = 0.0;
                 for (std::uint32_t at = 0; at < sSamples; ++at)
                 {
-                    const float height = (1.0f - raised[at]) * (1.0f + stretched.z()) - stretched.z();
-                    const float across = std::sqrt(std::clamp(1.0f - height * height, 0.0f, 1.0f));
-                    const osg::Vec3f cap
-                        = osg::Vec3f(across * turned[at].x(), across * turned[at].y(), height) + stretched;
-                    osg::Vec3f half(cap.x() * alpha, cap.y() * alpha, cap.z());
-                    half.normalize();
+                    const osg::Vec3f half = Shaders::visibleNormal(eye, alpha, raised[at], turned[at]);
 
                     const float eyeHalf = eye * half;
                     const float lightCosine = 2.0f * eyeHalf * half.z() - cosine;
                     if (!(eyeHalf > 0.0f) || !(lightCosine > 0.0f))
                         continue;
 
-                    // `D V (n.l)` over the density of the light direction, `G1 D / (4 (n.v))`: what is
-                    // left is `G2 / G1`.
-                    const float weight
-                        = Shaders::smithVisibility(alpha, cosine, lightCosine) * 4.0f * lightCosine * cosine / seen;
+                    const float weight = Shaders::smithShadowingGivenMasking(alpha, cosine, lightCosine);
                     climbing += static_cast<double>(weight * Shaders::schlickWeight(eyeHalf));
                     whole += static_cast<double>(weight);
                 }

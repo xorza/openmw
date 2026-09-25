@@ -106,6 +106,7 @@ set(RTX_TEST_SUPPORT
     rtx/guiquad.hpp
     rtx/heldimages.hpp
     rtx/layers.hpp
+    rtx/lobeintegrals.hpp
     rtx/statistics.hpp
     rtx/testcamera.hpp
     rtx/testtexture.hpp

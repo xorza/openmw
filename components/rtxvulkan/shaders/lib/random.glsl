@@ -92,6 +92,14 @@ uint paneAmbientSeed(uint layer)
 /// sequence decides.
 const uint SEED_BOUNCE_TRACED = SEED_AMBIENT_PANE + PEEL_LAYERS;
 
+/// And one for which half of a glossy surface the eye's bounce samples, its lobe or its diffuse.
+///
+/// **Beside the bounce's pair and not out of it**, for the reason `SEED_SHEET_SIDE` gives: the
+/// pair draws the direction within whichever half is chosen, and a choice made from one of its
+/// channels would tie which half to where in it. Drawn only by a surface with a specular half, so
+/// a Lambert surface draws what it drew before there was one.
+const uint SEED_BOUNCE_LOBE = SEED_BOUNCE_TRACED + 1u;
+
 /// How far each stream's sequence advances between frames.
 ///
 /// **An additive recurrence with an irrational step**, which is the cheapest sequence whose every

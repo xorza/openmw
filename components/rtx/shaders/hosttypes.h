@@ -40,13 +40,24 @@ namespace Rtx::Shaders
     using uint64 = std::uint64_t;
 
     // **The builtins a shared scalar curve spells**, so that a curve a test has to call reads on
-    // this side as it does in the shader: GLSL's `clamp(x, lo, hi)`, `log2`, `exp2`, `max` and
-    // `sqrt` are the standard library's under the same names and the same argument order.
+    // this side as it does in the shader: GLSL's `atan(y_over_x)`, `clamp(x, lo, hi)`, `log2`,
+    // `exp2`, `max`, `min` and `sqrt` are the standard library's under the same names and the same
+    // argument order.
+    using std::atan;
     using std::clamp;
     using std::exp2;
     using std::log2;
     using std::max;
+    using std::min;
     using std::sqrt;
+
+    /// GLSL's `normalize`, which OpenSceneGraph spells as a member that changes its vector: a
+    /// shared function that draws a direction reads its components as `v[i]` on both sides and
+    /// calls this.
+    inline vec3 normalize(const vec3& v)
+    {
+        return v * (1.0f / std::sqrt(v * v));
+    }
 }
 
 #else

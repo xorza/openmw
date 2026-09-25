@@ -4,6 +4,8 @@
 // What an ordinary lit surface does with light: the direct sources it can ask about, the
 // one bounce it traces for everything else, and the terms an upscaler demodulates by.
 
+#include "brdf.h"
+#include "camera.h"
 #include "colour.h"
 #include "look.h"
 #include "scene.h"
@@ -21,8 +23,9 @@
 ///
 /// **Not a count of bounces.** What separates them is whether the result is looked at: a seabed
 /// through water and a face in a mirror are each a bounce out and each is what the pixel shows, so
-/// they are lit like anything else the eye can see. Only the hemisphere sample's far hit is a term
-/// that nothing resolves on its own, and only there is a light worth dropping.
+/// they are lit like anything else the eye can see — and so is what a glossy surface's lobe
+/// reflects, which is the whole of what a metal shows. Only the diffuse hemisphere's far hit is a
+/// term that nothing resolves on its own, and only there is a light worth dropping.
 const uint PATH_SEEN = 0u;
 const uint PATH_INDIRECT = 1u;
 
@@ -159,18 +162,23 @@ DirectLight gather(Surface surface, Gloss gloss, uint seed, uint path)
         else if (masser.mWeight > 0.0 && scaled < sun.mWeight + masser.mWeight)
             picked = masser;
 
+        // **A source that holds all the weight is taken whole, and not divided by a chance of one.**
+        // Vulkan bounds a division by 2.5 ulp and does not round it, so a weight over itself need
+        // not be one — and the sums it is over are exact, since a source not asked weighs nought.
         const float chance = picked.mWeight / total;
+        const bool whole = !(picked.mWeight < total);
 
         const float skySeen = skyVisible(picked.mSky, position, sunDraw);
         const vec3 skyArriving
             = picked.mSky.mIrradiance * lightThroughWater(position, picked.mSky.mDirection, surface.mFootprint);
-        const vec3 skyDiffuse = skyArriving * (picked.mCosine * INV_PI * skySeen / chance);
+        const float skyLit = picked.mCosine * INV_PI * skySeen;
+        const vec3 skyDiffuse = skyArriving * (whole ? skyLit : skyLit / chance);
         radiance += skyDiffuse;
 
         if (gloss.mGlossy)
         {
             const Reflection reflected = reflectionAt(gloss, side, picked.mSky.mDirection);
-            specular += skyArriving * (skySeen / chance) * reflected.mLobe;
+            specular += skyArriving * (whole ? skySeen : skySeen / chance) * reflected.mLobe;
             taken += skyDiffuse * reflected.mFresnel;
         }
     }
@@ -397,8 +405,9 @@ vec3 shadeAtPathEnd(Surface hit, uint ambientSeed, uint lampSeed, uint path)
 
 /// What a bounce brings back when it reaches nothing.
 ///
-/// The glow and not the disc: the sun is already a term of its own in `gather`, and a bounce that
-/// found it in the sky would be the same light counted twice.
+/// The glow and not the disc: the sun is already a term of its own in `gather`, for the lobe as
+/// well as for the diffuse half, and a bounce that found it in the sky would be the same light
+/// counted twice.
 ///
 /// **A room has nothing outside it, so a ray that got out of one brings back nothing.** The dome a
 /// room draws is its fog colour standing in for the *picture* wherever a ray leaves the shell, and it
@@ -409,7 +418,7 @@ vec3 shadeAtPathEnd(Surface hit, uint ambientSeed, uint lampSeed, uint path)
 /// Dimmed by the column of water over the point, on `daylightReaching`'s vertical approximation and
 /// for its reason: this ray left for the sky and the sky is above, so what stands between them is the
 /// depth. Without it a flooded floor reads brighter than the same floor seen from over the surface.
-vec3 bounceEscape(vec3 position, vec3 towards, float weight)
+vec3 bounceEscape(vec3 position, vec3 towards, vec3 weight)
 {
     if (!skyLights())
         return vec3(0.0);
@@ -417,37 +426,110 @@ vec3 bounceEscape(vec3 position, vec3 towards, float weight)
     return weight * skyGlow(towards) * daylightReaching(position);
 }
 
-/// What reaches a surface from everything that is not a light: one diffuse bounce.
-///
-/// **Traced only from the hit the eye found.** A shader with no recursion cannot bounce a bounce, and
-/// it should not: what the second hit gathers is `pathEnd`, the flat ambient that stands in for the
-/// rest of the path. That is also what keeps `shadeSurface` from calling itself — the water's
-/// reflections already shade through it, and a bounce inside it would have no bottom.
-///
-/// A ray that finds nothing takes `bounceEscape`, which is what makes the sky an emitter rather than
-/// a backdrop: outdoors it is by far the largest source in the scene, and a surface facing it should
-/// be lit by it.
-vec3 bounceLight(Surface surface, uvec2 pixel)
+/// What one bounce brings back, in the two halves `shadeSolid` hands on apart.
+struct Bounce
 {
-    // A sheet bounces off either face, and `SEED_SHEET_SIDE` says why the side is not drawn from
-    // the pair the direction is. Drawn on every hit and not behind a test on the transmission: the
-    // sequence is its own, so a solid drawing from it moves no other, and `sampledFace` reads the
-    // draw only where there is a far side.
-    uint sideState = randomSeed(pixelKey(pixel) + SEED_SHEET_SIDE);
-    float weight;
-    const float face = sampledFace(surface.mTransmission, randomNext(sideState), weight);
+    /// Per unit albedo, as the direct light's diffuse half is: the composite multiplies it by the
+    /// diffuse albedo.
+    vec3 mDiffuse;
 
-    const vec3 towards = cosineDirection(surface.mNormal * face, unitPair(pixel, STREAM_BOUNCE));
+    /// Whole: what the lobe reflects toward the eye. **It joins the direct light, because it is not
+    /// multiplied by the diffuse albedo** — a metal has none, and in the indirect term its whole
+    /// reflection would be multiplied by nought. Ray Reconstruction takes the composite, so it sees
+    /// the same colour either way.
+    vec3 mSpecular;
+};
 
-    if (behindTheFace(towards, surface.mGeometric, face))
-        return vec3(0.0);
+/// Which way a bounce leaves, and what it is worth.
+struct BounceDraw
+{
+    vec3 mTowards;
 
+    /// What light arriving along `mTowards` is worth to the half that drew it, over the chance of
+    /// every draw that chose it but the sheet's side. Nought where the lobe reflected below the
+    /// shading normal's horizon.
+    vec3 mWeight;
+
+    /// Whether the lobe drew it. **A reflection is a picture of the world**, so its ray draws the
+    /// faces the world shows, as the water's does, and its far hit is shaded as seen — `PATH_SEEN`
+    /// says why.
+    bool mSpecular;
+
+    /// How fast the ray's cone opens: `BOUNCE_SPREAD` for the diffuse half, and for the lobe the
+    /// pixel's own spread widened by the lobe's width, `ggxConeWidth`, as the water widens its
+    /// reflection by its slopes. Never past `BOUNCE_SPREAD`, which is what a lobe as wide as the
+    /// diffuse one reads its textures at.
+    float mSpread;
+};
+
+/// Which way the eye's bounce leaves a surface, and what the light that arrives along it is worth.
+///
+/// **A Lambert surface draws what it always drew**: the cosine about the face `sampledFace` chose,
+/// worth one. Nothing it reads is drawn for the lobe, so a vanilla frame traces the directions it
+/// traced before there was one.
+///
+/// **A glossy surface draws which half, in proportion to what each sends toward the eye**: the
+/// lobe at the chance `lum(Es) / (lum(Es) + lum(c_diff))`, its specular albedo against its diffuse
+/// one, and each half's sample divided by its own chance, which keeps the sum unbiased. So a metal,
+/// which has no diffuse half, always draws its lobe, and a rough dielectric mostly draws its
+/// diffuse. The lobe's direction is `lobeSample`'s, worth its `F G2 / G1`; the diffuse one is the
+/// cosine's, worth `1 - F` at its half vector — the share `gather` takes off every light's diffuse
+/// half, for the same reason.
+///
+/// **Both directions are drawn and the chance selects one.** Which half is a coin per lane, so a
+/// branch on it would run both halves in nearly every warp; the select runs each once and jumps
+/// nowhere.
+///
+/// **Off the near face only.** The lobe reflects, and the far face of a sheet transmits: `gather`
+/// gives a light behind a sheet no lobe and its diffuse half the whole of it, and so does this.
+///
+/// **One pair for either half**, `STREAM_BOUNCE`'s: only one half is kept, so the pair's spread
+/// across the screen serves whichever it is.
+BounceDraw bounceDraw(Surface surface, Gloss gloss, float face, uvec2 pixel)
+{
+    const vec2 draw = unitPair(pixel, STREAM_BOUNCE);
+    const vec3 scattered = cosineDirection(surface.mNormal * face, draw);
+
+    BounceDraw drawn;
+    drawn.mTowards = scattered;
+    drawn.mWeight = vec3(1.0);
+    drawn.mSpecular = false;
+    drawn.mSpread = BOUNCE_SPREAD;
+
+    if (!gloss.mGlossy || face < 0.0)
+        return drawn;
+
+    // A metal's diffuse albedo is nought and its chance one, which the draw always takes; the
+    // diffuse weight it divides by nought is never the one selected.
+    const float reflected = dot(gloss.mAlbedo, LUMINANCE_WEIGHTS);
+    const float chance = reflected / (reflected + dot(surface.mAlbedo, LUMINANCE_WEIGHTS));
+
+    uint lobe = randomSeed(pixelKey(pixel) + SEED_BOUNCE_LOBE);
+    const bool specular = randomNext(lobe) < chance;
+
+    const LobeSample sampled = lobeSample(gloss, draw);
+    const vec3 diffuseWeight = (1.0 - fresnelAt(gloss, normalize(gloss.mToEye + scattered))) / (1.0 - chance);
+    const float lobeSpread
+        = min(coneAt(frame.mCamera).mSpread + ggxConeWidth(gloss.mAlpha, BOUNCE_SPREAD), BOUNCE_SPREAD);
+
+    drawn.mTowards = specular ? sampled.mTowards : scattered;
+    drawn.mWeight = specular ? sampled.mWeight / chance : diffuseWeight;
+    drawn.mSpecular = specular;
+    drawn.mSpread = specular ? lobeSpread : BOUNCE_SPREAD;
+
+    return drawn;
+}
+
+/// What arrives along a bounce's direction, times `weight`: the sky it escapes to, or the surface it
+/// lands on, shaded as the end of the path.
+vec3 bounceArriving(Surface surface, BounceDraw drawn, vec3 weight, uvec2 pixel)
+{
     // **Far ground out of doors is handed the escape rather than asked whether it escaped**, which
     // is the same answer the miss below arrives at by tracing for it. `BOUNCE_REACH` says what that
     // costs and why the room is not in it.
     const vec3 fromEye = surface.mPosition - frame.mOrigin;
     if (skyLights() && surface.mGround && dot(fromEye, fromEye) > BOUNCE_REACH * BOUNCE_REACH)
-        return bounceEscape(surface.mPosition, towards, weight);
+        return bounceEscape(surface.mPosition, drawn.mTowards, weight);
 
     // Drawn last, so the side, the direction and the escape are the numbers they were. One path
     // at a rate of one: no draw reaches it, and the weight is divided by one.
@@ -462,23 +544,64 @@ vec3 bounceLight(Surface surface, uvec2 pixel)
     // measured before the trace was split: 20 percent slower out of doors and 30 in a room, because
     // a bounce indoors is short and lands on the same few surfaces, so there is no coherence left to
     // recover. `Requirements::mInvocationReorder` holds every reading since.
-    // Not drawn: a bounce carries light, and a surface it met from behind still carries it.
-    const Surface hit = trace(
-        surface.mPosition, towards, SHADOW_BIAS, surface.mFootprint, BOUNCE_SPREAD, solidMask(frame.mRayMask), false);
+    // A diffuse bounce is not drawn: it carries light, and a surface it met from behind still
+    // carries it.
+    const Surface hit = trace(surface.mPosition, drawn.mTowards, SHADOW_BIAS, surface.mFootprint, drawn.mSpread,
+        solidMask(frame.mRayMask), drawn.mSpecular);
 
     if (!hit.mHit)
-        return bounceEscape(surface.mPosition, towards, weight);
+        return bounceEscape(surface.mPosition, drawn.mTowards, weight);
 
     // **Its glow is counted here, because this is the only path it takes.** Nothing gives a glowing
     // surface a lamp of its own — `EMISSIVE_INTENSITY` says what measuring that showed — so a ray
     // that lands on a mushroom cap is what carries the cap's glow back to whatever sent it.
+    //
+    // **One call with the path chosen, and not one per half.** Written out twice, the whole end of
+    // the path is two copies, and a warp whose lanes drew both halves runs them one after the
+    // other. Chosen at run time, the diffuse half's hit asks the moons and finds they weigh nought.
     return weight
-        * shadeAtPathEnd(
-            hit, pixelKey(pixel) + SEED_AMBIENT_REACHING, pixelKey(pixel) + SEED_LAMPS_BOUNCE, PATH_INDIRECT);
+        * shadeAtPathEnd(hit, pixelKey(pixel) + SEED_AMBIENT_REACHING, pixelKey(pixel) + SEED_LAMPS_BOUNCE,
+            drawn.mSpecular ? PATH_SEEN : PATH_INDIRECT);
+}
+
+/// What reaches a surface from everything that is not a light: one bounce, off the half
+/// `bounceDraw` chose.
+///
+/// **Traced only from the hit the eye found.** A shader with no recursion cannot bounce a bounce, and
+/// it should not: what the second hit gathers is `pathEnd`, the flat ambient that stands in for the
+/// rest of the path. That is also what keeps `shadeSurface` from calling itself — the water's
+/// reflections already shade through it, and a bounce inside it would have no bottom.
+///
+/// A ray that finds nothing takes `bounceEscape`, which is what makes the sky an emitter rather than
+/// a backdrop: outdoors it is by far the largest source in the scene, and a surface facing it should
+/// be lit by it.
+///
+/// @param gloss the surface's specular half, `glossOf`.
+Bounce bounceLight(Surface surface, Gloss gloss, uvec2 pixel)
+{
+    // A sheet bounces off either face, and `SEED_SHEET_SIDE` says why the side is not drawn from
+    // the pair the direction is. Drawn on every hit and not behind a test on the transmission: the
+    // sequence is its own, so a solid drawing from it moves no other, and `sampledFace` reads the
+    // draw only where there is a far side.
+    uint sideState = randomSeed(pixelKey(pixel) + SEED_SHEET_SIDE);
+    float sided;
+    const float face = sampledFace(surface.mTransmission, randomNext(sideState), sided);
+
+    const BounceDraw drawn = bounceDraw(surface, gloss, face, pixel);
+
+    // A reflection below the shading normal's horizon brings nothing back, and is not traced to
+    // find that out.
+    if (behindTheFace(drawn.mTowards, surface.mGeometric, face) || !(brightest(drawn.mWeight) > 0.0))
+        return Bounce(vec3(0.0), vec3(0.0));
+
+    const vec3 arriving = bounceArriving(surface, drawn, drawn.mWeight * sided, pixel);
+
+    return drawn.mSpecular ? Bounce(vec3(0.0), arriving) : Bounce(arriving, vec3(0.0));
 }
 
 /// What a solid the eye found is: its direct light, the one bounce it gathers, and what it is in the
-/// upscaler's terms.
+/// upscaler's terms. The lobe's bounce joins the direct light, for the reason `Bounce::mSpecular`
+/// gives.
 ///
 /// **One statement of what a ground pixel is, used twice** — for the hit itself, and for the bed
 /// under a waterline pixel, which is that ground and has to be shaded exactly as it. Written twice
@@ -486,9 +609,11 @@ vec3 bounceLight(Surface surface, uvec2 pixel)
 void shadeSolid(Surface hit, uvec2 pixel, out vec3 direct, out vec3 bounce, out SurfaceResponse response)
 {
     const Gloss gloss = glossOf(hit);
+    const vec3 lit = shadeSurface(hit, gloss, vec3(0.0), pixelKey(pixel) + SEED_LAMPS_EYE, PATH_SEEN);
+    const Bounce bounced = bounceLight(hit, gloss, pixel);
 
-    direct = shadeSurface(hit, gloss, vec3(0.0), pixelKey(pixel) + SEED_LAMPS_EYE, PATH_SEEN);
-    bounce = bounceLight(hit, pixel);
+    direct = lit + bounced.mSpecular;
+    bounce = bounced.mDiffuse;
     response = surfaceResponse(hit, gloss);
 }
 

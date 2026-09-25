@@ -33,6 +33,7 @@
 #include <components/vfs/pathutil.hpp>
 
 #include "../geometry.hpp"
+#include "../lobeintegrals.hpp"
 #include "../testcamera.hpp"
 #include "../testtexture.hpp"
 #include "fixture.hpp"
@@ -1531,6 +1532,111 @@ namespace Rtx::Testing
                 EXPECT_LT(alone / spread, float{ averaged })
                     << "channel " << channel << " converges no faster than a perfect sweep";
             }
+        }
+
+        /// **A glossy floor under an even sky gives back what its two halves reflect toward the eye**,
+        /// whichever half each pixel's bounce drew: the white furnace, for the specular bounce.
+        ///
+        /// The cosine test's floor and eye with the view narrowed to two degrees, so every pixel sees
+        /// the floor within 1.6 degrees of square on, under a sky of one radiance `L` and nothing
+        /// else: every bounce escapes, and a pixel's expected value is `L` times what the surface
+        /// reflects toward the eye. Read as the radiance rather than bytes, over four frames averaged.
+        ///
+        /// **The lobe reflects what `lobeIntegrals` finds square on, compensated off the table.** The
+        /// draw is the lobe at a cosine of one, where its whole is 0.91442; the compensation is read
+        /// at the table's last column, a cosine of 0.984, where the table holds 0.91286. So what a
+        /// white lobe gives back is `L` times their ratio, 1.7e-3 over `L` — the table's resolution
+        /// at its edge, which the frame measures and the expectation has to carry.
+        ///
+        /// - **A white metal**, `F0 = F90 = 1` and no diffuse half, reflects all of what reaches it:
+        ///   its compensation is `1 / whole`, so the frame averages `L` to that ratio. Every pixel
+        ///   draws the lobe, so this holds the visible-normal draw, its `G2 / G1` and the
+        ///   compensation. Uncompensated it averages `L whole`, 0.044 lower; drawn into the indirect
+        ///   term, the lobe's light is multiplied by a diffuse albedo of nought.
+        /// - **Half a metal**, `m = 128 / 255`: `F0 = 0.04 + 0.96 m` and `c_diff = 1 - m`, and each
+        ///   half drawn about as often. The lobe reflects its `Es`, from the integrals. The diffuse half
+        ///   reflects `c_diff (1 - F)` averaged over the cosine, which square on is closed: the half
+        ///   vector to a direction `θ` off the normal is `θ / 2` off it, so with `c = cos(θ / 2)`,
+        ///   `cosθ = 2c² - 1` and `sinθ dθ = -4c dc`, the average is `8 ∫ (1 - F(c)) (2c³ - c) dc`
+        ///   over `[1/√2, 1]`. The constant part is `(1 - F0)`, since `∫ (2c³ - c) dc = 1/8`; Schlick's
+        ///   takes `8 (F90 - F0) J` off it, with `x = 1 - c` and
+        ///   `J = ∫ x⁵ (1 - 5x + 6x² - 2x³) dx` over `[0, 1 - 1/√2]`, 1.0236e-5. A lobe whose weight
+        ///   left out its chance — the draw's `1 / p` — would average 0.12 lower.
+        ///
+        /// **2.5e-3 is four standard errors of independent draws.** One frame's pixels spread by 0.135
+        /// and 0.162 about their means, so 65536 draws put a mean within 6.3e-4 of its expectation a
+        /// standard error. The directions are blue noise and the choice of half a hash: measured, the
+        /// white metal lands within 3e-5 and half a metal within 2.5e-4. The rule's own error is
+        /// 1e-5, and the pixels' cosines, 0.9996 at the corners, move the lobe's whole by 8e-6 on
+        /// average.
+        TEST_F(RtxVisibilityTest, aGlossyFloorUnderAnEvenSkyGivesBackWhatItReflects)
+        {
+            constexpr std::uint32_t size = 128;
+            constexpr float sky = 0.5f;
+            constexpr std::uint8_t sRoughness = 128;
+            constexpr std::array<std::uint8_t, 4> sWhite{ 255, 255, 255, 255 };
+
+            Shaders::VisibilityConstants camera = Testing::makeCamera(
+                osg::Vec3f(0.0f, -1.0f, 300.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 2.0f, size, size, 100000.0f);
+            camera.mSkyHorizon = osg::Vec3f(sky, sky, sky);
+            camera.mSkyZenith = osg::Vec3f(sky, sky, sky);
+            camera.mAmbientFromSky = 1.0f;
+
+            // The red channel's mean across the frame.
+            const auto shade = [&](std::uint8_t metal) {
+                const std::array<std::uint8_t, 4> mapTexel{ metal, sRoughness, 255, 255 };
+                const std::array<TextureData, 2> textures{ describeTexel(sWhite, 0), describeTexel(mapTexel, 1) };
+
+                SceneDesc scene;
+                const Index diffuse = scene.textures().add(VFS::Path::NormalizedView("white.dds"));
+                const Index map = scene.textures().add(
+                    VFS::Path::NormalizedView("white_spec.dds"), TextureWrap::Repeat, TextureEncoding::Data);
+                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                    .mMesh = scene.addMesh(MeshArrays{
+                        .mPositions = sheetAt(4000.0f, 0.0f), .mTexCoords = sQuadUv, .mIndices = sQuadIndices }),
+                    .mMaterial = scene.addMaterial(Material{ .mDiffuse = diffuse, .mSpecular = map }) });
+
+                std::vector<std::uint8_t> pixels;
+                EXPECT_EQ(countHits(scene, textures, camera, size, pixels, { .mFrames = 4 }), size * size);
+
+                double sum = 0.0;
+                for (std::size_t at = 0; at < mRadiance.size(); at += 4)
+                    sum += static_cast<double>(mRadiance[at]);
+
+                return sum / (double{ size } * size);
+            };
+
+            const float roughness = static_cast<float>(sRoughness) / 255.0f;
+            const osg::Vec2f table = SpecularAlbedo::shared().at(1.0f, roughness);
+            const osg::Vec2f squareOn = lobeIntegrals(1.0f, roughness);
+
+            const double white = shade(255);
+            const double whole = squareOn.y();
+            EXPECT_NEAR(white, double{ sky } * whole / double{ table.y() }, 2.5e-3)
+                << "a white metal gives the sky back whole";
+            EXPECT_GT(std::abs(white - double{ sky } * whole), 0.04) << "and not the lobe's albedo uncompensated";
+
+            const float metal = 128.0f / 255.0f;
+            const float reflectance = Shaders::DIELECTRIC_F0 + (1.0f - Shaders::DIELECTRIC_F0) * metal;
+            const float edge = Shaders::specularEdge(reflectance);
+            const double scattering = 1.0 - double{ metal };
+
+            const double tail = 1.0 - 1.0 / std::numbers::sqrt2;
+            const double squared = tail * tail;
+            const double fifth = squared * squared * tail;
+            const double integral = fifth * tail / 6.0 - 5.0 * fifth * squared / 7.0
+                + 6.0 * fifth * squared * tail / 8.0 - 2.0 * fifth * squared * squared / 9.0;
+            const double diffuse = scattering
+                * ((1.0 - double{ reflectance }) - 8.0 * (double{ edge } - double{ reflectance }) * integral);
+            const double specular
+                = static_cast<double>(Shaders::specularAlbedoOf(reflectance, edge, squareOn.x(), squareOn.y())
+                    * Shaders::specularCompensation(reflectance, table.y()));
+            const double chance = specular / (specular + scattering);
+
+            const double half = shade(128);
+            EXPECT_NEAR(half, double{ sky } * (diffuse + specular), 2.5e-3) << "half a metal gives back both halves";
+            EXPECT_GT(std::abs(half - double{ sky } * (diffuse + specular * chance)), 0.1)
+                << "and its lobe is divided by the chance it was drawn with";
         }
     }
 }

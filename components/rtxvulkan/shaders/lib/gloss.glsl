@@ -1,8 +1,8 @@
 #ifndef OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_GLOSS_GLSL
 #define OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_GLOSS_GLSL
 
-// The specular half of a surface: the lobe `brdf.h` states, taken at each light a surface is lit by,
-// and what the upscaler is told it reflects.
+// The specular half of a surface: the lobe `brdf.h` states, taken at each light a surface is lit by
+// and drawn for its bounce, and what the upscaler is told it reflects.
 //
 // **A surface with no reflectance has no specular half, and is not asked for one.** Every vanilla
 // surface is that, so `glossOf` answers it with one test and every step after reads a flag that is
@@ -10,6 +10,8 @@
 // out.
 
 #include "brdf.h"
+#include "scene.h"
+#include "basis.glsl"
 #include "bindings.glsl"
 #include "traversal.glsl"
 #include "variants.glsl"
@@ -86,6 +88,13 @@ Gloss glossOf(Surface surface)
     return gloss;
 }
 
+/// Schlick's Fresnel term at `halfway`: the share of light the lobe reflects there, and the share
+/// the diffuse half does not get — glTF's `(1 - F)`.
+vec3 fresnelAt(Gloss gloss, vec3 halfway)
+{
+    return fresnelSchlick(gloss.mReflectance, gloss.mEdge, schlickWeight(dot(gloss.mToEye, halfway)));
+}
+
 /// What the lobe makes of light arriving along one direction.
 struct Reflection
 {
@@ -109,11 +118,50 @@ Reflection reflectionAt(Gloss gloss, vec3 side, vec3 towards)
         return Reflection(vec3(0.0), vec3(0.0));
 
     const vec3 halfway = normalize(gloss.mToEye + towards);
-    const vec3 fresnel = fresnelSchlick(gloss.mReflectance, gloss.mEdge, schlickWeight(dot(gloss.mToEye, halfway)));
+    const vec3 fresnel = fresnelAt(gloss, halfway);
     const float lobe = ggxDistribution(gloss.mAlpha, max(dot(gloss.mNormal, halfway), 0.0))
         * smithVisibility(gloss.mAlpha, gloss.mToEyeCosine, toLight) * toLight;
 
     return Reflection(fresnel * gloss.mCompensation * lobe, fresnel);
+}
+
+/// A direction the lobe reflects the eye's ray into, and what light arriving along it is worth.
+struct LobeSample
+{
+    vec3 mTowards;
+
+    /// `F G2 / G1`, compensated: the lobe over the density it was drawn by. Nought where the
+    /// reflection leaves below the shading normal's horizon, which no light arrives from.
+    vec3 mWeight;
+};
+
+/// A direction drawn from the lobe by the facets the eye sees, `visibleNormal`, about the shading
+/// normal. The frame about it is `tangentTo`'s, which the diffuse draw builds on as well; which one
+/// it is changes where a draw lands and not how the draws are spread.
+///
+/// @param draw two numbers in `[0, 1)`: the facet's height on the cap, then its azimuth.
+LobeSample lobeSample(Gloss gloss, vec2 draw)
+{
+    const vec3 tangent = tangentTo(gloss.mNormal);
+    const vec3 bitangent = cross(gloss.mNormal, tangent);
+    const vec3 eye = vec3(dot(gloss.mToEye, tangent), dot(gloss.mToEye, bitangent), gloss.mToEyeCosine);
+
+    const float turn = TAU * draw.y;
+    const vec3 facet = visibleNormal(eye, gloss.mAlpha, draw.x, vec2(cos(turn), sin(turn)));
+    const vec3 halfway = tangent * facet.x + bitangent * facet.y + gloss.mNormal * facet.z;
+
+    LobeSample sampled;
+    sampled.mTowards = reflect(-gloss.mToEye, halfway);
+    sampled.mWeight = vec3(0.0);
+
+    const float toLight = dot(gloss.mNormal, sampled.mTowards);
+    if (!(toLight > 0.0))
+        return sampled;
+
+    sampled.mWeight = fresnelAt(gloss, halfway) * gloss.mCompensation
+        * smithShadowingGivenMasking(gloss.mAlpha, gloss.mToEyeCosine, toLight);
+
+    return sampled;
 }
 
 #endif
