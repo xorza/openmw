@@ -1,6 +1,6 @@
 # PBR materials in the RTX renderer
 
-Status: phases 0 to 4 are built; phase 5, terrain, is next.
+Status: phases 0 to 5 are built; phase 6, parallax, is next.
 
 ## 1. Summary
 
@@ -339,12 +339,27 @@ Built in phase 4.
 
 ### 5.10 Terrain
 
-- `GpuLayer` gains a normal slot and a flags word. The tangent is the fixed `(1, 0, 0)` in chunk
-  space, as in `terrain.vert`. Layer normals are summed by their weights and normalized.
-- `_diffusespec` replaces the layer's diffuse, as in OpenMW. Its A is roughness under the
-  `metal roughness` layout. Metal is 0 for ground.
-- A flattened distant chunk (`groundcomposite.comp`) keeps the geometric normal and roughness 1.
-  Its texels are wider than any normal-map detail.
+- `GpuLayer` gains a normal slot and a flags word, and is padded to 64 bytes. At 56 bytes, the
+  two `vec4` of every second row are on 8 and not on 16. Then every layer that a hit sums, vanilla
+  ground included, is read in 8-byte loads.
+- The tangent is the fixed `(1, 0, 0)` in chunk space, as in `terrain.vert`, and the bitangent is
+  `cross(N, x)`. The tangent-space normals of the layers are summed by their weights and carried
+  once. A layer with no map adds `(0, 0, 1)`.
+- `_diffusespec` replaces the layer's diffuse, as in OpenMW. Under the `metal roughness` layout it
+  is `LAYER_AUTHORED`: A is the roughness, the texture is not delit, and it is a dielectric
+  (`DIELECTRIC_F0`). Under the classic layout it is a plain diffuse.
+- The lobe of a stack: F0 is `DIELECTRIC_F0` times the share of the weight on authored layers, and
+  the roughness is the weighted mean, with a Lambert layer at 1. A stack with no authored layer
+  keeps the Lambert numbers exactly, because no division is taken for it.
+- Ground reaches `HAS_MAPS` through `Material::mLayersMapped`.
+- **Changed from the plan: a flattened distant chunk keeps the geometric normal, but not roughness
+  1.** It reads a second baked image, its gloss (R is the share that reflects, G is the roughness).
+  The same `groundcomposite.comp` pass bakes it from the same sum (`layerTexel` in `ground.glsl`).
+  The reason: some authored ground is smooth (ice at 0.24), and at the grazing angles of distant
+  ground the specular albedo is 0.065 to 0.46. With roughness 1 and no reflectance, the edge where
+  the ring flattens its chunks would show. Only a chunk with an authored layer gets a gloss, so a
+  vanilla chunk pays nothing. Runtime virtual textures do the same: they bake the roughness and the
+  specular with the albedo.
 - Terrain comes after objects, because each layer adds fetches, and that cost must be measured
   alone.
 
@@ -368,9 +383,17 @@ Built in phase 4.
   maps' code compiled in, every vanilla view traced a different frame by a rounding — the driver
   fused the Lambert arithmetic around the new code differently — though not one hit ran it.
 - **The kernel table doubles on the trace's side**: 16 visibility and 8 froxel launches.
+- **Terrain (phase 5)** costs the trace 0.08 to 0.27 ms where ground is in sight with its normal
+  maps, and 0.12 to 0.32 with the authored layers as well: a fetch per mapped layer at each hit on
+  a stack, and the lobe.
 - **`Surface`** grows by 10 floats (`mSmooth`, `mIncident`, `mSpecular`, `mRoughness`) and `Hit` by
   4 (`mTangent`).
-- **Memory.** 4 bytes per vertex (phase 2), 8 bytes per material, and the 32 KiB table.
+- **Memory.** 4 bytes per vertex (phase 2), 8 bytes per material, and the 32 KiB table. Terrain
+  (phase 5): 16 bytes per layer row, and 1.4 MB for the gloss of each distant chunk with an
+  authored layer (512 × 512 RGBA8 and its chain). The content costs more than the renderer: in the
+  23 views, terrain normal maps add 33 to 53 textures and 100 to 300 MiB, and terrain specular maps
+  add 70 to 100 glosses and 530 to 1200 MiB. The installed `_diffusespec` land files are 4096²
+  DXT5, 22.4 MB each, where the diffuses they replace are 2048² DXT1, 2.8 MB each.
 
 ## 6. Decisions
 
@@ -521,8 +544,37 @@ plan).
 - `rtx debug gate`: 550 component, 299 GPU and 22 game tests pass, 47 checks, and
   `repeat --pairs=10` is identical.
 
-**Phase 5 — terrain.** Section 5.10. Tests: the layer normal sum, and `_diffusespec` replacing
-the diffuse.
+**Phase 5 — terrain.** Done (section 5.10 says what was built, and where it left the plan).
+- Built: `GpuLayer::mNormal`, `mFlags` and `LAYER_AUTHORED`; `PreparedLayer`'s normal map and
+  `mDiffuseSpec` from `GroundReader`; the normal slot and the flag in `CellPlacer`, which takes the
+  layout from the ring; `Material::mLayersMapped`; `layerTexel` in `ground.glsl`; the stack's maps
+  in `resolveFor`; the gloss in `CompositeQueue` (`TextureSource::GroundGloss`, `Baked`) and in
+  `groundcomposite.comp` (`GROUND_COMPOSITE_GLOSS`); and the fields in the scene digest, hashed only
+  where they are set.
+- Fixed on the way: `MaterialTable::forEachTexture` held a layer's diffuse and not its normal map,
+  so the slot was never freed. The ring's teardown test found it.
+- Tests: `groundSumsItsLayersMapsByTheWeightsItsAlbedoIsSummedBy` (the device's normal, roughness
+  and reflectance at three columns of a two-layer card against the host's frame, and a flattened
+  chunk's gloss), `theCompositeAndItsGlossAreTheStackSummedAtTheLevelTheFootprintCallsFor` (the gloss
+  texel for texel at two mip levels), the gloss slot in `RtxCompositeQueueTest`, the maps in
+  `RtxGroundReaderTest`, the slot, the flag under both layouts and the unflattened chunk in
+  `RtxCellRingTest`, and the layer normal's hold in `aTextureGoesWithTheLastMaterialThatNamesIt`.
+- `rtx debug test`: 556 component, 300 GPU and 22 game tests pass.
+- Vanilla against the phase 4 state (`--upscale=off`): all 23 views and all 184 frame hashes are
+  the same. The kernels verb moves every `visibilityhit` tuple and `groundcomposite`: the layer
+  row's type changed, and the vanilla tuples differ only by that, one dead compare and one vector
+  fold that the optimizer missed.
+- PBR: the 15 views with ground in sight change, and the 8 others keep their trace. With `auto use
+  terrain specular maps` on (not in the profile), the same 15 change again: the ground shows a sheen
+  at grazing angles.
+- `rtx debug repeat --pairs=10`: identical on vanilla, and on the PBR profile with both terrain
+  switches on.
+- `bench`, the phase 5 entry of `.notes/bench.txt`, against the phase 4 tree built aside: terrain
+  normal maps cost the trace 0.08 to 0.27 ms where ground is in sight, and the authored layers on
+  top of them 0.12 to 0.32. Vanilla is inside the spread. The 4096² `_diffusespec` files cost the
+  trace nothing measurable. The tail does not tell the arms apart.
+- `rtx debug gate`: 556 component, 300 GPU and 22 game tests pass, 47 checks, and the repeat pair
+  is identical.
 
 **Phase 6 — parallax on `_nh`.** OpenMW's offset, before all reads of the hit. Primary rays first.
 

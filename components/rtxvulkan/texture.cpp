@@ -483,7 +483,7 @@ namespace Rtx
                 stand(batch, texture, side, refused);
 
         for (const TextureData& texture : arrived)
-            if (texture.mSource == TextureSource::GroundComposite)
+            if (texture.mSource == TextureSource::GroundComposite || texture.mSource == TextureSource::GroundGloss)
                 stand(batch, texture, side, refused);
     }
 
@@ -566,6 +566,7 @@ namespace Rtx
                     break;
 
                 case TextureSource::GroundComposite:
+                case TextureSource::GroundGloss:
                     if (ground)
                         cost += chainBytes(Shaders::GROUND_COMPOSITE_EXTENT, Shaders::GROUND_COMPOSITE_EXTENT,
                                     levelsTo1x1(Shaders::GROUND_COMPOSITE_EXTENT, Shaders::GROUND_COMPOSITE_EXTENT))
@@ -588,6 +589,7 @@ namespace Rtx
         switch (texture.mSource)
         {
             case TextureSource::GroundComposite:
+            case TextureSource::GroundGloss:
                 return Texture::composite(mDevice, batch, texture.mFormat, name);
 
             case TextureSource::SpriteBake:
@@ -664,8 +666,12 @@ namespace Rtx
         if (!why.empty())
             refused.push_back(Refusal{ .mKind = Refused::Texture, .mName = std::string(texture.mName), .mWhy = why });
 
-        if (texture.mSource == TextureSource::GroundComposite && !slot.mStandIn)
-            mPendingComposites.push_back(PendingComposite{ .mSlot = texture.mSlot, .mMaterial = texture.mFrom });
+        if ((texture.mSource == TextureSource::GroundComposite || texture.mSource == TextureSource::GroundGloss)
+            && !slot.mStandIn)
+            mPendingComposites.push_back(PendingComposite{ .mSlot = texture.mSlot,
+                .mMaterial = texture.mFrom,
+                .mOutput = texture.mSource == TextureSource::GroundGloss ? Shaders::GROUND_COMPOSITE_GLOSS
+                                                                         : Shaders::GROUND_COMPOSITE_ALBEDO });
 
         // How many texels the slot now holds, for `coneLod`, owed to every copy beside the
         // descriptor owed to every set.
@@ -751,6 +757,7 @@ namespace Rtx
                     .mLayers = tables.mLayers,
                     .mMasks = tables.mMasks,
                     .mMaterial = pending.mMaterial,
+                    .mOutput = pending.mOutput,
                 });
             baked = true;
         }

@@ -38,6 +38,7 @@
 #include <components/rtx/cellreader.hpp>
 #include <components/rtx/cellring.hpp>
 #include <components/rtx/cellworld.hpp>
+#include <components/rtx/compositequeue.hpp>
 #include <components/rtx/extractionstats.hpp>
 #include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/material.hpp>
@@ -47,6 +48,11 @@
 #include <components/rtx/result.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneextractor.hpp>
+#include <components/rtx/shaders/scene.h>
+#include <components/rtx/specularlayout.hpp>
+#include <components/rtx/textureencoding.hpp>
+#include <components/rtx/texturetable.hpp>
+#include <components/rtx/texturewrap.hpp>
 #include <components/sceneutil/lightcommon.hpp>
 #include <components/sceneutil/morphgeometry.hpp>
 #include <components/sceneutil/positionattitudetransform.hpp>
@@ -425,6 +431,7 @@ namespace Rtx::Testing
                 .mPosition = osg::Vec3f(7.5f * sCellSize, 0.5f * sCellSize, 0.0f) };
             mStorage.mPlaced = { tree, anotherTree, fern, atHome, beyond };
 
+            mRing.setSpecularLayout(SpecularLayout::MetalRoughness);
             start();
 
             const ExtractionStats first = fill();
@@ -453,6 +460,19 @@ namespace Rtx::Testing
                 EXPECT_EQ(material.mKind, MaterialKind::Terrain);
                 EXPECT_EQ(material.mLayers.mCount, 2u);
                 EXPECT_TRUE(material.mFlatten);
+
+                // The rock's maps: its normal map in a slot of its own, tiled and read as data, and
+                // its `_diffusespec` authored under the layout that reads the alpha as a roughness.
+                const std::span<const MaterialLayer> layers = material.mLayers.in(mScene.materials().getLayers());
+                EXPECT_EQ(layers[0].mNormal, sNoIndex);
+                EXPECT_EQ(layers[0].mFlags, 0u);
+                ASSERT_NE(layers[1].mNormal, sNoIndex);
+                const TextureRow& normal = mScene.textures().getRows()[layers[1].mNormal];
+                EXPECT_EQ(normal.mPath, "textures/rock_nh.dds");
+                EXPECT_EQ(normal.mWrap, TextureWrap::Repeat);
+                EXPECT_EQ(normal.mEncoding, TextureEncoding::Data);
+                EXPECT_EQ(layers[1].mFlags, Shaders::LAYER_AUTHORED);
+                EXPECT_TRUE(material.mLayersMapped);
             }
             const std::optional<MeshInstance> home = groundOf(osg::Vec2i(0, 0));
             ASSERT_TRUE(home.has_value());
@@ -508,19 +528,33 @@ namespace Rtx::Testing
             EXPECT_EQ(placed(), 3u + sPlacedCells);
             EXPECT_TRUE(mExtractor.retire().empty());
 
+            // The chunks that asked are flattened as the game's queue flattens them, and the rock
+            // reflects, so cell (3, 0) is given a gloss beside its composite.
+            CompositeQueue composites;
+            while (composites.advance(mScene) > 0)
+            {
+            }
+            EXPECT_NE(mScene.materials().getRows()[far->mMaterial].mDiffuse, sNoIndex);
+            EXPECT_NE(mScene.materials().getRows()[far->mMaterial].mSpecular, sNoIndex);
+
             // The active grid moves over cell (3, 0): its ground shades from its stack from now
-            // on, on the same row, the two trees inside the grid are the game's, and the tree at
-            // the eye's own cell — outside the grid now — is the ring's.
+            // on, on the same row and with neither of the two images its composite was, the two
+            // trees inside the grid are the game's, and the tree at the eye's own cell — outside
+            // the grid now — is the ring's.
             around(osg::Vec4i(2, -1, 5, 2));
             walk(mWalked++);
             EXPECT_EQ(placed(), 2u + sPlacedCells) << "the fern and the tree at home stand outside the grid";
             EXPECT_FALSE(mScene.materials().getRows()[far->mMaterial].mFlatten);
+            EXPECT_EQ(mScene.materials().getRows()[far->mMaterial].mDiffuse, sNoIndex);
+            EXPECT_EQ(mScene.materials().getRows()[far->mMaterial].mSpecular, sNoIndex);
             EXPECT_TRUE(mExtractor.retire().empty());
 
             // The eye leaves for a cell far away. **The band that left goes on the first walk after
             // the move and the band that arrives comes a cell a walk after it**, so the sweep that
             // follows that one walk is where the meshes nothing stands on go — the two models' and
             // the ground of every cell that left.
+            // Under the layout that reads a `_diffusespec`'s alpha as no roughness from here on.
+            mRing.setSpecularLayout(SpecularLayout::Ignore);
             around(osg::Vec3f(20.5f * sCellSize, 20.5f * sCellSize, 0.0f), osg::Vec4i(19, 19, 22, 22));
             walk(mWalked++);
 
@@ -532,6 +566,17 @@ namespace Rtx::Testing
             EXPECT_EQ(placed(), sPlacedCells) << "ground and nothing on it";
             EXPECT_EQ(mRing.getHeldCellCount(), sPreparedCells) << "the prepared disc's cells";
             EXPECT_EQ(mScene.meshes().getLiveCount(), sPreparedCells);
+
+            // So the rock there is a diffuse like any, and keeps its normal map.
+            const std::optional<MeshInstance> away = groundOf(osg::Vec2i(24, 20));
+            ASSERT_TRUE(away.has_value());
+            const Material& awayMaterial = mScene.materials().getRows()[away->mMaterial];
+            const std::span<const MaterialLayer> awayLayers = awayMaterial.mLayers.in(mScene.materials().getLayers());
+            ASSERT_EQ(awayLayers.size(), 2u);
+            EXPECT_EQ(awayLayers[1].mFlags, 0u);
+            ASSERT_NE(awayLayers[1].mNormal, sNoIndex);
+            EXPECT_EQ(mScene.textures().getRows()[awayLayers[1].mNormal].mPath, "textures/rock_nh.dds");
+            EXPECT_TRUE(awayMaterial.mLayersMapped);
         }
 
         /// The lamps of the cells the game has not loaded stand with their cells: outside the active
@@ -601,7 +646,7 @@ namespace Rtx::Testing
         /// layer stands, and the texture table stands it in and refuses it as it does any texture.
         TEST_F(RtxCellRingTest, whatTheReaderCannotTakeIsRefusedWhereItsCellIsAdopted)
         {
-            mContent.mImages.lose("textures/rock.dds");
+            mContent.mImages.lose("textures/rock_diffusespec.dds");
 
             const osg::Vec3f inCell(3.5f * sCellSize, 1.5f * sCellSize, 0.0f);
             mStorage.mPlaced = {
@@ -634,7 +679,7 @@ namespace Rtx::Testing
             ASSERT_EQ(mScene.lights().size(), std::size_t{ 1 }) << "and the lamp beside the dark one burns";
             EXPECT_EQ(mScene.lights().front().mPosition, inCell);
 
-            EXPECT_NE(mScene.textures().findFile(VFS::Path::Normalized("textures/rock.dds")), sNoIndex)
+            EXPECT_NE(mScene.textures().findFile(VFS::Path::Normalized("textures/rock_diffusespec.dds")), sNoIndex)
                 << "a layer whose image does not read was dropped rather than stood in for";
         }
 

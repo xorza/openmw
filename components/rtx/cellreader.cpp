@@ -53,17 +53,18 @@ namespace Rtx
     {
     }
 
-    PreparedTexture& CellReader::readTexture(const PreparedLayer& layer)
+    PreparedTexture& CellReader::readTexture(
+        const osg::ref_ptr<const osg::Image>& image, const VFS::Path::Normalized& path)
     {
-        if (const auto known = mTexturesByPath.find(layer.mPath.value()); known != mTexturesByPath.end())
+        if (const auto known = mTexturesByPath.find(path.value()); known != mTexturesByPath.end())
         {
             mTextures.lend(**known);
             return **known;
         }
 
         PreparedTexture& texture = mTextures.take([&](PreparedTexture& into) {
-            into.mImage = layer.mImage;
-            into.mPath = layer.mPath;
+            into.mImage = image;
+            into.mPath = path;
         });
 
         mTextures.lend(texture);
@@ -124,7 +125,11 @@ namespace Rtx
         // Each layer's texture counted once for the cell, so the reading stands until the frame
         // gives the cell's hold on it back.
         for (PreparedLayer& layer : prepared.mGround.mLayers)
-            layer.mTexture = &readTexture(layer);
+        {
+            layer.mTexture = &readTexture(layer.mImage, layer.mPath);
+            if (!layer.mNormalPath.empty())
+                layer.mNormalTexture = &readTexture(layer.mNormalImage, layer.mNormalPath);
+        }
 
         // One cell at a time, which is the paging's near answer: containers page here as they do
         // in the active grid's own chunks, and the size rule is what thins them with distance. One

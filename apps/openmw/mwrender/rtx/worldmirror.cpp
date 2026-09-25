@@ -119,6 +119,7 @@ namespace MWRender
     {
         mRing.setStaticsEnabled(knobs.mDistantStatics);
         mRing.setMinSize(knobs.mMinSize);
+        mRing.setSpecularLayout(knobs.mSpecularLayout);
         // The sky is not mirrored: the engine rebuilds it every frame, state sets and all, so
         // walking it churns the identity maps and makes every frame a full rebuild, and a ray that
         // reaches the sky gets this renderer's own. The simple water is the local map's copy of the

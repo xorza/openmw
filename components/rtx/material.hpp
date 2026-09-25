@@ -145,6 +145,12 @@ namespace Rtx
         /// per hit differs.
         bool mFlatten = false;
 
+        /// Whether any of this chunk's layers reads a map: a normal map, or an authored albedo with
+        /// its roughness beside it (`Shaders::LAYER_AUTHORED`). A layer run is the scene's and not
+        /// the row's, so the placer that fills the run says so here, where `Traversed::mMapped`
+        /// can read it.
+        bool mLayersMapped = false;
+
         /// Whether a controller rewrites this material's state set every frame. Constant for the
         /// material's whole life, because `SceneExtractor::animate` gives a node with a controller
         /// a state set of its own. It is what refuses such a material to the replay, which reuses
@@ -287,7 +293,7 @@ namespace Rtx
                 .mMedium = isMedium(),
                 .mAdditive = isAdditive(),
                 .mTwoSided = mTwoSided,
-                .mMapped = mNormal != sNoIndex || mSpecular != sNoIndex,
+                .mMapped = mNormal != sNoIndex || mSpecular != sNoIndex || mLayersMapped,
             };
         }
     };
@@ -319,6 +325,8 @@ namespace Rtx
             .mMaskHeight = 0,
             .mDiffuseTransform = osg::Vec4f(1.0f, 1.0f, 0.0f, 0.0f),
             .mMaskTransform = osg::Vec4f(1.0f, 1.0f, 0.0f, 0.0f),
+            .mNormal = sNoIndex,
+            .mFlags = 0,
         };
     }
 }

@@ -339,12 +339,15 @@ namespace Rtx
         /// The slots each set has yet to be told, each once however often it was written.
         PerSlot<SlotSet> mOwed;
 
-        /// Which composites arrived and stand empty, and whose ground each is: what the next
-        /// placement bakes. Cleared by `bakeComposites` and never freed.
+        /// Which composites arrived and stand empty, whose ground each is and which of its two
+        /// images: what the next placement bakes. Cleared by `bakeComposites` and never freed.
         struct PendingComposite
         {
             Index mSlot;
             Index mMaterial;
+
+            /// `GROUND_COMPOSITE_ALBEDO` or `GROUND_COMPOSITE_GLOSS`.
+            std::uint32_t mOutput;
         };
         std::vector<PendingComposite> mPendingComposites;
     };

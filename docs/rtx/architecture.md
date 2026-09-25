@@ -571,8 +571,13 @@ with `osgUtil::TangentSpaceGenerator`, as the shader visitor does, on the source
 skinned or morphed drawable. `MeshReader` reads them into `MeshArrays::mTangents`, and `MeshTable`
 keeps one word per vertex (`tangent.hpp`: octahedral, 15 bits a coordinate, the handedness, and
 nought for none). The device keeps a copy per frame slot beside the normals, and `skin.comp` poses
-them with the linear part of the blend. The device makes the shading map and the sprite bake as
-each texture arrives; the host's versions are held to them by a test.
+them with the linear part of the blend. Ground layers find theirs as the rasterizer's chunks do,
+through `ESMTerrain::Storage::getLayerInfo` under `auto use terrain normal maps` and `auto use
+terrain specular maps`: `GroundReader` reads a layer's `_nh` or `_n` and whether a `_diffusespec`
+was swapped in for its diffuse, and `CellPlacer` gives the normal map a `Data` slot in
+`GpuLayer::mNormal` and marks a `_diffusespec` `LAYER_AUTHORED` under the metal-roughness layout.
+The device makes the shading map and the sprite bake as each texture arrives; the host's versions
+are held to them by a test.
 
 The surface model (`shaders/brdf.h`, shared with the host) is glTF 2.0's metal and roughness: a
 GGX lobe with height-correlated Smith masking and Schlick's Fresnel, `F90 = saturate(50 F0.g)`,
@@ -590,8 +595,15 @@ specular map is not delit, splits its base colour by metalness into `mAlbedo` an
 (`Gloss`, `reflectionAt`); `gather` takes the lobe at the sun's or moon's direction and at the
 held lamp's centre, which is where the diffuse cosine and the reservoir's weight are taken, and
 returns the two halves apart (`DirectLight`). `HAS_MAPS` (`lib/variants.glsl`) compiles all of it
-out of a frame whose scene places no mapped material (`InstanceCounts::mMapped`). The bounce is
-still the cosine lobe. `rtxtool --show=albedo|normal|roughness|specular` writes the inputs out.
+out of a frame whose scene places no mapped material (`InstanceCounts::mMapped`); ground counts as
+mapped where a layer has a map or is authored (`Material::mLayersMapped`). The bounce draws the lobe
+or the Lambert base by their shares of what the surface reflects (`bounceDraw`), and the lobe's half
+joins the direct light. Ground sums its layers' maps by the weights it sums their albedo by
+(`layerTexel` in `ground.glsl`, shared with the bake): the tangent-space normals, carried once
+through the frame `terrain.vert` gives every layer, and a dielectric lobe over the share of the
+weight on authored layers, at the roughness summed over all of them. A distant chunk keeps its
+geometric normal and reads the gloss baked beside its composite. `rtxtool
+--show=albedo|normal|roughness|specular` writes the inputs out.
 
 Lights: `Light` is the device's row; `lightbuilder.hpp` makes one from a graph `LightSource`,
 a `LIGH` record, or a `Glow` (one lamp per magic effect); `LightGrid` bins lamps into a
@@ -1025,7 +1037,8 @@ replaces an older); for each cell `CellReader::read`: the ground off the land re
 recycle what the frame gave back.
 
 `CompositeQueue` then has `GroundCompositePass` flatten each distant chunk's layer stack into
-one texture, in the placement after the chunk's material row was written. Until then the
+one texture, and a chunk with an authored layer into a second, its gloss (the share that reflects
+and the roughness), in the placement after the chunk's material row was written. Until then the
 shader sums the stack at the hit.
 
 ### 11.6 A frame on the device

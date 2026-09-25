@@ -4,21 +4,31 @@
 #include <array>
 #include <charconv>
 #include <span>
+#include <string_view>
+
+#include "shaders/scene.h"
 
 namespace Rtx
 {
     namespace
     {
-        /// The key a chunk's composite is found under: the material's own slot, because one
-        /// material is one chunk, and one that takes the slot over is a different chunk that wants
-        /// the slot overwritten.
-        void nameComposite(std::string& key, Index material)
+        /// The key a chunk's composite is found under — `chunk/` — or its gloss — `gloss/`: the
+        /// material's own slot, because one material is one chunk, and one that takes the slot over
+        /// is a different chunk that wants the slot overwritten.
+        void nameComposite(std::string& key, std::string_view kind, Index material)
         {
             std::array<char, 16> digits{};
             const auto written = std::to_chars(digits.data(), digits.data() + digits.size(), material, 16);
 
-            key.assign("chunk/");
+            key.assign(kind);
             key.append(digits.data(), written.ptr);
+        }
+
+        /// Whether any layer of `layers` reflects, which is whether a gloss says anything.
+        bool reflects(const SceneDesc& scene, const Run& layers)
+        {
+            return std::ranges::any_of(layers.in(scene.materials().getLayers()),
+                [](const MaterialLayer& layer) { return (layer.mFlags & Shaders::LAYER_AUTHORED) != 0u; });
         }
 
         /// Whether `material` still wants the ground it asked for as `asked`: the same kind, still
@@ -82,7 +92,7 @@ namespace Rtx
             if (!stillWants(scene, asked.mMaterial, asked.mLayers))
                 continue;
 
-            nameComposite(mKey, asked.mMaterial);
+            nameComposite(mKey, "chunk/", asked.mMaterial);
 
             // A table with no room left keeps the chunk on its stack, which the shader sums at the
             // hit as it does for every chunk still waiting.
@@ -92,21 +102,32 @@ namespace Rtx
 
             Material given = scene.materials().getRows()[asked.mMaterial];
             given.mDiffuse = slot;
-            scene.setMaterial(asked.mMaterial, given);
+            mFinished.push_back(Given{ .mSlot = slot, .mBaked = { .mMaterial = asked.mMaterial, .mGloss = false } });
 
-            mFinished.push_back(Given{ .mSlot = given.mDiffuse, .mMaterial = asked.mMaterial });
+            // A table with room for the albedo and not the gloss flattens the chunk with no lobe,
+            // which is what it was before it could have one.
+            if (reflects(scene, given.mLayers))
+            {
+                nameComposite(mKey, "gloss/", asked.mMaterial);
+                given.mSpecular = scene.textures().addBaked(mKey);
+                if (given.mSpecular != sNoIndex)
+                    mFinished.push_back(
+                        Given{ .mSlot = given.mSpecular, .mBaked = { .mMaterial = asked.mMaterial, .mGloss = true } });
+            }
+
+            scene.setMaterial(asked.mMaterial, given);
             ++finished;
         }
 
         return finished;
     }
 
-    Index CompositeQueue::find(const Index slot) const
+    CompositeQueue::Baked CompositeQueue::find(const Index slot) const
     {
         for (const Given& finished : mFinished)
             if (finished.mSlot == slot)
-                return finished.mMaterial;
+                return finished.mBaked;
 
-        return sNoIndex;
+        return Baked{};
     }
 }

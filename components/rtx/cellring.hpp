@@ -20,6 +20,7 @@
 #include "sceneadopter.hpp"
 #include "scratch.hpp"
 #include "slots.hpp"
+#include "specularlayout.hpp"
 #include "stepped.hpp"
 #include "texturebuilder.hpp"
 
@@ -77,6 +78,9 @@ namespace Rtx
         void setStaticsEnabled(bool enabled);
 
         void setMinSize(float minSize) { mPlacer.setMinSize(minSize); }
+
+        /// What the ground's `_diffusespec` maps mean — `CellPlacer::setSpecularLayout`.
+        void setSpecularLayout(SpecularLayout layout) { mPlacer.setSpecularLayout(layout); }
 
         /// The frame the next walk is for, so a frame walked twice adopts one cell and not two.
         /// Told by `SceneExtractor::extractWorld`, which is the call that has the ring and the

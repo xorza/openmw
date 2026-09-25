@@ -83,7 +83,10 @@ namespace Rtx
             material.forEachTexture(visit);
 
             for (const MaterialLayer& layer : material.mLayers.in(getLayers()))
+            {
                 visit(layer.mDiffuse);
+                visit(layer.mNormal);
+            }
         }
 
         /// Takes and gives back those slots. Only ever called in that pair, and `set` is why the

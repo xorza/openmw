@@ -88,7 +88,7 @@ namespace Rtx
         {
             const auto& [kind, diffuse, emissive, environment, environmentColour, dark, darkUnit, normal, specular,
                 diffuseColour, emissiveColour, opacity, alphaRef, alphaMode, blend, vertexColour, twoSided,
-                textureTransform, run, flatten, animated, neverSolid, diffuseMean]
+                textureTransform, run, flatten, layersMapped, animated, neverSolid, diffuseMean]
                 = material;
 
             texture(diffuse);
@@ -108,6 +108,8 @@ namespace Rtx
                 value(std::uint8_t{ 2 });
                 texture(specular);
             }
+            if (layersMapped)
+                value(std::uint8_t{ 3 });
 
             layers(run);
 
@@ -146,6 +148,18 @@ namespace Rtx
                 digest.add(layer.mDiffuseTransform);
                 digest.add(layer.mMaskTransform);
                 digest.add(maskOf(layer).in(scene.materials().getMasks()));
+
+                // Only where a layer has them, each behind its tag, as a material's companion maps.
+                if (layer.mNormal != sNoIndex)
+                {
+                    digest.add(std::uint8_t{ 1 });
+                    addTexture(digest, scene, layer.mNormal);
+                }
+                if (layer.mFlags != 0)
+                {
+                    digest.add(std::uint8_t{ 2 });
+                    digest.add(layer.mFlags);
+                }
             }
         }
 
@@ -371,7 +385,6 @@ namespace Rtx
     static_assert(sizeof(Light) == 40, "Light is read whole and must have no padding");
     static_assert(sizeof(Sprite) == 56, "Sprite is read whole and must have no padding");
     static_assert(sizeof(SpriteEmitter) == 40, "SpriteEmitter is read whole and must have no padding");
-    static_assert(sizeof(MaterialLayer) == 48, "MaterialLayer is read whole and must have no padding");
     static_assert(sizeof(Shaders::GpuBone) == 48, "GpuBone is read whole and must have no padding");
     static_assert(sizeof(Shaders::GpuInfluence) == 8, "GpuInfluence is read whole and must have no padding");
 
@@ -452,7 +465,23 @@ namespace Rtx
                 [&](const Run& layers) { materials.add(layers); }, [&](const auto& field) { materials.add(field); });
         take(ScenePart::Materials, materials.take());
 
-        take(ScenePart::Layers, wordsOf(scene.materials().getLayers()));
+        // **Each row as the 48 bytes it was before it could name a normal map, and the two fields
+        // since only where a layer sets them**, so a scene whose ground has no map digests to the
+        // words on record. Bound whole, so a field added and not named here does not compile; the
+        // padding is no field.
+        Column layers(mScratch);
+        for (const MaterialLayer& layer : scene.materials().getLayers())
+        {
+            const auto& [diffuse, maskOffset, maskWidth, maskHeight, diffuseTransform, maskTransform, normal, flags,
+                padding]
+                = layer;
+            layers.addFields(std::tie(diffuse, maskOffset, maskWidth, maskHeight, diffuseTransform, maskTransform));
+            if (normal != sNoIndex)
+                layers.addFields(std::tuple(std::uint8_t{ 1 }, normal));
+            if (flags != 0)
+                layers.addFields(std::tuple(std::uint8_t{ 2 }, flags));
+        }
+        take(ScenePart::Layers, layers.take());
         take(ScenePart::Masks, wordsOf(scene.materials().getMasks()));
 
         // By their names and by their slots both, which is the difference from `digestScene`: which

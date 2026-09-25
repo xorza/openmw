@@ -110,8 +110,18 @@ namespace Rtx::Testing
             const PreparedLayer& grass = ground.mLayers[0];
             const PreparedLayer& rock = ground.mLayers[1];
             EXPECT_EQ(grass.mImage->getFileName(), "textures/grass.dds");
-            EXPECT_EQ(rock.mImage->getFileName(), "textures/rock.dds");
+            EXPECT_EQ(rock.mImage->getFileName(), "textures/rock_diffusespec.dds");
             EXPECT_EQ(grass.mRow.mDiffuseTransform, osg::Vec4f(16.0f, 16.0f, 0.0f, 0.0f));
+
+            // The rock's maps as the storage named them, its normal map read beside its diffuse;
+            // the grass has neither.
+            EXPECT_TRUE(rock.mDiffuseSpec);
+            EXPECT_EQ(rock.mNormalPath, "textures/rock_nh.dds");
+            ASSERT_NE(rock.mNormalImage, nullptr);
+            EXPECT_EQ(rock.mNormalImage->getFileName(), "textures/rock_nh.dds");
+            EXPECT_FALSE(grass.mDiffuseSpec);
+            EXPECT_TRUE(grass.mNormalPath.empty());
+            EXPECT_EQ(grass.mNormalImage, nullptr);
 
             // `BlendmapTexMat` at sixteen tiles: a scale of 16 / 17 about the centre and a nudge of
             // a quarter texel, which comes to an offset of 0.75 / 17 in x and 0.25 / 17 in y.

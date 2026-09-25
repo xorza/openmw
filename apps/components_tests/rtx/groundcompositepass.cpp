@@ -44,14 +44,16 @@ namespace Rtx
         struct RtxGroundCompositePassTest : Testing::DeviceTest
         {
             /// Bakes a chunk of two layers into a composite stood as the array stands one and
-            /// hands its first level back, four bytes a texel as the image stores them,
-            /// display-encoded.
+            /// hands its first level back, four bytes a texel as the image stores them: the
+            /// albedo display-encoded, the gloss as it is.
             ///
             /// The chunk: a solid red under the mip ladder, masked by a two-weight grid that ramps
             /// from all red at the first texel centre to all ladder at the second, with the ladder
-            /// tiled `tiling` times across the chunk.
-            std::vector<std::uint8_t> bakeOf(float tiling)
+            /// tiled `tiling` times across the chunk. For the gloss the ladder is authored, so its
+            /// alpha — its grey — is a roughness.
+            std::vector<std::uint8_t> bakeOf(float tiling, std::uint32_t output)
             {
+                const bool gloss = output == Shaders::GROUND_COMPOSITE_GLOSS;
                 Device& device = getDevice();
                 const Testing::TexturePassSet passes(device);
                 const SetLayout layout = TextureArray::describeLayout(device);
@@ -69,11 +71,13 @@ namespace Rtx
                 SceneDesc scene;
                 scene.textures().add(VFS::Path::NormalizedView("red.dds"));
                 scene.textures().add(VFS::Path::NormalizedView("ladder.dds"));
-                const std::array layers{
+                std::array layers{
                     Testing::layerOf(0, scene.materials().addMask(firstMask), 2, 1),
                     Testing::layerOf(
                         1, scene.materials().addMask(secondMask), 2, 1, osg::Vec4f(tiling, tiling, 0.0f, 0.0f)),
                 };
+                if (gloss)
+                    layers[1].mFlags = Shaders::LAYER_AUTHORED;
                 Material chunk;
                 chunk.mKind = MaterialKind::Terrain;
                 chunk.mFlatten = true;
@@ -81,8 +85,9 @@ namespace Rtx
                 const Index material = scene.addMaterial(chunk);
 
                 Batch setup(getPool());
-                const Texture composite = std::move(
-                    Texture::composite(device, setup, TextureFormat::Rgba8Srgb, "ground composite test").value());
+                const Texture composite = std::move(Texture::composite(device, setup,
+                    gloss ? TextureFormat::Rgba8Unorm : TextureFormat::Rgba8Srgb, "ground composite test")
+                                                        .value());
                 TextureArray array(device, setup, layout, passes.mPasses, 2);
                 std::vector<Refusal> refused;
                 array.write(setup, textures, refused);
@@ -97,6 +102,7 @@ namespace Rtx
                         .mLayers = tables.mLayers,
                         .mMasks = tables.mMasks,
                         .mMaterial = material,
+                        .mOutput = output,
                     });
                 setup.flush();
 
@@ -116,6 +122,17 @@ namespace Rtx
                 const float linear = channel == 0 ? (1.0f - second) + ladder : ladder;
                 return static_cast<int>(std::lround(toEncoded(linear) * 255.0f));
             }
+
+            /// The byte the gloss owes texel `x` of a row, in `channel`, with the ladder read at
+            /// level `grey`: the share of the weight on the ladder, the only layer that reflects,
+            /// and the roughness over both, the red a Lambert layer counted at one.
+            static int expectedGloss(std::uint32_t x, std::size_t channel, std::uint8_t grey)
+            {
+                const float u = (float(x) + 0.5f) / float(sExtent);
+                const float second = std::clamp(u * 2.0f - 0.5f, 0.0f, 1.0f);
+                const float gloss[4]{ second, (1.0f - second) + second * float(grey) / 255.0f, 0.0f, 1.0f };
+                return static_cast<int>(std::lround(gloss[channel] * 255.0f));
+            }
         };
 
         /// The device's composite is the sum the host works out, texel for texel: the layers at
@@ -128,14 +145,22 @@ namespace Rtx
         /// two differ by a level, so a bake that read every layer at its finest, or at the wrong
         /// level, is caught in every texel the ladder shows in.
         ///
+        /// **The gloss is the same sum**, of how much of the ground reflects and how rough, with the
+        /// ladder authored: its share is the ramp, and its roughness the grey of the level the
+        /// footprint calls for, so the gloss is held to the same level as the albedo.
+        ///
         /// Within a byte, because the device sums in its own float order and rounds once at the
         /// store where the host rounds once at the end.
-        TEST_F(RtxGroundCompositePassTest, theCompositeIsTheStackSummedAtTheLevelTheFootprintCallsFor)
+        TEST_F(RtxGroundCompositePassTest, theCompositeAndItsGlossAreTheStackSummedAtTheLevelTheFootprintCallsFor)
         {
-            const std::vector<std::uint8_t> once = bakeOf(1.0f);
-            const std::vector<std::uint8_t> sixteen = bakeOf(16.0f);
+            const std::vector<std::uint8_t> once = bakeOf(1.0f, Shaders::GROUND_COMPOSITE_ALBEDO);
+            const std::vector<std::uint8_t> sixteen = bakeOf(16.0f, Shaders::GROUND_COMPOSITE_ALBEDO);
+            const std::vector<std::uint8_t> glossOnce = bakeOf(1.0f, Shaders::GROUND_COMPOSITE_GLOSS);
+            const std::vector<std::uint8_t> glossSixteen = bakeOf(16.0f, Shaders::GROUND_COMPOSITE_GLOSS);
             ASSERT_EQ(once.size(), std::size_t{ sExtent } * sExtent * 4);
             ASSERT_EQ(sixteen.size(), once.size());
+            ASSERT_EQ(glossOnce.size(), once.size());
+            ASSERT_EQ(glossSixteen.size(), once.size());
 
             // Every texel of the first row, and a stride of rows after it: the mask is one weight
             // tall, so every row is the first.
@@ -150,6 +175,10 @@ namespace Rtx
                             << "tiled once at " << x << ", " << y << " channel " << channel;
                         EXPECT_NEAR(int{ sixteen[at] }, wantSixteen, 1)
                             << "tiled sixteen times at " << x << ", " << y << " channel " << channel;
+                        EXPECT_NEAR(int{ glossOnce[at] }, expectedGloss(x, channel, 40), 1)
+                            << "gloss tiled once at " << x << ", " << y << " channel " << channel;
+                        EXPECT_NEAR(int{ glossSixteen[at] }, expectedGloss(x, channel, 70), 1)
+                            << "gloss tiled sixteen times at " << x << ", " << y << " channel " << channel;
                     }
 
             // And three texels the doc derives by hand, so the sweep is known to be over a ramp:
@@ -163,6 +192,16 @@ namespace Rtx
             EXPECT_NEAR(int{ once[511 * 4 + 1] }, 110, 1);
             EXPECT_NEAR(int{ once[255 * 4] }, 200, 1);
             EXPECT_NEAR(int{ once[255 * 4 + 1] }, 79, 1);
+
+            // The gloss at the same three: texel 0 reflects nothing at a roughness of one, 0 and
+            // 255; texel 511 is all ladder, 255 and 40; texel 255 reflects 0.49805, or 127, at
+            // 0.50195 + 0.49805 * 0.15686 = 0.58008, or 148.
+            EXPECT_EQ(int{ glossOnce[0] }, 0);
+            EXPECT_EQ(int{ glossOnce[1] }, 255);
+            EXPECT_EQ(int{ glossOnce[511 * 4] }, 255);
+            EXPECT_NEAR(int{ glossOnce[511 * 4 + 1] }, 40, 1);
+            EXPECT_NEAR(int{ glossOnce[255 * 4] }, 127, 1);
+            EXPECT_NEAR(int{ glossOnce[255 * 4 + 1] }, 148, 1);
         }
     }
 }

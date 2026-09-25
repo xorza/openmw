@@ -16,6 +16,7 @@
 #include "basis.glsl"
 #include "bindings.glsl"
 #include "geometry.glsl"
+#include "ground.glsl"
 #include "texturing.glsl"
 #include "variants.glsl"
 
@@ -758,6 +759,17 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
     // `CellPlacer::wantsFlattening` is where the two swap over, and `MATERIAL_STACKED` is what the
     // row says about which it is.
     vec3 albedo = vec3(0.0);
+
+    // What a stack's maps add, each weighted as the layer's albedo is: the share of the weight on
+    // layers that reflect, the roughness over every layer with a Lambert one at one, and the
+    // tangent-space normals — the layers' own where they have a map and straight up where not.
+    // `groundcomposite.comp` sums the first two the same way into a distant chunk's gloss.
+    float weights = 0.0;
+    float reflecting = 0.0;
+    float roughness = 0.0;
+    vec3 painted = vec3(0.0);
+    bool relief = false;
+
     if (layered && (material.mFlags & MATERIAL_STACKED) != 0u)
     {
         // Each layer is a tiling texture masked by its own grid of weights, and the stack sums to
@@ -771,9 +783,38 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
             if (showing <= 0.0)
                 continue;
 
-            albedo += showing
-                * sampleAlbedo(layer.mDiffuse,
-                    texturePoint(uv, hit.mBary, layer.mDiffuseTransform, cone, surface.mFootprint));
+            const TexturePoint at = texturePoint(uv, hit.mBary, layer.mDiffuseTransform, cone, surface.mFootprint);
+            const vec4 shown = layerTexel(layer, at.mAt, coneLod(layer.mDiffuse, at), frame.mDelight, HAS_MAPS);
+            albedo += showing * shown.rgb;
+
+            if (HAS_MAPS)
+            {
+                weights += showing;
+                roughness += showing * shown.a;
+                if ((layer.mFlags & LAYER_AUTHORED) != 0u)
+                    reflecting += showing;
+
+                const bool mapped = layer.mNormal != NO_TEXTURE;
+                painted += showing * (mapped ? sampleNormalMap(layer.mNormal, at) : vec3(0.0, 0.0, 1.0));
+                relief = relief || mapped;
+            }
+        }
+
+        // **The layers' normals summed by their weights and then carried once**, through the
+        // frame `terrain.vert` gives every layer: the chunk's x, which is the world's, the
+        // bitangent `cross(N, x)`, and the tangent x less its part along N. Summing before the frame
+        // is summing after it, the frame being one for every layer, and a heightfield's normal
+        // leans up, so x is never along it. The rasterizer lights each layer under its own normal
+        // and blends the light; one lobe under the blended normal is what a path tracer can afford,
+        // and it parts from that only where the masks blend.
+        if (HAS_MAPS && relief)
+        {
+            const vec3 across = vec3(1.0, 0.0, 0.0);
+            const vec3 tangent = normalize(across - normal * dot(normal, across));
+            const vec3 mapped
+                = normalize(tangent * painted.x + cross(normal, across) * painted.y + normal * painted.z);
+
+            surface.mNormal = facingRay(turned ? -mapped : mapped, surface.mSmooth, direction, MAPPED_MIN_FACING);
         }
     }
     else if (HAS_MAPS && material.mSpecular != NO_TEXTURE)
@@ -798,7 +839,23 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
     // reflected two to four times what it scattered. On the reflectance at normal incidence, it
     // darkens the edge too, below `SPECULAR_EDGE_SCALE`'s two per cent, which is the specular
     // occlusion that convention is for.
-    if (HAS_MAPS && material.mSpecular != NO_TEXTURE)
+    //
+    // **Ground reflects as a dielectric, over the share of it that reflects at all** — a stack from
+    // its layers, a distant chunk from the gloss baked beside its composite — and the tint darkens
+    // it for the same reason. A stack with no layer that reflects keeps the Lambert surface's
+    // numbers exactly, since no division is taken for it.
+    if (HAS_MAPS && reflecting > 0.0)
+    {
+        surface.mSpecular = vec3(DIELECTRIC_F0 * (reflecting / weights)) * tint;
+        surface.mRoughness = roughness / weights;
+    }
+    else if (HAS_MAPS && material.mSpecular != NO_TEXTURE && surface.mGround)
+    {
+        const vec2 gloss = sampleSpecularMap(material.mSpecular, point);
+        surface.mSpecular = vec3(DIELECTRIC_F0 * gloss.x) * tint;
+        surface.mRoughness = gloss.y;
+    }
+    else if (HAS_MAPS && material.mSpecular != NO_TEXTURE)
     {
         const vec2 painted = sampleSpecularMap(material.mSpecular, point);
         surface.mSpecular = mix(vec3(DIELECTRIC_F0), albedo, painted.x) * tint;

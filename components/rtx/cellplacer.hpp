@@ -12,6 +12,7 @@
 #include "extractionstats.hpp"
 #include "held.hpp"
 #include "material.hpp"
+#include "specularlayout.hpp"
 
 namespace Rtx
 {
@@ -35,6 +36,11 @@ namespace Rtx
         /// times the eye's distance to its cell. `object paging min size`, told rather than asked
         /// because this library reads no settings.
         void setMinSize(float minSize) { mMinSize = minSize; }
+
+        /// `[RTX] specular map layout`: whether a ground layer's `_diffusespec` is an authored
+        /// albedo with its roughness in alpha, or the plain diffuse OpenMW swaps in. Told rather
+        /// than asked, for the same reason.
+        void setSpecularLayout(SpecularLayout layout) { mSpecularLayout = layout; }
 
         /// What the game says of one reference, which the content files cannot: a script has
         /// disabled it, or enabled it again. Applied to the cells `held` at once, because `place`
@@ -114,6 +120,8 @@ namespace Rtx
         SceneDesc& mScene;
 
         float mMinSize = 0.0f;
+
+        SpecularLayout mSpecularLayout = SpecularLayout::Ignore;
 
         /// References a script has disabled, sorted.
         std::vector<ESM::RefNum> mDisabled;

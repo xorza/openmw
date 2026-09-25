@@ -161,7 +161,7 @@ layout(set = SET_PASS, binding = BIND_FRAME, scalar) uniform Frame
 // The scene's tables, each a reference constructed from the address `frame.mTables` carries.
 //
 // **The alignment each reference claims is `scene.h`'s to state**, beside the rows it is about:
-// `TABLE_ALIGN_LAYERS` where a 48-byte row puts two `vec4` on sixteen, `TABLE_ALIGN_BLOCKS` for a
+// `TABLE_ALIGN_LAYERS` where a 64-byte row puts two `vec4` on sixteen, `TABLE_ALIGN_BLOCKS` for a
 // table of eight-byte addresses, and `TABLE_ALIGN_ROWS` everywhere a row or an element is only
 // four-aligned. The host asserts every address against the same three numbers before it writes the
 // block, so a claim here is a claim something checks.

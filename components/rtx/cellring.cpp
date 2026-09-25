@@ -124,7 +124,11 @@ namespace Rtx
         CellReturns& back = mSupply.giveBack();
         back.mModels.insert(back.mModels.end(), cell.mModels.begin(), cell.mModels.end());
         for (const PreparedLayer& layer : cell.mGround.mLayers)
+        {
             back.mTextures.push_back(layer.mTexture);
+            if (layer.mNormalTexture != nullptr)
+                back.mTextures.push_back(layer.mNormalTexture);
+        }
     }
 
     void CellRing::takeDone()

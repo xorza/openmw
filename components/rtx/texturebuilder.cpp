@@ -243,13 +243,22 @@ namespace Rtx
 
         // Flattened on the device in the placement after this arrival, from the chunk's own stack:
         // the description carries the chunk and no bytes.
-        const Index chunk = composites != nullptr ? composites->find(kept.mSlot) : sNoIndex;
-        if (chunk == sNoIndex)
+        const CompositeQueue::Baked chunk
+            = composites != nullptr ? composites->find(kept.mSlot) : CompositeQueue::Baked{};
+        if (chunk.mMaterial == sNoIndex)
             return Err{ "no ground was queued to flatten into it" };
+
+        if (chunk.mGloss)
+            return TextureData{
+                .mSource = TextureSource::GroundGloss,
+                .mFrom = chunk.mMaterial,
+                .mFormat = TextureFormat::Rgba8Unorm,
+                .mEncoding = TextureEncoding::Data,
+            };
 
         return TextureData{
             .mSource = TextureSource::GroundComposite,
-            .mFrom = chunk,
+            .mFrom = chunk.mMaterial,
             .mFormat = TextureFormat::Rgba8Srgb,
         };
     }

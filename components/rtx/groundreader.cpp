@@ -167,6 +167,17 @@ namespace Rtx
             layer.mImage = image.isOk() ? image.value() : nullptr;
             layer.mPath = std::move(mLayerInfos[index].mDiffuseMap);
             layer.mRow.mDiffuseTransform = diffuseTransform(mTileCount);
+            layer.mDiffuseSpec = mLayerInfos[index].mSpecular;
+
+            // Found by the storage as the rasterizer's chunks find theirs, under
+            // `auto use terrain normal maps`, and read at the diffuse's own coordinates.
+            if (!mLayerInfos[index].mNormalMap.empty())
+            {
+                const Result<osg::ref_ptr<const osg::Image>, std::string> normal
+                    = mContent.getImage(mLayerInfos[index].mNormalMap);
+                layer.mNormalImage = normal.isOk() ? normal.value() : nullptr;
+                layer.mNormalPath = std::move(mLayerInfos[index].mNormalMap);
+            }
 
             if (!mBlendmaps.empty() && mBlendmaps[index] != nullptr)
             {

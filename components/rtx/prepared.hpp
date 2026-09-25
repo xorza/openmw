@@ -62,6 +62,17 @@ namespace Rtx
         /// The reader's description of it, lent for as long as the cell is held.
         PreparedTexture* mTexture = nullptr;
 
+        /// The layer's normal map as the storage found it beside the diffuse (`_nh` before `_n`),
+        /// opened on the thread, and the reader's description of it. An empty path where there is
+        /// none, and a null image where one would not read, which the table stands in for.
+        osg::ref_ptr<const osg::Image> mNormalImage;
+        VFS::Path::Normalized mNormalPath;
+        PreparedTexture* mNormalTexture = nullptr;
+
+        /// Whether the storage swapped `_diffusespec` in for the diffuse. What its alpha means is
+        /// the layout's to say, and the placer is what knows the layout.
+        bool mDiffuseSpec = false;
+
         /// Into `PreparedGround::mWeights`. An empty run is a layer covering the whole cell.
         Run mWeights;
 

@@ -33,8 +33,13 @@ namespace Rtx::Shaders
     /// The bake's workgroup, square.
     const uint GROUND_COMPOSITE_WORKGROUP = 16u;
 
+    /// What a bake writes: the chunk's albedo, or its gloss — how much of the ground reflects in
+    /// red and its roughness in green, `CompositeQueue` says why a distant chunk needs both.
+    const uint GROUND_COMPOSITE_ALBEDO = 0u;
+    const uint GROUND_COMPOSITE_GLOSS = 1u;
+
     /// What one bake is told: the three tables the sum reads, by address as the frame's block
-    /// carries them, and which chunk.
+    /// carries them, which chunk, and which of its two images.
     struct GroundCompositeConstants
     {
         uint64 mMaterials;
@@ -43,6 +48,9 @@ namespace Rtx::Shaders
 
         /// The chunk's material row, whose layers are summed.
         uint mMaterial;
+
+        /// `GROUND_COMPOSITE_ALBEDO` or `GROUND_COMPOSITE_GLOSS`.
+        uint mOutput;
     };
 
 #ifdef RTX_HOST

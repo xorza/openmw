@@ -22,6 +22,8 @@
 #include "shaders/scene.h"
 #include "shapefold.hpp"
 #include "surface.hpp"
+#include "textureencoding.hpp"
+#include "texturewrap.hpp"
 
 namespace Rtx
 {
@@ -107,6 +109,7 @@ namespace Rtx
 
         HeldGround& stands = held.mGround.emplace();
         mLayerScratch.clear();
+        bool mapped = false;
         for (const PreparedLayer& layer : ground.mLayers)
         {
             MaterialLayer row = layer.mRow;
@@ -115,6 +118,22 @@ namespace Rtx
             // with no test, as it reads a material's diffuse.
             const Index slot = mScene.textures().add(layer.mTexture->mPath);
             row.mDiffuse = slot != sNoIndex ? slot : Shaders::TEXTURE_NEUTRAL;
+
+            // A normal map is data and tiles with the diffuse; one the table has no room for is
+            // no normal map, and the layer keeps the chunk's normal.
+            if (layer.mNormalTexture != nullptr)
+            {
+                row.mNormal
+                    = mScene.textures().add(layer.mNormalTexture->mPath, TextureWrap::Repeat, TextureEncoding::Data);
+                stands.mTextures.push_back(layer.mNormalTexture);
+            }
+
+            // What a `_diffusespec`'s alpha is, the layout says: a classic one is a highlight's
+            // strength, which this renderer has no use for, and its colour is a diffuse like any.
+            if (layer.mDiffuseSpec && mSpecularLayout == SpecularLayout::MetalRoughness)
+                row.mFlags |= Shaders::LAYER_AUTHORED;
+
+            mapped = mapped || row.mNormal != sNoIndex || row.mFlags != 0;
 
             // The row keeps no count: `maskOf` reads the grid's area back, so the run
             // the table hands out has to be exactly that long, which the reader asserts as it reads.
@@ -142,6 +161,7 @@ namespace Rtx
         // mode off a state set `NifOsg` described, and this one is stood off the land records —
         // where `Terrain::ChunkManager` states the same thing for the rasterizer's chunks.
         material.mVertexColour = VertexColour::Tint;
+        material.mLayersMapped = mapped;
         if (!mLayerScratch.empty())
             material.mLayers = mScene.materials().addLayers(mLayerScratch);
         stands.mStood.mMaterial = mScene.addMaterial(material);
@@ -311,6 +331,7 @@ namespace Rtx
                 Material given = mScene.materials().getRows()[ground.mStood.mMaterial];
                 given.mFlatten = !ground.mFlattened;
                 given.mDiffuse = sNoIndex;
+                given.mSpecular = sNoIndex;
                 mScene.setMaterial(ground.mStood.mMaterial, given);
                 ground.mFlattened = given.mFlatten;
             }

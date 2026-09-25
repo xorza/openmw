@@ -215,6 +215,11 @@ namespace Rtx
         /// one texel.
         GroundComposite,
 
+        /// The same chunk's gloss, baked in the same pass from the same stack: how much of its
+        /// ground reflects in red and how rough it is in green, as data. `TextureData::mFrom` is
+        /// the chunk's row, and the image is shaped as its composite is.
+        GroundGloss,
+
         /// What a slot is drawn as where what it names cannot stand: `describeStandIn`, whose
         /// bytes it carries. A backend stands one image for every such slot, and for a slot it has
         /// no room for, so a refusal costs the device nothing.
@@ -239,8 +244,8 @@ namespace Rtx
         TextureSource mSource = TextureSource::File;
 
         /// What the source names, by the source: the sprite texture a bake is made from, or the
-        /// material row whose ground a composite is. `sNoIndex` under `File` and `StandIn`, which
-        /// are made from nothing but their own bytes.
+        /// material row whose ground a composite or its gloss is. `sNoIndex` under `File` and
+        /// `StandIn`, which are made from nothing but their own bytes.
         Index mFrom = sNoIndex;
 
         TextureFormat mFormat = TextureFormat::Bc1RgbaSrgb;
@@ -251,8 +256,8 @@ namespace Rtx
         std::uint32_t mWidth = 0;
         std::uint32_t mHeight = 0;
 
-        /// Every level, back to back. The levels index into this. Empty under `SpriteBake` and
-        /// `GroundComposite`, whose bytes are the device's.
+        /// Every level, back to back. The levels index into this. Empty under `SpriteBake`,
+        /// `GroundComposite` and `GroundGloss`, whose bytes are the device's.
         std::span<const std::byte> mBytes;
         std::span<const MipLevel> mLevels;
 

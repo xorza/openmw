@@ -1744,18 +1744,26 @@ namespace Rtx
             const Index lone = scene.textures().add(VFS::Path::NormalizedView("textures/tx_sand.dds"));
 
             // The companion maps are held as every other map is: `Material::forEachTexture` names
-            // them, and a slot missing from it would be freed under the material that wears it.
+            // them, and a slot missing from it would be freed under the material that wears it. A
+            // ground layer's normal map is held beside the layer's diffuse, for the same reason.
             const Index normal = scene.textures().add(
                 VFS::Path::NormalizedView("textures/tx_stone_n.dds"), TextureWrap::Repeat, TextureEncoding::Data);
             const Index specular = scene.textures().add(
                 VFS::Path::NormalizedView("textures/tx_stone_spec.dds"), TextureWrap::Repeat, TextureEncoding::Data);
+            const Index layerNormal = scene.textures().add(
+                VFS::Path::NormalizedView("textures/tx_sand_nh.dds"), TextureWrap::Repeat, TextureEncoding::Data);
 
             scene.addMaterial(Material{ .mDiffuse = shared });
             const Index second = scene.addMaterial(
                 Material{ .mDiffuse = shared, .mEmissive = lone, .mNormal = normal, .mSpecular = specular });
 
+            std::array layers{ Testing::layerOf(lone) };
+            layers[0].mNormal = layerNormal;
+            const Index ground = scene.addMaterial(
+                Material{ .mKind = MaterialKind::Terrain, .mLayers = scene.materials().addLayers(layers) });
+
             const std::array meshes{ mesh };
-            const std::array keepSecond{ second };
+            const std::array keepSecond{ second, ground };
             ASSERT_TRUE(scene.release(meshes, keepSecond));
 
             EXPECT_TRUE(scene.textures().getFreed().empty()) << "a texture another material still names";
@@ -1764,11 +1772,13 @@ namespace Rtx
             const std::array<Index, 0> none{};
             ASSERT_TRUE(scene.release(meshes, none));
 
-            EXPECT_EQ(sorted(scene.textures().getFreed()), (std::vector<Index>{ shared, lone, normal, specular }));
+            EXPECT_EQ(sorted(scene.textures().getFreed()),
+                (std::vector<Index>{ shared, lone, normal, specular, layerNormal }));
             EXPECT_TRUE(scene.textures().getRows()[shared].mPath.value().empty());
             EXPECT_TRUE(scene.textures().getRows()[lone].mPath.value().empty());
             EXPECT_TRUE(scene.textures().getRows()[normal].mPath.value().empty());
             EXPECT_TRUE(scene.textures().getRows()[specular].mPath.value().empty());
+            EXPECT_TRUE(scene.textures().getRows()[layerNormal].mPath.value().empty());
         }
 
 #ifndef NDEBUG

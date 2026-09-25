@@ -6,12 +6,14 @@
 // device, in the placement that wrote the chunk's material row.
 //
 // **The same sum the hit shader runs, once a texel instead of once a hit.** `ground.glsl` is the
-// sum, written once for both, so a flattened chunk cannot disagree with the stack it replaces:
+// sum, written once for both, so a flattened chunk cannot disagree with the stack it replaces —
+// the albedo into the composite, and the gloss into a second image where a layer reflects:
 // each layer's weight off its mask, its texel off its own tiling at the level a texel of the
 // composite resolves, the light painted into it divided out in full, and the stack summed in
-// light. Stored display-encoded through a `UNORM` view of the composite's `SRGB` image, which
-// is what the trace then samples as any file. The chain below the first level is blitted, box
-// filtered in light through the same `SRGB` format, which is the filter the sum was made for.
+// light. The albedo is stored display-encoded through a `UNORM` view of the composite's `SRGB`
+// image, which is what the trace then samples as any file. The chain below the first level is
+// blitted, box filtered in light through the same `SRGB` format, which is the filter the sum was
+// made for; the gloss's is filtered as it is stored, as data.
 //
 // **On the device and in the placement rather than on threads of the host**, where this was
 // tens of milliseconds a chunk and dozens of chunks a ring fill: the layers are textures the
@@ -53,8 +55,12 @@ void main()
     MaskTable masks = MaskTable(chunk.mMasks);
 
     // The stack in its own order, because a float sum is the order it was added in — and so
-    // the order the hit shader adds it in.
+    // the order the hit shader adds it in. The gloss is the hit's too: the share of the weight on
+    // layers that reflect, and the roughness over every layer, a Lambert one counted at one.
     vec3 albedo = vec3(0.0);
+    float weights = 0.0;
+    float reflecting = 0.0;
+    float roughness = 0.0;
     for (uint i = 0u; i < material.mLayerCount; ++i)
     {
         const GpuLayer layer = layers.at[material.mLayerOffset + i];
@@ -62,9 +68,22 @@ void main()
         if (showing <= 0.0)
             continue;
 
-        albedo += showing
-            * sampleAlbedoLod(layer.mDiffuse, layerUv(layer, chunkUv),
-                groundLod(layer.mDiffuse, layer, GROUND_COMPOSITE_EXTENT), GROUND_COMPOSITE_DELIGHT);
+        const vec4 shown = layerTexel(layer, layerUv(layer, chunkUv),
+            groundLod(layer.mDiffuse, layer, GROUND_COMPOSITE_EXTENT), GROUND_COMPOSITE_DELIGHT, true);
+        albedo += showing * shown.rgb;
+        weights += showing;
+        roughness += showing * shown.a;
+        if ((layer.mFlags & LAYER_AUTHORED) != 0u)
+            reflecting += showing;
+    }
+
+    // Data and not a picture: stored as it is, through a view with no curve over a format with
+    // none. Where no layer shows, the ground is a Lambert surface.
+    if (chunk.mOutput == GROUND_COMPOSITE_GLOSS)
+    {
+        const vec2 gloss = weights > 0.0 ? vec2(reflecting, roughness) / weights : vec2(0.0, 1.0);
+        imageStore(composite, ivec2(texel), vec4(gloss, 0.0, 1.0));
+        return;
     }
 
     // Opaque, because ground is not see-through: a composite left with its alpha at nought is a

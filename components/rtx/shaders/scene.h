@@ -692,11 +692,19 @@ namespace Rtx::Shaders
     /// A claim larger than the truth is undefined behaviour with no message. A claim smaller than
     /// the truth costs the compiler a wider load where one was possible. A buffer's start is at
     /// least sixteen-aligned on this device and the host asserts it, so the stride decides:
-    /// `GpuLayer` is 48 bytes with two `vec4` at sixteen and thirty-two, the block tables hold
+    /// `GpuLayer` is 64 bytes with two `vec4` at sixteen and thirty-two, the block tables hold
     /// eight-byte addresses, and every other row or list is four-aligned only.
     const uint TABLE_ALIGN_ROWS = 4u;
     const uint TABLE_ALIGN_BLOCKS = 8u;
     const uint TABLE_ALIGN_LAYERS = 16u;
+
+    /// A ground layer whose diffuse is an authored albedo with the perceptual roughness in its
+    /// alpha — a `_diffusespec` under `SpecularLayout::MetalRoughness`, as Wareya's shaders read it.
+    /// **Not delit, and a dielectric**: the texture was painted as a surface and not as a picture
+    /// of one lit, and ground is no metal, so its reflectance at normal incidence is
+    /// `DIELECTRIC_F0`. Under the classic layout the same file is the plain diffuse OpenMW swaps
+    /// in, and this is not set.
+    const uint LAYER_AUTHORED = 0x01u;
 
     /// One layer of a terrain material: a tiling ground texture and the weights that place it.
     ///
@@ -730,6 +738,19 @@ namespace Rtx::Shaders
         /// `Terrain::createPasses` does, and a test holds the numbers.
         vec4 mDiffuseTransform;
         vec4 mMaskTransform;
+
+        /// The layer's normal map, read at the diffuse's coordinates, or `NO_TEXTURE`. Its
+        /// tangent is the one `terrain.vert` gives every layer: the chunk's x, which is the
+        /// world's, with the bitangent `cross(N, x)`.
+        uint mNormal;
+
+        /// `LAYER_` bits.
+        uint mFlags;
+
+        /// To the sixty-four bytes std430 would give the row: at fifty-six, every other row's two
+        /// `vec4` sit on eight and not sixteen, and every layer a hit sums is read in eight-byte
+        /// loads, vanilla ground included.
+        uint mPadding[2];
 
 #ifdef RTX_HOST
         /// Two layers are the same when every field is, which is what says a chunk still stands
@@ -983,7 +1004,7 @@ namespace Rtx::Shaders
     static_assert(sizeof(GpuInstance) == 60, "GpuInstance must be scalar-packed on every side");
     static_assert(sizeof(GpuLight) == 40, "GpuLight must be scalar-packed on every side");
     static_assert(sizeof(GpuLightGrid) == 28, "GpuLightGrid must be scalar-packed on every side");
-    static_assert(sizeof(GpuLayer) == 48, "GpuLayer must be scalar-packed on every side");
+    static_assert(sizeof(GpuLayer) == 64, "GpuLayer must be scalar-packed on every side");
     static_assert(sizeof(GpuMaterial) == 96, "GpuMaterial must be scalar-packed on every side");
     static_assert(sizeof(GpuSprite) == 56, "GpuSprite must be scalar-packed on every side");
     static_assert(sizeof(GpuEmitter) == 40, "GpuEmitter must be scalar-packed on every side");

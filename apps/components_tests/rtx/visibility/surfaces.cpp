@@ -28,6 +28,8 @@
 #include <components/rtx/slot.hpp>
 #include <components/rtx/surface.hpp>
 #include <components/rtx/texturedata.hpp>
+#include <components/rtx/textureencoding.hpp>
+#include <components/rtx/texturewrap.hpp>
 #include <components/rtxvulkan/commands.hpp>
 #include <components/rtxvulkan/frameslots.hpp>
 #include <components/rtxvulkan/scenebuffers.hpp>
@@ -1418,6 +1420,139 @@ namespace Rtx::Testing
             EXPECT_EQ(at(blue, 63)[1], 0);
             EXPECT_EQ(at(green, 63)[1], 255) << "and its near half, half a coordinate back";
             EXPECT_EQ(at(green, 63)[2], 0);
+        }
+
+        /// **Ground sums its layers' maps by the weights it sums their albedo by**: the normals, and
+        /// how much of it reflects and how rough — and a flattened chunk reflects as the stack does.
+        ///
+        /// The two-layer card above facing the eye along -y, with its normals stated so. Layer zero,
+        /// on the left, is a Lambert layer with a normal map of `(191, 128, 221)`, the tangent-space
+        /// normal `(0.498039, 0.003922, 0.733333)`. Layer one is authored: a `_diffusespec` whose
+        /// alpha paints a roughness of 64 of 255, 0.250980, and no normal map.
+        ///
+        /// **The frame is `terrain.vert`'s**: the tangent x, the bitangent `cross(N, x)` — for N of
+        /// `(0, -1, 0)` that is `(0, 0, 1)` — and N. Column 0 is layer zero alone, so its normal is
+        /// `normalize(0.498039 x + 0.003922 z - 0.733333 y)`, and it has no lobe: a roughness of one
+        /// and no reflectance. Column 63 is layer one alone: N, its roughness, and `DIELECTRIC_F0`.
+        /// Column 31 weighs layer one 0.484375 (the ramp above), so it reflects 0.484375 of 0.04 at
+        /// a roughness of `0.515625 + 0.484375 × 0.250980`, under the blend of the two normals.
+        ///
+        /// **Flattened, the chunk reads its gloss**: a reflectance of `DIELECTRIC_F0` times its red and
+        /// a roughness of its green, under the card's own normal. The game's `CompositeQueue` bakes
+        /// the two images; here they are stood as the textures a bake leaves, a gloss of
+        /// `(128, 64)`, since this renderer has no queue and `RtxGroundCompositePassTest` holds the
+        /// bake to the stack.
+        TEST_F(RtxVisibilityTest, groundSumsItsLayersMapsByTheWeightsItsAlbedoIsSummedBy)
+        {
+            constexpr std::uint32_t size = 64;
+            constexpr std::array<std::uint8_t, 4> sRed{ 255, 0, 0, 255 };
+            constexpr std::array<std::uint8_t, 4> sLeaning{ 191, 128, 221, 255 };
+            constexpr std::array<std::uint8_t, 4> sAuthored{ 128, 128, 128, 64 };
+            constexpr std::array<std::uint8_t, 4> sGloss{ 128, 64, 0, 255 };
+            const std::array<TextureData, 4> textures{ describeTexel(sRed, 0), describeTexel(sLeaning, 1),
+                describeTexel(sAuthored, 2), describeTexel(sGloss, 3) };
+
+            const osg::Vec3f facing(0.0f, -1.0f, 0.0f);
+            const std::array normals{ facing, facing, facing, facing };
+            const std::array positions = cardAt(0.0f);
+            constexpr std::array<float, 2> firstMask{ 1.0f, 0.0f };
+            constexpr std::array<float, 2> secondMask{ 0.0f, 1.0f };
+
+            const Shaders::VisibilityConstants camera = Testing::makeCamera(
+                osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
+
+            // The three columns of the middle row, in the view `show`.
+            const auto render = [&](std::uint32_t show, bool flattened) {
+                SceneDesc scene;
+                const Index mesh = scene.addMesh(MeshArrays{
+                    .mPositions = positions, .mNormals = normals, .mTexCoords = sQuadUv, .mIndices = sQuadIndices });
+                scene.textures().add(VFS::Path::NormalizedView("red.dds"));
+                scene.textures().add(
+                    VFS::Path::NormalizedView("red_nh.dds"), TextureWrap::Repeat, TextureEncoding::Data);
+                scene.textures().add(VFS::Path::NormalizedView("grey_diffusespec.dds"));
+                scene.textures().add(
+                    VFS::Path::NormalizedView("gloss.dds"), TextureWrap::Repeat, TextureEncoding::Data);
+
+                std::array layers{
+                    Testing::layerOf(0, scene.materials().addMask(firstMask), 2, 1),
+                    Testing::layerOf(2, scene.materials().addMask(secondMask), 2, 1),
+                };
+                layers[0].mNormal = 1;
+                layers[1].mFlags = Shaders::LAYER_AUTHORED;
+
+                Material material;
+                material.mKind = MaterialKind::Terrain;
+                material.mLayers = scene.materials().addLayers(layers);
+                material.mLayersMapped = true;
+                if (flattened)
+                {
+                    material.mFlatten = true;
+                    material.mDiffuse = 0;
+                    material.mSpecular = 3;
+                }
+
+                scene.addInstance(MeshInstance{
+                    .mTransform = osg::Matrixf::identity(), .mMesh = mesh, .mMaterial = scene.addMaterial(material) });
+
+                Shaders::VisibilityConstants shown = camera;
+                shown.mShow = show;
+                std::vector<std::uint8_t> pixels;
+                EXPECT_EQ(countHits(scene, textures, shown, size, pixels), size * size);
+
+                std::array<osg::Vec3f, 3> columns;
+                for (std::size_t at = 0; at < columns.size(); ++at)
+                {
+                    const std::uint32_t column = std::array{ 0u, 31u, 63u }[at];
+                    const std::size_t value = (std::size_t{ size / 2 } * size + column) * 4;
+                    columns[at] = osg::Vec3f(mRadiance[value], mRadiance[value + 1], mRadiance[value + 2]);
+                }
+                return columns;
+            };
+
+            // The frame, and the normal it carries a tangent-space normal to.
+            const osg::Vec3f across(1.0f, 0.0f, 0.0f);
+            const osg::Vec3f bitangent = facing ^ across;
+            const auto carried = [&](const osg::Vec3f& painted) {
+                osg::Vec3f mapped = across * painted.x() + bitangent * painted.y() + facing * painted.z();
+                mapped.normalize();
+                return mapped * 0.5f + osg::Vec3f(0.5f, 0.5f, 0.5f);
+            };
+            const osg::Vec3f leaning(
+                2.0f * 191.0f / 255.0f - 1.0f, 2.0f * 128.0f / 255.0f - 1.0f, 2.0f * 221.0f / 255.0f - 1.0f);
+            const float second = 0.484375f;
+            const float rough = 64.0f / 255.0f;
+
+            const std::array stackNormal = render(Shaders::SHOW_NORMAL, false);
+            const std::array<osg::Vec3f, 3> wantedNormal{ carried(leaning),
+                carried(leaning * (1.0f - second) + osg::Vec3f(0.0f, 0.0f, 1.0f) * second),
+                carried(osg::Vec3f(0.0f, 0.0f, 1.0f)) };
+            for (std::size_t at = 0; at < 3; ++at)
+                for (int axis = 0; axis < 3; ++axis)
+                    EXPECT_NEAR(stackNormal[at][axis], wantedNormal[at][axis], 1e-5f)
+                        << "column " << at << " axis " << axis;
+
+            const std::array stackRough = render(Shaders::SHOW_ROUGHNESS, false);
+            EXPECT_EQ(stackRough[0].x(), 1.0f) << "a Lambert layer alone keeps the Lambert surface's roughness";
+            EXPECT_NEAR(stackRough[1].x(), (1.0f - second) + second * rough, 1e-6f);
+            EXPECT_NEAR(stackRough[2].x(), rough, 1e-6f);
+
+            const std::array stackSpecular = render(Shaders::SHOW_SPECULAR, false);
+            EXPECT_EQ(stackSpecular[0].x(), 0.0f) << "a Lambert layer alone reflects nothing";
+            EXPECT_NEAR(stackSpecular[1].x(), Shaders::DIELECTRIC_F0 * second, 1e-7f);
+            EXPECT_NEAR(stackSpecular[2].x(), Shaders::DIELECTRIC_F0, 1e-7f);
+
+            const std::array flatNormal = render(Shaders::SHOW_NORMAL, true);
+            const std::array flatRough = render(Shaders::SHOW_ROUGHNESS, true);
+            const std::array flatSpecular = render(Shaders::SHOW_SPECULAR, true);
+            for (std::size_t at = 0; at < 3; ++at)
+            {
+                for (int axis = 0; axis < 3; ++axis)
+                    EXPECT_NEAR(flatNormal[at][axis], carried(osg::Vec3f(0.0f, 0.0f, 1.0f))[axis], 1e-6f)
+                        << "flattened column " << at << " axis " << axis;
+                EXPECT_EQ(flatRough[at].x(), 64.0f / 255.0f) << "flattened column " << at;
+                EXPECT_NEAR(flatSpecular[at].x(), Shaders::DIELECTRIC_F0 * 128.0f / 255.0f, 1e-7f)
+                    << "flattened column " << at;
+            }
         }
 
         /// A chunk flattened on the device is the ground its stack sums, whichever way it arrived.

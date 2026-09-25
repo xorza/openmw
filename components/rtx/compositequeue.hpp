@@ -24,6 +24,12 @@ namespace Rtx
     /// while a chunk waits: it keeps `mDiffuse` unset and the shader sums its layer stack at the
     /// hit, so the bake buys the cost of that hit and not the sight of the ground.
     ///
+    /// **A chunk with a layer that reflects is given a second slot, its gloss**, as its material's
+    /// `mSpecular`: how much of the ground there reflects and how rough it is, baked beside the
+    /// albedo from the same stack. Distant ground is seen at grazing, where a dielectric's lobe is
+    /// strongest, so a flattened chunk that dropped either would part from its stack at the edge
+    /// of the active grid — ice turned matte, or a layer with no map given a sheen it never had.
+    ///
     /// **No threads and no bytes.** This flattened stacks on threads of its own once, tens of
     /// milliseconds a chunk and a megabyte and a half staged for each, and a frame had to wait
     /// for the thread to keep the frame a composite landed on the schedule's answer. The frame a
@@ -37,9 +43,18 @@ namespace Rtx
         /// texture slot and is an arrival like any other.
         std::size_t advance(SceneDesc& scene);
 
-        /// The material whose ground the composite in `slot` is, or `sNoIndex` where nothing here
-        /// gave that slot out this frame.
-        Index find(Index slot) const;
+        /// What `advance` gave one slot out as.
+        struct Baked
+        {
+            /// The material whose ground it is, or `sNoIndex` where nothing here gave the slot out
+            /// this frame.
+            Index mMaterial = sNoIndex;
+
+            /// Whether it is the chunk's gloss rather than its albedo.
+            bool mGloss = false;
+        };
+
+        Baked find(Index slot) const;
 
         /// Lets go of what `advance` gave out, after the arrival that described it.
         void releaseFinished() { mFinished.clear(); }
@@ -71,11 +86,11 @@ namespace Rtx
         struct Given
         {
             Index mSlot = sNoIndex;
-            Index mMaterial = sNoIndex;
+            Baked mBaked;
         };
 
-        /// What `advance` gave out this frame, at most `sCompositesPerFrame` of them. Emptied by
-        /// `releaseFinished` and never freed.
+        /// What `advance` gave out this frame: at most `sCompositesPerFrame` chunks, each an albedo
+        /// and at most one gloss. Emptied by `releaseFinished` and never freed.
         std::vector<Given> mFinished;
 
         std::string mKey;

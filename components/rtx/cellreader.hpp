@@ -66,9 +66,9 @@ namespace Rtx
         /// why, where the template describes a mesh this renderer cannot take.
         PreparedModel* readModel(VFS::Path::NormalizedView path);
 
-        /// The reading of `layer`'s texture, made where this holds none under its path, and one
-        /// more holder counted on it.
-        PreparedTexture& readTexture(const PreparedLayer& layer);
+        /// The reading of a layer's texture at `path`, made where this holds none under that path,
+        /// and one more holder counted on it: its diffuse, and its normal map where it has one.
+        PreparedTexture& readTexture(const osg::ref_ptr<const osg::Image>& image, const VFS::Path::Normalized& path);
 
         const Terrain::ObjectStorage& mStorage;
         ContentSource& mContent;

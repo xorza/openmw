@@ -2,7 +2,8 @@
 #define OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_GROUND_GLSL
 
 // A piece of ground, as one texel of it is read: which of its layers show there, and what each
-// shows, with the light painted into the layer's texture divided back out.
+// shows — its albedo, with the light painted into the layer's texture divided back out, and how
+// rough it is.
 //
 // **Its own file because two shaders read the ground and neither may read it differently.** The
 // trace sums a chunk's stack at every hit near enough to keep it; `groundcomposite.comp` sums
@@ -67,6 +68,22 @@ vec3 sampleAlbedoLod(uint slot, vec2 at, float lod, float delight)
         return texel;
 
     return texel / mix(1.0, paintedLight(slot, at), delight);
+}
+
+/// What one layer shows at `at`, read at `lod`: its albedo in rgb and its perceptual roughness in
+/// alpha. **An authored layer** (`LAYER_AUTHORED`) is read as it stands, its alpha its roughness;
+/// **any other** has `delight` of its painted light divided out and is a Lambert layer, as rough as
+/// a surface is. The two readers of a stack call this and nothing else for a layer, so a flattened
+/// chunk is the stack it replaces.
+///
+/// @param maps whether a layer can be authored at all — the trace's `HAS_MAPS`, which takes the
+///        test out of a frame with no map, and true in the bake.
+vec4 layerTexel(GpuLayer layer, vec2 at, float lod, float delight, bool maps)
+{
+    if (maps && (layer.mFlags & LAYER_AUTHORED) != 0u)
+        return textureLod(textures[nonuniformEXT(layer.mDiffuse)], at, lod);
+
+    return vec4(sampleAlbedoLod(layer.mDiffuse, at, lod, delight), 1.0);
 }
 
 /// Where `chunkUv` of a chunk lands on one of its layers, which tiles across it.

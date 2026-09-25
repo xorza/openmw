@@ -9,6 +9,7 @@
 #include <components/rtx/material.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
+#include <components/rtx/shaders/scene.h>
 #include <components/vfs/pathutil.hpp>
 
 #include "layers.hpp"
@@ -17,15 +18,19 @@ namespace Rtx
 {
     namespace
     {
-        /// A distant chunk of two ground types, which is a chunk that wants flattening.
-        Index addChunk(SceneDesc& scene, const VFS::Path::NormalizedView under, const VFS::Path::NormalizedView over)
+        /// A distant chunk of two ground types, which is a chunk that wants flattening. `reflecting`
+        /// makes the top one an authored layer, which is a chunk that wants a gloss too.
+        Index addChunk(SceneDesc& scene, const VFS::Path::NormalizedView under, const VFS::Path::NormalizedView over,
+            const bool reflecting = false)
         {
             constexpr std::array<float, 4> weights{ 1.0f, 0.0f, 0.0f, 1.0f };
 
-            const std::array layers{
+            std::array layers{
                 Testing::layerOf(scene.textures().add(under)),
                 Testing::layerOf(scene.textures().add(over), scene.materials().addMask(weights), 2, 2),
             };
+            if (reflecting)
+                layers[1].mFlags = Shaders::LAYER_AUTHORED;
 
             Material material;
             material.mKind = MaterialKind::Terrain;
@@ -46,31 +51,51 @@ namespace Rtx
             return taken;
         }
 
-        /// A chunk that asks is given its slot on the frame it asked, and asks once.
+        /// A chunk that asks is given its slot on the frame it asked, and asks once — and **a chunk
+        /// with a layer that reflects is given its gloss beside it**, as its material's specular,
+        /// where one with none is given no gloss at all.
         ///
         /// The slot is the composite the device fills in the placement after, so the frame is a
         /// count and never a baker's finishing time: no thread, no sleep and no timing anywhere.
         TEST(RtxCompositeQueueTest, aChunkIsGivenItsSlotOnTheFrameItAskedAndAsksOnce)
         {
-            SceneDesc scene;
-            const Index chunk = addChunk(
-                scene, VFS::Path::NormalizedView("textures/under.dds"), VFS::Path::NormalizedView("textures/over.dds"));
+            for (const bool reflecting : { false, true })
+            {
+                SceneDesc scene;
+                const Index chunk = addChunk(scene, VFS::Path::NormalizedView("textures/under.dds"),
+                    VFS::Path::NormalizedView("textures/over.dds"), reflecting);
 
-            CompositeQueue queue;
-            EXPECT_EQ(queue.advance(scene), 1u) << "the chunk that asked was not given its slot";
+                CompositeQueue queue;
+                EXPECT_EQ(queue.advance(scene), 1u) << "the chunk that asked was not given its slot";
 
-            const Index baked = scene.materials().getRows()[chunk].mDiffuse;
-            ASSERT_NE(baked, sNoIndex) << "the chunk still shades from its stack";
-            EXPECT_EQ(queue.find(baked), chunk) << "the slot the chunk was given is not named as its ground";
-            EXPECT_EQ(queue.find(baked + 1), sNoIndex);
+                const Material& given = scene.materials().getRows()[chunk];
+                const Index baked = given.mDiffuse;
+                ASSERT_NE(baked, sNoIndex) << "the chunk still shades from its stack";
+                EXPECT_EQ(queue.find(baked).mMaterial, chunk)
+                    << "the slot the chunk was given is not named as its ground";
+                EXPECT_FALSE(queue.find(baked).mGloss);
 
-            // A slot given out is let go of after the arrival that described it, and a chunk with its
-            // ground asks for no more: the rewrite that gave it the slot is a row written, and the
-            // gather has to read it as answered rather than as asking again.
-            queue.releaseFinished();
-            EXPECT_EQ(queue.find(baked), sNoIndex);
-            scene.clearArrivals();
-            EXPECT_EQ(frame(queue, scene), 0u) << "a chunk with its ground asked again";
+                if (reflecting)
+                {
+                    ASSERT_NE(given.mSpecular, sNoIndex) << "a chunk that reflects was given no gloss";
+                    EXPECT_NE(given.mSpecular, baked);
+                    EXPECT_EQ(queue.find(given.mSpecular).mMaterial, chunk);
+                    EXPECT_TRUE(queue.find(given.mSpecular).mGloss) << "the gloss is named as the albedo";
+                }
+                else
+                    EXPECT_EQ(given.mSpecular, sNoIndex) << "a chunk that reflects nowhere was given a gloss";
+
+                EXPECT_EQ(queue.find(static_cast<Index>(scene.textures().getRows().size())).mMaterial, sNoIndex)
+                    << "a slot past every slot the table holds";
+
+                // A slot given out is let go of after the arrival that described it, and a chunk with
+                // its ground asks for no more: the rewrite that gave it the slot is a row written, and
+                // the gather has to read it as answered rather than as asking again.
+                queue.releaseFinished();
+                EXPECT_EQ(queue.find(baked).mMaterial, sNoIndex);
+                scene.clearArrivals();
+                EXPECT_EQ(frame(queue, scene), 0u) << "a chunk with its ground asked again";
+            }
         }
 
         /// A frame takes `sCompositesPerFrame` and no more, in the order the chunks asked.
@@ -154,7 +179,7 @@ namespace Rtx
             EXPECT_EQ(queue.advance(scene), 1u);
             const Index baked = scene.materials().getRows()[chunk].mDiffuse;
             ASSERT_NE(baked, sNoIndex);
-            EXPECT_EQ(queue.find(baked), chunk);
+            EXPECT_EQ(queue.find(baked).mMaterial, chunk);
         }
     }
 }
