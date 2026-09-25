@@ -576,8 +576,9 @@ each texture arrives; the host's versions are held to them by a test.
 The surface model (`shaders/brdf.h`, shared with the host) is glTF 2.0's metal and roughness: a
 GGX lobe with height-correlated Smith masking and Schlick's Fresnel, `F90 = saturate(50 F0.g)`,
 over a Lambert base. A vanilla surface is the model with `F0 = 0`, which reflects exactly nothing.
-`SpecularAlbedo` integrates the lobe once at startup into a 32 by 32 table over the cosine to the
-eye and the roughness (visible-normal draws, `specularalbedo.hpp`); the shader reads the energy
+`SpecularAlbedo` integrates the lobe once at startup into a 64 by 64 table of nodes over the square
+root of the cosine to the eye and the roughness, both edges included (visible-normal draws,
+`specularalbedo.hpp`; the layout is `brdf.h`'s, for both sides); the shader reads the energy
 compensation and the upscaler's specular albedo out of it (`GpuTables::mSpecularAlbedo`). In the
 hit (`resolveFor`), a material with a normal map reads it through the tangent `committedHit`
 fetched (`MESH_TANGENTS`) in the frame `normals.glsl` builds, and tilts it toward the interpolated

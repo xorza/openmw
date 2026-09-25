@@ -370,7 +370,7 @@ Built in phase 4.
 - **The kernel table doubles on the trace's side**: 16 visibility and 8 froxel launches.
 - **`Surface`** grows by 10 floats (`mSmooth`, `mIncident`, `mSpecular`, `mRoughness`) and `Hit` by
   4 (`mTangent`).
-- **Memory.** 4 bytes per vertex (phase 2), 8 bytes per material, and the 8 KiB table.
+- **Memory.** 4 bytes per vertex (phase 2), 8 bytes per material, and the 32 KiB table.
 
 ## 6. Decisions
 
@@ -501,7 +501,7 @@ plan).
   draw that ignores the eye is 5e-3 to 5e-2 off), `theSmithTermsAreReciprocalAndAgree` (`G2 / G1`
   against Smith's `Λ`), `theConeWidthIsWhereTheDistributionFallsToHalf`, and the device's white
   furnace, `aGlossyFloorUnderAnEvenSkyGivesBackWhatItReflects`: a white metal gives an even sky
-  back within 3e-5, and half a metal both of its halves within 2.5e-4. The table test's quadrature
+  back within 3e-5, and half a metal both of its halves within 2.6e-4. The table test's quadrature
   moved to `lobeIntegrals` for it. **The weight at F0 = 0 is no weight at all**: a Lambert surface
   draws nothing new, which the bounce tests and the vanilla shots hold exactly.
 - Vanilla: 9 of the 23 views, every interior among them, are the same as the phase 3 baseline

@@ -17,15 +17,14 @@
 #include "variants.glsl"
 
 /// The lobe's two integrals at a cosine to the eye and a perceptual roughness: the table's four
-/// nearest cell centres blended, the edge held past the outer ones — `Rtx::SpecularAlbedo::at`,
+/// nodes around the point blended, in the square root of the cosine — `Rtx::SpecularAlbedo::at`,
 /// which the tests hold this to.
 vec2 specularAlbedoAt(float cosine, float roughness)
 {
-    const float last = float(SPECULAR_TABLE_SIZE - 1u);
-    const vec2 cell = clamp(vec2(cosine, roughness) * float(SPECULAR_TABLE_SIZE) - 0.5, vec2(0.0), vec2(last));
-    const uvec2 low = uvec2(cell);
+    const vec2 node = vec2(specularTableColumn(cosine), specularTableRow(roughness));
+    const uvec2 low = uvec2(node);
     const uvec2 high = min(low + 1u, uvec2(SPECULAR_TABLE_SIZE - 1u));
-    const vec2 part = cell - vec2(low);
+    const vec2 part = node - vec2(low);
 
     return (specularAlbedoCell(low.x, low.y) * (1.0 - part.x) + specularAlbedoCell(high.x, low.y) * part.x)
         * (1.0 - part.y)

@@ -1543,15 +1543,14 @@ namespace Rtx::Testing
         /// reflects toward the eye. Read as the radiance rather than bytes, over four frames averaged.
         ///
         /// **The lobe reflects what `lobeIntegrals` finds square on, compensated off the table.** The
-        /// draw is the lobe at a cosine of one, where its whole is 0.91442; the compensation is read
-        /// at the table's last column, a cosine of 0.984, where the table holds 0.91286. So what a
-        /// white lobe gives back is `L` times their ratio, 1.7e-3 over `L` — the table's resolution
-        /// at its edge, which the frame measures and the expectation has to carry.
+        /// draw is the lobe at a cosine of one, where its whole is 0.91440; the compensation is read
+        /// off the table's node at a cosine of one, blended across two roughness rows, and holds
+        /// 0.91442. The expectation carries their ratio, which is 2.3e-5 under one.
         ///
         /// - **A white metal**, `F0 = F90 = 1` and no diffuse half, reflects all of what reaches it:
         ///   its compensation is `1 / whole`, so the frame averages `L` to that ratio. Every pixel
         ///   draws the lobe, so this holds the visible-normal draw, its `G2 / G1` and the
-        ///   compensation. Uncompensated it averages `L whole`, 0.044 lower; drawn into the indirect
+        ///   compensation. Uncompensated it averages `L whole`, 0.043 lower; drawn into the indirect
         ///   term, the lobe's light is multiplied by a diffuse albedo of nought.
         /// - **Half a metal**, `m = 128 / 255`: `F0 = 0.04 + 0.96 m` and `c_diff = 1 - m`, and each
         ///   half drawn about as often. The lobe reflects its `Es`, from the integrals. The diffuse half
@@ -1566,7 +1565,7 @@ namespace Rtx::Testing
         /// **2.5e-3 is four standard errors of independent draws.** One frame's pixels spread by 0.135
         /// and 0.162 about their means, so 65536 draws put a mean within 6.3e-4 of its expectation a
         /// standard error. The directions are blue noise and the choice of half a hash: measured, the
-        /// white metal lands within 3e-5 and half a metal within 2.5e-4. The rule's own error is
+        /// white metal lands within 3e-5 and half a metal within 2.6e-4. The rule's own error is
         /// 1e-5, and the pixels' cosines, 0.9996 at the corners, move the lobe's whole by 8e-6 on
         /// average.
         TEST_F(RtxVisibilityTest, aGlossyFloorUnderAnEvenSkyGivesBackWhatItReflects)

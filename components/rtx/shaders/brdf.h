@@ -21,10 +21,49 @@ namespace Rtx::Shaders
 {
 #endif
 
-    /// How many cells the specular albedo table has along each of its axes, the cosine to the eye and
-    /// the perceptual roughness. Each cell is the integral at its centre, and a lookup blends the four
-    /// nearest and holds the edge beyond the outer centres, as a texture's clamped bilinear read does.
-    const uint SPECULAR_TABLE_SIZE = 32u;
+    /// How many nodes the specular albedo table has along each of its axes: the square root of the
+    /// cosine to the eye, and the perceptual roughness. Node `i` stands at `i / (SIZE - 1)` of its
+    /// axis, so the first and the last are on the edges, and a lookup blends the four around it —
+    /// `specularTableColumn` and `specularTableRow` say where a point falls, and
+    /// `specularTableCosine` and `specularTableRoughness` where a node stands.
+    ///
+    /// **Nodes on the edges, and not cells about centres**, because the lobe's albedo moves fastest
+    /// there: from roughness 0.984 to one it falls by a sixteenth, which a table holding its outer
+    /// centres handed to every roughest surface. **The cosine by its square root**, because a smooth
+    /// lobe's albedo falls from 1 to 0.89 and climbs back within a cosine of 0.03 of grazing, where
+    /// the root puts eleven nodes and an even axis two.
+    ///
+    /// **Sixty-four**: against the integrals drawn with 2^15 samples a point, a white metal's
+    /// compensation is then within 1e-2 under a cosine of 0.05 and 9e-4 elsewhere, three times
+    /// nearer than 32 nodes. 32 KiB.
+    const uint SPECULAR_TABLE_SIZE = 64u;
+
+    /// Where a cosine to the eye falls along the table's first axis, in nodes, held to the table.
+    RTX_SHADER float specularTableColumn(float cosine)
+    {
+        const float last = float(SPECULAR_TABLE_SIZE - 1u);
+        return clamp(sqrt(max(cosine, 0.0f)) * last, 0.0f, last);
+    }
+
+    /// Where a perceptual roughness falls along the table's second axis, in nodes, held to the table.
+    RTX_SHADER float specularTableRow(float roughness)
+    {
+        const float last = float(SPECULAR_TABLE_SIZE - 1u);
+        return clamp(roughness * last, 0.0f, last);
+    }
+
+    /// The cosine to the eye node `column` stands at: the square of its place along the axis.
+    RTX_SHADER float specularTableCosine(uint column)
+    {
+        const float root = float(column) / float(SPECULAR_TABLE_SIZE - 1u);
+        return root * root;
+    }
+
+    /// The perceptual roughness node `row` stands at.
+    RTX_SHADER float specularTableRoughness(uint row)
+    {
+        return float(row) / float(SPECULAR_TABLE_SIZE - 1u);
+    }
 
     /// GGX's alpha for a perceptual roughness: its square, the roughness a map paints being
     /// perceptually linear — glTF 2.0 and Filament. Held at `ROUGHNESS_FLOOR`.
