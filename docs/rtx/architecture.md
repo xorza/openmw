@@ -99,8 +99,9 @@ public `OPENMW_RTX` definition, read by `#ifdef OPENMW_RTX` in `mwrender/rendere
 | `openmw-rtx-mygui`          | `components/myguirtx`  | `openmw-rtx`, `components`                                    |
 | `openmw-rtxtool-lib`        | `apps/rtxtool`         | the three component libraries, `components`, Boost, SDL2      |
 | `openmw-rtxtool`            | `apps/rtxtool`         | `openmw-rtxtool-lib`, `openmw-lib`                            |
-| `openmw-rtx-spirv`          | `components/rtxvulkan` | nothing; the SPIR-V headers as `PRIVATE`                      |
+| `openmw-rtx-spirv`          | `components/rtxvulkan` | `smhasher`; the SPIR-V headers as `PRIVATE`                   |
 | `openmw-rtx-spirv-pin`      | `components/rtxvulkan` | `openmw-rtx-spirv`                                            |
+| `openmw-rtx-spirv-digest`   | `components/rtxvulkan` | `openmw-rtx-spirv`                                            |
 | `openmw-rtx-vulkan-shaders` | `components/rtxvulkan` | each module in `rtx/shaders/` and `rtx/shaders-source/`       |
 
 `openmw-lib` links the four component libraries and compiles `mwrender/rtx/*.cpp` with the
@@ -1165,6 +1166,9 @@ Rendering changes are checked without a window: `shot --views=all --map --agains
 which pictures moved, and `rtx <flavour> repeat --pairs=N` says whether two runs of one binary
 draw one frame. `rtx <flavour> kernels --against=<listing>` says which kernels a change moved, per
 tuple of their constants, from the modules alone: a tuple that did not move is the same program.
+Each tuple is digested by `openmw-rtx-spirv-digest` (`Rtx::digestProgram`), which names a global
+by what it is and an id a function defines by where it is defined, so neither a renumbering nor
+the order declarations came in moves a digest.
 
 ---
 
@@ -1200,4 +1204,5 @@ tuple of their constants, from the modules alone: a tuple that did not move is t
 | the build                                      | `components/rtx/build.cmake`, `components/rtxvulkan/CMakeLists.txt`, `CMakePresets.json`, `apps/rtxtool/rtx` |
 | the driver's cache of a shader set             | `components/rtxbench/drivercache.hpp`, `components/rtx/shaderdirectory.hpp` |
 | the pinned float arithmetic of every shader    | `components/rtxvulkan/spirvpin.hpp`, `components/rtx/shaders/pinning.h`  |
+| which kernels a change moved                   | `apps/rtxtool/rtx` (`kernels`), `components/rtxvulkan/spirvdigest.hpp`   |
 | the words                                      | `components/rtx/GLOSSARY.md`                                             |

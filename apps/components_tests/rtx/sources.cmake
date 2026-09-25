@@ -65,6 +65,7 @@ set(RTX_TEST_FILES
     rtx/slots.cpp
     rtx/sourcetree.cpp
     rtx/specularalbedo.cpp
+    rtx/spirvdigest.cpp
     rtx/spirvpin.cpp
     rtx/spritelight.cpp
     rtx/spritelistsize.cpp

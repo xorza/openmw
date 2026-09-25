@@ -654,11 +654,13 @@ runRepeat() {
 # asked of the shaders and not of a run: two runs are the driver's code, and its code of a module
 # is not a function of the module alone (`Rtx::DriverCache`). A module is specialized to each
 # tuple of its boolean constants — a `uint` stays at its default — optimized so the branches
-# its constants decide are gone, stripped of its source and of constants nothing reads, given
-# canonical ids, and hashed with its declarations sorted and its functions in order: code no tuple
-# runs, a comment and the order declarations came in all leave the digest where it was. Equal
-# digests are one program for that tuple as far as SPIR-V can say; with `--against`, a file this
-# wrote before, the tuples that moved are named and the exit status says whether any did.
+# its constants decide are gone, stripped of its source and of constants nothing reads, and
+# digested by `openmw-rtx-spirv-digest`, which names every id by what it is and not by its number
+# (`Rtx::digestProgram` says how, and why `spirv-opt --canonicalize-ids` could not): code no tuple
+# runs, a comment, the ids and the order declarations came in all leave the digest where it was.
+# Equal digests are one program for that tuple as far as its instructions can say; with
+# `--against`, a file this wrote before, the tuples that moved are named and the exit status says
+# whether any did.
 #
 # **The spec-constant operations are folded before `-O`, which holds no pass that folds them.**
 # Freezing makes the constants themselves constant and leaves `!HAS_MAPS` or `WATER && HAS_SEA`
@@ -672,22 +674,28 @@ kernelDigest() {
     IFS=$'\t' read -r module constants label <<< "$1"
     local specialize=()
     [ -n "$constants" ] && specialize=(--set-spec-const-default-value "$constants")
-    # Into a file, because the optimizer says what it could not canonicalize on its standard
-    # output, and a module refused is a failure of the listing and never a digest of nothing.
+    # Into a file and its messages dropped, and a refusal a failure of the listing: never a digest
+    # of nothing.
     local specialized digest
     specialized="$(mktemp)"
     if ! "$optimizer" --target-env=vulkan1.4 --scalar-block-layout "${specialize[@]}" --freeze-spec-const \
-        --fold-spec-const-op-composite -O --eliminate-dead-const --strip-debug --strip-nonsemantic --canonicalize-ids \
+        --fold-spec-const-op-composite -O --eliminate-dead-const --strip-debug --strip-nonsemantic \
         "$module" -o "$specialized" > /dev/null 2>&1; then
         echo "rtx: spirv-opt refused $(basename "$module") at ${label:--}" >&2
         rm -f "$specialized"
         return 1
     fi
-    # A function opens as `%id = OpFunction ...`: the result comes before the opcode.
-    digest="$("$disassembler" --raw-id --no-header "$specialized" \
-        | awk '/ OpFunction / { body = 1 } body { printf "B %09d %s\n", ++line, $0; next } { print "D " $0 }' \
-        | LC_ALL=C sort | md5sum | cut -d' ' -f1)"
-    rm -f "$specialized"
+    # In two steps, because the shell this runs in has no `pipefail` and a disassembly that failed
+    # would otherwise be digested as whatever it wrote before it did.
+    local disassembly
+    disassembly="$(mktemp)"
+    if ! "$disassembler" --raw-id --no-header "$specialized" -o "$disassembly" \
+        || ! digest="$("$programDigest" < "$disassembly")"; then
+        echo "rtx: $(basename "$module") at ${label:--} could not be digested" >&2
+        rm -f "$specialized" "$disassembly"
+        return 1
+    fi
+    rm -f "$specialized" "$disassembly"
     printf '%s %s %s\n' "$(basename "$module" .spv)" "${label:--}" "$digest"
 }
 
@@ -710,7 +718,8 @@ runKernels() {
         exit 2
     fi
     disassembler="$(dirname "$optimizer")/spirv-dis"
-    export optimizer disassembler
+    programDigest="$build/components/rtxvulkan/openmw-rtx-spirv-digest"
+    export optimizer disassembler programDigest
     export -f kernelDigest
 
     # Every tuple of every module: the constants off the module the driver is handed, their names
@@ -953,7 +962,7 @@ case "$what" in
         ;;
     kernels)
         # The build's lines on the side, because the listing is what a caller keeps.
-        buildTargets openmw-rtx-vulkan-shaders >&2
+        buildTargets openmw-rtx-vulkan-shaders openmw-rtx-spirv-digest >&2
         runKernels "$@"
         ;;
     archive)

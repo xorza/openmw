@@ -44,14 +44,21 @@ unset(_openmw_spirv_fma)
 # **The step every shader takes between glslc and the validator**, `spirvpin.hpp` says why: a
 # library the tests reach into, and the tool the build runs on each module. It links nothing of the
 # renderer's, because every shader waits for the tool and the renderer waits for the shaders; and the
-# tool stays in this directory's build tree, which no install and no archive reads.
-set(RTX_SPIRV_PIN_FILES spirvpin.cpp spirvpin.hpp)
+# tool stays in this directory's build tree, which no install and no archive reads. **Beside it, the
+# digest `rtx <flavour> kernels` names each specialized kernel by** (`spirvdigest.hpp`), in the same
+# library and the same tree for the same reasons.
+set(RTX_SPIRV_PIN_FILES spirvpin.cpp spirvpin.hpp spirvdigest.cpp spirvdigest.hpp)
 openmw_rtx_library(openmw-rtx-spirv ${RTX_SPIRV_PIN_FILES})
 target_include_directories(openmw-rtx-spirv SYSTEM PRIVATE "${OPENMW_SPIRV_HEADERS}")
+target_link_libraries(openmw-rtx-spirv PRIVATE smhasher)
 add_executable(openmw-rtx-spirv-pin spirvpintool.cpp)
 openmw_rtx_target(openmw-rtx-spirv-pin)
 target_link_libraries(openmw-rtx-spirv-pin PRIVATE openmw-rtx-spirv)
 set_target_properties(openmw-rtx-spirv-pin PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
+add_executable(openmw-rtx-spirv-digest spirvdigesttool.cpp)
+openmw_rtx_target(openmw-rtx-spirv-digest)
+target_link_libraries(openmw-rtx-spirv-digest PRIVATE openmw-rtx-spirv)
+set_target_properties(openmw-rtx-spirv-digest PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
 
 set(RTX_SHADERS
     shaders/accumulate.comp
@@ -359,7 +366,7 @@ endif()
 openmw_rtx_library(openmw-rtx-vulkan ${RTX_VULKAN_FILES})
 openmw_rtx_expect_listed("${CMAKE_CURRENT_SOURCE_DIR}" MATCHING *.cpp *.hpp shaders/*
     LISTED ${RTX_VULKAN_FILES} ${RTX_VULKAN_DLSS_FILES} ${RTX_VULKAN_NO_DLSS_FILES} ${RTX_SPIRV_PIN_FILES}
-           spirvpintool.cpp ${RTX_SHADERS} ${RTX_SHADER_PROBES} ${RTX_SHADER_LIB})
+           spirvpintool.cpp spirvdigesttool.cpp ${RTX_SHADERS} ${RTX_SHADER_PROBES} ${RTX_SHADER_LIB})
 
 # Vulkan is private: a host reaches the backend through `createrenderer.hpp`, which names no
 # Vulkan type, so nothing a host compiles needs the headers.
