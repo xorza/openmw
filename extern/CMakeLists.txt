@@ -299,9 +299,9 @@ endif()
 
 if (OPENMW_CRASHPAD)
     # **Crashpad as sentry-native 0.17.1 pins it**, the newest release of the one project that
-    # releases it with a CMake build: Crashpad itself is Chromium's and tags nothing. Four archives,
+    # releases it with a CMake build: Crashpad itself is Chromium's and tags nothing. Three archives,
     # because GitHub's leaves the submodules out; each goes where the submodule would have been.
-    # Populated without being added, so that the three are in place before Crashpad's own
+    # Populated without being added, so that the two are in place before Crashpad's own
     # CMakeLists reads them.
     include(FetchContent)
     FetchContent_Declare(crashpad
@@ -319,23 +319,17 @@ if (OPENMW_CRASHPAD)
         SOURCE_DIR ${crashpad_SOURCE_DIR}/third_party/mini_chromium/mini_chromium
         SOURCE_SUBDIR not-a-project
     )
-    FetchContent_Declare(crashpad_zlib
-        URL https://github.com/getsentry/chromium-zlib/archive/fef58692c1d7bec94c4ed3d030a45a1832a9615d.zip
-        URL_HASH SHA512=0b32205d735a7694a562671a9ee89946ea42c93d4b13deb17f0dfc976c9b92aacb75ff4ab11d4f8dfe4f0a02716b1b87617d08a21a6dd9f286bf8ed58b1d199c
-        SOURCE_DIR ${crashpad_SOURCE_DIR}/third_party/zlib/zlib
-        SOURCE_SUBDIR not-a-project
-    )
     FetchContent_Declare(crashpad_lss
         URL https://github.com/getsentry/chromium-linux-syscall-support/archive/9719c1e1e676814c456b55f5f070eabad6709d31.zip
         URL_HASH SHA512=f80c4e9ea6c88416c618965df90664932a31b0b7db80c5332edaf8982a4433074ccc6febd49f5086ce31d26e4b44527afbc90edc4ed45eab4ff4d1a8a2395869
         SOURCE_DIR ${crashpad_SOURCE_DIR}/third_party/lss/lss
         SOURCE_SUBDIR not-a-project
     )
-    FetchContent_MakeAvailable(crashpad_mini_chromium crashpad_zlib crashpad_lss)
+    FetchContent_MakeAvailable(crashpad_mini_chromium crashpad_lss)
 
-    # Its own zlib everywhere, as it takes on Windows by default, so that no system's package
-    # decides what a dump is compressed with.
-    set(CRASHPAD_ZLIB_SYSTEM OFF CACHE BOOL "" FORCE)
+    # The zlib the tree links already, one copy in the process. Crashpad's own copy is the one it
+    # takes under MSVC alone, and its `zutil.h` defines `fdopen` away where a macOS SDK declares it.
+    set(CRASHPAD_ZLIB_SYSTEM ON CACHE BOOL "" FORCE)
     set(CRASHPAD_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
     set(CRASHPAD_ENABLE_INSTALL_DEV OFF CACHE BOOL "" FORCE)
     # As a system's headers where CMake can say so, because Chromium's are written against
@@ -344,6 +338,12 @@ if (OPENMW_CRASHPAD)
         add_subdirectory(${crashpad_SOURCE_DIR} ${crashpad_BINARY_DIR} SYSTEM)
     else()
         add_subdirectory(${crashpad_SOURCE_DIR} ${crashpad_BINARY_DIR})
+    endif()
+
+    # `capture_context_linux.S` states nothing of the stack, and a linker that meets an object
+    # without the note makes the whole executable's stack executable, as Ubuntu 24.04's does.
+    if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        target_compile_options(crashpad_util PRIVATE $<$<COMPILE_LANGUAGE:ASM>:-Wa,--noexecstack>)
     endif()
 
     # For `components/CMakeLists.txt`, which builds one of its files into every executable.

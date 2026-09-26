@@ -513,15 +513,19 @@ add_component_dir(navmeshtool
 add_component_dir(platform
     platform
     file
+    process
     )
 
+# The process's own answers are the crash catcher's as well as the ray tracer's.
 if (WIN32)
     add_component_dir(platform
         filewin32
+        processwin32
         )
 elseif (UNIX)
     add_component_dir(platform
         fileposix
+        processposix
         )
 else ()
     add_component_dir(platform
@@ -529,20 +533,21 @@ else ()
         )
 endif()
 
-# The ray tracer's own answers, in the same shape: what its process, its heap and its perf fifo
-# do that the systems spell differently. Two systems, because those are the two it runs on.
+# The ray tracer's own answers, in the same shape: what its heap, its perf fifo and the libraries
+# it opens do that the systems spell differently. Two systems, because those are the two it runs
+# on.
 if (OPENMW_RTX)
     add_component_dir(platform
-        process memory fifo library
+        memory fifo library
         )
 
     if (WIN32)
         add_component_dir(platform
-            processwin32 memorywin32 fifowin32 librarywin32
+            memorywin32 fifowin32 librarywin32
             )
     elseif (UNIX)
         add_component_dir(platform
-            processposix memoryposix fifoposix libraryposix
+            memoryposix fifoposix libraryposix
             )
     else ()
         message(FATAL_ERROR "The ray tracer has no platform layer for ${CMAKE_SYSTEM_NAME}")

@@ -14,7 +14,6 @@
 #include <mutex>
 #include <optional>
 #include <span>
-#include <stop_token>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -65,6 +64,12 @@ namespace Crash
 
             /// How long the game stood still when the watch asked for a hang report.
             std::atomic<std::uint32_t> mStalledFor{ 0 };
+
+            /// Ends the watch once Crashpad's handler returns. A flag and not `std::stop_token`,
+            /// which Apple's libc++ keeps behind its experimental switch.
+            std::mutex mWatchMutex;
+            std::condition_variable mWatchWake;
+            bool mWatchEnds = false;
 
             /// The watch and the summary both write to the log, and a line each is what it takes.
             std::mutex mLogMutex;
@@ -430,24 +435,23 @@ namespace Crash
         /// **The hang watch**, once a second: a frame counter that stops for the limit is a hang,
         /// reported once until it moves again. It begins at the first frame, so a start that
         /// draws nothing for a while is not one.
-        void watch(Monitor& monitor, std::stop_token stop)
+        void watch(Monitor& monitor)
         {
             Heartbeat* const page = monitor.mPage.get();
             if (page == nullptr)
                 return;
 
-            std::mutex mutex;
-            std::condition_variable_any tick;
             std::uint64_t last = 0;
             bool started = false;
             bool reported = false;
             auto since = std::chrono::steady_clock::now();
 
-            while (!stop.stop_requested())
+            for (;;)
             {
                 {
-                    std::unique_lock lock(mutex);
-                    tick.wait_for(lock, stop, std::chrono::seconds(1), [] { return false; });
+                    std::unique_lock lock(monitor.mWatchMutex);
+                    if (monitor.mWatchWake.wait_for(lock, std::chrono::seconds(1), [&] { return monitor.mWatchEnds; }))
+                        return;
                 }
 
                 const std::uint64_t frames = std::atomic_ref(page->mFrames).load();
@@ -522,11 +526,15 @@ namespace Crash
             handlerArgv.push_back(argument.data());
         handlerArgv.push_back(nullptr);
 
-        int result = 0;
+        std::thread watchdog([&] { watch(monitor); });
+        const int result
+            = crashpad::HandlerMain(static_cast<int>(handlerArgv.size() - 1), handlerArgv.data(), &sources);
         {
-            std::jthread watchdog([&](std::stop_token stop) { watch(monitor, stop); });
-            result = crashpad::HandlerMain(static_cast<int>(handlerArgv.size() - 1), handlerArgv.data(), &sources);
+            const std::lock_guard lock(monitor.mWatchMutex);
+            monitor.mWatchEnds = true;
         }
+        monitor.mWatchWake.notify_one();
+        watchdog.join();
 
         // Once the game is gone, so the box does not stand over a window that no longer draws.
         std::optional<std::string> crashDump;

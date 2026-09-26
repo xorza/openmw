@@ -205,9 +205,12 @@ if ((NOT CMAKE_GENERATOR MATCHES "Visual Studio") OR ("UseMultiToolTask=true" IN
 endif()
 
 if (MSVC)
+    # Every MSVC option below is the C and C++ compiler's, and says so: a directory's options reach
+    # each language in it, and MASM, which Crashpad assembles two files with, reads
+    # `/Zc:__cplusplus` as `/Zs`, a syntax check that writes no object.
     option(OPENMW_MP_BUILD "Build OpenMW with /MP flag" OFF)
     if (OPENMW_MP_BUILD)
-        add_compile_options(/MP)
+        add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/MP>)
     endif()
 
     # \bigobj is required:
@@ -215,9 +218,9 @@ if (MSVC)
     #  2) to compile lua bindings in components, openmw and tests, because sol3 is heavily templated.
     # there should be no relevant downsides to having it on:
     # https://docs.microsoft.com/en-us/cpp/build/reference/bigobj-increase-number-of-sections-in-dot-obj-file
-    add_compile_options(/bigobj)
+    add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/bigobj>)
 
-    add_compile_options(/Zc:__cplusplus)
+    add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/Zc:__cplusplus>)
 
     if (CMAKE_CXX_COMPILER_LAUNCHER OR CMAKE_C_COMPILER_LAUNCHER OR OPENMW_MSBUILD_COMPILER_OVERRIDE)
         if ((CMAKE_CXX_COMPILER_LAUNCHER OR CMAKE_C_COMPILER_LAUNCHER) AND CMAKE_GENERATOR MATCHES "Visual Studio")
@@ -274,7 +277,7 @@ if (WIN32)
 endif()
 
 if(MSVC)
-    add_compile_options("/utf-8")
+    add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/utf-8>)
 endif()
 
 # Dependencies
@@ -649,7 +652,7 @@ if (BUILD_OPENCS OR BUILD_OPENCS_TESTS)
 endif()
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC" OR CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
-    add_compile_options("/W4")
+    add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/W4>)
 
     set(WARNINGS_DISABLE
         4100 # Unreferenced formal parameter (-Wunused-parameter)
@@ -659,7 +662,7 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC" OR CMAKE_CXX_COMPILER_FRONTEND_VARIANT
         )
 
     foreach(d ${WARNINGS_DISABLE})
-        add_compile_options("/wd${d}")
+        add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/wd${d}>)
     endforeach(d)
 
     set(WARNINGS_EXTRA
@@ -667,11 +670,11 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC" OR CMAKE_CXX_COMPILER_FRONTEND_VARIANT
         )
 
     foreach(d ${WARNINGS_EXTRA})
-        add_compile_options("/w1${d}")
+        add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/w1${d}>)
     endforeach(d)
 
     if(OPENMW_MSVC_WERROR)
-        add_compile_options("/WX")
+        add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/WX>)
     endif()
 else ()
     add_compile_options("-Wall" "-Wextra" "-Wundef" "-Wextra-semi" "-Wno-unused-parameter" "-pedantic" "-Wno-long-long" "-Wnon-virtual-dtor" "-Wunused" "-Wshadow")
