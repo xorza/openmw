@@ -7,7 +7,8 @@
 //
 // **The same sum the hit shader runs, once a texel instead of once a hit.** `ground.glsl` is the
 // sum, written once for both, so a flattened chunk cannot disagree with the stack it replaces —
-// the albedo into the composite, and the gloss into a second image where a layer reflects:
+// the albedo into the composite, and the gloss into a second image where a layer reflects, both
+// out of one pass over the stack:
 // each layer's weight off its mask, its texel off its own tiling at the level a texel of the
 // composite resolves, the light painted into it divided out in full, and the stack summed in
 // light. The albedo is stored display-encoded through a `UNORM` view of the composite's `SRGB`
@@ -32,8 +33,11 @@ layout(local_size_x = GROUND_COMPOSITE_WORKGROUP, local_size_y = GROUND_COMPOSIT
 
 /// The composite's finest level, through the view that stores what it is handed unchanged: the
 /// bytes written are the display-encoded ones the sampler decodes through the other view.
-layout(set = SET_PASS, binding = GROUND_COMPOSITE_BIND_TARGET, TEXTURE_WRITTEN_FORMAT)
+layout(set = SET_PASS, binding = GROUND_COMPOSITE_BIND_ALBEDO, TEXTURE_WRITTEN_FORMAT)
     uniform writeonly image2D composite;
+
+/// The gloss's finest level, which is data and stored as it is.
+layout(set = SET_PASS, binding = GROUND_COMPOSITE_BIND_GLOSS, TEXTURE_WRITTEN_FORMAT) uniform writeonly image2D gloss;
 
 layout(push_constant, scalar) uniform Push
 {
@@ -78,16 +82,16 @@ void main()
             reflecting += showing;
     }
 
-    // Data and not a picture: stored as it is, through a view with no curve over a format with
-    // none. Where no layer shows, the ground is a Lambert surface.
-    if (chunk.mOutput == GROUND_COMPOSITE_GLOSS)
-    {
-        const vec2 gloss = weights > 0.0 ? vec2(reflecting, roughness) / weights : vec2(0.0, 1.0);
-        imageStore(composite, ivec2(texel), vec4(gloss, 0.0, 1.0));
-        return;
-    }
-
+    // Which of the two the bake writes is the dispatch's, so a branch here is uniform across it.
+    //
     // Opaque, because ground is not see-through: a composite left with its alpha at nought is a
     // chunk the cutout test throws every ray straight through.
-    imageStore(composite, ivec2(texel), vec4(encodeSrgb(albedo), 1.0));
+    if ((chunk.mOutputs & GROUND_COMPOSITE_ALBEDO) != 0u)
+        imageStore(composite, ivec2(texel), vec4(encodeSrgb(albedo), 1.0));
+
+    // Data and not a picture: stored as it is, through a view with no curve over a format with
+    // none. Where no layer shows, the ground is a Lambert surface.
+    if ((chunk.mOutputs & GROUND_COMPOSITE_GLOSS) != 0u)
+        imageStore(gloss, ivec2(texel),
+            vec4(weights > 0.0 ? vec2(reflecting, roughness) / weights : vec2(0.0, 1.0), 0.0, 1.0));
 }

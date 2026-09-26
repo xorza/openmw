@@ -195,6 +195,12 @@ namespace Rtx
         void recordSpriteShelter(VkCommandBuffer commands, const VisibilityInputs& inputs,
             const Shaders::VisibilityConstants& constants, std::uint32_t count, GpuTimer* timer) const;
 
+        /// Writes a `Shaders::GpuEmitterFrame` for each of the `count` emitters the bin took,
+        /// `spriteemitters.rgen`. After `writeFrame`, whose block names the rows, and before the
+        /// trace that reads them.
+        void recordSpriteEmitters(
+            VkCommandBuffer commands, const VisibilityInputs& inputs, std::uint32_t count, GpuTimer* timer) const;
+
         /// Records the trace, in whichever kernel this frame calls for. After `writeFrame`, which
         /// is what every launch here reads.
         ///
@@ -297,6 +303,10 @@ namespace Rtx
         /// The launch over the sprite list that keeps the rain from under the roofs. One, like the
         /// composite's: it reads the structure and the tables and has no opinion about the sky.
         std::unique_ptr<TracePipeline> mSpriteShelterPipeline;
+
+        /// And the launch over the emitters that writes what each is for this camera, for the same
+        /// reason.
+        std::unique_ptr<TracePipeline> mSpriteEmittersPipeline;
 
         /// And one for the pass that integrates the columns, which takes no tuple at all: every
         /// question was answered by the pass that filled the froxels.

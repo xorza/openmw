@@ -343,23 +343,26 @@ void main()
     // Nothing of them is in `shaded`: the frame goes to the denoiser with no puff in it, and
     // `spritecomposite.rgen` puts the layer over the reconstructed frame at the shown extent —
     // with the sprites' shape marched again there, at the picture's own resolution, and the
-    // colour taken from here. What this walk is for is the light: three fetches a covering sprite
-    // and a band of forty hashes an emitter, which is worth paying once at the traced extent and
-    // not three times over at the shown one.
+    // colour taken from here. What this walk is for is the light: three fetches a covering sprite,
+    // which is worth paying once at the traced extent and not three times over at the shown one.
     //
     // **Two walks and one layer.** An emitter's sprites and a cloud's shells are the same kind of
     // thing standing in the same place, so the second walk fills a layer of its own and
     // `mergedPuffs` puts the two together. The shells' own transmittance rides beside the depth,
     // because the composite marches the sprites again and the shells it cannot.
     //
-    // **And the whole of the second walk is inside the test.** `mMediumInFrame` says whether
-    // anything at all carries `MASK_MEDIUM`, so a cell with no cloud in it neither descends the
-    // top level to find nothing nor merges a layer that holds nothing — and the merge is not
-    // free: it divides a coverage back out, which moves a level on a view that holds no medium.
+    // **And the whole of the second walk is inside the test.** The tile's presence says whether a
+    // ray through it can meet anything carrying `MASK_MEDIUM`, so a tile with no cloud in reach
+    // neither descends the top level to find nothing nor merges a layer that holds nothing — and
+    // the merge is not free: it divides a coverage back out, which moves a level on a pixel that
+    // meets no medium.
     PuffLayer layer = spritesAlong(pixel, origin, direction, distance, cone, true);
     float shellsThrough = 1.0;
 
-    if (frame.mMediumInFrame != 0u)
+    if ((presenceAt(SpriteTileList(frame.mTables.mSpriteTileList), SpritePresence(frame.mTables.mSpritePresence),
+             frame.mCamera.mWidth, pixel)
+            & PRESENCE_MEDIUM)
+        != 0u)
     {
         const PuffLayer shells = mediumAlong(pixel, origin, direction, distance, cone);
         shellsThrough = shells.mTransmittance;

@@ -25,11 +25,30 @@ layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_ROWS) read
     GpuEmitter at[];
 };
 
+/// What a trace made of each emitter, `GpuEmitterFrame`: written by `spriteemitters.rgen` and read
+/// by the walks.
+layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_ROWS) buffer EmitterFrames
+{
+    GpuEmitterFrame at[];
+};
+
 /// The same sprites, for the two passes that write them: the shelter zeroes a drop under a roof
 /// and the shade writes each sprite's layers.
 layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_ROWS) buffer WrittenSprites
 {
     GpuSprite at[];
+};
+
+/// The placement's medium and additive instances, as the spheres they can be met in.
+layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_ROWS) readonly buffer PresenceTable
+{
+    GpuPresence at[];
+};
+
+/// One word of `PRESENCE_` bits a tile, `GpuTables::mSpritePresence`.
+layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_ROWS) buffer SpritePresence
+{
+    uint at[];
 };
 
 /// One packed rect per sprite, which `spriterects.comp` writes and `spriteruns.comp` reads.
@@ -67,9 +86,19 @@ uint spriteTileOf(uvec2 pixel, uint width)
     return (pixel.y / SPRITE_TILE) * spriteTilesOver(width) + pixel.x / SPRITE_TILE;
 }
 
+/// The `PRESENCE_` kinds a ray through a traced pixel's tile can meet — every kind where the frame
+/// binned nothing, which is a camera that draws no sprites and a frame whose runs did not fit.
+///
+/// **Uniform over a tile, so a warp takes a walk or leaves it whole.**
+uint presenceAt(SpriteTileList list, SpritePresence presence, uint tracedWidth, uvec2 traced)
+{
+    return list.at[0] == SPRITE_LIST_UNBINNED ? PRESENCE_ADDITIVE | PRESENCE_MEDIUM
+                                               : presence.at[spriteTileOf(traced, tracedWidth)];
+}
+
 /// Whether the puff layer holds nothing at a traced pixel: no sprite binned into its tile, no cloud
-/// shell in front of it, and no additive mesh anywhere in the frame — so the composite there would
-/// leave the frame as it found it, with a transmittance of one in its alpha.
+/// shell in front of it, and no additive mesh a ray through its tile can meet — so the composite
+/// there would leave the frame as it found it, with a transmittance of one in its alpha.
 ///
 /// **Asked by the composite and by the curve, which have to agree pixel for pixel.** The composite
 /// skips such a pixel, and the curve reads a transmittance of one there in place of an alpha the
@@ -79,13 +108,15 @@ uint spriteTileOf(uvec2 pixel, uint width)
 /// walks every sprite — `SPRITE_LIST_UNBINNED`.
 ///
 /// @param shellsThrough what the cloud shells let through at the pixel, `puffsDepth`'s second word.
-bool puffsCoverNothing(SpriteTileList list, uint tracedWidth, uvec2 traced, float shellsThrough, uint additiveInFrame)
+bool puffsCoverNothing(
+    SpriteTileList list, SpritePresence presence, uint tracedWidth, uvec2 traced, float shellsThrough)
 {
-    if (list.at[0] == SPRITE_LIST_UNBINNED || additiveInFrame != 0u || shellsThrough < 1.0)
+    if (list.at[0] == SPRITE_LIST_UNBINNED || shellsThrough < 1.0)
         return false;
 
     const uint tile = spriteTileOf(traced, tracedWidth);
-    return list.at[spriteStartSlot(tile)] == list.at[spriteStartSlot(tile + 1u)];
+    return (presence.at[tile] & PRESENCE_ADDITIVE) == 0u
+        && list.at[spriteStartSlot(tile)] == list.at[spriteStartSlot(tile + 1u)];
 }
 
 /// A tile rect as one `uvec2`: the corner in `x` and the far corner in `y`, sixteen bits a

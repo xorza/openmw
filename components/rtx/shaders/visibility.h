@@ -469,23 +469,9 @@ namespace Rtx::Shaders
         /// frame, which is what a test wants; a window passes its own count.
         uint mFrame;
 
-        /// Non-zero where this scene holds a surface the eye passes through — a cloud's shells.
-        ///
-        /// **What keeps `mediumAlong` out of every frame that has none.** The walk traverses on
-        /// `MASK_MEDIUM`, and where nothing carries that bit it still descends the top level once a
-        /// pixel to find nothing. One uniform branch takes it back, and the frames it takes it back
-        /// from are most of the game.
-        uint mMediumInFrame;
-
-        /// Non-zero where this scene holds a surface that adds to the frame — a magic effect's
-        /// sheet — for the same reason: `additiveAlong` casts with `MASK_ADDITIVE` at every shown
-        /// pixel, and a frame that holds none is nearly every frame.
-        uint mAdditiveInFrame;
-
-        /// Non-zero where this scene holds the player's arms and this camera draws them, for the
-        /// same reason again: `visibility.rgen` traces `mArms`'s ray on `MASK_FIRST_PERSON` ahead
-        /// of the world's, and a picture with no arms in it — every third-person frame, every
-        /// picture inside the interface — pays no second trace.
+        /// Non-zero where this scene holds the player's arms and this camera draws them:
+        /// `visibility.rgen` traces `mArms`'s ray on `MASK_FIRST_PERSON` ahead of the world's, and a picture with no
+        /// arms in it — every third-person frame, every picture inside the interface — pays no second trace.
         uint mArmsInFrame;
 
         /// Which classes of instance this camera draws — the rasterizer's cull mask, in the bits
@@ -551,8 +537,8 @@ namespace Rtx::Shaders
 
     // Pinned for the reason `scene.h` gives: the side that writes these bytes and the side that
     // reads them are different compilers.
-    static_assert(offsetof(VisibilityConstants, mTables) == 1176, "GpuTables must land eight-aligned and last");
-    static_assert(sizeof(VisibilityConstants) == 1344, "VisibilityConstants must be scalar-packed on every side");
+    static_assert(offsetof(VisibilityConstants, mTables) == 1168, "GpuTables must land eight-aligned and last");
+    static_assert(sizeof(VisibilityConstants) == 1352, "VisibilityConstants must be scalar-packed on every side");
 #endif
 
 #ifdef RTX_HOST

@@ -8,6 +8,7 @@
 #include "material.hpp"
 #include "mesh.hpp"
 #include "runs.hpp"
+#include "shaders/scene.h"
 #include "slots.hpp"
 
 namespace Rtx
@@ -100,6 +101,19 @@ namespace Rtx
         /// what a backend rewrites, or last frame's motion would stay in the row for ever.
         std::span<const Index> getSettled() const { return mSettled; }
 
+        /// The standing slots a walk along the eye's ray looks for — a medium or an additive
+        /// surface, `InstanceCounts::mMedium` and `mAdditive` — kept as the counts are, by the row
+        /// that changed.
+        std::span<const Index> getPresent() const { return mPresent.getSlots(); }
+
+        /// Where each of `getPresent`'s placements can be met, as a sphere about the box of its
+        /// mesh carried through its transform, into `into`: cleared, then one row a slot whose mesh
+        /// has a box. A mesh with none has no vertices yet, and nothing of it can be met; the
+        /// spheres are described again at every placement, so the box is read once it arrives.
+        ///
+        /// @param meshes the scene's, whose boxes a placement names.
+        void describePresences(std::span<const MeshRange> meshes, std::vector<Shaders::GpuPresence>& into) const;
+
     private:
         /// What a standing row counts as — one placed, and one of each figure its material and its
         /// class put it in. The traversal figures are `PlacedTraversal`'s, which `InstanceRecord`'s
@@ -129,5 +143,10 @@ namespace Rtx
         std::vector<Index> mSettled;
 
         InstanceCounts mCounts;
+
+        /// Never stale: a slot taken out is compacted away at once, because one that leaves and
+        /// comes back — a fade counts a row out and in — would otherwise stand in the list twice.
+        /// A handful of slots, so the pass costs nothing.
+        SlotSet mPresent;
     };
 }

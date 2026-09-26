@@ -25,11 +25,11 @@ namespace Rtx
     }
 
     void SpriteBinPass::record(VkCommandBuffer commands, const Shaders::SpriteBinConstants& bin, const Buffer& list,
-        GpuTimer* const timer) const
+        const Buffer& presence, GpuTimer* const timer) const
     {
         assert(bin.mCamera.mWidth > 0 && bin.mCamera.mHeight > 0 && "a bin over a frame with no pixels");
         assert(bin.mSprites != 0 && bin.mEmitters != 0 && bin.mRects != 0 && bin.mList != 0 && bin.mReport != 0
-            && "a bin over a table addressed as nothing");
+            && bin.mPresences != 0 && bin.mPresence != 0 && "a bin over a table addressed as nothing");
 
         const std::uint32_t tiles = Shaders::spriteTilesIn(bin.mCamera.mWidth, bin.mCamera.mHeight);
 
@@ -48,14 +48,18 @@ namespace Rtx
         // fence, but a wait on the host is not a dependency on the queue — is behind the head
         // barrier `CommandPool::begin` recorded.
         list.clear(commands, (VkDeviceSize{ tiles } + 1) * sizeof(std::uint32_t));
+        assert(
+            presence.getSize() >= VkDeviceSize{ tiles } * sizeof(std::uint32_t) && "a presence shorter than its tiles");
+        presence.clear(commands, VkDeviceSize{ tiles } * sizeof(std::uint32_t));
         handOver(commands, Use::sBufferClearWrite, Use::sBufferComputeReadWrite);
 
-        // A frame with no sprites has nothing to count and no run to fill, and the scan below is
-        // what writes the starts it still has to have.
-        if (bin.mCount > 0)
+        // A frame with no sprites and nothing to be met has nothing to count and no run to fill,
+        // and the scan below is what writes the starts it still has to have. The spheres take the
+        // invocations after the last sprite's.
+        if (const std::uint32_t bounded = bin.mCount + bin.mPresenceCount; bounded > 0)
         {
             dispatch(commands, mRects, {}, bin,
-                groupsFor(bin.mCount * Shaders::SPRITE_BIN_LANES, Shaders::SPRITE_BIN_WORKGROUP));
+                groupsFor(bounded * Shaders::SPRITE_BIN_LANES, Shaders::SPRITE_BIN_WORKGROUP));
             handOver(commands, Use::sBufferComputeWrite, Use::sBufferComputeReadWrite);
         }
 

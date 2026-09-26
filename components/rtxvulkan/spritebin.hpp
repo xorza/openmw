@@ -25,6 +25,10 @@ namespace Rtx
         VkDeviceAddress mEmitters = 0;
         std::uint32_t mSpriteCount = 0;
         std::uint32_t mEmitterCount = 0;
+
+        /// Where the placement's medium and additive instances can be met, `Shaders::GpuPresence`.
+        VkDeviceAddress mPresences = 0;
+        std::uint32_t mPresenceCount = 0;
     };
 
     /// What one bin is of: the sprites, where they are seen from, and what lights them. A record
@@ -77,7 +81,9 @@ namespace Rtx
         void record(VkCommandBuffer commands, const Binning& what);
 
         VkDeviceAddress getSpritesAddress() const { return mSprites.addressFor(); }
+        VkDeviceAddress getEmitterFramesAddress() const { return mEmitterFrames.addressFor(); }
         VkDeviceAddress getTileListAddress() const { return mTileList.addressFor(); }
+        VkDeviceAddress getPresenceAddress() const { return mPresence.addressFor(); }
 
         VkDeviceSize getBytes() const;
 
@@ -87,6 +93,10 @@ namespace Rtx
         /// The shaded sprites, copied from the placement's before every shade because the shade
         /// writes over what it reads.
         Buffer mSprites;
+
+        /// One `Shaders::GpuEmitterFrame` an emitter, written by `VisibilityPass::recordSpriteEmitters`
+        /// for this trace's camera.
+        Buffer mEmitterFrames;
 
         /// One depth key per sprite per light, the shading's own scratch inside its dispatch.
         /// `Shaders::SpriteShadeConstants::mOrder` says how the two lights share it.
@@ -98,6 +108,9 @@ namespace Rtx
         /// The sprite tiles' list, made on the device by `SpriteBinPass` and never written by the
         /// host: `tiles + 1` starts, then the runs, in `RunList`'s shape.
         Buffer mTileList;
+
+        /// One word of presence bits a tile, `Shaders::GpuTables::mSpritePresence`.
+        Buffer mPresence;
 
         /// How many entries the last bin here came to, written by the pass and read back before the
         /// next bin. Staging, because it is the one table the host reads.

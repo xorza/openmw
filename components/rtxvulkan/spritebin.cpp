@@ -18,9 +18,11 @@ namespace Rtx
     SpriteBin::SpriteBin(const Device& device)
         : mDevice(device)
         , mSprites(Buffer::hostWritten(device, 0, sTableFilledUsage, "binned sprites"))
+        , mEmitterFrames(Buffer::hostWritten(device, 0, sTableUsage, "emitter frames"))
         , mOrder(Buffer::hostWritten(device, 0, sTableUsage, "sprite order"))
         , mRects(Buffer::hostWritten(device, 0, sTableUsage, "sprite rects"))
         , mTileList(Buffer::hostWritten(device, 0, sTableFilledUsage, "sprite tile list"))
+        , mPresence(Buffer::hostWritten(device, 0, sTableFilledUsage, "sprite presence"))
         , mReport(Buffer::readBack(device, sizeof(std::uint32_t), sTableUsage, "sprite report"))
     {
         // Every table exists from here, whether or not anything is binned: a frame carries the
@@ -39,6 +41,11 @@ namespace Rtx
             VkDeviceSize{ count } * Shaders::SPRITE_SHADE_LIGHTS * sizeof(std::uint64_t), sTableUsage, "sprite order");
         growTo(mRects, mDevice, BufferKind::HostWritten, VkDeviceSize{ count } * sizeof(std::uint64_t), sTableUsage,
             "sprite rects");
+        growTo(mEmitterFrames, mDevice, BufferKind::HostWritten,
+            VkDeviceSize{ source.mEmitterCount } * sizeof(Shaders::GpuEmitterFrame), sTableUsage, "emitter frames");
+        growTo(mPresence, mDevice, BufferKind::HostWritten,
+            VkDeviceSize{ Shaders::spriteTilesIn(camera.mWidth, camera.mHeight) } * sizeof(std::uint32_t),
+            sTableFilledUsage, "sprite presence");
 
         // Sized from what the last bin here said it needed, with room over it, because the need is
         // only known once the tiles are counted and that happens on the device. Read where the
@@ -96,12 +103,15 @@ namespace Rtx
                 .mRects = mRects.addressFor(),
                 .mList = mTileList.addressFor(),
                 .mReport = mReport.addressFor(),
+                .mPresences = source.mPresences,
+                .mPresence = mPresence.addressFor(),
                 .mOrigin = origin,
                 .mCamera = camera,
                 .mCount = count,
                 .mCapacity = mListSize.getCapacity(),
+                .mPresenceCount = source.mPresenceCount,
             },
-            mTileList, timer);
+            mTileList, mPresence, timer);
 
         // What the next bin here sizes its list from. A fence's access scope is the device's, so
         // without this the figure is whatever the caches held.
@@ -110,6 +120,7 @@ namespace Rtx
 
     VkDeviceSize SpriteBin::getBytes() const
     {
-        return mSprites.getSize() + mOrder.getSize() + mRects.getSize() + mTileList.getSize() + mReport.getSize();
+        return mSprites.getSize() + mEmitterFrames.getSize() + mOrder.getSize() + mRects.getSize() + mTileList.getSize()
+            + mPresence.getSize() + mReport.getSize();
     }
 }

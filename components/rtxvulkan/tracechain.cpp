@@ -144,7 +144,7 @@ namespace Rtx
         // **Taken, then the block, then the shelter, then the bin.** The block carries the bin's
         // table by address, which it has once the table is taken; the shelter launch reads the
         // block and zeroes the drops under a roof in that table; and the shade and the bin read
-        // what is left. Every launch after reads the same block.
+        // what is left. Every launch after reads the same block, and the emitters' rows beside it.
         SpriteBin& bin = mBins.at(inputs.mTraceSlot);
         const bool bins = inputs.mSpriteList == 0;
         const SpriteSource sprites = inputs.mBuffers->describeSprites(inputs.mSlot);
@@ -158,6 +158,7 @@ namespace Rtx
         if (bins)
         {
             mPasses.mVisibility.recordSpriteShelter(commands, inputs, what.mSampled, sprites.mSpriteCount, what.mTimer);
+            mPasses.mVisibility.recordSpriteEmitters(commands, inputs, sprites.mEmitterCount, what.mTimer);
             bin.record(commands,
                 Binning{
                     .mShading = mPasses.mSpriteShade,
@@ -193,6 +194,9 @@ namespace Rtx
         // the two — an upscaler, a lens and a curve against a picture's one curve — and covers both.
         mColour.transition(commands, Use::sComputeWrite, Use::sAnyGeneralRead);
 
-        return TraceResult{ .mInputs = inputs, .mColour = mColour, .mSpriteTileList = getSpriteTileList(inputs) };
+        return TraceResult{ .mInputs = inputs,
+            .mColour = mColour,
+            .mSpriteTileList = getSpriteTileList(inputs),
+            .mSpritePresence = bin.getPresenceAddress() };
     }
 }

@@ -61,7 +61,7 @@ namespace Rtx
         TEST(RtxFrameSamplingTest, everySampledFieldComesFromWhatDecidesIt)
         {
             const Reconstruction jittering{ .mJitter = true, .mNoise = NoiseSource::WhiteHash, .mLevelBias = -0.5f };
-            const InstanceCounts counts{ .mMedium = 2, .mAdditive = 0, .mFirstPerson = 1 };
+            const InstanceCounts counts{ .mFirstPerson = 1 };
             Shaders::VisibilityConstants previous = stated();
             previous.mOrigin = osg::Vec3f(7.0f, 20.0f, 30.0f);
             previous.mCamera.mForward = osg::Vec3f(0.0f, 1.0f, 0.0f);
@@ -76,8 +76,6 @@ namespace Rtx
             EXPECT_EQ(sampled.mNoise, Shaders::NOISE_WHITE_HASH);
             EXPECT_EQ(sampled.mLevelBias, -0.5f);
             EXPECT_EQ(sampled.mArmsSpread, osg::Vec2f(1.5f, 1.0f));
-            EXPECT_EQ(sampled.mMediumInFrame, 1u);
-            EXPECT_EQ(sampled.mAdditiveInFrame, 0u);
             EXPECT_EQ(sampled.mArmsInFrame, 1u);
             EXPECT_EQ(sampled.mCameraMotion, osg::Vec3f(3.0f, 0.0f, 0.0f));
             EXPECT_EQ(sampled.mPreviousForward, osg::Vec3f(0.0f, 1.0f, 0.0f));

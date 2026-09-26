@@ -1,13 +1,18 @@
+#include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <vector>
 
 #include <gtest/gtest.h>
 
+#include <osg/BoundingBox>
 #include <osg/Matrixf>
+#include <osg/Vec3f>
 
 #include <components/rtx/instancerecord.hpp>
 #include <components/rtx/material.hpp>
 #include <components/rtx/mesh.hpp>
+#include <components/rtx/placementtable.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/scene.h>
@@ -54,6 +59,37 @@ namespace Rtx
             EXPECT_EQ(counted.mCutout, told.mCutout) << when;
             EXPECT_EQ(counted.mMedium, told.mMedium) << when;
             EXPECT_EQ(counted.mAdditive, told.mAdditive) << when;
+
+            // **And the present set is exactly the rows a walk looks for, each once**, whatever
+            // counted a row out and back in on the way — a fade does both. Each sphere carries the
+            // record's kinds and holds every corner of its box as placed.
+            std::vector<Index> present;
+            for (std::size_t slot = 0; slot < kept.size(); ++slot)
+                if (kept[slot].mPlaced && (kept[slot].mAdditive || (kept[slot].mMask & Shaders::MASK_MEDIUM) != 0))
+                    present.push_back(static_cast<Index>(slot));
+
+            std::vector<Index> listed(scene.placements().getPresent().begin(), scene.placements().getPresent().end());
+            std::sort(listed.begin(), listed.end());
+            EXPECT_EQ(listed, present) << when;
+
+            std::vector<Shaders::GpuPresence> spheres;
+            scene.placements().describePresences(scene.meshes().getRows(), spheres);
+            ASSERT_EQ(spheres.size(), scene.placements().getPresent().size()) << when;
+            for (std::size_t at = 0; at < spheres.size(); ++at)
+            {
+                const Index slot = scene.placements().getPresent()[at];
+                const InstanceRecord& record = kept[slot];
+                const std::uint32_t kinds = (record.mAdditive ? Shaders::PRESENCE_ADDITIVE : 0u)
+                    | ((record.mMask & Shaders::MASK_MEDIUM) != 0 ? Shaders::PRESENCE_MEDIUM : 0u);
+                EXPECT_EQ(spheres[at].mKinds, kinds) << when << ": slot " << slot;
+
+                const MeshInstance& placed = scene.placements().getRows()[slot].mInstance;
+                const osg::BoundingBoxf& box = scene.meshes().getRows()[placed.mMesh].mBounds;
+                for (unsigned int corner = 0; corner < 8; ++corner)
+                    EXPECT_LE((box.corner(corner) * placed.mTransform - spheres[at].mCentre).length(),
+                        spheres[at].mRadius * (1.0f + 1e-6f))
+                        << when << ": slot " << slot << " corner " << corner;
+            }
         }
 
         /// The rows a frame rewrites are the rows a rebuild would produce, through every kind of
@@ -91,6 +127,20 @@ namespace Rtx
             const Index chunk = scene.addInstance(MeshInstance{
                 .mTransform = osg::Matrixf::translate(3.0f, 0.0f, 0.0f), .mMesh = mesh, .mMaterial = ground });
 
+            // And the two a walk along the eye's ray looks for, scaled and turned so a sphere about
+            // the box is not the box's own: a cloud's shell and a magic effect's sheet.
+            Material shell{ .mOpacity = 0.5f, .mAlphaMode = AlphaMode::Blend };
+            shell.mDiffuseNeverSolid = true;
+            Material sheet{ .mAlphaMode = AlphaMode::Blend };
+            sheet.mBlend = BlendKind::Add;
+            const Index cloud = scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::scale(4.0f, 1.0f, 2.0f)
+                    * osg::Matrixf::rotate(0.7f, osg::Vec3f(0, 0, 1)) * osg::Matrixf::translate(0.0f, 9.0f, 1.0f),
+                .mMesh = mesh,
+                .mMaterial = scene.addMaterial(shell) });
+            const Index glow = scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::translate(-4.0f, 0.0f, 2.0f),
+                .mMesh = mesh,
+                .mMaterial = scene.addMaterial(sheet) });
+
             std::vector<InstanceRecord> kept;
             std::vector<Index> changed;
             makeInstanceRecords(scene, kept);
@@ -98,6 +148,7 @@ namespace Rtx
             EXPECT_TRUE(kept[leaf].mCutout);
             EXPECT_TRUE(kept[pane].mTranslucent);
             EXPECT_EQ(kept[water].mMask, Shaders::MASK_WATER);
+            ASSERT_EQ(scene.placements().getPresent().size(), 2u) << "the cloud and the sheet";
 
             // **The kind, which the backend turns into a shader-table record offset.** Traversal
             // picks the closest-hit shader from it, so a placement carrying the wrong one is shaded
@@ -121,7 +172,8 @@ namespace Rtx
             EXPECT_FALSE(kept[leaf].mMotion == still) << "a mover carried no motion";
             // The four the build placed, settling for the first time, and then the leaf again for
             // its move: a slot in both lists is a row written twice, which costs one row twice.
-            EXPECT_EQ(changed, (std::vector<Index>{ leaf, pane, water, chunk, leaf })) << "the slots written, in order";
+            EXPECT_EQ(changed, (std::vector<Index>{ leaf, pane, water, chunk, cloud, glow, leaf }))
+                << "the slots written, in order";
 
             scene.placements().advance();
             updateInstanceRecords(scene, kept, changed);
@@ -129,8 +181,11 @@ namespace Rtx
             EXPECT_TRUE(kept[leaf].mMotion == still) << "the frame after a move carried the motion on";
             EXPECT_EQ(changed, (std::vector<Index>{ leaf })) << "a settling slot is a row a backend rewrites";
 
-            // A fade re-classes the row and moves nothing.
+            // A fade re-classes the row and moves nothing. The cloud's is counted out and back in,
+            // and stays in the present set once; the sheet moves, and its sphere with it.
             scene.placements().fade(leaf, 0.5f);
+            scene.placements().fade(cloud, 0.25f);
+            scene.placements().move(glow, osg::Matrixf::translate(-40.0f, 7.0f, 2.0f));
             updateInstanceRecords(scene, kept, changed);
             expectSame(kept, scene, "faded");
             EXPECT_TRUE(kept[leaf].mTranslucent);
@@ -150,10 +205,13 @@ namespace Rtx
             scene.placements().advance();
 
             // A drop empties the row; the slot taken over is a new row, and the table grows past it.
+            // The sheet goes too, and out of the present set.
             scene.placements().drop(pane, Stander::Walk);
+            scene.placements().drop(glow, Stander::Walk);
             updateInstanceRecords(scene, kept, changed);
             expectSame(kept, scene, "dropped");
             EXPECT_FALSE(kept[pane].mPlaced);
+            EXPECT_EQ(scene.placements().getPresent().size(), 1u) << "the cloud alone";
             scene.placements().advance();
 
             ASSERT_EQ(

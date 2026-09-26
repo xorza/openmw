@@ -686,8 +686,15 @@ namespace Rtx::Shaders
         uint64 mSprites;
         uint64 mEmitters;
 
+        /// One `GpuEmitterFrame` a row of `mEmitters`, the trace's own like the sprites.
+        uint64 mEmitterFrames;
+
         /// The sprite tiles' list, in the same shape over the screen's tiles.
         uint64 mSpriteTileList;
+
+        /// One word a screen tile of the same grid: the `PRESENCE_` kinds of instance a ray through
+        /// the tile can meet, which `SpriteBin` ORs in from `GpuPresence`'s spheres.
+        uint64 mSpritePresence;
 
         /// The pose blocks, this copy's and the other's: every deforming mesh's vertices as this
         /// frame traces them and as the previous frame did, by `GpuMesh::mBindOffset` plus the
@@ -941,6 +948,49 @@ namespace Rtx::Shaders
 #endif
     };
 
+    /// What one trace makes of an emitter, once for every sprite of it: `spriteemitters.rgen` writes
+    /// a row an emitter ahead of the trace, and both walks of `spritesAlong` read it where they
+    /// meet the emitter's run. Each is the emitter's and the camera's alone, where a walk worked it
+    /// out again at every pixel the emitter covers — and at the shown extent a second time.
+    struct GpuEmitterFrame
+    {
+        /// The fog's coverage band over the path from the eye to the emitter, taken at the path's
+        /// mean-value point: every sprite of the emitter is within `GpuEmitter::mReach` of the same
+        /// air, and the band costs forty hashes.
+        float mBand;
+
+        /// What one layer of the emitter's texture lets through on average, as the base-two
+        /// logarithm the walk's two powers share: off its coarsest level, held under
+        /// `SPRITE_ALPHA_LIMIT`.
+        float mLayerThrough;
+
+        /// The texture's extent along each of its axes.
+        vec2 mTexels;
+    };
+
+    /// The kinds of instance the walks along a primary ray look for, and what a tile of
+    /// `GpuTables::mSpritePresence` holds: a surface that adds to the frame — a magic effect's
+    /// sheet, `additiveAlong` — and one the eye passes through, a cloud's shells, `mediumAlong`.
+    /// **What keeps each walk off the pixels it cannot find anything at.** Both traverse the top
+    /// level on a mask a handful of instances carry, once a pixel, and asked of a whole frame one
+    /// such mesh anywhere in the loaded cells had every pixel descend it to find nothing.
+    const uint PRESENCE_ADDITIVE = 1u;
+    const uint PRESENCE_MEDIUM = 2u;
+
+    /// And for an instance the bin cannot place by the world camera's tiles: the player's own
+    /// arms, which are traced along another camera's rays. Put in every tile.
+    const uint PRESENCE_EVERYWHERE = 4u;
+
+    /// Where one instance of those kinds can be met: a sphere about everything it places, in world
+    /// space, and the `PRESENCE_` bits it carries. Written by a placement, one row an instance of
+    /// either kind, and binned into the screen's tiles by `spriterects.comp` beside the sprites.
+    struct GpuPresence
+    {
+        vec3 mCentre;
+        float mRadius;
+        uint mKinds;
+    };
+
     struct GpuMaterial
     {
         uint mDiffuse;
@@ -1036,7 +1086,9 @@ namespace Rtx::Shaders
     static_assert(sizeof(GpuMaterial) == 96, "GpuMaterial must be scalar-packed on every side");
     static_assert(sizeof(GpuSprite) == 56, "GpuSprite must be scalar-packed on every side");
     static_assert(sizeof(GpuEmitter) == 40, "GpuEmitter must be scalar-packed on every side");
-    static_assert(sizeof(GpuTables) == 168, "GpuTables must be scalar-packed on every side");
+    static_assert(sizeof(GpuEmitterFrame) == 16, "GpuEmitterFrame must be scalar-packed on every side");
+    static_assert(sizeof(GpuPresence) == 20, "GpuPresence must be scalar-packed on every side");
+    static_assert(sizeof(GpuTables) == 184, "GpuTables must be scalar-packed on every side");
 
 #endif
 

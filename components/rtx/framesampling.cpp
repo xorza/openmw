@@ -27,10 +27,10 @@ namespace Rtx
         [[maybe_unused]] bool leavesSamplingAlone(const Shaders::VisibilityConstants& stated)
         {
             return stated.mCamera.mJitter == osg::Vec2f() && stated.mArms.mJitter == osg::Vec2f() && stated.mNoise == 0u
-                && stated.mLevelBias == 0.0f && stated.mArmsSpread == osg::Vec2f() && stated.mMediumInFrame == 0u
-                && stated.mAdditiveInFrame == 0u && stated.mArmsInFrame == 0u && stated.mCameraMotion == osg::Vec3f()
-                && stated.mPreviousForward == osg::Vec3f() && stated.mPreviousRight == osg::Vec3f()
-                && stated.mPreviousUp == osg::Vec3f() && stated.mDelight == 0.0f && stated.mShow == 0u;
+                && stated.mLevelBias == 0.0f && stated.mArmsSpread == osg::Vec2f() && stated.mArmsInFrame == 0u
+                && stated.mCameraMotion == osg::Vec3f() && stated.mPreviousForward == osg::Vec3f()
+                && stated.mPreviousRight == osg::Vec3f() && stated.mPreviousUp == osg::Vec3f()
+                && stated.mDelight == 0.0f && stated.mShow == 0u;
         }
     }
 
@@ -64,11 +64,7 @@ namespace Rtx
         sampled.mArms.mJitter = sampled.mCamera.mJitter;
         sampled.mArmsSpread = armsSpreadOf(stated);
 
-        // The scene's answer and not the camera's: a cell with no cloud in it has nothing for the
-        // medium walk to find, wherever it is looked at from. The arms are the scene's and the
-        // camera's both: a map draws none.
-        sampled.mMediumInFrame = counts.mMedium > 0 ? 1 : 0;
-        sampled.mAdditiveInFrame = counts.mAdditive > 0 ? 1 : 0;
+        // The scene's answer and the camera's both: a map draws no arms.
         sampled.mArmsInFrame = counts.mFirstPerson > 0 && (stated.mRayMask & Shaders::MASK_FIRST_PERSON) != 0 ? 1 : 0;
 
         // The one subtraction of two world points, and it happens here. Two camera positions a

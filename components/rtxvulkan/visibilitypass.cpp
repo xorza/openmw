@@ -64,7 +64,9 @@ namespace Rtx
                 && at(tables.mSpecularAlbedo, Shaders::TABLE_ALIGN_ROWS)
                 && at(tables.mSprites, Shaders::TABLE_ALIGN_ROWS) && at(tables.mEmitters, Shaders::TABLE_ALIGN_ROWS)
                 && at(tables.mTextureTexels, Shaders::TABLE_ALIGN_ROWS)
-                && at(tables.mSpriteTileList, Shaders::TABLE_ALIGN_ROWS);
+                && at(tables.mEmitterFrames, Shaders::TABLE_ALIGN_ROWS)
+                && at(tables.mSpriteTileList, Shaders::TABLE_ALIGN_ROWS)
+                && at(tables.mSpritePresence, Shaders::TABLE_ALIGN_ROWS);
         }
 
         /// The word `lib/variants.glsl` is compiled with as `REORDER`.
@@ -255,6 +257,8 @@ namespace Rtx
             "sprite composite");
         mSpriteShelterPipeline = std::make_unique<TracePipeline>(mDevice, sBindings, sharedSets(textureLayout),
             TraceShaders{ .mRaygen = shaders / "spriteshelter.rgen.spv" }, "sprite shelter");
+        mSpriteEmittersPipeline = std::make_unique<TracePipeline>(mDevice, sBindings, sharedSets(textureLayout),
+            TraceShaders{ .mRaygen = shaders / "spriteemitters.rgen.spv" }, "sprite emitters");
 
         /// One kernel to make: which tuple, and which of the two modules.
         struct Wanted
@@ -490,7 +494,9 @@ namespace Rtx
         // The trace's own, shaded and binned for this camera ahead of it, or the list of nothing
         // for a camera that draws no sprites and binned none.
         described.mTables.mSprites = bin.getSpritesAddress();
+        described.mTables.mEmitterFrames = bin.getEmitterFramesAddress();
         described.mTables.mSpriteTileList = spriteTileList;
+        described.mTables.mSpritePresence = bin.getPresenceAddress();
 
         // Nothing addressed here may be nothing, and every address must be what its reference
         // claims. A descriptor bound as a null handle cost this renderer a device with no message;
@@ -520,6 +526,24 @@ namespace Rtx
 
         // The shade reads and writes what this zeroed, from a dispatch.
         handOver(commands, Use::sBufferShaderReadWrite, Use::sBufferComputeReadWrite);
+
+        closeZone(timer, commands);
+    }
+
+    void VisibilityPass::recordSpriteEmitters(const VkCommandBuffer commands, const VisibilityInputs& inputs,
+        const std::uint32_t count, GpuTimer* const timer) const
+    {
+        if (count == 0)
+            return;
+
+        openZone(timer, commands, "emitters");
+
+        bind(commands, *mSpriteEmittersPipeline);
+        pushInputs(commands, *mSpriteEmittersPipeline, inputs);
+        mSpriteEmittersPipeline->traceRays(commands, count, 1);
+
+        // Read by the trace and by the puffs' composite, both launches.
+        handOver(commands, Use::sBufferShaderReadWrite, Use::sBufferShaderRead);
 
         closeZone(timer, commands);
     }

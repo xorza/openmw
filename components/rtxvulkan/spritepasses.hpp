@@ -29,8 +29,10 @@ namespace Rtx
         ///
         /// @param list the buffer `bin.mList` addresses: the fill that zeroes the head needs its
         ///        handle, and the assert that the list is as long as `bin` says needs its size.
+        /// @param presence the buffer `bin.mPresence` addresses, zeroed before the pass as the
+        ///        list's head is.
         void record(VkCommandBuffer commands, const Shaders::SpriteBinConstants& bin, const Buffer& list,
-            GpuTimer* timer) const;
+            const Buffer& presence, GpuTimer* timer) const;
 
     private:
         ComputePipeline mRects;

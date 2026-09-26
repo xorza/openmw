@@ -232,6 +232,8 @@ namespace Rtx
             .mEmitters = tables.mEmitters.addressFor(),
             .mSpriteCount = tables.mSpriteCount,
             .mEmitterCount = tables.mEmitterCount,
+            .mPresences = tables.mPresences.addressFor(),
+            .mPresenceCount = tables.mPresenceCount,
         };
     }
 
@@ -359,12 +361,15 @@ namespace Rtx
         const std::span<const std::uint32_t> lightList = mLightGrid.getList().getWhole();
         const std::span<const SpriteEmitter> emitters = scene.emitters();
         const std::span<const Sprite> sprites = scene.sprites();
+        scene.placements().describePresences(scene.meshes().getRows(), mPresenceScratch);
+        const std::span<const Shaders::GpuPresence> presences = mPresenceScratch;
 
         growTo(tables.mLights, mDevice, BufferKind::HostWritten, lights.size_bytes(), sTableUsage, "lights");
         growTo(tables.mLightList, mDevice, BufferKind::HostWritten, lightList.size_bytes(), sTableUsage, "light list");
         growTo(tables.mEmitters, mDevice, BufferKind::HostWritten, emitters.size_bytes(), sTableUsage, "emitters");
         growTo(
             tables.mSprites, mDevice, BufferKind::HostWritten, sprites.size_bytes(), sTableCopiedFromUsage, "sprites");
+        growTo(tables.mPresences, mDevice, BufferKind::HostWritten, presences.size_bytes(), sTableUsage, "presences");
 
         tables.mLights.write(lights);
         tables.mLightList.write(lightList);
@@ -374,6 +379,8 @@ namespace Rtx
         tables.mSprites.write(sprites);
         tables.mSpriteCount = static_cast<std::uint32_t>(sprites.size());
         tables.mEmitterCount = static_cast<std::uint32_t>(emitters.size());
+        tables.mPresences.write(presences);
+        tables.mPresenceCount = static_cast<std::uint32_t>(presences.size());
 
         // The normals of anything skinned are not written here: a cell's are the same from one
         // frame to the next, and a body's are what `SkinPass` computed into this copy ahead of this.
@@ -389,6 +396,7 @@ namespace Rtx
         tables.mLightList.waitIdle("a trace still reading a copy's light list");
         tables.mEmitters.waitIdle("a trace still reading a copy's emitters");
         tables.mSprites.waitIdle("a trace's bin still copying a copy's sprites");
+        tables.mPresences.waitIdle("a trace's bin still reading a copy's presences");
     }
 
     void SceneBuffers::describeTables(const FrameSlot slot, Shaders::GpuTables& into) const
@@ -416,7 +424,8 @@ namespace Rtx
 
     VkDeviceSize SceneBuffers::Tables::getBytes() const
     {
-        return mLights.getSize() + mLightList.getSize() + mSprites.getSize() + mEmitters.getSize();
+        return mLights.getSize() + mLightList.getSize() + mSprites.getSize() + mEmitters.getSize()
+            + mPresences.getSize();
     }
 
     VkDeviceSize SceneBuffers::getBytes() const

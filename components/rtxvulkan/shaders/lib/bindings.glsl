@@ -378,6 +378,12 @@ GpuEmitter emitterAt(uint index)
     return EmitterTable(frame.mTables.mEmitters).at[index];
 }
 
+/// What this trace made of the emitter at `index`, `GpuEmitterFrame`.
+GpuEmitterFrame emitterFrameAt(uint index)
+{
+    return EmitterFrames(frame.mTables.mEmitterFrames).at[index];
+}
+
 /// The sprite tiles' list, in the light grid's shape over the screen's tiles: where each tile's run
 /// starts, then every tile's sprites run together in tile order and ascending inside each run —
 /// which is the order they composite in. `spritelist.glsl` states the shape.

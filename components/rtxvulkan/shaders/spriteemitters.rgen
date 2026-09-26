@@ -1,0 +1,47 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_ray_tracing : require
+
+// What this trace makes of each emitter, once for every sprite of it: `GpuEmitterFrame`.
+//
+// **Three values that are the emitter's and the camera's alone**, which the walks worked out again
+// at every pixel an emitter covers, at the traced extent and again at the shown one: the fog's
+// coverage band, forty hashes; what one layer of the texture lets through, a level query and a
+// fetch; and the texture's extent, a header read. One invocation an emitter, ahead of the trace.
+//
+// **A launch and not a dispatch**, for the reason `RtxSourceTreeTest` gives: the band reaches the
+// fog, and the fog reaches the traversal. Nothing here traces.
+
+#include "look.h"
+#include "scene.h"
+
+#include "lib/bindings.glsl"
+#include "lib/fog.glsl"
+#include "lib/frame.glsl"
+#include "lib/spritelist.glsl"
+
+void main()
+{
+    const uint index = gl_LaunchIDEXT.x;
+    const GpuEmitter emitter = emitterAt(index);
+
+    // **The band over the path to the emitter, at its mean-value point**: the ray through the
+    // emitter's centre from the eye, or along the view where every ray runs one way. Every sprite
+    // behind the sphere is within `mReach` of the same air. The layer under the band is
+    // `fogColumn`'s and is taken exactly, per sprite, by the walk.
+    const vec3 toCentre = emitter.mCentre - frame.mOrigin;
+    const bool parallel = frame.mCamera.mOrthographic != 0u;
+    const vec3 forward = normalize(frame.mCamera.mForward);
+    const float along = parallel ? dot(toCentre, forward) : length(toCentre);
+    const vec3 halfway = parallel ? emitter.mCentre - forward * (0.5 * along) : frame.mOrigin + toCentre * 0.5;
+
+    // **What one layer of this texture hides on average**, off its coarsest level, as the logarithm
+    // the walk's two powers share: an outermost sprite raises it to nought and gets one, exactly.
+    const float coarsest = float(textureQueryLevels(textures[nonuniformEXT(emitter.mTexture)]) - 1);
+    const float layerMean = textureLod(textures[nonuniformEXT(emitter.mTexture)], vec2(0.5), coarsest).a;
+
+    // Both axes, because a streak carries them at different densities — `quadCrossing` says why.
+    EmitterFrames(frame.mTables.mEmitterFrames).at[index] = GpuEmitterFrame(fogCoverageAt(halfway, max(along, 1.0)),
+        log2(1.0 - min(layerMean, SPRITE_ALPHA_LIMIT)), vec2(textureSize(textures[nonuniformEXT(emitter.mTexture)], 0)));
+}

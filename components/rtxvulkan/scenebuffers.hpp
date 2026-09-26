@@ -104,9 +104,14 @@ namespace Rtx
             Buffer mSprites;
             Buffer mEmitters;
 
+            /// Where each medium and additive instance can be met, `PlacementTable::describePresences`,
+            /// which the bin puts into the screen's tiles beside the sprites.
+            Buffer mPresences;
+
             /// How many of each the copy holds, for the bin that copies them.
             std::uint32_t mSpriteCount = 0;
             std::uint32_t mEmitterCount = 0;
+            std::uint32_t mPresenceCount = 0;
 
             /// What one copy of them occupies. Beside the declarations, because a table added above
             /// and forgotten here is a figure that quietly stops accounting for it, which two of
@@ -152,6 +157,7 @@ namespace Rtx
         PerSlot<Tables> mTables;
 
         std::vector<Shaders::GpuMesh> mMeshScratch;
+        std::vector<Shaders::GpuPresence> mPresenceScratch;
 
         /// What the material table's runs stood at when they were last staged, which `shade` checks
         /// against: a run that arrived without an `extend` to stage it would be shaded stale for its

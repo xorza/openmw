@@ -17,8 +17,7 @@
 // **The shape at the shown extent and the light at the traced one.** What a picture needs at
 // its own resolution is a puff's edge: which pixels it covers and how much. What it does not need
 // there is the light, which is read out of froxels that are a hundred pixels across and costs
-// three fetches a sprite and a band of forty hashes an emitter — marched at every shown pixel, a
-// storm's frame paid five times what it did. So the sprites are marched here for their shape
+// three fetches a sprite — marched at every shown pixel, a storm's frame paid five times what it did. So the sprites are marched here for their shape
 // alone (`spritesAlong` with `lit` off), the colour comes off the trace's own lit layer, read
 // bilinearly and weighted by its coverage so a rim the traced grid missed borrows from the pixel
 // beside it, and the shells' transmittance comes with it, because a shell is geometry the trace
@@ -81,8 +80,11 @@ void compositeAt(uvec2 pixel, uvec2 extent, uvec2 tracedExtent, uvec2 traced, ve
 
     // **The additive meshes, gathered here beside the flames** for the reason this launch draws
     // the flames at all: at the picture's own extent and past the denoiser. One query against a
-    // mask a handful of instances carry, and only on the frames that hold one.
-    if (frame.mAdditiveInFrame != 0u)
+    // mask a handful of instances carry, and only in the tiles one of them can be met from.
+    if ((presenceAt(SpriteTileList(frame.mTables.mSpriteTileList), SpritePresence(frame.mTables.mSpritePresence),
+             tracedExtent.x, traced)
+            & PRESENCE_ADDITIVE)
+        != 0u)
         layer.mAdded += additiveAlong(traced, origin, direction, distance, cone);
 
     // The lit colour, off the traced layer around this pixel: each of the four nearest traced
@@ -153,8 +155,8 @@ void main()
 
     // **Nothing to draw and nothing to write.** The curve makes the same test and reads a one
     // where this wrote nothing; `puffsCoverNothing` says what it saves.
-    if (puffsCoverNothing(SpriteTileList(frame.mTables.mSpriteTileList), tracedExtent.x, traced, stood.y,
-            frame.mAdditiveInFrame))
+    if (puffsCoverNothing(SpriteTileList(frame.mTables.mSpriteTileList), SpritePresence(frame.mTables.mSpritePresence),
+            tracedExtent.x, traced, stood.y))
         return;
 
     const uvec2 first = shownPixelsFrom(traced, extent, tracedExtent);

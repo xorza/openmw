@@ -2,7 +2,10 @@
 
 #extension GL_GOOGLE_include_directive : require
 
-// Which tiles of the screen each sprite can be met from, and how many sprites each tile holds.
+// Which tiles of the screen each sprite can be met from, and how many sprites each tile holds — and,
+// in the invocations after the last sprite's, which tiles each medium and additive instance can be
+// met from, ORed into the tile's presence word. An instance is bounded as a sprite that faces the
+// eye is, by a sphere, and the same rectangle is taken of it.
 //
 // **Conservative by construction, and the trace's own test is what refines it.** A tile's list
 // has to hold every sprite any ray through the tile could meet, because `spritesAlong` tests a
@@ -272,17 +275,45 @@ TileRect capsuleTiles(Bound bound, Frame frame)
         toPixel(sideways.y, bin.mCamera.mWidth, 1.0), toPixel(upright.y, bin.mCamera.mHeight, 1.0)));
 }
 
+/// ORs one instance's kinds into every tile it can be met from, a lane at a stride.
+void markPresence(GpuPresence held, uint lane, uint across)
+{
+    const TileRect rect = (held.mKinds & PRESENCE_EVERYWHERE) != 0u
+        ? tilesOf(ivec4(0, 0, int(bin.mCamera.mWidth) - 1, int(bin.mCamera.mHeight) - 1))
+        : capsuleTiles(Bound(held.mCentre, held.mCentre, held.mRadius, false), frameOf(bin.mCamera));
+    if (isEmpty(rect))
+        return;
+
+    const uint kinds = held.mKinds & (PRESENCE_ADDITIVE | PRESENCE_MEDIUM);
+    const uint wide = rect.mTo.x - rect.mFrom.x + 1u;
+    const uint area = wide * (rect.mTo.y - rect.mFrom.y + 1u);
+
+    for (uint cell = lane; cell < area; cell += SPRITE_BIN_LANES)
+    {
+        const uint x = rect.mFrom.x + cell % wide;
+        const uint y = rect.mFrom.y + cell / wide;
+
+        atomicOr(SpritePresence(bin.mPresence).at[y * across + x], kinds);
+    }
+}
+
 void main()
 {
     const uint sprite = gl_GlobalInvocationID.x / SPRITE_BIN_LANES;
     const uint lane = gl_LocalInvocationID.x % SPRITE_BIN_LANES;
-    if (sprite >= bin.mCount)
+    if (sprite >= bin.mCount + bin.mPresenceCount)
         return;
+
+    const uint across = spriteTilesOver(bin.mCamera.mWidth);
+
+    if (sprite >= bin.mCount)
+    {
+        markPresence(PresenceTable(bin.mPresences).at[sprite - bin.mCount], lane, across);
+        return;
+    }
 
     const GpuSprite held = SpriteTable(bin.mSprites).at[sprite];
     const GpuEmitter emitter = EmitterTable(bin.mEmitters).at[held.mEmitter];
-
-    const uint across = spriteTilesOver(bin.mCamera.mWidth);
 
     // Every lane of the sprite works its rectangle out for itself: a dozen operations against a
     // shared-memory exchange and the barrier that would order it.

@@ -2,6 +2,10 @@
 
 #include <cassert>
 #include <cstddef>
+#include <span>
+#include <vector>
+
+#include <osg/BoundingBox>
 
 namespace Rtx
 {
@@ -32,6 +36,9 @@ namespace Rtx
         mCounts.mAdditive += share.mAdditive;
         mCounts.mFirstPerson += share.mFirstPerson;
         mCounts.mMapped += share.mMapped;
+
+        if (share.mMedium + share.mAdditive > 0)
+            mPresent.addMakingRoom(slot);
     }
 
     void PlacementTable::discount(const Index slot)
@@ -44,6 +51,12 @@ namespace Rtx
         mCounts.mAdditive -= share.mAdditive;
         mCounts.mFirstPerson -= share.mFirstPerson;
         mCounts.mMapped -= share.mMapped;
+
+        if (share.mMedium + share.mAdditive > 0)
+        {
+            mPresent.remove(slot);
+            mPresent.compact();
+        }
     }
 
     Index PlacementTable::add(const MeshInstance& instance, const Material::Traversed& worn)
@@ -162,6 +175,36 @@ namespace Rtx
 
         mRows.free(slot);
         mMoved.push_back(slot);
+    }
+
+    void PlacementTable::describePresences(
+        std::span<const MeshRange> meshes, std::vector<Shaders::GpuPresence>& into) const
+    {
+        into.clear();
+        into.reserve(mPresent.getSlots().size());
+
+        for (const Index slot : mPresent.getSlots())
+        {
+            const PlacementRow& row = mRows.at(slot);
+            const MeshInstance& placed = row.mInstance;
+            const InstanceCounts share = shareOf(row);
+
+            const osg::BoundingBoxf& box = meshes[placed.mMesh].mBounds;
+            if (!box.valid())
+                continue;
+
+            osg::BoundingBoxf world;
+            for (unsigned int corner = 0; corner < 8; ++corner)
+                world.expandBy(box.corner(corner) * placed.mTransform);
+
+            into.push_back(Shaders::GpuPresence{
+                .mCentre = world.center(),
+                .mRadius = world.radius(),
+                .mKinds = (share.mAdditive > 0 ? Shaders::PRESENCE_ADDITIVE : 0u)
+                    | (share.mMedium > 0 ? Shaders::PRESENCE_MEDIUM : 0u)
+                    | (share.mFirstPerson > 0 ? Shaders::PRESENCE_EVERYWHERE : 0u),
+            });
+        }
     }
 
     void PlacementTable::advance()

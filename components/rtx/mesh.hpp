@@ -219,13 +219,9 @@ namespace Rtx
         std::uint32_t mWater = 0;
 
         /// How many of them are a medium the eye passes through — `Rtx::Material::isMedium` — and
-        /// so whether `mediumAlong` has to walk the structure at all
-        /// (`VisibilityConstants::mMediumInFrame`).
+        /// how many add to the frame and cover nothing — `Rtx::Material::isAdditive`. Where either
+        /// can be met is `PlacementTable::getPresent`'s, and not a count's.
         std::uint32_t mMedium = 0;
-
-        /// How many add to the frame and cover nothing — `Rtx::Material::isAdditive` — and so
-        /// whether `additiveAlong` has to walk the structure at all
-        /// (`VisibilityConstants::mAdditiveInFrame`).
         std::uint32_t mAdditive = 0;
 
         /// How many are the player's own arms — `InstanceClass::FirstPerson` — and so whether the

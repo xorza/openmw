@@ -106,11 +106,13 @@ namespace Rtx
                 && std::abs((offset * upward) / (upward * upward)) < 1.0f;
         }
 
-        /// A billboard emitter and an oriented one, and the sprites they hold.
+        /// A billboard emitter and an oriented one, the sprites they hold, and the spheres of the
+        /// medium and additive instances binned beside them.
         struct Layer
         {
             std::vector<Shaders::GpuSprite> mSprites;
             std::vector<Shaders::GpuEmitter> mEmitters;
+            std::vector<Shaders::GpuPresence> mPresences;
 
             /// @param width nought for a billboard, and then `axis` is nought too.
             void addEmitter(float width, const osg::Vec3f& axis)
@@ -145,6 +147,7 @@ namespace Rtx
         {
             std::vector<std::uint32_t> mList;
             std::vector<std::uint64_t> mRects;
+            std::vector<std::uint32_t> mPresence;
             std::uint32_t mAcross = 0;
             std::uint32_t mDown = 0;
             std::uint32_t mReport = 0;
@@ -168,6 +171,12 @@ namespace Rtx
                     = getRun(std::size_t{ y / Shaders::SPRITE_TILE } * mAcross + x / Shaders::SPRITE_TILE);
 
                 return std::find(run.begin(), run.end(), sprite) != run.end();
+            }
+
+            /// The `PRESENCE_` bits of the tile `(x, y)` falls in.
+            std::uint32_t presenceFor(std::uint32_t x, std::uint32_t y) const
+            {
+                return mPresence[std::size_t{ y / Shaders::SPRITE_TILE } * mAcross + x / Shaders::SPRITE_TILE];
             }
 
             /// Whether `sprite`'s rectangle, as the pass wrote it, holds `tile`.
@@ -240,6 +249,9 @@ namespace Rtx
                     VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, "test");
                 const Buffer report = Buffer::readBack(
                     device, sizeof(std::uint32_t), VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, "test");
+                const Buffer presences = upload(device, std::span<const Shaders::GpuPresence>(layer.mPresences));
+                const Buffer presence = Buffer::readBack(device, result.getTileCount() * sizeof(std::uint32_t),
+                    VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, "test");
 
                 getPool().submitAndWait([&](VkCommandBuffer commands) {
                     pass.record(commands,
@@ -249,12 +261,15 @@ namespace Rtx
                             .mRects = rects.getDeviceAddress(),
                             .mList = list.getDeviceAddress(),
                             .mReport = report.getDeviceAddress(),
+                            .mPresences = presences.getDeviceAddress(),
+                            .mPresence = presence.getDeviceAddress(),
                             .mOrigin = constants.mOrigin,
                             .mCamera = constants.mCamera,
                             .mCount = count,
                             .mCapacity = capacity,
+                            .mPresenceCount = static_cast<std::uint32_t>(layer.mPresences.size()),
                         },
-                        list, nullptr);
+                        list, presence, nullptr);
                 });
 
                 result.mList.resize(words);
@@ -262,6 +277,8 @@ namespace Rtx
                 std::memcpy(&result.mReport, report.map(), sizeof(result.mReport));
                 result.mRects.resize(count);
                 std::memcpy(result.mRects.data(), rects.map(), count * sizeof(std::uint64_t));
+                result.mPresence.resize(result.getTileCount());
+                std::memcpy(result.mPresence.data(), presence.map(), result.getTileCount() * sizeof(std::uint32_t));
 
                 if (!result.isUnbinned())
                     result.expectRunsMatchRects(count);
@@ -327,6 +344,15 @@ namespace Rtx
                 layer.addSprite((ahead + behind) * 0.5f, 0.5f * length);
             }
 
+            // And the spheres of instances a walk looks for, which the same property holds of: an
+            // additive sheet, a cloud, and one of each kind in one sphere, spread as the sprites are.
+            layer.mPresences = {
+                Shaders::GpuPresence{ osg::Vec3f(40.0f, -12.0f, 6.0f), 5.0f, Shaders::PRESENCE_ADDITIVE },
+                Shaders::GpuPresence{ osg::Vec3f(150.0f, 40.0f, -20.0f), 25.0f, Shaders::PRESENCE_MEDIUM },
+                Shaders::GpuPresence{
+                    osg::Vec3f(70.0f, 20.0f, 10.0f), 8.0f, Shaders::PRESENCE_ADDITIVE | Shaders::PRESENCE_MEDIUM },
+            };
+
             for (const osg::Vec2f jitter : { osg::Vec2f(0.0f, 0.0f), osg::Vec2f(0.49f, -0.49f) })
             {
                 Shaders::VisibilityConstants constants = lookingAlongX();
@@ -339,10 +365,25 @@ namespace Rtx
                 EXPECT_EQ(tiles.mReport, tiles.getEntryCount());
 
                 std::uint32_t met = 0;
+                std::uint32_t found = 0;
                 for (std::uint32_t y = 0; y < sHeight; ++y)
                     for (std::uint32_t x = 0; x < sWidth; ++x)
                     {
                         const osg::Vec3f direction = rayThrough(constants.mCamera, x, y);
+
+                        // A sphere is met where a billboard of its radius would be.
+                        for (const Shaders::GpuPresence& presence : layer.mPresences)
+                        {
+                            Shaders::GpuSprite ball{};
+                            ball.mPosition = presence.mCentre;
+                            ball.mRadius = presence.mRadius;
+                            if (!marchWouldMeet(ball, Shaders::GpuEmitter{}, constants.mOrigin, direction))
+                                continue;
+
+                            ++found;
+                            EXPECT_EQ(tiles.presenceFor(x, y) & presence.mKinds, presence.mKinds)
+                                << "a sphere met at pixel " << x << ", " << y;
+                        }
 
                         for (std::uint32_t at = 0; at < layer.mSprites.size(); ++at)
                         {
@@ -358,6 +399,7 @@ namespace Rtx
 
                 // A property nothing meets is a property nothing checks.
                 EXPECT_GT(met, 200u) << "the fixture stopped covering the frame";
+                EXPECT_GT(found, 50u) << "the spheres stopped covering the frame";
             }
         }
 
@@ -411,6 +453,41 @@ namespace Rtx
             ASSERT_EQ(tiles.getEntryCount(), tiles.getTileCount());
             for (std::size_t tile = 0; tile < tiles.getTileCount(); ++tile)
                 EXPECT_EQ(tiles.getRun(tile).size(), 1u) << "tile " << tile;
+        }
+
+        /// A tile's presence word is the kinds of the spheres a ray through it can meet, and nothing
+        /// else: none from a sphere behind the eye, every tile for one around the eye or one the
+        /// placement says is everywhere, and a sphere ahead only where it is seen. The `EVERYWHERE`
+        /// bit itself is the bin's instruction and never lands in a tile.
+        TEST_F(RtxSpriteBinPassTest, aTilesPresenceIsWhatARayThroughItCanMeetAndNothingElse)
+        {
+            const auto binned = [&](std::vector<Shaders::GpuPresence> presences) {
+                Layer layer;
+                layer.mPresences = std::move(presences);
+                return bin(layer, lookingAlongX(), sPlenty);
+            };
+
+            const Binned behind
+                = binned({ Shaders::GpuPresence{ osg::Vec3f(-100.0f, 0.0f, 0.0f), 5.0f, Shaders::PRESENCE_MEDIUM } });
+            const Binned around
+                = binned({ Shaders::GpuPresence{ osg::Vec3f(1.0f, 0.0f, 0.0f), 50.0f, Shaders::PRESENCE_ADDITIVE } });
+            const Binned everywhere = binned({ Shaders::GpuPresence{
+                osg::Vec3f(-100.0f, 0.0f, 0.0f), 5.0f, Shaders::PRESENCE_MEDIUM | Shaders::PRESENCE_EVERYWHERE } });
+            for (std::size_t tile = 0; tile < behind.getTileCount(); ++tile)
+            {
+                EXPECT_EQ(behind.mPresence[tile], 0u) << "a sphere behind the eye in tile " << tile;
+                EXPECT_EQ(around.mPresence[tile], Shaders::PRESENCE_ADDITIVE) << "tile " << tile;
+                EXPECT_EQ(everywhere.mPresence[tile], Shaders::PRESENCE_MEDIUM) << "tile " << tile;
+            }
+
+            // Straight ahead, and small: a ball of five a hundred out spans about four degrees of a
+            // sixty-degree frame sixty-four pixels wide, a few pixels about the centre — tile (2, 1)
+            // holds pixel (32, 24), and the corner tile is thirty degrees away from it.
+            const Binned ahead
+                = binned({ Shaders::GpuPresence{ osg::Vec3f(100.0f, 0.0f, 0.0f), 5.0f, Shaders::PRESENCE_MEDIUM } });
+            EXPECT_EQ(ahead.presenceFor(32, 24), Shaders::PRESENCE_MEDIUM);
+            EXPECT_EQ(ahead.presenceFor(0, 0), 0u);
+            EXPECT_EQ(ahead.presenceFor(sWidth - 1, sHeight - 1), 0u);
         }
 
         /// A rain streak falling past the camera reaches the strip it covers and not the whole frame.

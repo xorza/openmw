@@ -17,8 +17,9 @@ namespace Rtx::Shaders
     /// Where `groundcomposite.comp` binds what it reads and writes in set 0, and how many there
     /// are. The shader's layout and the pass's own layout and writes are numbered by these and by
     /// nothing else, so the two cannot drift apart.
-    const uint GROUND_COMPOSITE_BIND_TARGET = 0;
-    const uint GROUND_COMPOSITE_BINDINGS = 1;
+    const uint GROUND_COMPOSITE_BIND_ALBEDO = 0;
+    const uint GROUND_COMPOSITE_BIND_GLOSS = 1;
+    const uint GROUND_COMPOSITE_BINDINGS = 2;
 
     /// How large a composite is, square: the rasterizer's `composite map resolution` default,
     /// stated here because this path forces that setting past every chunk. A power of two, so the
@@ -33,10 +34,11 @@ namespace Rtx::Shaders
     /// The bake's workgroup, square.
     const uint GROUND_COMPOSITE_WORKGROUP = 16u;
 
-    /// What a bake writes: the chunk's albedo, or its gloss — how much of the ground reflects in
-    /// red and its roughness in green, `CompositeQueue` says why a distant chunk needs both.
-    const uint GROUND_COMPOSITE_ALBEDO = 0u;
-    const uint GROUND_COMPOSITE_GLOSS = 1u;
+    /// What a bake writes, as bits: the chunk's albedo, its gloss — how much of the ground reflects
+    /// in red and its roughness in green, `CompositeQueue` says why a distant chunk needs both — or
+    /// both from the one sum, which is what a chunk that arrived with both is baked as.
+    const uint GROUND_COMPOSITE_ALBEDO = 1u;
+    const uint GROUND_COMPOSITE_GLOSS = 2u;
 
     /// What one bake is told: the three tables the sum reads, by address as the frame's block
     /// carries them, which chunk, which of its two images, and the array's texel counts, which say
@@ -50,8 +52,8 @@ namespace Rtx::Shaders
         /// The chunk's material row, whose layers are summed.
         uint mMaterial;
 
-        /// `GROUND_COMPOSITE_ALBEDO` or `GROUND_COMPOSITE_GLOSS`.
-        uint mOutput;
+        /// `GROUND_COMPOSITE_ALBEDO`, `GROUND_COMPOSITE_GLOSS` or both.
+        uint mOutputs;
 
         /// `GpuTables::mTextureTexels`.
         uint64 mTexels;

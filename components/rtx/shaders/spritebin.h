@@ -79,6 +79,13 @@ namespace Rtx::Shaders
         /// they fit. Host-readable, which is what lets the next frame's buffer be sized to it.
         uint64 mReport;
 
+        /// The placement's `GpuPresence` rows, which the pass over sprites takes after the last
+        /// sprite: a sphere is bounded as a sprite that faces the eye is.
+        uint64 mPresences;
+
+        /// One word a tile, cleared before the pass and ORed into by it: `GpuTables::mSpritePresence`.
+        uint64 mPresence;
+
         /// Where the eye stands. `Camera` carries everything else about the frame, and not this,
         /// for the reason it gives.
         vec3 mOrigin;
@@ -89,11 +96,18 @@ namespace Rtx::Shaders
 
         /// How many entries the list has room for after its starts.
         uint mCapacity;
+
+        /// How many `mPresences` rows there are.
+        uint mPresenceCount;
+
+        /// What rounds the block to the eight its addresses are aligned to, which the host's
+        /// `sizeof` counts and a scalar block does not.
+        uint mPadding;
     };
 
 #ifdef RTX_HOST
 
-    static_assert(sizeof(SpriteBinConstants) == 120, "SpriteBinConstants must be scalar-packed on every side");
+    static_assert(sizeof(SpriteBinConstants) == 144, "SpriteBinConstants must be scalar-packed on every side");
 }
 
 #endif

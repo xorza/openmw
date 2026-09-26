@@ -28,16 +28,17 @@ namespace Rtx
         /// the same test `spritecomposite.rgen` makes — and where that composite drew nothing, the
         /// pass finds out for itself from what it is handed here.
         Shaders::ToneConstants toneFor(const Shaders::VisibilityConstants& frame, const SunGlare& fader,
-            const VkDeviceAddress spriteTileList, const VkDeviceAddress textureTexels, std::uint32_t width,
-            std::uint32_t height, std::uint32_t tracedWidth, std::uint32_t tracedHeight)
+            const VkDeviceAddress spriteTileList, const VkDeviceAddress spritePresence,
+            const VkDeviceAddress textureTexels, std::uint32_t width, std::uint32_t height, std::uint32_t tracedWidth,
+            std::uint32_t tracedHeight)
         {
-            assert(spriteTileList != 0 && "a curve told no tile list to test the puffs by");
+            assert(spriteTileList != 0 && spritePresence != 0 && "a curve told no tiles to test the puffs by");
             assert(textureTexels != 0 && "a curve told no texel counts to test the star sheet by");
 
             return Shaders::ToneConstants{
                 .mSpriteTileList = spriteTileList,
+                .mSpritePresence = spritePresence,
                 .mTextureTexels = textureTexels,
-                .mAdditiveInFrame = frame.mAdditiveInFrame,
                 .mTracedWidth = tracedWidth,
                 .mTracedHeight = tracedHeight,
                 .mCoverAlpha = frame.mTransparentBackground == 0 ? 1u : 0u,
@@ -142,8 +143,8 @@ namespace Rtx
                 .mTextures = inputs.mTextures,
                 .mTarget = what.mTarget,
                 .mConstants = toneFor(what.mSampled, what.mGlare.has_value() ? what.mGlare->mFader : SunGlare{},
-                    what.mTrace.mSpriteTileList, inputs.mTextureTexels, what.mExtent.width, what.mExtent.height,
-                    channels.getWidth(), channels.getHeight()),
+                    what.mTrace.mSpriteTileList, what.mTrace.mSpritePresence, inputs.mTextureTexels, what.mExtent.width,
+                    what.mExtent.height, channels.getWidth(), channels.getHeight()),
             });
         closeZone(what.mTimer, commands);
 

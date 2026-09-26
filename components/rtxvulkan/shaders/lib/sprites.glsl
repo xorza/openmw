@@ -433,9 +433,10 @@ SpriteCrossing ballCrossing(
 ///        The trace says yes and gets the layer's colour; the composite at the shown extent says
 ///        no and gets the layer's shape — what covers, how much, how far away — with the colour
 ///        left unlit, because it reads the lit one off the trace's layer. What the shape costs is a
-///        bounds test and a texel per sprite, where the light is three fetches and a band of forty
-///        hashes per emitter; asked at three or four times the pixels, that difference is the
-///        difference between a storm's frame and its own.
+///        bounds test and a texel per sprite, where the light is three fetches per sprite; asked at
+///        three or four times the pixels, that difference is the difference between a storm's
+///        frame and its own. **A lit walk passes every flame by**: what a flame adds is `mAdded`,
+///        and only the shape walk's is read, at the extent it is shown at.
 PuffLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit, Cone cone, bool lit)
 {
     PuffLayer layer = noPuffs();
@@ -484,18 +485,15 @@ PuffLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit, Co
 
     // **Per emitter and not per sprite, across a walk with no emitter loop.** The tile's sprites
     // are in ascending index, and a sprite's index is contiguous within its emitter, so an
-    // emitter's sprites arrive consecutively and these are worked out once for each run.
+    // emitter's sprites arrive consecutively and these are read once for each run — off the row
+    // `spriteemitters.rgen` wrote for the emitter, which is where what does not vary across it was
+    // worked out once for the whole frame.
     uint held = ~0u;
     GpuEmitter emitter;
+    GpuEmitterFrame measured;
     bool missed = true;
-    float band = 1.0;
     bool oriented = false;
     float width = 0.0;
-    vec2 texels = vec2(0.0);
-
-    // What one layer of this emitter's texture hides on average, as the logarithm of what it lets
-    // through, read off its coarsest level once per run.
-    float layerThrough = 0.0;
 
     const vec3 toSun = frame.mSun.mDirection;
 
@@ -519,40 +517,19 @@ PuffLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit, Co
 
             // The same two rejections the emitter loop made, kept because a tile is sixteen pixels
             // wide and a sprite in it is one *some* ray of the tile can reach rather than this one.
-            missed = along + emitter.mReach <= 0.0 || along - emitter.mReach >= limit
+            missed = (lit && (emitter.mFlags & EMITTER_ADDITIVE) != 0u) || along + emitter.mReach <= 0.0
+                || along - emitter.mReach >= limit
                 || dot(toCentre, toCentre) - along * along > emitter.mReach * emitter.mReach;
 
             if (!missed)
             {
-                // **One evaluation of the coverage band for the whole emitter**, taken halfway to
-                // it: that is the mean-value point of the path, the band costs forty hashes, and
-                // every sprite behind this sphere is within `mReach` of the same air. The layer
-                // under the band is `fogColumn`'s and is taken exactly, per sprite. The shape
-                // wants it for a flame alone, whose glow the air thins.
-                if (lit || (emitter.mFlags & EMITTER_ADDITIVE) != 0u)
-                    band = fogCoverageAt(origin + direction * (0.5 * along), max(along, 1.0));
+                measured = emitterFrameAt(held);
 
                 // **A width of nothing is a sprite that faces the eye**, which is nearly every
                 // emitter in the game; asked once for the emitter rather than once for each of its
                 // sprites. `fixed` is a reserved word in GLSL, which is why this is not called one.
                 width = emitter.mWidth;
                 oriented = width > 0.0;
-
-                // The texture's own extent, which every sprite of this emitter shares. Both axes,
-                // because a streak carries them at different densities — see the level below.
-                texels = vec2(textureSize(textures[nonuniformEXT(emitter.mTexture)], 0));
-
-                // **What one layer of this texture hides on average**, off its coarsest level, as
-                // the logarithm the two powers below share. Once per run and not behind a test at
-                // each sprite: an outermost sprite raises it to nought and gets one, exactly, and
-                // what the read costs is one fetch per run of an emitter nothing shades.
-                if (lit)
-                {
-                    const float coarsest = float(textureQueryLevels(textures[nonuniformEXT(emitter.mTexture)]) - 1);
-                    const float layerMean
-                        = textureLod(textures[nonuniformEXT(emitter.mTexture)], vec2(0.5), coarsest).a;
-                    layerThrough = log2(1.0 - min(layerMean, SPRITE_ALPHA_LIMIT));
-                }
             }
         }
 
@@ -565,9 +542,9 @@ PuffLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit, Co
         // emitter is not costs nothing.
         SpriteCrossing crossing;
         if (oriented)
-            crossing = quadCrossing(sprite, toSprite, direction, limit, width, texels);
+            crossing = quadCrossing(sprite, toSprite, direction, limit, width, measured.mTexels);
         else
-            crossing = ballCrossing(sprite, toSprite, direction, limit, across, upward, texels);
+            crossing = ballCrossing(sprite, toSprite, direction, limit, across, upward, measured.mTexels);
 
         if (!crossing.mFound)
             continue;
@@ -606,7 +583,7 @@ PuffLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit, Co
             // through the volume, which integrates the height falloff, and these charged one
             // density over the whole path — so a puff seen down a slope kept a third more of
             // itself than the air left it.
-            const float reaching = exp(-fogColumnOver(air, crossing.mSeen) * band);
+            const float reaching = exp(-fogColumnOver(air, crossing.mSeen) * measured.mBand);
 
             // **No gain, deliberately.** The blend the file asks for says exactly how much light
             // the sprite adds; `SUNLIT_WHITE` is only what carries the original's scale, where
@@ -639,7 +616,7 @@ PuffLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit, Co
             continue;
         }
 
-        const float reaching = exp(-fogColumnOver(air, crossing.mSeen) * band);
+        const float reaching = exp(-fogColumnOver(air, crossing.mSeen) * measured.mBand);
 
         // What this puff's own shape leaves of what the air around it is lit by: the ball's own
         // side and what its texture lets through to this texel, or the cylinder a streak is drawn
@@ -681,8 +658,8 @@ PuffLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit, Co
             // here by what one layer of this texture hides on average. The limit keeps an opaque
             // texture from shutting the light outright. No test on the counts: `exp2` of nought is
             // one, and an outermost sprite is left exactly as it was.
-            wrapped.mSunLit *= exp2(layerThrough * sprite.mSunLayers);
-            wrapped.mAmbientLit *= exp2(layerThrough * sprite.mSkyLayers);
+            wrapped.mSunLit *= exp2(measured.mLayerThrough * sprite.mSunLayers);
+            wrapped.mAmbientLit *= exp2(measured.mLayerThrough * sprite.mSkyLayers);
         }
 
         covered += colour * puffLight(pixel, direction, crossing.mSeen, wrapped) * (alpha * reaching);

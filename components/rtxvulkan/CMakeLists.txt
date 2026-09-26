@@ -85,6 +85,7 @@ set(RTX_SHADERS
     shaders/shadingsum.comp
     shaders/skin.comp
     shaders/spritecomposite.rgen
+    shaders/spriteemitters.rgen
     shaders/spritelight.comp
     shaders/spriterects.comp
     shaders/spriteruns.comp

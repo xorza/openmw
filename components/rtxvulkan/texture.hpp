@@ -345,7 +345,8 @@ namespace Rtx
         PerSlot<SlotSet> mOwed;
 
         /// Which composites arrived and stand empty, whose ground each is and which of its two
-        /// images: what the next placement bakes. Cleared by `bakeComposites` and never freed.
+        /// images: what the next placement bakes, one sum a chunk for whichever of its two it
+        /// finds here. Cleared by `bakeComposites` and never freed.
         struct PendingComposite
         {
             Index mSlot;

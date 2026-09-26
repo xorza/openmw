@@ -54,12 +54,13 @@ namespace Rtx
     };
 
     /// What one trace hands the display: its inputs as the chain completed them — its own channels
-    /// and air named — the composite's output, and the sprite tile list the trace read, which the
-    /// curve tests for where the puffs' composite drew nothing.
+    /// and air named — the composite's output, and the sprite tile list the trace read and what its
+    /// tiles can meet, which the curve tests for where the puffs' composite drew nothing.
     struct TraceResult
     {
         VisibilityInputs mInputs;
         const Image& mColour;
         VkDeviceAddress mSpriteTileList = 0;
+        VkDeviceAddress mSpritePresence = 0;
     };
 }

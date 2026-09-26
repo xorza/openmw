@@ -41,19 +41,25 @@ namespace Rtx
     {
         constexpr std::uint32_t sExtent = Shaders::GROUND_COMPOSITE_EXTENT;
 
+        /// The first level of each image a bake wrote, four bytes a texel as the image stores them:
+        /// the albedo display-encoded, the gloss as it is. Empty for an image it was not asked for.
+        struct Baked
+        {
+            std::vector<std::uint8_t> mAlbedo;
+            std::vector<std::uint8_t> mGloss;
+        };
+
         struct RtxGroundCompositePassTest : Testing::DeviceTest
         {
-            /// Bakes a chunk of two layers into a composite stood as the array stands one and
-            /// hands its first level back, four bytes a texel as the image stores them: the
-            /// albedo display-encoded, the gloss as it is.
+            /// Bakes a chunk of two layers into the images `outputs` names, each stood as the array
+            /// stands one, in one bake.
             ///
             /// The chunk: a solid red under the mip ladder, masked by a two-weight grid that ramps
             /// from all red at the first texel centre to all ladder at the second, with the ladder
-            /// tiled `tiling` times across the chunk. For the gloss the ladder is authored, so its
-            /// alpha — its grey — is a roughness; `standsIn` describes it as the stand-in.
-            std::vector<std::uint8_t> bakeOf(float tiling, std::uint32_t output, bool standsIn = false)
+            /// tiled `tiling` times across the chunk. Where `authored`, the ladder is authored, so
+            /// its alpha — its grey — is a roughness; `standsIn` describes it as the stand-in.
+            Baked bakeOf(float tiling, std::uint32_t outputs, bool authored, bool standsIn = false)
             {
-                const bool gloss = output == Shaders::GROUND_COMPOSITE_GLOSS;
                 Device& device = getDevice();
                 const Testing::TexturePassSet passes(device);
                 const SetLayout layout = TextureArray::describeLayout(device);
@@ -78,7 +84,7 @@ namespace Rtx
                     Testing::layerOf(
                         1, scene.materials().addMask(secondMask), 2, 1, osg::Vec4f(tiling, tiling, 0.0f, 0.0f)),
                 };
-                if (gloss)
+                if (authored)
                     layers[1].mFlags = Shaders::LAYER_AUTHORED;
                 Material chunk;
                 chunk.mKind = MaterialKind::Terrain;
@@ -87,9 +93,13 @@ namespace Rtx
                 const Index material = scene.addMaterial(chunk);
 
                 Batch setup(getPool());
-                const Texture composite = std::move(Texture::composite(device, setup,
-                    gloss ? TextureFormat::Rgba8Unorm : TextureFormat::Rgba8Srgb, "ground composite test")
-                                                        .value());
+                const auto made = [&](std::uint32_t output, TextureFormat format) {
+                    return (outputs & output) != 0
+                        ? std::move(Texture::composite(device, setup, format, "ground composite test").value())
+                        : Texture();
+                };
+                const Texture albedo = made(Shaders::GROUND_COMPOSITE_ALBEDO, TextureFormat::Rgba8Srgb);
+                const Texture gloss = made(Shaders::GROUND_COMPOSITE_GLOSS, TextureFormat::Rgba8Unorm);
                 TextureArray array(device, setup, layout, passes.mPasses, 2);
                 std::vector<Refusal> refused;
                 array.write(setup, textures, refused);
@@ -98,20 +108,24 @@ namespace Rtx
 
                 Shaders::GpuTables tables{};
                 buffers.describeTables(FrameSlot{}, tables);
-                pass.record(setup.getCommands(), array.getSet(FrameSlot{}), composite.getImage(),
+                pass.record(setup.getCommands(), array.getSet(FrameSlot{}),
+                    albedo.isEmpty() ? nullptr : &albedo.getImage(), gloss.isEmpty() ? nullptr : &gloss.getImage(),
                     Shaders::GroundCompositeConstants{
                         .mMaterials = tables.mMaterials,
                         .mLayers = tables.mLayers,
                         .mMasks = tables.mMasks,
                         .mMaterial = material,
-                        .mOutput = output,
+                        .mOutputs = outputs,
                         .mTexels = array.getTexelsAddress(FrameSlot{}),
                     });
                 setup.flush();
 
-                std::vector<std::uint8_t> read;
-                composite.getImage().read(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, read);
-                return read;
+                Baked baked;
+                if (!albedo.isEmpty())
+                    albedo.getImage().read(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, baked.mAlbedo);
+                if (!gloss.isEmpty())
+                    gloss.getImage().read(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, baked.mGloss);
+                return baked;
             }
 
             /// The byte the bake owes texel `x` of a row, in `channel`, with the ladder read at
@@ -156,13 +170,23 @@ namespace Rtx
         ///
         /// Within a byte, because the device sums in its own float order and rounds once at the
         /// store where the host rounds once at the end.
+        ///
+        /// **And a chunk with both is one sum**: the pair baked together is, byte for byte, what
+        /// each image's own bake writes.
         TEST_F(RtxGroundCompositePassTest, theCompositeAndItsGlossAreTheStackSummedAtTheLevelTheFootprintCallsFor)
         {
-            const std::vector<std::uint8_t> once = bakeOf(1.0f, Shaders::GROUND_COMPOSITE_ALBEDO);
-            const std::vector<std::uint8_t> sixteen = bakeOf(16.0f, Shaders::GROUND_COMPOSITE_ALBEDO);
-            const std::vector<std::uint8_t> glossOnce = bakeOf(1.0f, Shaders::GROUND_COMPOSITE_GLOSS);
-            const std::vector<std::uint8_t> glossSixteen = bakeOf(16.0f, Shaders::GROUND_COMPOSITE_GLOSS);
-            const std::vector<std::uint8_t> glossStandingIn = bakeOf(1.0f, Shaders::GROUND_COMPOSITE_GLOSS, true);
+            constexpr std::uint32_t albedoOnly = Shaders::GROUND_COMPOSITE_ALBEDO;
+            constexpr std::uint32_t glossOnly = Shaders::GROUND_COMPOSITE_GLOSS;
+            const std::vector<std::uint8_t> once = bakeOf(1.0f, albedoOnly, false).mAlbedo;
+            const std::vector<std::uint8_t> sixteen = bakeOf(16.0f, albedoOnly, false).mAlbedo;
+            const std::vector<std::uint8_t> glossOnce = bakeOf(1.0f, glossOnly, true).mGloss;
+            const std::vector<std::uint8_t> glossSixteen = bakeOf(16.0f, glossOnly, true).mGloss;
+            const std::vector<std::uint8_t> glossStandingIn = bakeOf(1.0f, glossOnly, true, true).mGloss;
+
+            const Baked pair = bakeOf(1.0f, albedoOnly | glossOnly, true);
+            EXPECT_EQ(pair.mAlbedo, bakeOf(1.0f, albedoOnly, true).mAlbedo)
+                << "the pair's albedo is not its own bake's";
+            EXPECT_EQ(pair.mGloss, glossOnce) << "the pair's gloss is not its own bake's";
             ASSERT_EQ(once.size(), std::size_t{ sExtent } * sExtent * 4);
             ASSERT_EQ(sixteen.size(), once.size());
             ASSERT_EQ(glossOnce.size(), once.size());

@@ -5,6 +5,7 @@
 #include <bit>
 #include <cassert>
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -749,23 +750,46 @@ namespace Rtx
         if (mPendingComposites.empty())
             return false;
 
+        // A chunk's two images next to each other, so the one sum writes both: they arrive as two
+        // textures, in one hand-over or in two.
+        std::sort(mPendingComposites.begin(), mPendingComposites.end(),
+            [](const PendingComposite& a, const PendingComposite& b) { return a.mMaterial < b.mMaterial; });
+
         bool baked = false;
         const VkDescriptorSet set = getSet(slot);
-        for (const PendingComposite& pending : mPendingComposites)
+        for (std::size_t at = 0; at < mPendingComposites.size();)
         {
-            // Arrived and since dropped, before any placement baked it: the slot holds nothing,
-            // and a bake of nothing is nothing to record.
-            const Texture& held = mSlots[pending.mSlot].mTexture;
-            if (held.isEmpty())
+            const Index material = mPendingComposites[at].mMaterial;
+            const Image* albedo = nullptr;
+            const Image* gloss = nullptr;
+            std::uint32_t outputs = 0;
+            // Up to one of each: a chunk queued twice over before a placement baked it is two sums,
+            // which is what it was before the pair shared one.
+            for (; at < mPendingComposites.size() && mPendingComposites[at].mMaterial == material
+                 && (outputs & mPendingComposites[at].mOutput) == 0;
+                 ++at)
+            {
+                // Arrived and since dropped, before any placement baked it: the slot holds nothing,
+                // and a bake of nothing is nothing to record.
+                const PendingComposite& pending = mPendingComposites[at];
+                const Texture& held = mSlots[pending.mSlot].mTexture;
+                if (held.isEmpty())
+                    continue;
+
+                (pending.mOutput == Shaders::GROUND_COMPOSITE_GLOSS ? gloss : albedo) = &held.getImage();
+                outputs |= pending.mOutput;
+            }
+
+            if (outputs == 0)
                 continue;
 
-            pass.record(commands, set, held.getImage(),
+            pass.record(commands, set, albedo, gloss,
                 Shaders::GroundCompositeConstants{
                     .mMaterials = tables.mMaterials,
                     .mLayers = tables.mLayers,
                     .mMasks = tables.mMasks,
-                    .mMaterial = pending.mMaterial,
-                    .mOutput = pending.mOutput,
+                    .mMaterial = material,
+                    .mOutputs = outputs,
                     .mTexels = getTexelsAddress(slot),
                 });
             baked = true;

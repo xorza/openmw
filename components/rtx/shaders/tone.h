@@ -44,17 +44,16 @@ namespace Rtx::Shaders
     /// sky's point sources are drawn here.
     struct ToneConstants
     {
-        /// The frame's sprite tile list, `VisibilityConstants::mTables`'s, and whether the frame
-        /// holds an additive mesh: with the traced puff depth, what says where the composite wrote
-        /// nothing and the frame's alpha is not the puffs' — `puffsCoverNothing`. First, so the
-        /// address lands eight-aligned on both sides.
+        /// The frame's sprite tile list and what its tiles can meet, `VisibilityConstants::mTables`'s:
+        /// with the traced puff depth, what says where the composite wrote nothing and the frame's
+        /// alpha is not the puffs' — `puffsCoverNothing`. First, so the addresses land eight-aligned
+        /// on both sides.
         uint64 mSpriteTileList;
+        uint64 mSpritePresence;
 
         /// The array's texel counts, `VisibilityInputs::mTextureTexels`, which say whether the star
         /// field's sheet stands in.
         uint64 mTextureTexels;
-
-        uint mAdditiveInFrame;
 
         /// The trace's own extent, which is what `Channel::StarsShown` is written at.
         ///
