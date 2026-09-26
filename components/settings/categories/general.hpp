@@ -32,6 +32,7 @@ namespace Settings
         SettingValue<bool> mGmstOverridesL10n{ mIndex, "General", "gmst overrides l10n" };
         SettingValue<std::size_t> mLogBufferSize{ mIndex, "General", "log buffer size" };
         SettingValue<std::size_t> mConsoleHistoryBufferSize{ mIndex, "General", "console history buffer size" };
+        SettingValue<int> mCrashHangSeconds{ mIndex, "General", "crash hang seconds", makeClampSanitizerInt(0, 86400) };
     };
 }
 

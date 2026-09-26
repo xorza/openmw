@@ -4,9 +4,9 @@
 #   rtx <flavour> build [targets]        configure where the presets changed, then build the harness,
 #                                        the game and the tests where the build has them, or the
 #                                        targets named
-#   rtx <flavour> test [gtest args]      components-tests Rtx* Sky* Crash*, rtx-gpu-tests, then
-#                                        openmw-tests Rtx*; `--without-device` leaves the GPU binary
-#                                        out, for a box with no driver that says so
+#   rtx <flavour> test [gtest args]      components-tests Rtx* Sky* Crash*, the crash matrix,
+#                                        rtx-gpu-tests, then openmw-tests Rtx*; `--without-device`
+#                                        leaves the GPU binary out, for a box with no driver
 #   rtx <flavour> game [args]            openmw on the quicksave
 #   rtx <flavour> setup <morrowind dir>  write the openmw.cfg a fresh box has none of
 #   rtx <flavour> repeat [--pairs=N] [bench args]
@@ -16,7 +16,9 @@
 #                                        an earlier listing, which tuples moved
 #   rtx package archive [name]           the release archive out of the package build, into dist/:
 #                                        an AppImage on Linux, the portable folder on Windows,
-#                                        named after the ref or the name given
+#                                        named after the ref or the name given, and its symbols
+#   rtx package crash <dump> [symbols]   a player's crash dump, every thread named and lined,
+#                                        against a release's -symbols.zip or the newest in dist/
 #   rtx <flavour> gate                   clang-format 14, build, the release and no-DLSS compiles, test,
 #                                        check, repeat — stops at the first failure
 #   rtx <flavour> <verb> [args]          openmw-rtxtool <verb>, under the flavour's validation
@@ -451,7 +453,7 @@ cacheValue() {
     fi
 }
 
-testTargets=(components-tests rtx-gpu-tests openmw-tests)
+testTargets=(components-tests crash-tests rtx-gpu-tests openmw-tests)
 
 # **Whether this build has the tests, asked of its own build graph**: not of the flavour's name,
 # and not of a binary on disk. A binary on disk is only what some earlier build left there, and a
@@ -618,6 +620,17 @@ runTests() {
     done
 
     (cd "$build" && ./components-tests --gtest_filter='Rtx*:Sky*:Crash*' "${args[@]}") || return 1
+
+    # Every way a game ends, each in a process of its own with the real catcher, and what it left
+    # checked: `apps/components_tests/crashcatcher/crashtests.cpp`. Its reports go in a folder of
+    # their own, which goes after.
+    local reports
+    reports="$(mktemp -d)"
+    if ! (cd "$build" && ./crash-tests --matrix "$reports"); then
+        rm -rf "${reports:?}"
+        return 1
+    fi
+    rm -rf "${reports:?}"
 
     if [ "$withDevice" -eq 1 ]; then
         (cd "$build" && ./rtx-gpu-tests "${args[@]}") || return 1
@@ -953,8 +966,93 @@ archiveWindows() {
     cmake --install "$build" --prefix "$folder" > /dev/null
 }
 
+# **Breakpad's two tools, fetched once into `deps/crash`**, and the path of the one asked for: the
+# player never has them, and the desk and CI take the versions `pins.sh` names.
+crashTool() {
+    local wanted="$1" tools="$root/deps/crash" system=linux suffix=""
+    if onWindows; then
+        system=windows
+        suffix=".exe"
+    fi
+    local tool="$tools/$wanted$suffix"
+    if [ ! -x "$tool" ]; then
+        mkdir -p "$tools"
+        local name os url sum archive
+        while read -r name os url sum; do
+            if [ "$name" != "$wanted" ] || [ "$os" != "$system" ]; then
+                continue
+            fi
+            archive="$tools/$(basename "$url")"
+            fetchChecked "$url" "$sum" "$archive"
+            if onWindows; then
+                "$(sevenZip)" e -y -o"$tools" "$archive" "$wanted.exe" > /dev/null
+            else
+                tar -xJf "$archive" -C "$tools" --strip-components=1 --wildcards "*/$wanted"
+            fi
+            rm "$archive"
+        done <<< "$crashTools"
+    fi
+    echo "$tool"
+}
+
+# **The release's symbols**: every executable the package build made, through `dump_syms` into a
+# Breakpad symbol store, `<module>/<id>/<module>.sym`, zipped as
+# `dist/openmw-<name>-<system>-symbols.zip`. A release publishes it beside its archive, and
+# `rtx package crash` reads a player's dump against it: the offsets a crash summary names become
+# functions and lines. The debug information comes from the package presets, and it stays out of
+# the archive.
+symbols() {
+    local name="$1" dist="$root/dist" system=linux store dumpSyms file
+    if onWindows; then
+        system=windows
+    fi
+    dumpSyms="$(crashTool dump_syms)"
+    store="$(mktemp -d)"
+    if onWindows; then
+        for file in "$build"/*.exe; do
+            "$dumpSyms" --store "$(nativePath "$store")" "$(nativePath "$file")" > /dev/null
+        done
+    else
+        while read -r file; do
+            "$dumpSyms" --store "$store" "$file" > /dev/null
+        done < <(find "$build" -maxdepth 1 -type f -perm -u+x ! -name '*.so*')
+    fi
+    mkdir -p "$dist"
+    (cd "$store" && cmake -E tar cf "$dist/openmw-$name-$system-symbols.zip" --format=zip .)
+    rm -rf "${store:?}"
+}
+
+# **A player's dump, read against a release's symbols**: every thread, with the function and the
+# line of each frame. The symbols are a release's `-symbols.zip` or a folder of one, or else the
+# newest that `rtx package archive` left in dist/.
+readCrash() {
+    local dump="${1:-}" symbols="${2:-}" folder walker
+    if [ -z "$dump" ] || [ ! -f "$dump" ]; then
+        echo "rtx: name the dump to read: \`rtx package crash <dump> [symbols]\`" >&2
+        exit 2
+    fi
+    if [ -z "$symbols" ]; then
+        symbols="$(ls -t "$root"/dist/*-symbols.zip 2> /dev/null | head -n 1 || true)"
+    fi
+    if [ -z "$symbols" ]; then
+        echo "rtx: no symbols: name a release's -symbols.zip, or \`rtx package archive\` first" >&2
+        exit 2
+    fi
+    folder="$symbols"
+    if [ -f "$symbols" ]; then
+        folder="$(mktemp -d)"
+        (cd "$folder" && cmake -E tar xf "$symbols")
+    fi
+    walker="$(crashTool minidump-stackwalk)"
+    "$walker" --human "$(nativePath "$dump")" "$(nativePath "$folder")"
+    if [ "$folder" != "$symbols" ]; then
+        rm -rf "${folder:?}"
+    fi
+}
+
 # The archive out of the package build, named after the argument or the ref: a tag names its
-# archives and a branch names its own. Refused before anything is built for it.
+# archives and a branch names its own. Refused before anything is built for it. The release's
+# symbols come with it.
 archive() {
     if [ "$flavour" != package ]; then
         echo "rtx: an archive is made of the package flavour — \`rtx package archive\`" >&2
@@ -967,6 +1065,7 @@ archive() {
     else
         archiveLinux "$name"
     fi
+    symbols "$name"
     ls -l "$root/dist"
 }
 
@@ -1024,6 +1123,9 @@ case "$what" in
         ;;
     archive)
         archive "$@"
+        ;;
+    crash)
+        readCrash "$@"
         ;;
     gate)
         # **Never a gate beside a build, or beside another gate**: the reading is then about the

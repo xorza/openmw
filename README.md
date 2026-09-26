@@ -71,6 +71,20 @@ The renderer is built by default. `-DOPENMW_RTX=OFF` leaves it out. `OPENMW_RTX_
   frame is computed in
 * [Settings](docs/source/reference/modding/settings/rtx.rst) — every `[RTX]` setting
 
+When it crashes
+---------------
+
+The game writes a report of every crash, and of every hang longer than 20 seconds, and a dialog
+says where. Send both files in an issue:
+
+* `openmw.log`, in the log folder. Its last lines, which begin `Crash:` or `Hang:`, say what
+  happened and what the game was doing.
+* The dump the log names, under `crashes` in the same folder: every thread's stack.
+
+Each release publishes its symbols, `-symbols.zip`, beside its archive, and
+`rtx package crash <dump> <symbols>` reads a dump against them. `[General] crash hang seconds`
+sets the hang limit, and `OPENMW_DISABLE_CRASH_CATCHER=1` turns the catcher off.
+
 License
 -------
 

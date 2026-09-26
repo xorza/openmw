@@ -8,10 +8,12 @@
 #include <format>
 #include <optional>
 #include <sstream>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
+#include <components/crashcatcher/crash.hpp>
 #include <components/rtx/error.hpp>
 
 #include "memory.hpp"
@@ -291,6 +293,12 @@ namespace Rtx
 
         if (best.mHandle == VK_NULL_HANDLE)
             throw Unsupported("no Vulkan device meets this renderer's requirements:" + rejections);
+
+        // Every report from here on names the card and the driver it ran on.
+        const DeviceProperties& chosen = *best.mProperties;
+        Crash::annotate("device", chosen.mProperties2.properties.deviceName);
+        Crash::annotate(
+            "driver", std::string(chosen.mVulkan12.driverName) + " " + std::string(chosen.mVulkan12.driverInfo));
 
         return best;
     }

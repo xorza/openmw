@@ -1,0 +1,548 @@
+#include "crash.hpp"
+
+#include <algorithm>
+#include <array>
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <ctime>
+#include <fstream>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <span>
+#include <stop_token>
+#include <string>
+#include <string_view>
+#include <thread>
+#include <utility>
+#include <vector>
+
+#include <SDL_messagebox.h>
+
+#include <handler/handler_main.h>
+#include <handler/user_stream_data_source.h>
+#include <minidump/minidump_user_extension_stream_data_source.h>
+#include <snapshot/cpu_context.h>
+#include <snapshot/exception_snapshot.h>
+#include <snapshot/memory_snapshot.h>
+#include <snapshot/module_snapshot.h>
+#include <snapshot/process_snapshot.h>
+#include <snapshot/thread_snapshot.h>
+#include <util/misc/uuid.h>
+#include <util/process/process_memory.h>
+
+#include <components/files/conversion.hpp>
+
+#include "crashmonitorarguments.hpp"
+#include "crashpage.hpp"
+#include "crashsummary.hpp"
+
+#if defined(_WIN32)
+#include <components/misc/windows.hpp>
+
+#include <shellapi.h>
+#else
+#include <csignal>
+#include <sys/types.h>
+#endif
+
+namespace Crash
+{
+    namespace
+    {
+        /// The minidump stream the monitor writes its summary into, so the dump carries the text
+        /// the log got: "OMW" and a version.
+        constexpr std::uint32_t sSummaryStream = 0x4F4D5701;
+
+        /// What the game told the monitor on its command line, and what the monitor learnt since.
+        struct Monitor : MonitorArguments
+        {
+            SharedPage mPage;
+
+            /// How long the game stood still when the watch asked for a hang report.
+            std::atomic<std::uint32_t> mStalledFor{ 0 };
+
+            /// The watch and the summary both write to the log, and a line each is what it takes.
+            std::mutex mLogMutex;
+
+            /// The last crash's dump, which the dialog after the game ends names: written on
+            /// Crashpad's thread, read on the one that ran it. Nothing where the game did not crash.
+            std::mutex mCrashMutex;
+            std::optional<std::string> mCrashDump;
+        };
+
+        std::string stamp()
+        {
+            const auto now = std::chrono::system_clock::now();
+            const std::time_t seconds = std::chrono::system_clock::to_time_t(now);
+            const auto milliseconds
+                = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count() % 1000;
+            std::tm local{};
+#if defined(_WIN32)
+            localtime_s(&local, &seconds);
+#else
+            localtime_r(&seconds, &local);
+#endif
+            char text[32];
+            std::snprintf(text, sizeof(text), "[%02d:%02d:%02d.%03d E] ", local.tm_hour, local.tm_min, local.tm_sec,
+                static_cast<int>(milliseconds));
+            return text;
+        }
+
+        /// Appends `lines` to the game's log, stamped as the log stamps its own. The game holds the
+        /// file open, and shares its writing.
+        void appendToLog(Monitor& monitor, const std::vector<std::string>& lines)
+        {
+            const std::lock_guard lock(monitor.mLogMutex);
+            std::ofstream log(monitor.mLog, std::ios::app | std::ios::binary);
+            const std::string at = stamp();
+            for (const std::string& line : lines)
+                log << at << line << '\n';
+        }
+
+        std::string hex(std::uint64_t value)
+        {
+            char text[20];
+            std::snprintf(text, sizeof(text), "0x%llx", static_cast<unsigned long long>(value));
+            return text;
+        }
+
+        using Names = std::span<const std::pair<std::uint32_t, std::string_view>>;
+
+        /// `code`'s name in `names`, or `otherwise` where it has none.
+        std::string nameOf(Names names, std::uint32_t code, std::string otherwise)
+        {
+            const auto named
+                = std::find_if(names.begin(), names.end(), [&](const auto& one) { return one.first == code; });
+            return named != names.end() ? std::string(named->second) : std::move(otherwise);
+        }
+
+        /// The exception as the system names it, or nothing where the dump was asked for rather
+        /// than raised by a fault.
+        std::string describe(const crashpad::ExceptionSnapshot& exception, std::uint64_t process)
+        {
+            const std::uint32_t code = exception.Exception();
+#if defined(_WIN32)
+            (void)process;
+            if (code == 0x517a7ed)
+                return {};
+
+            static constexpr std::array<std::pair<std::uint32_t, std::string_view>, 12> sNames{ {
+                { EXCEPTION_ACCESS_VIOLATION, "EXCEPTION_ACCESS_VIOLATION" },
+                { EXCEPTION_IN_PAGE_ERROR, "EXCEPTION_IN_PAGE_ERROR" },
+                { EXCEPTION_STACK_OVERFLOW, "EXCEPTION_STACK_OVERFLOW" },
+                { EXCEPTION_ILLEGAL_INSTRUCTION, "EXCEPTION_ILLEGAL_INSTRUCTION" },
+                { EXCEPTION_PRIV_INSTRUCTION, "EXCEPTION_PRIV_INSTRUCTION" },
+                { EXCEPTION_INT_DIVIDE_BY_ZERO, "EXCEPTION_INT_DIVIDE_BY_ZERO" },
+                { EXCEPTION_INT_OVERFLOW, "EXCEPTION_INT_OVERFLOW" },
+                { EXCEPTION_DATATYPE_MISALIGNMENT, "EXCEPTION_DATATYPE_MISALIGNMENT" },
+                { EXCEPTION_BREAKPOINT, "EXCEPTION_BREAKPOINT" },
+                { EXCEPTION_NONCONTINUABLE_EXCEPTION, "EXCEPTION_NONCONTINUABLE_EXCEPTION" },
+                { 0xC0000374, "STATUS_HEAP_CORRUPTION" },
+                { 0xC0000409, "STATUS_STACK_BUFFER_OVERRUN" },
+            } };
+            std::string text = nameOf(sNames, code, "exception " + hex(code));
+
+            const std::vector<std::uint64_t>& codes = exception.Codes();
+            if ((code == EXCEPTION_ACCESS_VIOLATION || code == EXCEPTION_IN_PAGE_ERROR) && codes.size() >= 2)
+                text += std::string(codes[0] == 0 ? " reading "
+                                : codes[0] == 1   ? " writing "
+                                                  : " executing ")
+                    + hex(codes[1]);
+            return text;
+#elif defined(__APPLE__)
+            (void)process;
+
+            // `kMachExceptionSimulated`, 'CPsx'.
+            if (code == 0x43507378u)
+                return {};
+
+            static constexpr std::array<std::pair<std::uint32_t, std::string_view>, 6> sNames{ {
+                { 1, "EXC_BAD_ACCESS" },
+                { 2, "EXC_BAD_INSTRUCTION" },
+                { 3, "EXC_ARITHMETIC" },
+                { 6, "EXC_BREAKPOINT" },
+                { 10, "EXC_CRASH" },
+                { 12, "EXC_GUARD" },
+            } };
+            std::string text = nameOf(sNames, code, "Mach exception " + std::to_string(code));
+            if (code == 1)
+                text += " at " + hex(exception.ExceptionAddress());
+            return text;
+#else
+            if (code == 0xFFFFFFFFu)
+                return {};
+
+            static constexpr std::array<std::pair<std::uint32_t, std::string_view>, 7> sNames{ {
+                { SIGSEGV, "SIGSEGV" },
+                { SIGBUS, "SIGBUS" },
+                { SIGILL, "SIGILL" },
+                { SIGFPE, "SIGFPE" },
+                { SIGABRT, "SIGABRT" },
+                { SIGTRAP, "SIGTRAP" },
+                { SIGSYS, "SIGSYS" },
+            } };
+            std::string text = nameOf(sNames, code, "signal " + std::to_string(code));
+
+            // A code of nought or less is a signal sent rather than a fault, `kill` or `raise`, whose
+            // address is no fault's. Crashpad keeps the sender's id first among the codes of the
+            // signals that carry one: the game's own, as `abort` sends it, says nothing more.
+            if (static_cast<std::int32_t>(exception.ExceptionInfo()) <= 0)
+            {
+                const std::vector<std::uint64_t>& codes = exception.Codes();
+                if (!codes.empty() && codes[0] != process)
+                    text += " sent by process " + std::to_string(codes[0]);
+            }
+            else if (code == SIGSEGV || code == SIGBUS)
+                text += " at " + hex(exception.ExceptionAddress());
+            return text;
+#endif
+        }
+
+        /// The module an address lies in, and the offset in it: "openmw.exe+0x112a9a7".
+        std::string locate(const std::vector<const crashpad::ModuleSnapshot*>& modules, std::uint64_t address)
+        {
+            for (const crashpad::ModuleSnapshot* module : modules)
+                if (address >= module->Address() && address - module->Address() < module->Size())
+                {
+                    const std::string path = module->Name();
+                    const std::size_t slash = path.find_last_of("/\\");
+                    return (slash == std::string::npos ? path : path.substr(slash + 1)) + "+"
+                        + hex(address - module->Address());
+                }
+
+            return {};
+        }
+
+        class Collect final : public crashpad::MemorySnapshot::Delegate
+        {
+        public:
+            explicit Collect(std::vector<std::uint8_t>& into)
+                : mInto(into)
+            {
+            }
+
+            bool MemorySnapshotDelegateRead(void* data, size_t size) override
+            {
+                const auto* const bytes = static_cast<const std::uint8_t*>(data);
+                mInto.assign(bytes, bytes + size);
+                return true;
+            }
+
+        private:
+            std::vector<std::uint8_t>& mInto;
+        };
+
+        /// Values on the faulting thread's stack, from its stack pointer up, that point into a
+        /// module: the return addresses among them, and some that only look like one.
+        void scanStack(const crashpad::ProcessSnapshot& snapshot, std::uint64_t thread,
+            const crashpad::CPUContext& context, std::vector<std::string>& into)
+        {
+            constexpr std::size_t sCandidates = 16;
+
+            for (const crashpad::ThreadSnapshot* one : snapshot.Threads())
+            {
+                const crashpad::MemorySnapshot* const stack = one->ThreadID() == thread ? one->Stack() : nullptr;
+                if (stack == nullptr)
+                    continue;
+
+                std::vector<std::uint8_t> bytes;
+                Collect collect(bytes);
+                if (!stack->Read(&collect))
+                    return;
+
+                const std::size_t word = context.Is64Bit() ? 8 : 4;
+                const std::uint64_t sp = context.StackPointer();
+                std::size_t at = sp >= stack->Address() && sp - stack->Address() < bytes.size()
+                    ? static_cast<std::size_t>(sp - stack->Address())
+                    : 0;
+                at -= at % word;
+
+                const std::vector<const crashpad::ModuleSnapshot*> modules = snapshot.Modules();
+                for (; at + word <= bytes.size() && into.size() < sCandidates; at += word)
+                {
+                    std::uint64_t value = 0;
+                    std::copy_n(bytes.data() + at, word, reinterpret_cast<std::uint8_t*>(&value));
+                    // A value spilled twice in a row is one address, and names one frame at most.
+                    if (std::string where = locate(modules, value);
+                        !where.empty() && (into.empty() || into.back() != where))
+                        into.push_back(std::move(where));
+                }
+                return;
+            }
+        }
+
+        class TextStream final : public crashpad::MinidumpUserExtensionStreamDataSource
+        {
+        public:
+            explicit TextStream(std::string text)
+                : MinidumpUserExtensionStreamDataSource(sSummaryStream)
+                , mText(std::move(text))
+            {
+            }
+
+            size_t StreamDataSize() override { return mText.size(); }
+
+            bool ReadStreamData(Delegate* delegate) override
+            {
+                return delegate->ExtensionStreamDataSourceRead(mText.data(), mText.size());
+            }
+
+        private:
+            std::string mText;
+        };
+
+        /// **The summary, written where the dump is**: Crashpad calls this with the snapshot the
+        /// dump is written from, in this process and not the crashed one, on every system alike.
+        class SummarySource final : public crashpad::UserStreamDataSource
+        {
+        public:
+            explicit SummarySource(Monitor& monitor)
+                : mMonitor(monitor)
+            {
+            }
+
+            std::unique_ptr<crashpad::MinidumpUserExtensionStreamDataSource> ProduceStreamData(
+                crashpad::ProcessSnapshot* snapshot) override
+            {
+                CrashFacts facts;
+                const crashpad::ExceptionSnapshot* const exception = snapshot->Exception();
+                facts.mThread = exception != nullptr ? exception->ThreadID() : 0;
+
+                std::vector<std::byte> table(mMonitor.mNotesSize);
+                const crashpad::ProcessMemory* const memory = snapshot->Memory();
+                const bool read
+                    = memory != nullptr && !table.empty() && memory->Read(mMonitor.mNotes, table.size(), table.data());
+                readNotes(read ? std::span<const std::byte>(table) : std::span<const std::byte>(), facts.mThread,
+                    facts.mNotes);
+
+                if (facts.mNotes.mKind == ReportKind::Hang)
+                    std::snprintf(facts.mNotes.mReason, sizeof(facts.mNotes.mReason), "no frame for %u seconds",
+                        mMonitor.mStalledFor.load());
+
+                if (exception != nullptr)
+                {
+                    facts.mException = describe(*exception, mMonitor.mClient);
+                    if (const crashpad::CPUContext* const context = exception->Context())
+                    {
+                        facts.mWhere = locate(snapshot->Modules(), context->InstructionPointer());
+                        scanStack(*snapshot, facts.mThread, *context, facts.mStack);
+                    }
+                }
+
+                for (const auto& [key, value] : snapshot->AnnotationsSimpleMap())
+                    facts.mAnnotations.emplace_back(key, value);
+                for (const crashpad::ModuleSnapshot* module : snapshot->Modules())
+                    for (const auto& [key, value] : module->AnnotationsSimpleMap())
+                        facts.mAnnotations.emplace_back(key, value);
+
+                crashpad::UUID report;
+                snapshot->ReportID(&report);
+#if defined(_WIN32)
+                const std::filesystem::path dump = mMonitor.mDatabase / "reports" / (report.ToString() + ".dmp");
+#else
+                const std::filesystem::path dump = mMonitor.mDatabase / "pending" / (report.ToString() + ".dmp");
+#endif
+                facts.mDump = Files::pathToUnicodeString(dump);
+
+                std::vector<std::string> lines;
+                summarise(facts, lines);
+                appendToLog(mMonitor, lines);
+
+                if (facts.mNotes.mKind == ReportKind::Crash)
+                {
+                    const std::lock_guard lock(mMonitor.mCrashMutex);
+                    mMonitor.mCrashDump = facts.mDump;
+                }
+
+                std::string text;
+                for (const std::string& line : lines)
+                    text += line + '\n';
+                return std::make_unique<TextStream>(std::move(text));
+            }
+
+        private:
+            Monitor& mMonitor;
+        };
+
+        void requestHangReport(const Monitor& monitor, Heartbeat& page)
+        {
+#if defined(_WIN32)
+            // The game has no signal to take the request on, so a thread of its own is started in
+            // it at the function it named, as a debugger starts one; the game's frames are
+            // untouched.
+            const auto entry = std::atomic_ref(page.mHangEntry).load();
+            const HANDLE process = OpenProcess(PROCESS_CREATE_THREAD | PROCESS_QUERY_INFORMATION | PROCESS_VM_OPERATION
+                    | PROCESS_VM_WRITE | PROCESS_VM_READ,
+                FALSE, static_cast<DWORD>(monitor.mClient));
+            if (process == nullptr || entry == 0)
+            {
+                if (process != nullptr)
+                    CloseHandle(process);
+                return;
+            }
+
+            if (const HANDLE thread = CreateRemoteThread(
+                    process, nullptr, 0, reinterpret_cast<LPTHREAD_START_ROUTINE>(entry), nullptr, 0, nullptr))
+                CloseHandle(thread);
+            CloseHandle(process);
+#else
+            (void)page;
+            kill(static_cast<pid_t>(monitor.mClient), SIGUSR2);
+#endif
+        }
+
+        void endClient(const Monitor& monitor)
+        {
+#if defined(_WIN32)
+            if (const HANDLE process = OpenProcess(PROCESS_TERMINATE, FALSE, static_cast<DWORD>(monitor.mClient)))
+            {
+                TerminateProcess(process, 3);
+                CloseHandle(process);
+            }
+#else
+            kill(static_cast<pid_t>(monitor.mClient), SIGKILL);
+#endif
+        }
+
+        /// Whether the player chose to end a game that stands still.
+        bool askToEnd(const Monitor& monitor, std::uint32_t seconds)
+        {
+            const std::string message = monitor.mApplication + " has not drawn a frame for " + std::to_string(seconds)
+                + " seconds. A report of what it is doing is being written; the log names it:\n"
+                + Files::pathToUnicodeString(monitor.mLog) + "\n\nWait for it, or end it?";
+            const std::array<SDL_MessageBoxButtonData, 2> buttons{ {
+                { SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT | SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, 0, "Wait" },
+                { 0, 1, "End" },
+            } };
+            const std::string title = monitor.mApplication + " is not responding";
+            const SDL_MessageBoxData box{ SDL_MESSAGEBOX_WARNING, nullptr, title.c_str(), message.c_str(),
+                static_cast<int>(buttons.size()), buttons.data(), nullptr };
+
+            int chosen = 0;
+            return SDL_ShowMessageBox(&box, &chosen) == 0 && chosen == 1;
+        }
+
+        /// **The hang watch**, once a second: a frame counter that stops for the limit is a hang,
+        /// reported once until it moves again. It begins at the first frame, so a start that
+        /// draws nothing for a while is not one.
+        void watch(Monitor& monitor, std::stop_token stop)
+        {
+            Heartbeat* const page = monitor.mPage.get();
+            if (page == nullptr)
+                return;
+
+            std::mutex mutex;
+            std::condition_variable_any tick;
+            std::uint64_t last = 0;
+            bool started = false;
+            bool reported = false;
+            auto since = std::chrono::steady_clock::now();
+
+            while (!stop.stop_requested())
+            {
+                {
+                    std::unique_lock lock(mutex);
+                    tick.wait_for(lock, stop, std::chrono::seconds(1), [] { return false; });
+                }
+
+                const std::uint64_t frames = std::atomic_ref(page->mFrames).load();
+                const std::uint32_t limit = std::atomic_ref(page->mHangSeconds).load();
+                const auto now = std::chrono::steady_clock::now();
+                const auto stalled = std::chrono::duration_cast<std::chrono::seconds>(now - since);
+
+                if (frames != last || !started)
+                {
+                    if (reported)
+                        appendToLog(
+                            monitor, { "Hang: frames again after " + std::to_string(stalled.count()) + " seconds" });
+                    started = started || frames != 0;
+                    last = frames;
+                    since = now;
+                    reported = false;
+                    continue;
+                }
+
+                if (limit == 0 || reported || stalled.count() < limit)
+                    continue;
+
+                reported = true;
+                monitor.mStalledFor = static_cast<std::uint32_t>(stalled.count());
+                requestHangReport(monitor, *page);
+                if (monitor.mDialog && askToEnd(monitor, static_cast<std::uint32_t>(stalled.count())))
+                    endClient(monitor);
+            }
+        }
+
+        /// The command line as UTF-8, which is what Crashpad's own entry hands `HandlerMain`: on
+        /// Windows from the wide one, because `argv` is in the system's code page there.
+        std::vector<std::string> commandLine(int argc, char** argv)
+        {
+            std::vector<std::string> arguments;
+#if defined(_WIN32)
+            (void)argc;
+            (void)argv;
+            int count = 0;
+            wchar_t** const wide = CommandLineToArgvW(GetCommandLineW(), &count);
+            for (int i = 0; i < count; ++i)
+            {
+                const int size = WideCharToMultiByte(CP_UTF8, 0, wide[i], -1, nullptr, 0, nullptr, nullptr);
+                std::string one(static_cast<std::size_t>(std::max(size, 1)) - 1, '\0');
+                WideCharToMultiByte(CP_UTF8, 0, wide[i], -1, one.data(), size, nullptr, nullptr);
+                arguments.push_back(std::move(one));
+            }
+            LocalFree(wide);
+#else
+            arguments.assign(argv, argv + argc);
+#endif
+            return arguments;
+        }
+    }
+
+    void runMonitorIfAsked(int argc, char** argv)
+    {
+        if (std::none_of(argv, argv + argc, [](const char* one) { return std::string_view(one) == sMonitorSwitch; }))
+            return;
+
+        Monitor monitor;
+        std::vector<std::string> handler;
+        static_cast<MonitorArguments&>(monitor) = MonitorArguments::read(commandLine(argc, argv), handler);
+
+        monitor.mPage = SharedPage::open(monitor.mClient);
+
+        crashpad::UserStreamDataSources sources;
+        sources.push_back(std::make_unique<SummarySource>(monitor));
+
+        std::vector<char*> handlerArgv;
+        for (std::string& argument : handler)
+            handlerArgv.push_back(argument.data());
+        handlerArgv.push_back(nullptr);
+
+        int result = 0;
+        {
+            std::jthread watchdog([&](std::stop_token stop) { watch(monitor, stop); });
+            result = crashpad::HandlerMain(static_cast<int>(handlerArgv.size() - 1), handlerArgv.data(), &sources);
+        }
+
+        // Once the game is gone, so the box does not stand over a window that no longer draws.
+        std::optional<std::string> crashDump;
+        {
+            const std::lock_guard lock(monitor.mCrashMutex);
+            crashDump = monitor.mCrashDump;
+        }
+        if (monitor.mDialog && crashDump)
+        {
+            const std::string message = monitor.mApplication + " has crashed. A report is saved in\n" + *crashDump
+                + "\n\nand the log says what happened:\n" + Files::pathToUnicodeString(monitor.mLog)
+                + "\n\nSending both helps to fix it.";
+            SDL_ShowSimpleMessageBox(
+                SDL_MESSAGEBOX_ERROR, (monitor.mApplication + " has crashed").c_str(), message.c_str(), nullptr);
+        }
+
+        std::exit(result);
+    }
+}

@@ -981,9 +981,11 @@ int main(int argc, char* argv[])
     // output is read, and a dialog waiting for a click is a run that never finishes — which for
     // something whose whole point is to be run in a loop is the tool not working. `run` catches
     // its own exceptions, so the one box left is the crash catcher's, and upstream's own switch
-    // turns that off — at the price of its crash log on a signal, which a debugger gives back.
-    // Not overwritten, so that a shell can still ask for the catcher.
+    // turns that off — at the price of its report on a crash, which a debugger gives back.
+    // Not overwritten, so that a shell can still ask for the catcher; and without its box when it
+    // does, which is the same box.
     Platform::Process::setEnvironmentDefault("OPENMW_DISABLE_CRASH_CATCHER", "1");
+    Platform::Process::setEnvironmentDefault("OPENMW_CRASH_DIALOG", "0");
 
     return Debug::wrapApplication(RtxTool::run, argc, argv, RtxTool::applicationName);
 }

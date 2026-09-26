@@ -102,3 +102,15 @@ General
    Number of console history entries retrieved from the previous session.
    Older entries are discarded when the file exceeds this value.
    See :doc:`../paths` for the location of the history file.
+
+.. omw-setting::
+   :title: crash hang seconds
+   :type: int
+   :range: 0 to 86400
+   :default: 20
+
+   Seconds without a frame after which the crash catcher reports a hang.
+   It writes a report of what every thread is doing, notes it in the log, and asks whether to end the game.
+   The game goes on if it is told to wait.
+   The watch begins at the first frame, so a long start is not a hang.
+   Setting this to zero turns the check off.

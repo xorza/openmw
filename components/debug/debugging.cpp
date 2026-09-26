@@ -16,28 +16,13 @@
 #pragma warning(pop)
 #endif
 
-#include <components/crashcatcher/crashcatcher.hpp>
+#include <components/crashcatcher/crash.hpp>
 #include <components/files/conversion.hpp>
 #include <components/misc/strings/conversion.hpp>
 #include <components/misc/strings/lower.hpp>
 
 #ifdef _WIN32
-#include <components/crashcatcher/windowscrashcatcher.hpp>
-#include <components/files/conversion.hpp>
 #include <components/misc/windows.hpp>
-
-#include <Knownfolders.h>
-
-#pragma push_macro("FAR")
-#pragma push_macro("NEAR")
-#undef FAR
-#define FAR
-#undef NEAR
-#define NEAR
-#include <Shlobj.h>
-#pragma pop_macro("NEAR")
-#pragma pop_macro("FAR")
-
 #endif
 
 #include <SDL_messagebox.h>
@@ -355,6 +340,10 @@ namespace Debug
         static std::unique_ptr<std::mutex> rawStderrMutex = nullptr;
         static std::ofstream logfile;
 
+        /// Whether `setupLogging` installs the crash catcher, which `wrapApplication` decides and
+        /// `OPENMW_DISABLE_CRASH_CATCHER` turns off.
+        static bool sCatchCrashes = false;
+
 #if defined(_WIN32) && defined(_DEBUG)
         static boost::iostreams::stream_buffer<DebugOutput> sb;
 #else
@@ -401,9 +390,9 @@ namespace Debug
         Log::sMinDebugLevel = getDebugLevel();
         Log::sWriteLevel = true;
 
+        const std::filesystem::path logFile = logDir / (Misc::StringUtils::lowerCase(appName) + ".log");
 #if !(defined(_WIN32) && defined(_DEBUG))
-        const std::string logName = Misc::StringUtils::lowerCase(appName) + ".log";
-        logfile.open(logDir / logName, std::ios::out);
+        logfile.open(logFile, std::ios::out);
 
         Identity log(logfile);
 
@@ -419,20 +408,34 @@ namespace Debug
         std::cerr.rdbuf(&standardErr);
 #endif
 
-#ifdef _WIN32
-        if (Crash::CrashCatcher::instance())
+        // Here and not at the start, because the reports go beside the log and this is where the
+        // log folder is first known; what runs before it is reading the configuration.
+        if (sCatchCrashes)
         {
-            Crash::CrashCatcher::instance()->updateDumpPath(logDir);
-#ifndef _DEBUG
-            Crash::CrashCatcher::instance()->setLogFile(logDir / logName);
+            Crash::Settings settings;
+            settings.mApplication = std::string(appName);
+            settings.mReportFolder = logDir;
+            settings.mLogFile = logFile;
+#if (defined(__APPLE__) || defined(__linux) || defined(__unix) || defined(__posix))
+            // As the fatal error box below: none for whoever started the game from a shell.
+            settings.mDialog = !isatty(fileno(stdin));
 #endif
+            // And none where a harness asks, which a box waiting for a click would stop.
+            if (const char* const dialog = std::getenv("OPENMW_CRASH_DIALOG"))
+                settings.mDialog = Misc::StringUtils::toNumeric<int>(dialog, 1) != 0;
+            if (const std::optional<std::string> why = Crash::install(settings))
+                Log(Debug::Warning) << "No crash catcher: " << *why;
+            else
+                Log(Debug::Info) << "Crash reports go to " << logDir / "crashes";
         }
-#endif
     }
 
     int wrapApplication(
         int (*innerApplication)(int argc, char* argv[]), int argc, char* argv[], std::string_view appName)
     {
+        // Before anything else, because a monitor is this executable doing nothing but that.
+        Crash::runMonitorIfAsked(argc, argv);
+
 #if defined _WIN32
         (void)attachParentConsole();
         SetConsoleOutputCP(CP_UTF8);
@@ -459,29 +462,9 @@ namespace Debug
         int ret = 0;
         try
         {
-            if (const auto env = std::getenv("OPENMW_DISABLE_CRASH_CATCHER");
-                env == nullptr || Misc::StringUtils::toNumeric<int>(env, 0) == 0)
-            {
-#if defined(_WIN32)
-                const std::string crashDumpName = Misc::StringUtils::lowerCase(appName) + "-crash.dmp";
-                const std::string freezeDumpName = Misc::StringUtils::lowerCase(appName) + "-freeze.dmp";
-                std::filesystem::path dumpDirectory = std::filesystem::temp_directory_path();
-                PWSTR userProfile = nullptr;
-                if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Profile, 0, nullptr, &userProfile)))
-                {
-                    dumpDirectory = userProfile;
-                }
-                CoTaskMemFree(userProfile);
-                Crash::CrashCatcher crashy(argc, argv, dumpDirectory, crashDumpName, freezeDumpName);
-#else
-                const std::string crashLogName = Misc::StringUtils::lowerCase(appName) + "-crash.log";
-                // install the crash handler as soon as possible.
-                crashCatcherInstall(argc, argv, std::filesystem::temp_directory_path() / crashLogName);
-#endif
-                ret = innerApplication(argc, argv);
-            }
-            else
-                ret = innerApplication(argc, argv);
+            const char* const disable = std::getenv("OPENMW_DISABLE_CRASH_CATCHER");
+            sCatchCrashes = disable == nullptr || Misc::StringUtils::toNumeric<int>(disable, 0) == 0;
+            ret = innerApplication(argc, argv);
         }
         catch (const std::exception& e)
         {

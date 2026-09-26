@@ -232,16 +232,30 @@
         },
         {
             "name": "package-linux",
-            "inherits": [ "package", "linux", "rtx" ]
+            "inherits": [ "package", "linux", "rtx" ],
+            "$comment": [
+                "`-g1`, function names and line tables and nothing else, for the symbols `rtx package archive`",
+                "publishes beside the AppImage: a player's crash dump then names a function and a line. It costs",
+                "nothing at runtime."
+            ],
+            "cacheVariables": {
+                "CMAKE_C_FLAGS_INIT": "-g1",
+                "CMAKE_CXX_FLAGS_INIT": "-g1"
+            }
         },
         {
             "name": "package-windows",
             "inherits": [ "package", "windows", "rtx" ],
             "$comment": [
                 "Qt, which the set has none of and the launcher and the wizard are made of: the one `rtx` fetches",
-                "into deps/ for this flavour, by the version CI/deps_versions.msvc.sh pins and exports as QT_VER."
+                "into deps/ for this flavour, by the version CI/deps_versions.msvc.sh pins and exports as QT_VER.",
+                "`-Z7` with `-DEBUG` at link writes each executable's PDB beside it in the build, for the symbols",
+                "`rtx package archive` publishes beside the folder; the install rules leave the PDBs behind."
             ],
             "cacheVariables": {
+                "CMAKE_C_FLAGS_INIT": "-Z7",
+                "CMAKE_CXX_FLAGS_INIT": "-Z7",
+                "CMAKE_EXE_LINKER_FLAGS_INIT": "-DEBUG",
                 "CMAKE_PREFIX_PATH": "${sourceDir}/deps/Qt/$env{QT_VER}/msvc2019_64"
             }
         }

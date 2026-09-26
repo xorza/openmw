@@ -8,6 +8,7 @@
 
 #include <SDL.h>
 
+#include <components/crashcatcher/crash.hpp>
 #include <components/debug/debuglog.hpp>
 
 #include <components/misc/rng.hpp>
@@ -114,6 +115,8 @@ void OMW::Engine::executeLocalScripts()
 
 bool OMW::Engine::frame(unsigned frameNumber, float frametime)
 {
+    Crash::heartbeat();
+
     const osg::Timer_t frameStart = mRenderer->getStartTick();
     const osg::Timer* const timer = osg::Timer::instance();
     osg::Stats* const stats = &mRenderer->getStats();
@@ -648,6 +651,7 @@ void OMW::Engine::go()
     {
         const std::string_view wanted = Settings::rtx().mEnabled ? "raytrace" : "opengl";
         Log(Debug::Info) << "Renderer: " << wanted;
+        Crash::annotate("renderer", wanted);
         mRenderer = MWRender::createRenderer(wanted, spec);
     }
 

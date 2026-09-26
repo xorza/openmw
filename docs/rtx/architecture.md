@@ -1176,10 +1176,11 @@ thread, and what it kept was that thread's timing.
 | binary             | filter                   | holds                                                                          |
 |--------------------|--------------------------|--------------------------------------------------------------------------------|
 | `components-tests` | `Rtx*`, `Sky*`, `Crash*` | the core, the bench, the harness's parsing, the crash notes; runs on any machine |
+| `crash-tests`      | `--matrix`               | every way a game ends, a process each, and the report the crash catcher left   |
 | `rtx-gpu-tests`    |                          | what opens a device; fails outright without one                                |
 | `openmw-tests`     | `Rtx*`                   | the game side: the renderer, the mirror, the terrain, the frame description     |
 
-`rtx <flavour> test` runs the three. `rtx <flavour> gate` runs everything a change owes.
+`rtx <flavour> test` runs the four. `rtx <flavour> gate` runs everything a change owes.
 Rendering changes are checked without a window: `shot --views=all --map --against=<dir>` says
 which pictures moved, and `rtx <flavour> repeat --pairs=N` says whether two runs of one binary
 draw one frame. `rtx <flavour> kernels --against=<listing>` says which kernels a change moved, per

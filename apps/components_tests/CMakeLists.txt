@@ -4,7 +4,9 @@ include_directories(SYSTEM ${GMOCK_INCLUDE_DIRS})
 file(GLOB UNITTEST_SRC_FILES
     main.cpp
 
+    crashcatcher/crashmonitor.cpp
     crashcatcher/crashnote.cpp
+    crashcatcher/crashsummary.cpp
 
     esm/testfixedstring.cpp
     esm/testrefid.cpp
@@ -169,9 +171,11 @@ if (WIN32)
     target_sources(components-tests PRIVATE ${CMAKE_SOURCE_DIR}/files/windows/other-apps.manifest)
 endif()
 
-# A real fault caught where a crash handler stands, which takes MSVC's `__try`.
-if (MSVC)
-    target_sources(components-tests PRIVATE crashcatcher/windowscrashsummary.cpp)
+if (OPENMW_CRASHPAD)
+    # Every way a game ends, each in a process of its own with the real catcher: not a gtest
+    # binary, because each mode ends the process that runs it. `rtx <flavour> test` runs its matrix.
+    openmw_add_executable(crash-tests crashcatcher/crashtests.cpp)
+    target_link_libraries(crash-tests components)
 endif()
 
 # Fix for not visible pthreads functions for linker with glibc 2.15

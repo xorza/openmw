@@ -45,6 +45,15 @@ option(BUILD_OPENCS_TESTS       "Build OpenMW Construction Set tests" OFF)
 option(BUILD_OPENMW_TESTS       "Build OpenMW tests" OFF)
 option(OPENMW_RTX               "Build the experimental ray tracing renderer" ON)
 option(OPENMW_RTX_DLSS          "Upscale and denoise with DLSS Ray Reconstruction" ON)
+
+# Crashpad captures a crash out of process on every system it supports. FreeBSD, which it does not
+# support, has no crash catcher, and says so in its log.
+if (WIN32 OR APPLE OR (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ANDROID))
+    set(OPENMW_CRASHPAD_DEFAULT ON)
+else()
+    set(OPENMW_CRASHPAD_DEFAULT OFF)
+endif()
+option(OPENMW_CRASHPAD          "Capture crashes with Crashpad" ${OPENMW_CRASHPAD_DEFAULT})
 option(PRECOMPILE_HEADERS_WITH_MSVC "Precompile most common used headers with MSVC (alternative to ccache)" ON)
 
 set(OpenGL_GL_PREFERENCE LEGACY)  # Use LEGACY as we use GL2; GLNVD is for GL3 and up.

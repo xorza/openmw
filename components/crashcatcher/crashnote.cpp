@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstring>
+#include <type_traits>
 
 #if defined(_WIN32)
 #include <components/misc/windows.hpp>
@@ -21,24 +23,36 @@ namespace Crash
 {
     namespace
     {
+        using Thread = std::atomic_ref<std::uint64_t>;
+        using Sequence = std::atomic_ref<std::uint32_t>;
+
         /// One thread's note, written by that thread alone and read by any.
         ///
-        /// **A sequence counter and not a lock**, because the reader is a crash handler that
-        /// cannot wait: odd while the owner writes, so a copy taken across a write is known to be
-        /// one. The text is `volatile`, because nothing in the process reads it but a crash, and
-        /// a compiler may otherwise drop every write.
+        /// **A sequence counter and not a lock**, because the reader is the monitor, and a crash
+        /// stops the owner anywhere: odd while the owner writes, so a note stopped halfway is known
+        /// as one. Plain words reached through `std::atomic_ref`, so the table is trivially
+        /// copyable and the monitor can read it as the bytes it took out of the game.
         struct Slot
         {
-            std::atomic<std::uint64_t> mThread{ 0 };
-            std::atomic<std::uint32_t> mSequence{ 0 };
-            volatile char mText[sNoteCapacity] = {};
+            alignas(Thread::required_alignment) std::uint64_t mThread;
+            alignas(Sequence::required_alignment) std::uint32_t mSequence;
+            char mText[sNoteCapacity];
         };
 
-        // A signal handler may touch only what never locks.
-        static_assert(std::atomic<std::uint64_t>::is_always_lock_free);
-        static_assert(std::atomic<std::uint32_t>::is_always_lock_free);
+        struct Table
+        {
+            alignas(Sequence::required_alignment) std::uint32_t mKind;
+            char mReason[sNoteCapacity];
+            Slot mSlots[sNoteThreads];
+        };
 
-        Slot sSlots[sNoteThreads];
+        static_assert(std::is_trivially_copyable_v<Table>);
+
+        // A signal handler may touch only what never locks.
+        static_assert(Thread::is_always_lock_free);
+        static_assert(Sequence::is_always_lock_free);
+
+        Table sTable{};
 
         /// A thread's hold on its slot, given back as the thread ends, so that threads made and
         /// ended by the hundred do not fill the table with the dead.
@@ -49,42 +63,27 @@ namespace Crash
             ~Claim()
             {
                 if (mSlot != nullptr)
-                    mSlot->mThread.store(0, std::memory_order_release);
+                    Thread(mSlot->mThread).store(0, std::memory_order_release);
             }
         };
 
         Slot* claimSlot(std::uint64_t thread)
         {
-            for (Slot& slot : sSlots)
+            for (Slot& slot : sTable.mSlots)
             {
                 std::uint64_t free = 0;
-                if (slot.mThread.compare_exchange_strong(free, thread, std::memory_order_acq_rel))
+                if (Thread(slot.mThread).compare_exchange_strong(free, thread, std::memory_order_acq_rel))
                     return &slot;
             }
 
             return nullptr;
         }
 
-        std::size_t append(Slot& slot, std::size_t at, std::string_view text)
+        std::size_t append(char (&into)[sNoteCapacity], std::size_t at, std::string_view text)
         {
             const std::size_t length = std::min(text.size(), sNoteCapacity - 1 - at);
-            for (std::size_t i = 0; i < length; ++i)
-                slot.mText[at + i] = text[i];
-
+            std::copy_n(text.data(), length, into + at);
             return at + length;
-        }
-
-        void copy(const Slot& slot, std::uint64_t thread, NoteCopy& into)
-        {
-            const std::uint32_t before = slot.mSequence.load(std::memory_order_acquire);
-            for (std::size_t i = 0; i < sNoteCapacity; ++i)
-                into.mText[i] = slot.mText[i];
-            std::atomic_thread_fence(std::memory_order_acquire);
-            const std::uint32_t after = slot.mSequence.load(std::memory_order_relaxed);
-
-            into.mText[sNoteCapacity - 1] = '\0';
-            into.mThread = thread;
-            into.mWhole = before == after && before % 2 == 0;
         }
     }
 
@@ -116,34 +115,61 @@ namespace Crash
             return;
 
         Slot& slot = *claim.mSlot;
-        slot.mSequence.fetch_add(1, std::memory_order_acq_rel);
-        std::size_t at = append(slot, 0, what);
+        Sequence(slot.mSequence).fetch_add(1, std::memory_order_acq_rel);
+        std::size_t at = append(slot.mText, 0, what);
         if (!subject.empty())
         {
-            at = append(slot, at, " \"");
-            at = append(slot, at, subject);
-            at = append(slot, at, "\"");
+            at = append(slot.mText, at, " \"");
+            at = append(slot.mText, at, subject);
+            at = append(slot.mText, at, "\"");
         }
         slot.mText[at] = '\0';
-        slot.mSequence.fetch_add(1, std::memory_order_release);
+        Sequence(slot.mSequence).fetch_add(1, std::memory_order_release);
     }
 
-    std::size_t readNotes(std::span<NoteCopy, sNoteThreads> into)
+    void setReport(ReportKind kind, std::string_view reason)
     {
-        const std::uint64_t self = currentThread();
-        std::size_t count = 0;
+        sTable.mReason[append(sTable.mReason, 0, reason)] = '\0';
+        Sequence(sTable.mKind).store(static_cast<std::uint32_t>(kind), std::memory_order_release);
+    }
 
-        for (const Slot& slot : sSlots)
-            if (slot.mThread.load(std::memory_order_acquire) == self)
-                copy(slot, self, into[count++]);
+    std::span<const std::byte> noteTable()
+    {
+        return std::as_bytes(std::span(&sTable, 1));
+    }
 
-        for (const Slot& slot : sSlots)
-        {
-            const std::uint64_t thread = slot.mThread.load(std::memory_order_acquire);
-            if (thread != 0 && thread != self)
-                copy(slot, thread, into[count++]);
-        }
+    void readNotes(std::span<const std::byte> table, std::uint64_t first, NotesRead& into)
+    {
+        // Bytes out of another process, which a crash may have left any shape: a table of another
+        // size is no table, and a kind past the known ones is a crash's.
+        into = NotesRead{};
+        if (table.size() != sizeof(Table))
+            return;
 
-        return count;
+        Table copy;
+        std::memcpy(&copy, table.data(), sizeof(Table));
+        if (copy.mKind <= static_cast<std::uint32_t>(ReportKind::Report))
+            into.mKind = static_cast<ReportKind>(copy.mKind);
+        std::memcpy(into.mReason, copy.mReason, sNoteCapacity);
+        into.mReason[sNoteCapacity - 1] = '\0';
+
+        // The process stands still while its table is copied, so a note whose count is odd is one
+        // its thread stopped in the middle of.
+        const auto take = [&](const Slot& slot) {
+            NoteCopy& note = into.mNotes[into.mCount++];
+            note.mThread = slot.mThread;
+            std::memcpy(note.mText, slot.mText, sNoteCapacity);
+            note.mText[sNoteCapacity - 1] = '\0';
+            note.mWhole = slot.mSequence % 2 == 0;
+        };
+
+        if (first != 0)
+            for (const Slot& slot : copy.mSlots)
+                if (slot.mThread == first)
+                    take(slot);
+
+        for (const Slot& slot : copy.mSlots)
+            if (slot.mThread != 0 && slot.mThread != first)
+                take(slot);
     }
 }

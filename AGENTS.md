@@ -53,7 +53,8 @@ backend ever arrives.
 - Build the targets you touched, run the covering test binary with a filter, then format.
   Compiling is not verifying.
 - `components-tests --gtest_filter='Rtx*'`, `rtx-gpu-tests` and `openmw-tests
-  --gtest_filter='Rtx*'` once before saying it works; `rtx debug test` runs the three. The GPU
+  --gtest_filter='Rtx*'` once before saying it works; `rtx debug test` runs the three, and the
+  crash matrix, `crash-tests --matrix`. The GPU
   binary fails without a device rather than skipping, so a green run means a device ran it. `rtx debug gate` once at the end: format check, build, no-assert and no-DLSS
   compiles, tests, `check`, one repeat pair. Never a gate beside a build or another gate.
 - Do not open the game window to check a rendering change. `shot --views=all --map
