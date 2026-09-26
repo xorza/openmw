@@ -102,6 +102,7 @@ set(RTX_TEST_FILES
 
 set(RTX_TEST_SUPPORT
     rtx/countingrenderer.hpp
+    rtx/death.hpp
     rtx/displaycurve.hpp
     rtx/fakeland.hpp
     rtx/fallbackseed.cpp

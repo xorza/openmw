@@ -8,6 +8,8 @@
 #include <components/rtx/mirrorpass.hpp>
 #include <components/rtx/runs.hpp>
 
+#include "death.hpp"
+
 namespace Rtx
 {
     namespace
@@ -109,7 +111,7 @@ namespace Rtx
             EXPECT_TRUE(mKept.whole()) << "the held entry is the whole map";
 
 #ifndef NDEBUG
-            EXPECT_DEATH(mKept.abandon(mKept.find(2)), "an entry abandoned while something holds it");
+            Testing::expectDies([&] { mKept.abandon(mKept.find(2)); }, "an entry abandoned while something holds it");
 #endif
         }
     }

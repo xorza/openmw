@@ -21,6 +21,7 @@
 #include <components/sceneutil/stableidentity.hpp>
 #include <components/vfs/pathutil.hpp>
 
+#include "../death.hpp"
 #include "fixture.hpp"
 
 namespace Rtx::Testing
@@ -732,9 +733,12 @@ namespace Rtx::Testing
             mScene.clearPlacement();
 
             walk(*quad);
-            EXPECT_DEATH(mScene.orderLights(), "a call out of its turn");
+            expectDies([&] { mScene.orderLights(); }, "a call out of its turn");
             mScene.clearPlacement();
-            EXPECT_DEATH(mScene.orderLights(), "a call out of its turn") << "a clear settled the sweep";
+            {
+                SCOPED_TRACE("a clear settled the sweep");
+                expectDies([&] { mScene.orderLights(); }, "a call out of its turn");
+            }
 
             ASSERT_TRUE(mExtractor.retire().empty());
             mScene.orderLights();
@@ -743,7 +747,7 @@ namespace Rtx::Testing
             // And a walk on the frame after: the same again.
             mScene.clearPlacement();
             walk(*quad, 0, 1);
-            EXPECT_DEATH(mScene.orderLights(), "a call out of its turn");
+            expectDies([&] { mScene.orderLights(); }, "a call out of its turn");
             ASSERT_TRUE(mExtractor.retire().empty());
             mScene.orderLights();
         }

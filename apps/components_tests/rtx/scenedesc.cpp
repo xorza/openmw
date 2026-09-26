@@ -40,6 +40,7 @@
 #include <components/rtx/texturewrap.hpp>
 #include <components/vfs/pathutil.hpp>
 
+#include "death.hpp"
 #include "geometry.hpp"
 #include "layers.hpp"
 
@@ -1579,10 +1580,9 @@ namespace Rtx
             EXPECT_EQ(scene.getStructureRevision(), structure) << "a sweep of one material asked for a rebuild";
             EXPECT_TRUE(scene.materials().getWritten().empty()) << "a sweep reported a row to write";
 
-            // **And a mesh going is no longer the other answer either.** It was, while a sweep
-            // compacted: the table moved and everything built from it had to be built again. A slot
-            // that is freed in place invalidates nothing, so the frame after a cell leaves costs the
-            // top level and nothing else.
+            // **And a mesh going is not the other answer either.** A slot freed in place moves
+            // nothing built from the table, so the frame after a cell leaves costs the top level and
+            // nothing else.
             const std::uint64_t before = scene.getStructureRevision();
             ASSERT_TRUE(scene.release({}, materials));
             EXPECT_EQ(scene.getStructureRevision(), before) << "a cell leaving asked for a rebuild";
@@ -1727,10 +1727,9 @@ namespace Rtx
 
         /// A texture goes with the last material that names it, and not with the first.
         ///
-        /// **The case a sweep could only answer on some frames.** Freeing used to be a walk of the
-        /// live materials run from `release`, and `release` returns before it starts whenever the
-        /// mesh and material counts say nothing died. Counting the names instead makes the answer
-        /// the same whatever else the frame did.
+        /// **Counted by the names, so the answer is the same whatever else the frame did.** A walk of
+        /// the live materials run from `release` answers only on some frames: `release` returns
+        /// before it starts whenever the mesh and material counts say nothing died.
         TEST(RtxSceneDescTest, aTextureGoesWithTheLastMaterialThatNamesIt)
         {
             SceneDesc scene;
@@ -1790,7 +1789,7 @@ namespace Rtx
 
             scene.addLight(*light);
             scene.orderLights();
-            EXPECT_DEATH(scene.addLight(*light), "a call out of its turn");
+            Testing::expectDies([&] { scene.addLight(*light); }, "a call out of its turn");
 
             scene.clearPlacement();
             scene.addLight(*light);

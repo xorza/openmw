@@ -28,6 +28,7 @@
 #include <components/rtx/texturewrap.hpp>
 #include <components/vfs/pathutil.hpp>
 
+#include "../death.hpp"
 #include "../testcamera.hpp"
 #include "../testtexture.hpp"
 #include "fixture.hpp"
@@ -189,7 +190,7 @@ namespace Rtx::Testing
             EXPECT_EQ(camera.mCamera.mSpreadAngle, 0.0f);
 
 #ifndef NDEBUG
-            EXPECT_DEATH(makeOrthographicCameraFromView(view, 0.0f, 100.0f, 64, 32, 5.0f, 400.0f),
+            expectDies([&] { makeOrthographicCameraFromView(view, 0.0f, 100.0f, 64, 32, 5.0f, 400.0f); },
                 "an orthographic camera with no extent sees nothing");
 #endif
         }
@@ -737,11 +738,10 @@ namespace Rtx::Testing
         /// The sky moves when the eye turns and stands still when it walks, and an upscaler is told
         /// which.
         ///
-        /// **A miss used to store nothing at all**, on the reasoning that the sky does not move. That
-        /// is true of walking and false of looking around, and looking around is most of what a
-        /// player does — so the upscaler fetched the sky's history from the pixel it already
-        /// occupied and every turn of the head smeared it. A gradient hides that; a field of stars
-        /// does not, which is how it was found.
+        /// **A miss stores motion too.** That the sky does not move is true of walking and false of
+        /// looking around, which is most of what a player does: with nothing stored, the upscaler
+        /// fetches the sky's history from the pixel it already occupies and every turn of the head
+        /// smears it. A gradient hides that; a field of stars does not.
         ///
         /// **The claim is exact rather than approximate.** Under a rotation about the eye, where a
         /// point lands on screen depends on its direction and not on how far away it is — so the sky

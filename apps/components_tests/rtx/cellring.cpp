@@ -60,6 +60,7 @@
 #include <components/vfs/pathutil.hpp>
 
 #include "allocations.hpp"
+#include "death.hpp"
 #include "extractor/fixture.hpp"
 #include "fakeland.hpp"
 #include "geometry.hpp"
@@ -926,8 +927,8 @@ namespace Rtx::Testing
         /// the wall, because an unsettled walk that finds nothing read adopts nothing. A settled
         /// walk waits for the cell it is about to adopt, so the count after N walks is exactly N.
         ///
-        /// **And exactly N and never more**, which is the half that used to be wrong: waiting for
-        /// the whole band and adopting all of it put a hundred cells on one frame.
+        /// **And exactly N and never more**: waiting for the whole band and adopting all of it puts a
+        /// hundred cells on one frame.
         TEST_F(RtxCellRingTest, settledAWalkWaitsForItsOneCellAndTakesNoMore)
         {
             start();
@@ -988,7 +989,7 @@ namespace Rtx::Testing
         {
             start();
             walk(mWalked++);
-            EXPECT_DEATH(mExtractor.extractWorld(*mEmpty, osg::Matrixf::identity(), 0, mWalked, mRing),
+            expectDies([&] { mExtractor.extractWorld(*mEmpty, osg::Matrixf::identity(), 0, mWalked, mRing); },
                 "a call out of its turn");
         }
 #endif

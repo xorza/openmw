@@ -174,13 +174,10 @@ namespace Rtx
 
         /// Every Vulkan handle the backend owns is held by `Rtx::Owned`.
         ///
-        /// **The rule is mechanical, and the holdouts accumulated silently.** `owned.hpp` says it
-        /// is "the one place `vkDestroyX(device, handle, allocator)` is spelled", and a class that
-        /// spelled it itself paid a destructor, a null check and a `const Device&` member that
-        /// existed so the destructor could reach the device. Nothing made the next class adopt the
-        /// type, so this is what does. A loaded destroyer (`mDestroyX`) is matched as well as a
-        /// declared one, because the first of them stood in three classes for a year with the
-        /// gate reporting that every handle was held.
+        /// **The rule is mechanical, so a test keeps it.** `owned.hpp` is "the one place
+        /// `vkDestroyX(device, handle, allocator)` is spelled", and a class that spells it itself pays
+        /// a destructor, a null check and a `const Device&` member that is there for the destructor to
+        /// reach the device. A loaded destroyer (`mDestroyX`) is matched as well as a declared one.
         ///
         /// The exemptions, each for a reason a match cannot see: `vkDestroyInstance` and
         /// `vkDestroyDevice` take no parent handle, so `Owned`'s shape does not fit them;
@@ -210,11 +207,9 @@ namespace Rtx
 
         /// A device object answers for its own readers, and the device answers for none of them.
         ///
-        /// **`Device::mayDestroy` was the question every destructor asked**, and it answered "the
-        /// queue is idle, or the graveyard is freeing": a flag set for a whole sweep, under which
-        /// no destructor could tell a buried object from one destroyed by mistake. Every object a
-        /// submit can name carries a `ReadStamp` now and asks it, so the one place the word is
-        /// allowed is the object's own file, and a device-wide answer cannot come back.
+        /// **A device-wide answer is a flag set for a whole sweep**, under which no destructor can tell
+        /// a buried object from one destroyed by mistake. Every object a submit can name carries a
+        /// `ReadStamp` and asks it, so the one place the word is allowed is the object's own file.
         TEST(RtxSourceTreeTest, onlyAnObjectAnswersWhetherItMayBeDestroyed)
         {
             const std::set<std::string> owners{ "buffer.hpp", "buffer.cpp", "image.hpp", "image.cpp" };
@@ -232,11 +227,10 @@ namespace Rtx
 
         /// A scene slot a renderer hands out is held by `Rtx::ViewScene`, which gives it back.
         ///
-        /// **`OffscreenTrace` took the slot in its constructor and dropped it in its destructor**,
-        /// two classes and a throw apart: a constructor that unwound after the take leaked the slot
-        /// for the renderer's life, and a drop of a slot already dropped put it on the free list
-        /// twice. The handle is the one place the pair is spelled, so the next picture that wants a
-        /// scene holds one of these and cannot get the pair wrong.
+        /// **A take in a constructor and a drop in a destructor are two classes and a throw apart**:
+        /// a constructor that unwinds after the take leaks the slot for the renderer's life, and a
+        /// drop of a slot already dropped puts it on the free list twice. The handle is the one place
+        /// the pair is spelled, so a picture that wants a scene holds one and cannot get it wrong.
         TEST(RtxSourceTreeTest, everyViewSceneIsHeldByViewScene)
         {
             const std::set<std::string> allowed{ "viewscene.cpp", "renderer.hpp", "vulkanrenderer.hpp",
@@ -254,6 +248,26 @@ namespace Rtx
                 << "a view scene is taken or dropped by hand where Rtx::ViewScene would do it — hold "
                    "one of those and delete the drop:\n"
                 << joined(found);
+        }
+
+        /// A death the fork's tests assert goes through `Testing::expectDies`, whose child keeps no
+        /// core: a bare one writes a core to the journal on every run.
+        TEST(RtxSourceTreeTest, everyDeathIsAssertedWithoutACore)
+        {
+            const std::filesystem::path tests = sRoot / "apps" / "components_tests";
+            const std::set<std::string> exempt{ "death.hpp", "sourcetree.cpp" };
+
+            const std::vector<std::string> found
+                = linesMatching({ tests / "rtx", tests / "rtx" / "visibility", tests / "rtx" / "extractor",
+                                    tests / "rtxtool", sRoot / "apps" / "openmw_tests" / "mwrender" },
+                    exempt, [](const std::string_view code) {
+                        return code.find("_DEATH(") != std::string_view::npos
+                            || code.find("_EXIT(") != std::string_view::npos;
+                    });
+
+            EXPECT_TRUE(found.empty()) << "a death is asserted by hand where Testing::expectDies would keep its core "
+                                          "out of the journal:\n"
+                                       << joined(found);
         }
 
         /// Every file `shader` reaches through `#include`, itself included, by the paths the
@@ -276,12 +290,10 @@ namespace Rtx
 
         /// No compute shader traces a ray.
         ///
-        /// **A ray query inside a compute dispatch answered differently from run to run** — a
-        /// candidate counted twice or not at all — while another process shared the card, and
-        /// never inside a ray-tracing launch. The fog's two ray passes became launches for it,
-        /// and the gate was a script that ran the determinism walk beside a second harness for
-        /// two and a half minutes a pair. The cause is a compute shader reaching `rayQueryEXT`,
-        /// and that is what is asked here, of every `.comp` and everything it includes.
+        /// **A ray query inside a compute dispatch answers differently from run to run** — a
+        /// candidate counted twice or not at all — while another process shares the card, and never
+        /// inside a ray-tracing launch. So what is asked here, of every `.comp` and everything it
+        /// includes, is whether it reaches `rayQueryEXT`.
         TEST(RtxSourceTreeTest, noComputeShaderTracesARay)
         {
             const std::filesystem::path shaders = sBackend / "shaders";
@@ -544,8 +556,7 @@ namespace Rtx
         /// Every `@param` names a parameter of what its comment documents.
         ///
         /// **A parameter renamed or removed leaves its line in the comment**, and the comment then
-        /// describes an argument nobody passes: a `pool` three constructors had stopped taking, a
-        /// `scratch` an overload no longer had. The names are read off each block of `///` lines,
+        /// describes an argument nobody passes. The names are read off each block of `///` lines,
         /// and the declaration is what follows it up to the line that ends in `;`, `{` or `}`.
         TEST(RtxSourceTreeTest, everyParamDocNamesAParameter)
         {
@@ -616,8 +627,8 @@ namespace Rtx
         /// Every member a comment names in backticks is declared.
         ///
         /// **A name in a comment is a claim nothing compiles.** A member renamed or removed leaves
-        /// every comment that named it pointing at nothing — `GBuffer::getStarsShown`,
-        /// `BenchPlace::mFrame` — and the reader who follows one finds nothing there. Two
+        /// every comment that named it pointing at nothing, and the reader who follows one finds
+        /// nothing there. Two
         /// readings, both of the code and never of a comment: `Ns::name` under a namespace of the
         /// fork's names something the code declares somewhere, and `Type::member` for a type a file
         /// of the fork defines names something that type, a base of it or their sources declare.
@@ -692,8 +703,7 @@ namespace Rtx
 
         /// Every link and every rooted path the fork's documents name resolves.
         ///
-        /// **A document moved or deleted leaves every link to it**, and the architecture document
-        /// sent its reader to a pacing note for a year after the note was gone. A link resolves
+        /// **A document moved or deleted leaves every link to it.** A link resolves
         /// from the document's own folder; a path in backticks that starts at one of the tree's
         /// top folders resolves from the root, and one with a `*` or a space in it is a pattern or
         /// a sentence.

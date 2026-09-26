@@ -48,6 +48,7 @@
 #include <components/rtxvulkan/upscaler.hpp>
 #include <components/rtxvulkan/vulkanrenderer.hpp>
 
+#include "death.hpp"
 #include "testcamera.hpp"
 #include "testtexture.hpp"
 
@@ -167,14 +168,15 @@ namespace Rtx
             EXPECT_EQ(dlaa.height, sOutput.height);
         }
 
-        /// **The mode that is not one is refused rather than answered.** `Off` used to share a
-        /// `switch` arm with `Performance` so the switch was total, which made "build a feature for
-        /// the setting that means build no feature" answer with the fastest and softest mode this
-        /// renderer has — silently, on the path a frame budget is measured against.
+        /// **The mode that is not one is refused rather than answered.** A total `switch` that gave
+        /// `Off` the arm of `Performance` would answer "build a feature for the setting that means
+        /// build no feature" with the fastest and softest mode this renderer has — silently, on the
+        /// path a frame budget is measured against.
         TEST_F(RtxDlssTest, theAbsenceOfAnUpscalerNamesNoSizeToRenderAt)
         {
 #ifndef NDEBUG
-            EXPECT_DEATH(sNgx->getRenderSize(sOutput, Upscale::Off), "an upscale mode that is the absence of one");
+            Testing::expectDies(
+                [&] { sNgx->getRenderSize(sOutput, Upscale::Off); }, "an upscale mode that is the absence of one");
 #endif
         }
 
@@ -633,7 +635,7 @@ namespace Rtx
             const FrameExtents fast = drawAndRead();
             EXPECT_EQ(fast.mRenderWidth * 2u, fast.mOutputWidth) << "performance traces half of each side";
 
-            // **Off, which is the direction that used to build a feature for no upscaling at all.**
+            // **Off, which builds no feature at all.**
             upscaling->setUpscale(Upscale::Off);
             EXPECT_EQ(upscaling->getProfile().mUpscaling.mMode, Upscale::Off);
 

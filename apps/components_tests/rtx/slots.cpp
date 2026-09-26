@@ -10,6 +10,8 @@
 #include <components/rtx/scratch.hpp>
 #include <components/rtx/slots.hpp>
 
+#include "death.hpp"
+
 namespace Rtx
 {
     namespace
@@ -178,11 +180,11 @@ namespace Rtx
             rows.take(2);
             rows.mark({});
             EXPECT_EQ(rows.sweep([](const Index, int&) {}), 2u);
-            EXPECT_DEATH(rows.sweep([](const Index, int&) {}), "a call out of its turn");
+            Testing::expectDies([&] { rows.sweep([](const Index, int&) {}); }, "a call out of its turn");
 
             rows.mark({});
             rows.take(3);
-            EXPECT_DEATH(rows.sweep([](const Index, int&) {}), "a call out of its turn");
+            Testing::expectDies([&] { rows.sweep([](const Index, int&) {}); }, "a call out of its turn");
         }
 #endif
 
@@ -216,7 +218,7 @@ namespace Rtx
         {
             SlotPool pool;
             pool.free(2);
-            EXPECT_DEATH(pool.free(2), "a slot freed twice");
+            Testing::expectDies([&] { pool.free(2); }, "a slot freed twice");
         }
 
         /// **An object given back twice is the pool's assert**, and not two entries on the spare
@@ -229,7 +231,7 @@ namespace Rtx
             reading.reuse();
             spares.give(reading);
             reading.reuse();
-            EXPECT_DEATH(spares.give(reading), "an object given back twice");
+            Testing::expectDies([&] { spares.give(reading); }, "an object given back twice");
         }
 #endif
     }

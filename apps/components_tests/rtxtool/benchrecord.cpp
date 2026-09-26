@@ -3,6 +3,7 @@
 #include <span>
 #include <sstream>
 #include <string>
+#include <string_view>
 
 #include <gtest/gtest.h>
 
@@ -143,10 +144,17 @@ namespace RtxTool
             const std::string json = read.str();
             std::filesystem::remove(path);
 
-            EXPECT_NE(json.find(R"("view": "say \"hi\"")"), std::string::npos) << json;
-            EXPECT_NE(json.find(R"("cell": "C:\\Vivec")"), std::string::npos) << json;
-            EXPECT_NE(json.find(R"("suite": "a\nb")"), std::string::npos) << json;
-            EXPECT_NE(json.find(R"({"name": "tab\there")"), std::string::npos) << json;
+            // Named outside the assertions: MSVC's preprocessor reads a raw string's `\"` inside a
+            // macro argument as the end of the literal.
+            constexpr std::string_view quote = R"("view": "say \"hi\"")";
+            constexpr std::string_view backslash = R"("cell": "C:\\Vivec")";
+            constexpr std::string_view newline = R"("suite": "a\nb")";
+            constexpr std::string_view tab = R"({"name": "tab\there")";
+
+            EXPECT_NE(json.find(quote), std::string::npos) << json;
+            EXPECT_NE(json.find(backslash), std::string::npos) << json;
+            EXPECT_NE(json.find(newline), std::string::npos) << json;
+            EXPECT_NE(json.find(tab), std::string::npos) << json;
         }
     }
 }

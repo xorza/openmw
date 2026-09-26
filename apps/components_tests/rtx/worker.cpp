@@ -4,6 +4,8 @@
 
 #include <components/rtx/worker.hpp>
 
+#include "death.hpp"
+
 namespace Rtx
 {
     namespace
@@ -20,9 +22,10 @@ namespace Rtx
             });
             other.join();
 
-            // The guard is the other thread's now. Asking here would fire the assert, which is the
-            // behaviour under test and not something a test can catch, so what is asserted is that
-            // the adoption took: a second adoption here hands it back.
+#ifndef NDEBUG
+            Testing::expectDies([&] { owner.check(); }, "a member touched from the wrong thread");
+#endif
+
             owner.adopt();
             owner.check();
         }
