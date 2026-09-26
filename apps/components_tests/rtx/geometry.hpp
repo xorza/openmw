@@ -128,10 +128,10 @@ namespace Rtx::Testing
     /// One triangle and one material naming `texture`, placed, so a mesh, a material and a texture
     /// all arrive together the way a model does.
     ///
-    /// The path is made up: `SceneTextures` answers a path that names nothing with the stand-in
-    /// and counts it unreadable, which is exactly the description a decision needs and costs no
-    /// content files to produce.
-    inline Model addModel(SceneDesc& scene, const VFS::Path::NormalizedView texture)
+    /// The path is made up, and with no `image` the slot keeps none: `SceneTextures` answers it
+    /// with the stand-in and counts it unreadable, which is exactly the description a decision
+    /// needs and costs no content files to produce.
+    inline Model addModel(SceneDesc& scene, const VFS::Path::NormalizedView texture, const osg::Image* image = nullptr)
     {
         const osg::Vec3f positions[3] = { { 0, 0, 0 }, { 1, 0, 0 }, { 0, 1, 0 } };
         const osg::Vec3f normals[3] = { { 0, 0, 1 }, { 0, 0, 1 }, { 0, 0, 1 } };
@@ -142,7 +142,7 @@ namespace Rtx::Testing
         made.mMesh = scene.addMesh(
             MeshArrays{ .mPositions = positions, .mNormals = normals, .mTexCoords = uvs, .mIndices = indices });
 
-        made.mTexture = scene.textures().add(texture);
+        made.mTexture = scene.textures().add(texture, image);
 
         Material material;
         material.mDiffuse = made.mTexture;

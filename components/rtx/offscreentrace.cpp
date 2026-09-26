@@ -19,8 +19,6 @@
 #include <osgUtil/RenderStage>
 #include <osgUtil/StateGraph>
 
-#include <components/resource/imagemanager.hpp>
-
 #include "camera.hpp"
 #include "colour.hpp"
 #include "nodekind.hpp"
@@ -164,7 +162,7 @@ namespace Rtx
         return camera;
     }
 
-    bool OffscreenTrace::rebuildSubject(const osg::FrameStamp& posing, Resource::ImageManager& images)
+    bool OffscreenTrace::rebuildSubject(const osg::FrameStamp& posing)
     {
         if (mSubject == nullptr)
             return true;
@@ -216,8 +214,7 @@ namespace Rtx
         // It consumes the arrivals, so nothing here clears them. Never advanced, unlike the
         // world's frame: `Handing::mAdvance` says why a picture has no motion to describe.
         subject.mUploader.hand(mRenderer,
-            SceneUploader::Handing{
-                .mSlot = subject.mSlot.get(), .mScene = *subject.mScene, .mImages = images, .mAdvance = false });
+            SceneUploader::Handing{ .mSlot = subject.mSlot.get(), .mScene = *subject.mScene, .mAdvance = false });
 
         return subject.mScene->placements().getCounts().mPlaced > 0;
     }

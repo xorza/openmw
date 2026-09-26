@@ -16,7 +16,6 @@
 #include <osg/Vec3f>
 #include <osg/ref_ptr>
 
-#include <components/resource/imagemanager.hpp>
 #include <components/rtx/compositequeue.hpp>
 #include <components/rtx/error.hpp>
 #include <components/rtx/material.hpp>
@@ -30,12 +29,10 @@
 #include <components/rtx/texturedata.hpp>
 #include <components/rtx/textureencoding.hpp>
 #include <components/rtx/texturewrap.hpp>
-#include <components/vfs/manager.hpp>
 #include <components/vfs/pathutil.hpp>
 
 #include "allocations.hpp"
 #include "geometry.hpp"
-#include "heldimages.hpp"
 
 namespace Rtx
 {
@@ -294,21 +291,17 @@ namespace Rtx
             // Through a scene, beside a volume in a format with no layout: the reserve holds what
             // the gathering lays down, and the other volume is refused by name rather than asked
             // for a layout it has none of.
-            VFS::Manager vfs;
-            Testing::HeldImages images(&vfs, 0);
             constexpr VFS::Path::NormalizedView rgbaPath("textures/tx_volume.dds");
             constexpr VFS::Path::NormalizedView alphaPath("textures/tx_alpha_volume.dds");
             const osg::ref_ptr<osg::Image> alpha = makeVolume(GL_ALPHA, GL_UNSIGNED_BYTE, 1);
             alpha->setFileName(std::string(alphaPath.value()));
-            images.hold(rgbaPath, rgba);
-            images.hold(alphaPath, alpha);
 
             Rtx::SceneDesc scene;
-            Testing::addModel(scene, rgbaPath);
-            Testing::addModel(scene, alphaPath);
+            Testing::addModel(scene, rgbaPath, rgba);
+            Testing::addModel(scene, alphaPath, alpha);
 
             SceneTextures described;
-            described.describeAll(scene, images);
+            described.describeAll(scene);
             ASSERT_EQ(described.getRefusals().size(), 1u);
             EXPECT_EQ(described.getRefusals()[0].mName, alphaPath.value());
             ASSERT_EQ(described.getDescriptions().size(), 2u);
@@ -475,27 +468,23 @@ namespace Rtx
         /// shape the frame-path guards use.
         TEST(RtxTextureBuilderTest, describingAnArrivalASecondTimeReachesTheHeapNotAtAll)
         {
-            VFS::Manager vfs;
-            Testing::HeldImages images(&vfs, 0);
-
-            // **Held under the name the image carries**, so the slot, the cache key and the name
-            // the description comes back with are one path rather than three.
+            // **Kept under the name the image carries**, so the slot and the name the description
+            // comes back with are one path rather than two.
             constexpr VFS::Path::NormalizedView path("textures/tx_test.dds");
             const osg::ref_ptr<osg::Image> image = makeBlock(GL_RGBA);
             ASSERT_EQ(image->getFileName(), path.value()) << "the slot and the image name a different file";
-            images.hold(path, image);
 
             // And one widened, whose texels the class holds as it holds the levels.
             constexpr VFS::Path::NormalizedView sixteen("textures/tx_sixteen.dds");
-            images.hold(sixteen, makeSixteenBit(GL_UNSIGNED_SHORT_5_6_5, GL_RGB, { 0, 0, 0, 0, 0 }));
+            const osg::ref_ptr<osg::Image> widened = makeSixteenBit(GL_UNSIGNED_SHORT_5_6_5, GL_RGB, { 0, 0, 0, 0, 0 });
 
             Rtx::SceneDesc scene;
-            Testing::addModel(scene, path);
-            Testing::addModel(scene, sixteen);
+            Testing::addModel(scene, path, image);
+            Testing::addModel(scene, sixteen, widened);
 
             SceneTextures described;
-            described.describeAll(scene, images);
-            ASSERT_TRUE(described.getRefusals().empty()) << "an image did not come back from the cache";
+            described.describeAll(scene);
+            ASSERT_TRUE(described.getRefusals().empty()) << "an image the slot kept was not described";
             ASSERT_EQ(described.getDescriptions().size(), std::size_t{ 2 });
             ASSERT_EQ(described.getDescriptions()[1].mBytes.size(), 20u) << "the widened texels were not described";
 
@@ -504,7 +493,7 @@ namespace Rtx
             ASSERT_EQ(described.getDescriptions()[0].mLevels.size(), std::size_t{ 1 });
 
             const std::size_t before = Testing::getAllocationCount();
-            described.describeAll(scene, images);
+            described.describeAll(scene);
             const std::size_t spent = Testing::getAllocationCount() - before;
 
             EXPECT_EQ(spent, 0u) << "a second description reached the heap " << spent << " times";
@@ -527,8 +516,6 @@ namespace Rtx
         /// each description carries.
         TEST(RtxTextureBuilderTest, aFreedSlotIsNotDescribedAndTheOthersKeepTheirSlots)
         {
-            VFS::Manager vfs;
-            Resource::ImageManager images(&vfs, 0);
 
             // Two models, because a texture is only given back when the last material naming it is:
             // `release` answers the ordinary frame by comparing the mesh and material counts and
@@ -548,7 +535,7 @@ namespace Rtx
             ASSERT_TRUE(scene.textures().isFree(going.mTexture));
             ASSERT_FALSE(scene.textures().isFree(staying.mTexture));
 
-            // The VFS is empty, so the one that is described does not resolve — which is the other
+            // The slot keeps no image, so the one that is described does not resolve — which is the other
             // half of the statement: a slot that named a file and failed at it is a failure, and a
             // slot that names nothing is not one.
             const auto check = [&](const SceneTextures& described, const char* which) {
@@ -565,10 +552,10 @@ namespace Rtx
             // One loader for both, which is how the uploader holds it: the second call clears what
             // the first left and answers on its own.
             SceneTextures described;
-            described.describe(scene, images, both);
+            described.describe(scene, both);
             check(described, "described by arrival");
 
-            described.describeAll(scene, images);
+            described.describeAll(scene);
             check(described, "described from the whole table");
         }
 
@@ -580,14 +567,11 @@ namespace Rtx
         {
             constexpr VFS::Path::NormalizedView smoke("textures/tx_smoke.dds");
 
-            VFS::Manager vfs;
-            Resource::ImageManager images(&vfs, 0);
-
             Rtx::SceneDesc scene;
             const Rtx::Index bake = scene.textures().addBaked(SpriteLightMap::keyFor(smoke));
 
             SceneTextures described;
-            described.describeAll(scene, images);
+            described.describeAll(scene);
             ASSERT_EQ(described.getDescriptions().size(), std::size_t{ 1 });
             EXPECT_EQ(described.getDescriptions()[0].mSlot, bake);
             EXPECT_EQ(described.getDescriptions()[0].mName, "stand-in");
@@ -599,7 +583,7 @@ namespace Rtx
             // The emitter holds the source under a wrap of its own beside the bake; the bake finds
             // it whichever wrap that was, and is then a bake and not a texture.
             const Rtx::Index source = scene.textures().add(smoke, Rtx::TextureWrap::ClampS);
-            described.describe(scene, images, std::span(&bake, 1));
+            described.describe(scene, std::span(&bake, 1));
             ASSERT_EQ(described.getDescriptions().size(), std::size_t{ 1 });
             EXPECT_EQ(described.getDescriptions()[0].mSlot, bake);
             EXPECT_EQ(described.getDescriptions()[0].mSource, Rtx::TextureSource::SpriteBake);
@@ -616,8 +600,6 @@ namespace Rtx
         /// the stand-in.
         TEST(RtxTextureBuilderTest, aCompositeNamesItsChunkAndOneNoQueueGaveOutGetsTheStandIn)
         {
-            VFS::Manager vfs;
-            Resource::ImageManager images(&vfs, 0);
 
             Rtx::SceneDesc scene;
             const std::array<Rtx::MaterialLayer, 2> layers{ Rtx::MaterialLayer{ .mDiffuse = 0 },
@@ -636,7 +618,7 @@ namespace Rtx
             ASSERT_NE(composite, Rtx::sNoIndex);
 
             SceneTextures described;
-            described.describe(scene, images, std::span(&composite, 1), &queue);
+            described.describe(scene, std::span(&composite, 1), &queue);
             ASSERT_EQ(described.getDescriptions().size(), std::size_t{ 1 });
             EXPECT_EQ(described.getDescriptions()[0].mSlot, composite);
             EXPECT_EQ(described.getDescriptions()[0].mSource, Rtx::TextureSource::GroundComposite);
@@ -648,7 +630,7 @@ namespace Rtx
             EXPECT_TRUE(described.getRefusals().empty());
 
             queue.releaseFinished();
-            described.describe(scene, images, std::span(&composite, 1), &queue);
+            described.describe(scene, std::span(&composite, 1), &queue);
             ASSERT_EQ(described.getDescriptions().size(), std::size_t{ 1 });
             EXPECT_EQ(described.getDescriptions()[0].mSource, Rtx::TextureSource::StandIn);
             EXPECT_EQ(described.getDescriptions()[0].mFrom, Rtx::sNoIndex);
@@ -668,15 +650,11 @@ namespace Rtx
             image->allocateImage(4, 4, 1, GL_RGBA, GL_UNSIGNED_BYTE);
             std::fill_n(image->data(), image->getTotalSizeInBytes(), static_cast<unsigned char>(128));
 
-            VFS::Manager vfs;
-            Testing::HeldImages images(&vfs, 0);
-            images.hold(path, image);
-
             Rtx::SceneDesc scene;
-            Testing::addModel(scene, path);
+            Testing::addModel(scene, path, image);
 
             SceneTextures described;
-            described.describeAll(scene, images);
+            described.describeAll(scene);
             ASSERT_EQ(described.getDescriptions().size(), 1u);
             EXPECT_EQ(described.getDescriptions()[0].mLevels.size(), 1u) << "the file's own level and no chain";
             EXPECT_TRUE(described.getDescriptions()[0].mCompleteChain) << "the chain is the device's to make";

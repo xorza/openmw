@@ -91,8 +91,8 @@ namespace Rtx
         VkDeviceAddress getAddress(const Index mesh) const { return mRows[mesh].mStructure.getAddress(); }
 
         /// Whether `mesh`'s structure was built with `ALLOW_UPDATE`, which is whether the scene's
-        /// `MeshRange::mDeform` named a kind at the time it was built. A mesh's kind is fixed when
-        /// it arrives, so this is also whether the mesh can ever be refitted.
+        /// mesh deformed at the time it was built — `MeshRange::deforms`. Whether a mesh deforms is
+        /// fixed when it arrives, so this is also whether the mesh can ever be refitted.
         bool isUpdatable(const Index mesh) const { return mRows[mesh].mUpdatable; }
 
         /// What a refit of `mesh` asks for, so a frame does not have to ask the driver again.

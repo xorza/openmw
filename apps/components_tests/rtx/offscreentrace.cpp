@@ -16,7 +16,6 @@
 #include <osg/Vec3f>
 #include <osg/ref_ptr>
 
-#include <components/resource/imagemanager.hpp>
 #include <components/rtx/offscreentrace.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/scene.h>
@@ -25,7 +24,6 @@
 #include <components/rtx/surfaceview.hpp>
 #include <components/rtx/viewscene.hpp>
 #include <components/sceneutil/offscreenframing.hpp>
-#include <components/vfs/manager.hpp>
 
 #include "countingrenderer.hpp"
 
@@ -164,8 +162,6 @@ namespace Rtx
         /// in the doll on every frame of a slider drag.
         TEST(RtxOffscreenTraceTest, aRebuiltSubjectPlacesWhatArrivedAndHandsTheRoomToWhatComesNext)
         {
-            VFS::Manager vfs;
-            Resource::ImageManager images(&vfs, 0);
             Testing::CountingRenderer renderer;
 
             osg::ref_ptr<osg::Geometry> body = makeQuad();
@@ -183,7 +179,7 @@ namespace Rtx
                     .mSubjectMask = sEveryNode });
             const SceneDesc& scene = *trace.getScene();
 
-            ASSERT_TRUE(trace.rebuildSubject(*stampAt(1), images));
+            ASSERT_TRUE(trace.rebuildSubject(*stampAt(1)));
 
             // Two quads of two triangles each: what a scene holding both looks like.
             EXPECT_EQ(scene.placements().getCounts().mPlaced, 2u);
@@ -194,7 +190,7 @@ namespace Rtx
             osg::ref_ptr<osg::Geometry> hat = makeQuad();
             subject->addChild(hat);
 
-            ASSERT_TRUE(trace.rebuildSubject(*stampAt(2), images));
+            ASSERT_TRUE(trace.rebuildSubject(*stampAt(2)));
 
             // **Still two placements and not three**, which is half the assertion: the hat was
             // placed and the shirt was swept. A mirror that kept what it no longer meets reads
@@ -211,7 +207,7 @@ namespace Rtx
             osg::ref_ptr<osg::Geometry> boots = makeQuad();
             subject->addChild(boots);
 
-            ASSERT_TRUE(trace.rebuildSubject(*stampAt(3), images));
+            ASSERT_TRUE(trace.rebuildSubject(*stampAt(3)));
 
             EXPECT_EQ(scene.placements().getCounts().mPlaced, 2u);
 
@@ -234,8 +230,6 @@ namespace Rtx
         /// acceleration structure in it.
         TEST(RtxOffscreenTraceTest, anEmptySubjectSaysThereIsNothingToTrace)
         {
-            VFS::Manager vfs;
-            Resource::ImageManager images(&vfs, 0);
             Testing::CountingRenderer renderer;
 
             osg::ref_ptr<osg::Group> subject = new osg::Group;
@@ -246,7 +240,7 @@ namespace Rtx
                     .mRayMask = Shaders::MASK_EVERY_CLASS,
                     .mSubject = subject.get(),
                     .mSubjectMask = sEveryNode });
-            EXPECT_FALSE(trace.rebuildSubject(*stampAt(1), images));
+            EXPECT_FALSE(trace.rebuildSubject(*stampAt(1)));
             EXPECT_EQ(trace.getScene()->placements().getCounts().mPlaced, 0u);
         }
 
@@ -254,8 +248,6 @@ namespace Rtx
         /// dropped wherever it appears below, which is the shape the weather bug had.
         TEST(RtxOffscreenTraceTest, theSubjectMaskKeepsTheWalkOutOfWhatItDoesNotName)
         {
-            VFS::Manager vfs;
-            Resource::ImageManager images(&vfs, 0);
             Testing::CountingRenderer renderer;
 
             constexpr osg::Node::NodeMask wanted = 1u << 3;
@@ -279,7 +271,7 @@ namespace Rtx
                     .mRayMask = Shaders::MASK_EVERY_CLASS,
                     .mSubject = subject.get(),
                     .mSubjectMask = wanted });
-            ASSERT_TRUE(trace.rebuildSubject(*stampAt(1), images));
+            ASSERT_TRUE(trace.rebuildSubject(*stampAt(1)));
 
             // One of the two, and the same fixture with `wanted | other` would take both — which is
             // what says the mask is doing the choosing rather than the fixture.
@@ -291,7 +283,7 @@ namespace Rtx
                     .mRayMask = Shaders::MASK_EVERY_CLASS,
                     .mSubject = subject.get(),
                     .mSubjectMask = wanted | other });
-            ASSERT_TRUE(both.rebuildSubject(*stampAt(1), images));
+            ASSERT_TRUE(both.rebuildSubject(*stampAt(1)));
             EXPECT_EQ(both.getScene()->placements().getCounts().mPlaced, 2u);
         }
     }

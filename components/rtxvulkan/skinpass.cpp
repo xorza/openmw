@@ -26,7 +26,7 @@ namespace Rtx
         /// by a mesh that stands, has nothing: its run in the poses holds what the arrival wrote.
         bool posable(const MeshRange& mesh)
         {
-            return mesh.mDeform != Deform::None && !mesh.mVertices.empty();
+            return mesh.deforms() && !mesh.mVertices.empty();
         }
 
         /// Orders the dispatches just recorded against everything that reads what they wrote: the

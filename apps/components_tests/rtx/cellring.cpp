@@ -481,6 +481,13 @@ namespace Rtx::Testing
                 EXPECT_EQ(normal.mPath, "textures/rock_nh.dds");
                 EXPECT_EQ(normal.mWrap, TextureWrap::Repeat);
                 EXPECT_EQ(normal.mEncoding, TextureEncoding::Data);
+
+                // Each slot keeps the image the reader opened on its thread, which is what the
+                // upload reads: the frame it lands on opens no file.
+                EXPECT_EQ(
+                    normal.mImage, mContent.mImages.get(VFS::Path::NormalizedView("textures/rock_nh.dds")).value());
+                EXPECT_EQ(mScene.textures().getRows()[layers[1].mDiffuse].mImage,
+                    mContent.mImages.get(VFS::Path::NormalizedView("textures/rock_diffusespec.dds")).value());
                 EXPECT_EQ(layers[1].mFlags, Shaders::LAYER_AUTHORED | Shaders::LAYER_PARALLAX);
                 EXPECT_TRUE(material.mLayersMapped);
             }
@@ -689,8 +696,10 @@ namespace Rtx::Testing
             ASSERT_EQ(mScene.lights().size(), std::size_t{ 1 }) << "and the lamp beside the dark one burns";
             EXPECT_EQ(mScene.lights().front().mPosition, inCell);
 
-            EXPECT_NE(mScene.textures().findFile(VFS::Path::Normalized("textures/rock_diffusespec.dds")), sNoIndex)
-                << "a layer whose image does not read was dropped rather than stood in for";
+            const Index lost = mScene.textures().findFile(VFS::Path::Normalized("textures/rock_diffusespec.dds"));
+            ASSERT_NE(lost, sNoIndex) << "a layer whose image does not read was dropped rather than stood in for";
+            EXPECT_EQ(mScene.textures().getRows()[lost].mImage, nullptr)
+                << "the slot the upload stands in keeps no image";
         }
 
         /// The paging's size rule, per reference: a radius under the threshold at the eye's distance

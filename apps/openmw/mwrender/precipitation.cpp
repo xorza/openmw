@@ -354,9 +354,9 @@ namespace MWRender
         return false;
     }
 
-    float Precipitation::getPrecipitationAlpha() const
+    float Precipitation::getRainOnWater() const
     {
-        return mPrecipitationAlpha;
+        return getRainRipplesEnabled() ? mPrecipitationAlpha : 0.0f;
     }
 
     void Precipitation::update()

@@ -365,9 +365,11 @@ namespace Rtx
         TEST(RtxSkyBuilderTest, whatTheSkyHoldsIsGivenBackWhole)
         {
             SceneDesc scene;
+            VFS::Manager vfs;
+            Resource::ImageManager images(&vfs, 0);
 
             const Rtx::MoonFaces moons
-                = Rtx::addMoonFaces(scene, Rtx::MoonSizes{ .mMasser = 94.0f, .mSecunda = 40.0f });
+                = Rtx::addMoonFaces(scene, images, Rtx::MoonSizes{ .mMasser = 94.0f, .mSecunda = 40.0f });
             EXPECT_EQ(scene.textures().getHolds(moons.mMasser), 1u);
             EXPECT_EQ(scene.textures().getHolds(moons.mSecunda), 1u);
 

@@ -93,11 +93,11 @@ namespace Rtx
             || (!mBlacklisted.empty() && std::binary_search(mBlacklisted.begin(), mBlacklisted.end(), refnum));
     }
 
-    bool CellPlacer::wantsFlattening(const osg::Vec2i& cell, const HeldGround& ground, const WorldAround& around)
+    bool CellPlacer::wantsFlattening(const osg::Vec2i& cell, const Material& ground, const WorldAround& around)
     {
         // A stack is flattened outside the active grid, where the quad tree flattens too, and a
         // single layer is never, because it is already a single fetch.
-        return ground.mLayers > 1 && !inActiveGrid(cell, around.mActiveGrid);
+        return ground.mLayers.mCount > 1 && !inActiveGrid(cell, around.mActiveGrid);
     }
 
     void CellPlacer::adoptGround(
@@ -116,15 +116,15 @@ namespace Rtx
 
             // A table with no room left names the neutral texel: the device reads a layer's slot
             // with no test, as it reads a material's diffuse.
-            const Index slot = mScene.textures().add(layer.mTexture->mPath);
+            const Index slot = mScene.textures().add(layer.mTexture->mPath, layer.mTexture->mImage.get());
             row.mDiffuse = slot != sNoIndex ? slot : Shaders::TEXTURE_NEUTRAL;
 
             // A normal map is data and tiles with the diffuse; one the table has no room for is
             // no normal map, and the layer keeps the chunk's normal and its own coordinates.
             if (layer.mNormalTexture != nullptr)
             {
-                row.mNormal
-                    = mScene.textures().add(layer.mNormalTexture->mPath, TextureWrap::Repeat, TextureEncoding::Data);
+                row.mNormal = mScene.textures().add(layer.mNormalTexture->mPath, layer.mNormalTexture->mImage.get(),
+                    TextureWrap::Repeat, TextureEncoding::Data);
                 stands.mTextures.push_back(layer.mNormalTexture);
                 if (layer.mParallax && row.mNormal != sNoIndex)
                     row.mFlags |= Shaders::LAYER_PARALLAX;
@@ -151,13 +151,10 @@ namespace Rtx
             stands.mTextures.push_back(layer.mTexture);
         }
 
-        stands.mLayers = static_cast<std::uint32_t>(mLayerScratch.size());
         stands.mStood.mTransform = osg::Matrixf::translate(ground.mOrigin);
-        stands.mFlattened = wantsFlattening(held.mCell, stands, around);
 
         Material material;
         material.mKind = MaterialKind::Terrain;
-        material.mFlatten = stands.mFlattened;
 
         // Stated here, because the ground is nobody's node. Every other material reads its
         // mode off a state set `NifOsg` described, and this one is stood off the land records —
@@ -166,6 +163,7 @@ namespace Rtx
         material.mLayersMapped = mapped;
         if (!mLayerScratch.empty())
             material.mLayers = mScene.materials().addLayers(mLayerScratch);
+        material.mFlatten = wantsFlattening(held.mCell, material, around);
         stands.mStood.mMaterial = mScene.addMaterial(material);
 
         // A heightfield is neither a sheet nor closed, and no fold is needed to say so.
@@ -174,7 +172,7 @@ namespace Rtx
                                                  .mTexCoords = ground.mTexCoords,
                                                  .mColours = ground.mColours,
                                                  .mIndices = ground.mIndices },
-            FoldedShape{}, Deform::None, sNoIndex);
+            FoldedShape{});
 
         // Held on the scene, because no drawable and no state set will ever name them. The
         // sweep keeps a held row, and `dropGround` is what lets go.
@@ -328,14 +326,14 @@ namespace Rtx
 
             // A cell crossing the grid's edge shades the other way from now on. The composite it
             // held goes with the rewrite, and one it now wants is asked for by the row.
-            if (wantsFlattening(cell.mCell, ground, around) != ground.mFlattened)
+            const Material& stood = mScene.materials().getRows()[ground.mStood.mMaterial];
+            if (const bool wanted = wantsFlattening(cell.mCell, stood, around); wanted != stood.mFlatten)
             {
-                Material given = mScene.materials().getRows()[ground.mStood.mMaterial];
-                given.mFlatten = !ground.mFlattened;
+                Material given = stood;
+                given.mFlatten = wanted;
                 given.mDiffuse = sNoIndex;
                 given.mSpecular = sNoIndex;
                 mScene.setMaterial(ground.mStood.mMaterial, given);
-                ground.mFlattened = given.mFlatten;
             }
         }
 

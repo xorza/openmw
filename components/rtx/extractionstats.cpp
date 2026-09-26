@@ -1,10 +1,6 @@
 #include "extractionstats.hpp"
 
-#include <cstddef>
-
-#include <osg/Image>
-
-#include "texels.hpp"
+#include <array>
 
 namespace Rtx
 {
@@ -36,40 +32,12 @@ namespace Rtx
         };
     }
 
-    void FormatCensus::count(const osg::Image& image, const TextureEncoding encoding)
-    {
-        const TextureFormat format = readFormat(image, encoding);
-
-        FormatCount& met = mMet[static_cast<std::size_t>(format)];
-        ++met.mMet;
-        if (image.getNumMipmapLevels() > 1)
-            ++met.mMipped;
-
-        if (format == TextureFormat::Unnamed)
-            mUnnamed = static_cast<std::uint32_t>(image.getPixelFormat());
-    }
-
-    FormatCensus& FormatCensus::operator+=(const FormatCensus& other)
-    {
-        for (std::size_t at = 0; at < mMet.size(); ++at)
-        {
-            mMet[at].mMet += other.mMet[at].mMet;
-            mMet[at].mMipped += other.mMet[at].mMipped;
-        }
-
-        if (other.mUnnamed != 0)
-            mUnnamed = other.mUnnamed;
-
-        return *this;
-    }
-
     ExtractionStats& ExtractionStats::operator+=(const ExtractionStats& other)
     {
         for (const auto counter : sCounters)
             this->*counter += other.*counter;
 
         mFoldMs += other.mFoldMs;
-        mFormats += other.mFormats;
 
         return *this;
     }

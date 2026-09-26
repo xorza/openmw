@@ -50,9 +50,9 @@ namespace MWRender
 
         bool hasRain() const;
 
-        bool getRainRipplesEnabled() const;
-
-        float getPrecipitationAlpha() const;
+        /// How much of what is falling rings the water, nought to one: the precipitation's alpha
+        /// where its kind makes ripples. The one answer both renderers' water reads.
+        float getRainOnWater() const;
 
         /// Enable or disable the water plane (used to remove underwater weather particles)
         void setWaterEnabled(bool enabled);
@@ -85,6 +85,8 @@ namespace MWRender
         const osg::Vec3f& getOcclusionRange() const { return mOcclusionRange; }
 
     private:
+        bool getRainRipplesEnabled() const;
+
         void createRain();
         void destroyRain();
         void switchUnderwaterRain();

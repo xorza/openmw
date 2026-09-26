@@ -36,7 +36,7 @@ namespace MWRender
         void removeCell(const MWWorld::CellStore& cell);
 
         /// Something struck the water at `at`, which is pressed on the next `update` if it landed
-        /// within `sStrikeReach` of the surface — `RippleSimulation::emitRipple`'s own test.
+        /// near enough the surface — `strikesWater`, the test `RippleSimulation::emitRipple` asks.
         void splash(const osg::Vec3f& at);
 
         /// Decides this frame's impulses: the wading emitters and the strikes since the last.
@@ -51,14 +51,6 @@ namespace MWRender
         void clear();
 
     private:
-        /// The ring a footfall or a strike presses, in world units: `RippleSimulation::emitRipple`'s
-        /// `particleRippleSizeInUnits`.
-        static constexpr float sFootfall = 12.0f;
-
-        /// How far above or below the surface a strike still presses a ring, in world units:
-        /// `RippleSimulation::emitRipple`'s own twenty.
-        static constexpr float sStrikeReach = 20.0f;
-
         std::vector<MWWorld::ConstPtr> mEmitters;
 
         /// Strikes since the last update, and the impulses the last update decided. Both refilled

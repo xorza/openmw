@@ -8,11 +8,6 @@
 #include "slot.hpp"
 #include "texturebuilder.hpp"
 
-namespace Resource
-{
-    class ImageManager;
-}
-
 namespace Rtx
 {
     class CompositeQueue;
@@ -66,8 +61,6 @@ namespace Rtx
             /// Walked this frame, and mutable because its arrivals are consumed here, so a caller
             /// cannot upload them twice or lose them.
             SceneDesc& mScene;
-
-            Resource::ImageManager& mImages;
 
             /// The world's terrain baker, or null for a scene with no distant ground: a doll and a
             /// map tile have none to flatten.

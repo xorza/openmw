@@ -8,8 +8,10 @@
 #include <osg/StateAttribute>
 #include <osg/ref_ptr>
 
+#include <components/rtx/formatcensus.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/texturedata.hpp>
+#include <components/rtx/texturetable.hpp>
 
 namespace Rtx::Testing
 {
@@ -35,10 +37,12 @@ namespace Rtx::Testing
         }
 
         /// A texture arrives under the format it was decoded in, and its mip chain is counted beside
-        /// it.
+        /// it — and leaves with its slot.
         ///
         /// The count is what says whether the content is what the uploader was written for, so a
-        /// walk that met a format nobody expected reports it rather than leaving it to a throw.
+        /// scene that stands a format nobody expected reports it rather than leaving it to a throw.
+        /// **Kept by the table and not by the walk**, so a second walk over the same graph reads
+        /// the same census and a region walked away from is counted out of it.
         TEST_F(RtxSceneExtractorTest, texturesAreCountedByFormatAndByWhetherTheyBroughtMips)
         {
             osg::ref_ptr<osg::Image> chained = new osg::Image;
@@ -61,12 +65,26 @@ namespace Rtx::Testing
                 root->addChild(quad);
             }
 
-            const ExtractionStats stats = walk(*root);
+            walk(*root);
+            mExtractor.retire();
 
-            const FormatCount& blocks = stats.mFormats.mMet[static_cast<std::size_t>(TextureFormat::Bc1RgbaSrgb)];
+            const FormatCensus& census = mScene.textures().getFormats();
+            const FormatCount& blocks = census.mMet[static_cast<std::size_t>(TextureFormat::Bc1RgbaSrgb)];
             EXPECT_EQ(blocks.mMet, 2u);
             EXPECT_EQ(blocks.mMipped, 1u) << "one of the two brought a chain";
-            EXPECT_EQ(stats.mFormats.mMet[static_cast<std::size_t>(TextureFormat::Unnamed)].mMet, 0u);
+            EXPECT_EQ(census.mMet[static_cast<std::size_t>(TextureFormat::Unnamed)].mMet, 0u);
+
+            mScene.clearPlacement();
+            walk(*root, 0, 1);
+            mExtractor.retire();
+            EXPECT_EQ(blocks.mMet, 2u) << "a second walk counted what the first already stood";
+
+            root->removeChildren(0, root->getNumChildren());
+            mScene.clearPlacement();
+            walk(*root, 0, 2);
+            mExtractor.retire();
+            EXPECT_EQ(blocks.mMet, 0u) << "a slot freed kept its count";
+            EXPECT_EQ(blocks.mMipped, 0u);
         }
 
         /// Every count of a walk, each a different number, so a sum short of one is short by an
@@ -88,8 +106,6 @@ namespace Rtx::Testing
             stats.mUndescribedSurfaces = from + 12;
             stats.mSkippedEmpty = from + 13;
             stats.mLights = from + 14;
-            stats.mFormats.mMet[static_cast<std::size_t>(TextureFormat::Bc3Srgb)]
-                = FormatCount{ .mMet = from + 15, .mMipped = from + 16 };
             stats.mUnskinned = from + 17;
             stats.mGroundCells = from + 18;
             stats.mWornBeyondKept = from + 21;
@@ -125,26 +141,6 @@ namespace Rtx::Testing
             EXPECT_EQ(sum.mGroundCells, 136u);
             EXPECT_EQ(sum.mWornBeyondKept, 142u);
             EXPECT_EQ(sum.mRestood, 144u);
-
-            const FormatCount& blocks = sum.mFormats.mMet[static_cast<std::size_t>(TextureFormat::Bc3Srgb)];
-            EXPECT_EQ(blocks.mMet, 130u);
-            EXPECT_EQ(blocks.mMipped, 132u);
-            EXPECT_EQ(sum.mFormats.mMet[static_cast<std::size_t>(TextureFormat::Bc1RgbaSrgb)].mMet, 0u);
-        }
-
-        /// The format an unnamed count stood for survives the sum, since a report that says how many
-        /// there were and not which they were sends the reader nowhere.
-        TEST_F(RtxSceneExtractorTest, theUnnamedFormatSurvivesASumWithAWalkThatMetNone)
-        {
-            ExtractionStats met;
-            met.mFormats.mUnnamed = GL_ALPHA;
-
-            ExtractionStats sum;
-            sum += met;
-            EXPECT_EQ(sum.mFormats.mUnnamed, GL_ALPHA);
-
-            sum += ExtractionStats{};
-            EXPECT_EQ(sum.mFormats.mUnnamed, GL_ALPHA) << "a walk that met none says nothing about it";
         }
     }
 }

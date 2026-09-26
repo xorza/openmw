@@ -1,44 +1,9 @@
 #pragma once
 
-#include <array>
 #include <cstdint>
-
-#include "texturedata.hpp"
-#include "textureencoding.hpp"
-
-namespace osg
-{
-    class Image;
-}
 
 namespace Rtx
 {
-    /// How many textures of one format a walk met, and how many of those brought mips.
-    struct FormatCount
-    {
-        std::uint32_t mMet = 0;
-        std::uint32_t mMipped = 0;
-    };
-
-    /// What the textures a walk reached for turned out to be, one entry per `TextureFormat`, counted
-    /// by enumerator and named at the end, because naming one where it is met builds a
-    /// `std::string` on the frame path. Its own struct because the unnamed format is the last one
-    /// seen rather than a total.
-    struct FormatCensus
-    {
-        std::array<FormatCount, sTextureFormatCount> mMet{};
-
-        /// The pixel format the `Unnamed` count last stood for, or zero — the whole of what makes
-        /// that count worth printing, because a format nothing names is a canary and the reader's
-        /// next step is to look this one up.
-        std::uint32_t mUnnamed = 0;
-
-        /// Counts `image` under its format as `encoding`, and its mips beside it.
-        void count(const osg::Image& image, TextureEncoding encoding = TextureEncoding::Colour);
-
-        FormatCensus& operator+=(const FormatCensus& other);
-    };
-
     /// What one extraction pass did. The reused counts are the interesting half: a mirror that
     /// adds nothing on a second pass over an unchanged graph is only visible as a number.
     struct ExtractionStats
@@ -98,8 +63,6 @@ namespace Rtx
         /// worn more distinct ones than `MaterialResolver::Worn` holds. Nought on the shipped
         /// content, whose longest cycle is exactly what is held.
         std::uint32_t mWornBeyondKept = 0;
-
-        FormatCensus mFormats;
 
         /// Geometry with no vertices or no triangles. Morrowind ships some, and the game draws
         /// nothing for them either. What the content has and this renderer cannot take is not

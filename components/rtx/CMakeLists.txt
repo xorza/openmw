@@ -47,6 +47,8 @@ set(RTX_FILES
     finite.hpp
     fogbuilder.cpp
     fogbuilder.hpp
+    formatcensus.cpp
+    formatcensus.hpp
     framedigest.hpp
     frameimage.cpp
     frameimage.hpp

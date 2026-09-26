@@ -455,7 +455,7 @@ namespace MWRender
             mApplied.mWaterEnabled = world.mWater.isShown();
         }
 
-        mWater->setRainIntensity(precipitation.getRainRipplesEnabled() ? precipitation.getPrecipitationAlpha() : 0.f);
+        mWater->setRainIntensity(precipitation.getRainOnWater());
         mWater->update(frame.mDeltaTime, frame.mPaused);
 
         mApplied.mAny = true;

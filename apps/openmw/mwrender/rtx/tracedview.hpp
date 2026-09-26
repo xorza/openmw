@@ -20,11 +20,6 @@ namespace osg
     class Image;
 }
 
-namespace Resource
-{
-    class ImageManager;
-}
-
 namespace Rtx
 {
     class Renderer;
@@ -33,19 +28,6 @@ namespace Rtx
 namespace MWRender
 {
     class ViewQueue;
-
-    /// The moment a picture of its own subject walks that subject at.
-    ///
-    /// **Asked for per redraw and never stored**, because two of the three change every frame. A
-    /// view that kept them would pose against whichever frame it was made on.
-    struct PoseMoment
-    {
-        /// The renderer's own clock, which advances once per drawn frame whether or not the world's
-        /// does. A doll posed against a stopped clock is a doll frozen the first time it was drawn.
-        const osg::FrameStamp& mStamp;
-
-        Resource::ImageManager& mImages;
-    };
 
     /// Which of the seam's two pictures a view is: `Rtx::ViewRequest::mSubject`'s own word, said as
     /// a word rather than as a pointer that repeats the spec's scene.
@@ -90,10 +72,14 @@ namespace MWRender
         void sceneChanged() override;
         void redraw() override;
 
-        /// The drawing `redraw` asked for: the subject posed at `moment`, walked and handed over,
+        /// The drawing `redraw` asked for: the subject posed at `posing`, walked and handed over,
         /// and the trace recorded. The queue calls it inside the frame's window, once there is a
         /// world.
-        void draw(const PoseMoment& moment);
+        ///
+        /// @param posing the renderer's own clock, which advances once per drawn frame whether or
+        ///        not the world's does: a doll posed against a stopped clock is a doll frozen the
+        ///        first time it was drawn. Asked for per redraw and never stored.
+        void draw(const osg::FrameStamp& posing);
 
         bool isOfWorld() const { return mTrace.isOfWorld(); }
 

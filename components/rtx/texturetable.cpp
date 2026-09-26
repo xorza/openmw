@@ -35,8 +35,8 @@ namespace Rtx
         return index;
     }
 
-    Index TextureTable::add(
-        const VFS::Path::NormalizedView path, const TextureWrap wrap, const TextureEncoding encoding)
+    Index TextureTable::add(const VFS::Path::NormalizedView path, const osg::Image* const image, const TextureWrap wrap,
+        const TextureEncoding encoding)
     {
         const auto as = static_cast<std::size_t>(encoding);
         const auto at = static_cast<std::size_t>(wrap);
@@ -53,7 +53,11 @@ namespace Rtx
             .mPath = VFS::Path::Normalized(path),
             .mWrap = wrap,
             .mEncoding = encoding,
+            .mImage = image,
         });
+
+        if (image != nullptr)
+            mFormats.count(*image, encoding);
 
         if (known == mPathIndex.end())
         {
@@ -65,6 +69,14 @@ namespace Rtx
         known->second[as][at] = index;
 
         return index;
+    }
+
+    Index TextureTable::take(const VFS::Path::NormalizedView path, const osg::Image& image, const TextureWrap wrap,
+        const TextureEncoding encoding)
+    {
+        const Index slot = add(path, &image, wrap, encoding);
+        hold(slot);
+        return slot;
     }
 
     Index TextureTable::findFile(const VFS::Path::NormalizedView path) const
@@ -133,6 +145,8 @@ namespace Rtx
                         return std::ranges::all_of(slots, [](const Index slot) { return slot == sNoIndex; });
                     }))
                     mPathIndex.erase(known);
+                if (row.mImage != nullptr)
+                    mFormats.discount(*row.mImage, row.mEncoding);
                 break;
             }
             case TextureKind::Baked:

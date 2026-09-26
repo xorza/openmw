@@ -175,11 +175,11 @@ namespace Rtx
         /// where it is set: a scene where no mesh has any digests to the words on record.
         auto fieldsOf(const MeshRange& mesh)
         {
-            const auto& [vertices, indices, secondTexCoords, unitStreams, tangents, shape, deform, deformer, bindOffset,
+            const auto& [vertices, indices, secondTexCoords, unitStreams, tangents, shape, deformer, bindOffset,
                 poseOffset, posed, bounds]
                 = mesh;
-            return std::tie(vertices, indices, secondTexCoords, unitStreams, shape, deform, deformer, bindOffset,
-                poseOffset, posed, bounds);
+            return std::tie(vertices, indices, secondTexCoords, unitStreams, shape, deformer, bindOffset, poseOffset,
+                posed, bounds);
         }
 
         auto fieldsOf(const MeshInstance& instance)
@@ -326,7 +326,7 @@ namespace Rtx
         {
             const MeshRange& mesh = scene.meshes().getRows()[index];
             digest.add(digestTriangles(scene, mesh).getWords());
-            digest.add(mesh.mDeform);
+            digest.add(scene.deformers().kindOf(mesh));
         }
     }
 

@@ -276,8 +276,7 @@ namespace Rtx
                 continue;
             }
 
-            const Index slot = scene.textures().add(VFS::Path::Normalized(layer.mImage->getFileName()));
-            scene.textures().hold(slot);
+            const Index slot = scene.textures().take(VFS::Path::Normalized(layer.mImage->getFileName()), *layer.mImage);
 
             if (std::min(layer.mUvSpan.x(), layer.mUvSpan.y()) > sTiledSpan)
             {

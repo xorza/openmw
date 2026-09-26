@@ -96,8 +96,11 @@ namespace Rtx
         if (sprite == nullptr)
             return;
 
+        // Held, because nothing else can name them. An emitter is a placement and is thrown
+        // away every frame, so this entry is the only lasting thing that says the sprite is in
+        // use; the scene frees the slots when the sweep lets go of them.
         const VFS::Path::Normalized path(sprite->getFileName());
-        held.mIndex = mScene.textures().add(path, use.mWrap);
+        held.mIndex = mScene.textures().take(path, *sprite, use.mWrap);
         if (held.mIndex == sNoIndex)
             mScene.refusals().refuse(
                 Refused::Emitter, particles.getName(), "the texture array has no room for its image");
@@ -105,11 +108,6 @@ namespace Rtx
         // The bake is keyed on the file, so two emitters drawing with one texture share one
         // bake, and it is made when the texture is opened for upload — `SceneTextures`.
         held.mLighting = mScene.textures().addBaked(SpriteLightMap::keyFor(path));
-
-        // Held, because nothing else can name them. An emitter is a placement and is thrown
-        // away every frame, so this entry is the only lasting thing that says the sprite is in
-        // use; the scene frees the slots when the sweep lets go of them.
-        mScene.textures().hold(held.mIndex);
         mScene.textures().hold(held.mLighting);
     }
 
@@ -281,8 +279,6 @@ namespace Rtx
 
         if (mSpriteScratch.empty())
             return;
-
-        stats.mFormats.count(*held.mSprite);
 
         mScene.addEmitter(
             mSpriteScratch, held.mIndex, held.mBlend != BlendKind::Over, width, held.mLighting, pending.mFalls);

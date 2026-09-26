@@ -42,7 +42,7 @@ namespace Rtx
         /// Copies the vertex data into the shared buffers and returns the new mesh's index. The
         /// mesh fits a block — `checkFits`. A deforming mesh is stood on `deformer` in
         /// `deformers`, which must hold it.
-        Index add(DeformerTable& deformers, const MeshArrays& arrays, FoldedShape shape, Deform deform, Index deformer);
+        Index add(DeformerTable& deformers, const MeshArrays& arrays, FoldedShape shape, Index deformer);
 
         /// What a pose that changed does beside its rows: the reach, and the mesh named for the
         /// frame, once.

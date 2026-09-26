@@ -79,14 +79,12 @@ namespace Rtx
         /// @param composites which slots are chunks' flattened ground, or null for a caller that
         ///        flattens none. A terrain slot the queue did not give out is described as the
         ///        stand-in and refused.
-        void describeAll(
-            const SceneDesc& scene, Resource::ImageManager& images, const CompositeQueue* composites = nullptr);
+        void describeAll(const SceneDesc& scene, const CompositeQueue* composites = nullptr);
 
         /// The same, for `slots` and nothing else — what stops a texture being described twice. A
         /// list and not an offset, because a slot a departing cell freed is taken over wherever it
         /// sits.
-        void describe(const SceneDesc& scene, Resource::ImageManager& images, std::span<const Index> slots,
-            const CompositeQueue* composites = nullptr);
+        void describe(const SceneDesc& scene, std::span<const Index> slots, const CompositeQueue* composites = nullptr);
 
         /// What the last `describe` found, each carrying the slot it goes to in `TextureData::mSlot`.
         std::span<const TextureData> getDescriptions() const { return mDescriptions; }

@@ -41,6 +41,7 @@
 #include <components/resource/resourcesystem.hpp>
 #include <components/rtx/cellgrid.hpp>
 #include <components/rtx/extractionstats.hpp>
+#include <components/rtx/formatcensus.hpp>
 #include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/material.hpp>
 #include <components/rtx/mesh.hpp>
@@ -53,6 +54,7 @@
 #include <components/rtx/texels.hpp>
 #include <components/rtx/texturebuilder.hpp>
 #include <components/rtx/texturedata.hpp>
+#include <components/rtx/texturetable.hpp>
 #include <components/rtxbench/benchrecord.hpp>
 #include <components/rtxbench/framehashes.hpp>
 #include <components/rtxbench/runrecord.hpp>
@@ -174,9 +176,11 @@ namespace RtxTool
                 scene.meshes().getColours().size() * sizeof(osg::Vec3f) / 1024, Rtx::spellHash(Rtx::digestScene(scene)),
                 Rtx::spellHash(Rtx::digestLayout(Rtx::digestParts(scene)))));
 
-        for (std::size_t at = 0; at < stats.mFormats.mMet.size(); ++at)
+        // The images the standing slots keep, off the table that keeps them.
+        const Rtx::FormatCensus& formats = scene.textures().getFormats();
+        for (std::size_t at = 0; at < formats.mMet.size(); ++at)
         {
-            const Rtx::FormatCount& count = stats.mFormats.mMet[at];
+            const Rtx::FormatCount& count = formats.mMet[at];
             const auto format = static_cast<Rtx::TextureFormat>(at);
 
             if (count.mMipped > 0)
@@ -185,7 +189,7 @@ namespace RtxTool
                 into.mRecord.note(
                     std::format("  {} x {}, one level\n", count.mMet - count.mMipped, Rtx::nameOf(format)));
             if (count.mMet > 0 && format == Rtx::TextureFormat::Unnamed)
-                into.mRecord.note(std::format("    which was pixel format {}\n", stats.mFormats.mUnnamed));
+                into.mRecord.note(std::format("    which was pixel format {}\n", formats.mUnnamed));
         }
 
         // Which materials traversal will have to stop and ask about, which of those asked for it
@@ -282,14 +286,10 @@ namespace RtxTool
 
     void StopWriter::writeSheet(const Writing& into, const std::filesystem::path& sheet)
     {
-        Resource::ResourceSystem* resources = into.mContext.mResources;
-        if (resources == nullptr)
-            return;
-
         const Rtx::SceneDesc& scene = into.mContext.mScene;
 
         Rtx::SceneTextures described;
-        described.describeAll(scene, *resources->getImageManager());
+        described.describeAll(scene);
 
         const float delight = into.mContext.mRenderer.getProfile().mDelight;
         const Rtx::ContactSheet drawn = Rtx::writeContactSheet(described.getDescriptions(), sheet, delight);

@@ -452,8 +452,7 @@ namespace MWRender
             return 0.0;
 
         const std::chrono::steady_clock::time_point began = std::chrono::steady_clock::now();
-        mViews.draw(
-            sWorldViewsPerFrame, PoseMoment{ .mStamp = getFrameStamp(), .mImages = *getResources().getImageManager() });
+        mViews.draw(sWorldViewsPerFrame, getFrameStamp());
         return Rtx::since(began, std::chrono::steady_clock::now());
     }
 

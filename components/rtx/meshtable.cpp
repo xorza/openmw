@@ -48,8 +48,7 @@ namespace Rtx
         return {};
     }
 
-    Index MeshTable::add(
-        DeformerTable& deformers, const MeshArrays& arrays, FoldedShape shape, Deform deform, Index deformer)
+    Index MeshTable::add(DeformerTable& deformers, const MeshArrays& arrays, FoldedShape shape, Index deformer)
     {
         assert(checkFits(arrays).isOk() && "a mesh past a block, which its reader was to refuse");
 
@@ -66,9 +65,8 @@ namespace Rtx
         assert(arrays.mTangents.empty() || arrays.mTangents.size() == positions.size());
         assert(indices.size() % 3 == 0);
         assert(std::all_of(indices.begin(), indices.end(), [&](std::uint32_t i) { return i < positions.size(); }));
-        assert((deform == Deform::None) == (deformer == sNoIndex) && "a deforming mesh names what poses it");
-        assert(deform == Deform::None
-            || (deformer < deformers.getDeformers().size() && deformers.getDeformers()[deformer].mKind == deform
+        assert(deformer == sNoIndex
+            || (deformer < deformers.getDeformers().size() && deformers.getDeformers()[deformer].mKind != Deform::None
                 && deformers.getDeformers()[deformer].getVertexCount() == positions.size()
                 && "a deformer moves exactly the vertices of the mesh on it"));
 
@@ -85,7 +83,6 @@ namespace Rtx
             .mSecondTexCoords = second,
             .mUnitStreams = arrays.mSecondTexCoords.empty() ? 0u : arrays.mUnitStreams,
             .mShape = shape,
-            .mDeform = deform,
             .mDeformer = deformer,
             .mBounds = boundsOf(positions),
         };

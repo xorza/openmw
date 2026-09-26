@@ -1,9 +1,10 @@
 #include "rippleemitters.hpp"
 
 #include <algorithm>
-#include <cmath>
 
 #include <osg/Vec2f>
+
+#include "../ripplerules.hpp"
 
 #include "../../mwbase/environment.hpp"
 #include "../../mwbase/world.hpp"
@@ -58,21 +59,19 @@ namespace MWRender
             if (!ptr.isInCell())
                 continue;
 
-            const osg::Vec3f at = ptr.getRefData().getPosition().asVec3();
-            const bool wading
-                = (world.isUnderwater(ptr.getCell(), at) && !world.isSubmerged(ptr)) || world.isWalkingOnWater(ptr);
-            if (!wading)
+            if (!isWading(world, ptr))
                 continue;
 
             // Every frame and not on a timer, as the rasterizer's own field is pressed: a ring a
             // frame is a wake, and one every second and a half is a row of rings.
-            mImpulses.push_back(Rtx::RippleImpulse{ .mAt = osg::Vec2f(at.x(), at.y()), .mSize = sFootfall });
+            const osg::Vec3f at = ptr.getRefData().getPosition().asVec3();
+            mImpulses.push_back(Rtx::RippleImpulse{ .mAt = osg::Vec2f(at.x(), at.y()), .mSize = sRippleSize });
         }
 
         for (const osg::Vec3f& strike : mStrikes)
-            if (std::abs(strike.z() - water.mHeight) < sStrikeReach)
+            if (strikesWater(strike.z(), water.mHeight))
                 mImpulses.push_back(
-                    Rtx::RippleImpulse{ .mAt = osg::Vec2f(strike.x(), strike.y()), .mSize = sFootfall });
+                    Rtx::RippleImpulse{ .mAt = osg::Vec2f(strike.x(), strike.y()), .mSize = sRippleSize });
 
         mStrikes.clear();
     }

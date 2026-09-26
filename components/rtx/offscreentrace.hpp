@@ -26,11 +26,6 @@ namespace osg
     class FrameStamp;
 }
 
-namespace Resource
-{
-    class ImageManager;
-}
-
 namespace Rtx
 {
     class PoseCull;
@@ -133,7 +128,7 @@ namespace Rtx
         /// @param posing what the update traversal runs on — the caller's own drawing clock, because
         ///        a skeleton keeps the last number it saw and a clock that stood still would move the
         ///        doll's bones the first time and never again.
-        bool rebuildSubject(const osg::FrameStamp& posing, Resource::ImageManager& images);
+        bool rebuildSubject(const osg::FrameStamp& posing);
 
         /// Traces the picture into `texture`, a slot from `Renderer::addGuiTexture`, and leaves a
         /// copy for `takeCopy` where `readBack` asks for one.

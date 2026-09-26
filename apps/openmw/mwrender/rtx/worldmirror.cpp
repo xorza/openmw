@@ -153,7 +153,6 @@ namespace MWRender
 
     void WorldMirror::attach(Resource::ResourceSystem& resources)
     {
-        mImages = resources.getImageManager();
         mContent = std::make_unique<SceneContent>(*resources.getSceneManager());
     }
 
@@ -176,7 +175,6 @@ namespace MWRender
             mExtractor.detach(mRing);
 
         mContent.reset();
-        mImages = nullptr;
     }
 
     void WorldMirror::standSea(const MWWorld::CellStore& cell)
@@ -293,14 +291,9 @@ namespace MWRender
 
     Rtx::SceneUpload WorldMirror::hand(Rtx::Renderer& renderer, Rtx::FrameSpend& spend)
     {
-        assert(mImages != nullptr && "a hand-over before the world was attached");
-
         return mUploader.hand(renderer,
-            Rtx::SceneUploader::Handing{ .mSlot = Rtx::SceneSlot::world(),
-                .mScene = mScene,
-                .mImages = *mImages,
-                .mComposites = &mComposites,
-                .mSpend = &spend });
+            Rtx::SceneUploader::Handing{
+                .mSlot = Rtx::SceneSlot::world(), .mScene = mScene, .mComposites = &mComposites, .mSpend = &spend });
     }
 
 }

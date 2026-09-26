@@ -130,7 +130,7 @@ namespace Rtx
                                                    .mNormals = sideways,
                                                    .mTangents = alongX,
                                                    .mIndices = Testing::sQuadIndices },
-                {}, Deform::Rig, onOneBone.mDeformer);
+                {}, onOneBone.mDeformer);
             const Index lifted = scene
                                      .addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad,
                                                   .mNormals = upward,
@@ -443,7 +443,7 @@ namespace Rtx
             scene.clearPlacement();
             const Index second = scene.addMesh(
                 MeshArrays{ .mPositions = Testing::sUnitQuad, .mNormals = upward, .mIndices = Testing::sQuadIndices },
-                {}, Deform::Rig, body.mDeformer);
+                {}, body.mDeformer);
             const std::array atTwo{ Testing::boneUp(2.0f) };
             Testing::poseRig(scene, second, atTwo, anywhere);
             ASSERT_EQ(scene.meshes().getArrived().size(), 1u);

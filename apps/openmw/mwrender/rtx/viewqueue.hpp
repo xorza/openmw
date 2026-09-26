@@ -5,11 +5,15 @@
 
 #include <osg/Vec2f>
 
+namespace osg
+{
+    class FrameStamp;
+}
+
 namespace MWRender
 {
     class TracedOverlay;
     class TracedView;
-    struct PoseMoment;
 
     /// The pictures inside the interface that the ray tracer holds — the views and the map's
     /// overlay — and the views asked for since the last frame: a view is drawn in the next frame's
@@ -33,8 +37,8 @@ namespace MWRender
         /// Draws the pictures asked for since the last flush: every subject's and up to
         /// `worldViews` of the world's, the rest waiting for the next. A fresh load asks for nine
         /// map tiles at once and a cell crossing for a row of three; a picture of a subject is
-        /// never held back. A subject is posed at `moment`.
-        void draw(std::uint32_t worldViews, const PoseMoment& moment);
+        /// never held back. A subject is posed at `posing` — `TracedView::draw`.
+        void draw(std::uint32_t worldViews, const osg::FrameStamp& posing);
 
         /// Whether a flush is in progress, which a flush inside a flush must not be.
         bool isDrawing() const { return !mDrawing.empty(); }

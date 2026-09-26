@@ -19,6 +19,7 @@
 #include <components/sceneutil/depth.hpp>
 #include <components/sceneutil/material.hpp>
 
+#include "ripplerules.hpp"
 #include "vismask.hpp"
 
 #include "../mwbase/environment.hpp"
@@ -157,8 +158,7 @@ namespace MWRender
 
             osg::Vec3f currentPos(ptr.getRefData().getPosition().asVec3());
 
-            bool shouldEmit = (world->isUnderwater(ptr.getCell(), currentPos) && !world->isSubmerged(ptr))
-                || world->isWalkingOnWater(ptr);
+            bool shouldEmit = isWading(*world, ptr);
 
             if (!shouldEmit)
             {
@@ -233,12 +233,11 @@ namespace MWRender
 
     void RippleSimulation::emitRipple(const osg::Vec3f& pos)
     {
-        if (std::abs(pos.z() - mParticleNode->getPosition().z()) < 20)
+        if (strikesWater(pos.z(), static_cast<float>(mParticleNode->getPosition().z())))
         {
             if (mRipples)
             {
-                constexpr float particleRippleSizeInUnits = 12.f;
-                mRipples->emit(osg::Vec3f(pos.x(), pos.y(), 0.f), particleRippleSizeInUnits);
+                mRipples->emit(osg::Vec3f(pos.x(), pos.y(), 0.f), sRippleSize);
             }
             else
             {

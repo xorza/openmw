@@ -6,8 +6,10 @@
 #include <string>
 #include <string_view>
 
+#include <osg/Image>
 #include <osg/Math>
 #include <osg/Quat>
+#include <osg/ref_ptr>
 
 #include "refusals.hpp"
 #include "result.hpp"
@@ -17,6 +19,7 @@
 #include "shaders/scene.h"
 #include "shaders/sky.h"
 #include "skylight.hpp"
+#include "texturebuilder.hpp"
 #include "texturewrap.hpp"
 
 namespace Rtx
@@ -83,7 +86,7 @@ namespace Rtx
         }
     }
 
-    MoonFaces addMoonFaces(SceneDesc& scene, const MoonSizes& sizes)
+    MoonFaces addMoonFaces(SceneDesc& scene, Resource::ImageManager& images, const MoonSizes& sizes)
     {
         // A moon of a size that is no size is refused and not drawn.
         const auto drawnWidth = [&](Moon moon, float size) {
@@ -96,14 +99,22 @@ namespace Rtx
         };
 
         // Clamped: a portrait is one image edge to edge, and a repeating tap at its limb would
-        // blend the far edge's paint into the disc's antialiasing.
-        const MoonFaces faces{ .mMasser = scene.textures().add(moonFaceOf(Moon::Masser), TextureWrap::Clamp),
-            .mSecunda = scene.textures().add(moonFaceOf(Moon::Secunda), TextureWrap::Clamp),
+        // blend the far edge's paint into the disc's antialiasing. A face that does not open takes
+        // its slot with no image, which the upload stands in for and refuses; the image manager
+        // logged why.
+        const auto face = [&](const Moon moon) {
+            const VFS::Path::NormalizedView path = moonFaceOf(moon);
+            const Result<osg::ref_ptr<const osg::Image>, std::string> image = openImage(images, path);
+            const Index slot
+                = scene.textures().add(path, image.isOk() ? image.value().get() : nullptr, TextureWrap::Clamp);
+            scene.textures().hold(slot);
+            return slot;
+        };
+
+        return MoonFaces{ .mMasser = face(Moon::Masser),
+            .mSecunda = face(Moon::Secunda),
             .mMasserRadius = drawnWidth(Moon::Masser, sizes.mMasser),
             .mSecundaRadius = drawnWidth(Moon::Secunda, sizes.mSecunda) };
-        scene.textures().hold(faces.mMasser);
-        scene.textures().hold(faces.mSecunda);
-        return faces;
     }
 
     void dropMoonFaces(SceneDesc& scene, const MoonFaces& faces)

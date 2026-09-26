@@ -24,9 +24,9 @@ namespace Rtx
     {
     }
 
-    Index SceneDesc::addMesh(const MeshArrays& arrays, FoldedShape shape, Deform deform, Index deformer)
+    Index SceneDesc::addMesh(const MeshArrays& arrays, FoldedShape shape, Index deformer)
     {
-        return mMeshes.add(mDeformers, arrays, shape, deform, deformer);
+        return mMeshes.add(mDeformers, arrays, shape, deformer);
     }
 
     Result<void, std::string> SceneDesc::checkPoses(const Index posed, const MeshArrays& arrays)
@@ -45,7 +45,7 @@ namespace Rtx
 
         const Index deformer = mDeformers.addRig(rig);
         return DeformedMesh{
-            .mMesh = mMeshes.add(mDeformers, arrays, shape, Deform::Rig, deformer),
+            .mMesh = mMeshes.add(mDeformers, arrays, shape, deformer),
             .mDeformer = deformer,
         };
     }
@@ -57,7 +57,7 @@ namespace Rtx
 
         const Index deformer = mDeformers.addMorph(morph);
         return DeformedMesh{
-            .mMesh = mMeshes.add(mDeformers, arrays, shape, Deform::Morph, deformer),
+            .mMesh = mMeshes.add(mDeformers, arrays, shape, deformer),
             .mDeformer = deformer,
         };
     }

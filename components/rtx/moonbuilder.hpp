@@ -8,6 +8,11 @@
 #include "runs.hpp"
 #include "shaders/sky.h"
 
+namespace Resource
+{
+    class ImageManager;
+}
+
 namespace Rtx
 {
     class SceneDesc;
@@ -105,11 +110,11 @@ namespace Rtx
                                     : VFS::Path::NormalizedView("textures/tx_secunda_full.dds");
     }
 
-    /// Adds each moon's face, `moonFaceOf`, to `scene` and holds it there until `dropMoonFaces`,
-    /// and how wide `sizes` draws each moon. A moon drawn from the mean of its portrait is a
-    /// coloured circle. A moon of size nought is not drawn, as the game draws none; one whose size
-    /// is below nought or not finite is refused to `scene`.
-    MoonFaces addMoonFaces(SceneDesc& scene, const MoonSizes& sizes);
+    /// Adds each moon's face, `moonFaceOf`, opened from `images`, to `scene` and holds it there
+    /// until `dropMoonFaces`, and how wide `sizes` draws each moon. A moon drawn from the mean of
+    /// its portrait is a coloured circle. A moon of size nought is not drawn, as the game draws
+    /// none; one whose size is below nought or not finite is refused to `scene`.
+    MoonFaces addMoonFaces(SceneDesc& scene, Resource::ImageManager& images, const MoonSizes& sizes);
 
     /// Gives both holds back, so a scene the world has left holds nothing of its moons.
     void dropMoonFaces(SceneDesc& scene, const MoonFaces& faces);

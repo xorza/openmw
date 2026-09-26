@@ -130,11 +130,11 @@ namespace MWRender
         mViews.redraw(*this);
     }
 
-    void TracedView::draw(const PoseMoment& moment)
+    void TracedView::draw(const osg::FrameStamp& posing)
     {
         if (!mTrace.isOfWorld())
         {
-            if (!mTrace.rebuildSubject(moment.mStamp, moment.mImages))
+            if (!mTrace.rebuildSubject(posing))
                 return;
         }
 

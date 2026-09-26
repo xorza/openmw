@@ -64,7 +64,7 @@ namespace Rtx
                                      .mTexCoords = texCoords,
                                      .mTangents = tangents,
                                      .mIndices = indices },
-                {}, Rtx::Deform::None, Rtx::sNoIndex);
+                {});
         }
 
         /// The two boxes under one placement, added in the order given, and one lamp.

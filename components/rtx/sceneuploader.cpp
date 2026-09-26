@@ -31,7 +31,6 @@ namespace Rtx
     {
         const SceneSlot slot = handing.mSlot;
         SceneDesc& scene = handing.mScene;
-        Resource::ImageManager& images = handing.mImages;
         CompositeQueue* const composites = handing.mComposites;
         FrameSpend* const spend = handing.mSpend;
 
@@ -96,9 +95,9 @@ namespace Rtx
             // Read only across the call below: `TextureData` carries spans into `mTextures`. The
             // whole table where there is nothing to append to, and the arrivals otherwise.
             if (!mine)
-                mTextures.describeAll(tables, images, composites);
+                mTextures.describeAll(tables, composites);
             else
-                mTextures.describe(tables, images, tables.textures().getArrived(), composites);
+                mTextures.describe(tables, tables.textures().getArrived(), composites);
             scene.refusals().refuse(mTextures.getRefusals());
 
             const std::chrono::steady_clock::time_point described = std::chrono::steady_clock::now();

@@ -9,8 +9,12 @@
 #include <string_view>
 #include <unordered_map>
 
+#include <osg/Image>
+#include <osg/ref_ptr>
+
 #include <components/vfs/pathutil.hpp>
 
+#include "formatcensus.hpp"
 #include "runs.hpp"
 #include "shaders/scene.h"
 #include "slots.hpp"
@@ -44,6 +48,10 @@ namespace Rtx
 
         /// What the slot is read as. A bake is a colour.
         TextureEncoding mEncoding = TextureEncoding::Colour;
+
+        /// A file's image, which the upload reads: the one the adder held, so the frame that
+        /// uploads it opens nothing. Null for a bake, and for a file nothing reads at.
+        osg::ref_ptr<const osg::Image> mImage;
     };
 
     /// Every texture the scene names, what still names each one, and which slots changed. A slot
@@ -67,7 +75,25 @@ namespace Rtx
         /// The slot for `path` under `wrap` and `encoding`, taking one where this has not met the
         /// three. Live from here, before anything names it, and until the last thing that named it
         /// lets go. `sNoIndex` where they are new and `sCapacity` slots already stand.
+        ///
+        /// @param image what the upload reads for the slot: kept by the add that takes it, and
+        ///        counted in `getFormats` while the slot stands. Null where nothing reads at `path`,
+        ///        which the upload stands in for and refuses.
+        Index add(VFS::Path::NormalizedView path, const osg::Image* image, TextureWrap wrap = TextureWrap::Repeat,
+            TextureEncoding encoding = TextureEncoding::Colour);
+
+        /// The same with no image, for a caller that describes its textures to the backend itself,
+        /// as a test does.
         Index add(VFS::Path::NormalizedView path, TextureWrap wrap = TextureWrap::Repeat,
+            TextureEncoding encoding = TextureEncoding::Colour)
+        {
+            return add(path, nullptr, wrap, encoding);
+        }
+
+        /// The slot `image`, read from `path`, stands in under `wrap` and `encoding`, held for the
+        /// caller until it drops it: what a surface, a sprite, a sky layer and a moon turn their
+        /// image into. `sNoIndex`, holding nothing, where `add` refuses it.
+        Index take(VFS::Path::NormalizedView path, const osg::Image& image, TextureWrap wrap = TextureWrap::Repeat,
             TextureEncoding encoding = TextureEncoding::Colour);
 
         /// The slot for a texture this renderer made — a composite baked for a distant chunk —
@@ -122,6 +148,9 @@ namespace Rtx
         /// room may find some now: until it moves, asking again is a path built to be refused.
         std::uint64_t getFreedCount() const { return mFreed; }
 
+        /// The formats of the images the standing slots keep, one count a slot.
+        const FormatCensus& getFormats() const { return mFormats; }
+
     private:
         /// Whether a new slot may be taken, counting and reporting the refusal where it may not.
         bool hasRoom();
@@ -154,5 +183,6 @@ namespace Rtx
         std::uint64_t mRevision = 0;
         std::uint32_t mRefused = 0;
         std::uint64_t mFreed = 0;
+        FormatCensus mFormats;
     };
 }

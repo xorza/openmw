@@ -71,8 +71,7 @@ namespace Rtx
         /// and refuses what does not hold. A mesh that deforms names the rig or the morph that
         /// poses it, whose vertex count must be this mesh's, and hands over its bind pose, which
         /// stays in the shared buffers for as long as the mesh does.
-        Index addMesh(
-            const MeshArrays& arrays, FoldedShape shape = {}, Deform deform = Deform::None, Index deformer = sNoIndex);
+        Index addMesh(const MeshArrays& arrays, FoldedShape shape = {}, Index deformer = sNoIndex);
 
         /// `addMesh` for a mesh that brings the skin or the targets that pose it. The deformer row
         /// and the mesh row are made in one call with nothing between them, so a deformer no mesh

@@ -84,7 +84,7 @@ namespace Rtx
             // whatever pose the copy being traced was last given, so a copy the pass has never
             // dispatched for it still has to hold something a refit can read. A static mesh has no
             // run here at all: `buildArrived` stages its vertices for the build and nothing else.
-            if (range.mDeform != Deform::None)
+            if (range.deforms())
                 for (std::uint32_t slot = 0; slot < mPoses.count(); ++slot)
                     mPoses.at(FrameSlot{ slot })
                         .writeAt(batch, range.mBindOffset, scene.meshes().getMeshPositions(mesh));

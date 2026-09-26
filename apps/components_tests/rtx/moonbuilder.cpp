@@ -1,11 +1,14 @@
 #include <cmath>
 #include <cstddef>
 #include <limits>
+#include <string>
 
 #include <gtest/gtest.h>
 
+#include <osg/Image>
 #include <osg/Math>
 #include <osg/Vec3f>
+#include <osg/ref_ptr>
 
 #include <components/fallback/fallback.hpp>
 #include <components/rtx/moonbuilder.hpp>
@@ -15,9 +18,12 @@
 #include <components/rtx/shaders/look.h>
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/shaders/sky.h>
+#include <components/rtx/texturetable.hpp>
 #include <components/sky/moonstate.hpp>
+#include <components/vfs/manager.hpp>
 
 #include "allocations.hpp"
+#include "heldimages.hpp"
 
 namespace Rtx
 {
@@ -66,17 +72,28 @@ namespace Rtx
             const float masser = Fallback::Map::getFloat("Moons_Masser_Size");
             const float secunda = Fallback::Map::getFloat("Moons_Secunda_Size");
 
+            // Masser's face opens and Secunda's does not: the one keeps the image the upload reads
+            // and the other keeps its slot with none, which the upload stands in for.
+            VFS::Manager vfs;
+            Testing::HeldImages images(&vfs, 0);
+            const osg::ref_ptr<osg::Image> portrait = new osg::Image;
+            portrait->setFileName(std::string(moonFaceOf(Moon::Masser).value()));
+            images.hold(moonFaceOf(Moon::Masser), portrait);
+
             SceneDesc scene;
-            const MoonFaces faces = addMoonFaces(scene, MoonSizes{ .mMasser = masser, .mSecunda = secunda });
+            const MoonFaces faces = addMoonFaces(scene, images, MoonSizes{ .mMasser = masser, .mSecunda = secunda });
             EXPECT_EQ(faces.radiusOf(Moon::Masser), moonAngularRadius(masser)) << "the size it was handed";
             EXPECT_EQ(faces.radiusOf(Moon::Secunda), moonAngularRadius(secunda));
+            EXPECT_EQ(scene.textures().getRows()[faces.mMasser].mImage, portrait) << "the portrait was not kept";
+            EXPECT_EQ(scene.textures().getRows()[faces.mSecunda].mImage, nullptr);
+            EXPECT_EQ(scene.textures().getRows()[faces.mSecunda].mPath, moonFaceOf(Moon::Secunda).value());
             dropMoonFaces(scene, faces);
             EXPECT_EQ(scene.refusals().count(Refused::Moon), 0u);
 
             // A size of nought is the quad of no extent the game draws, and no refusal; one below
             // nought, or not a number, is a size the game draws and this does not.
             SceneDesc broken;
-            const MoonFaces unsized = addMoonFaces(broken, MoonSizes{ .mMasser = -3.0f, .mSecunda = 0.0f });
+            const MoonFaces unsized = addMoonFaces(broken, images, MoonSizes{ .mMasser = -3.0f, .mSecunda = 0.0f });
             EXPECT_EQ(unsized.radiusOf(Moon::Masser), 0.0f);
             EXPECT_EQ(unsized.radiusOf(Moon::Secunda), 0.0f);
             EXPECT_EQ(broken.refusals().count(Refused::Moon), 1u) << "Masser, and not Secunda";

@@ -17,7 +17,6 @@
 #include <osg/Vec3f>
 #include <osg/Vec4f>
 
-#include <components/resource/imagemanager.hpp>
 #include <components/rtx/deformertable.hpp>
 #include <components/rtx/error.hpp>
 #include <components/rtx/instancerecord.hpp>
@@ -39,7 +38,6 @@
 #include <components/rtx/textureencoding.hpp>
 #include <components/rtx/texturetable.hpp>
 #include <components/rtx/texturewrap.hpp>
-#include <components/vfs/manager.hpp>
 #include <components/vfs/pathutil.hpp>
 
 #include "geometry.hpp"
@@ -248,10 +246,8 @@ namespace Rtx
 
             // Refused where the textures are described, and once for all of them, because what they
             // share is the limit: 4095 slots beside the neutral texel.
-            VFS::Manager vfs;
-            Resource::ImageManager images(&vfs, 0);
             SceneTextures described;
-            described.describe(scene, images, {});
+            described.describe(scene, {});
             ASSERT_EQ(described.getRefusals().size(), 1u);
             EXPECT_EQ(described.getRefusals()[0].mKind, Refused::Texture);
             EXPECT_TRUE(described.getRefusals()[0].mName.empty());
@@ -434,10 +430,10 @@ namespace Rtx
 
             /// The first skin brings the rig; every one after stands on it.
             DeformedMesh addFirstSkin() { return Testing::addOneBoneBody(mScene, quad()); }
-            Index addSkin() { return addQuad(Deform::Rig, mRig); }
+            Index addSkin() { return addQuad(mRig); }
 
             SceneDesc mScene;
-            Index mStill = addQuad(Deform::None, sNoIndex);
+            Index mStill = addQuad(sNoIndex);
             DeformedMesh mFirst = addFirstSkin();
             Index mRig = mFirst.mDeformer;
             Index mMoving = mFirst.mMesh;
@@ -455,7 +451,7 @@ namespace Rtx
                 };
             }
 
-            Index addQuad(Deform deform, Index deformer) { return mScene.addMesh(quad(), {}, deform, deformer); }
+            Index addQuad(Index deformer) { return mScene.addMesh(quad(), {}, deformer); }
         };
 
         /// A rig and the meshes on it arrive with the tables they name, and the still one is in none
@@ -475,9 +471,9 @@ namespace Rtx
 
             // The still mesh has no bind run and no rows; the two skinned ones have one apiece,
             // laid end to end.
-            EXPECT_EQ(mScene.meshes().getRows()[mStill].mDeform, Deform::None);
+            EXPECT_EQ(mScene.deformers().kindOf(mScene.meshes().getRows()[mStill]), Deform::None);
             EXPECT_EQ(mScene.meshes().getRows()[mStill].mDeformer, sNoIndex);
-            EXPECT_EQ(mScene.meshes().getRows()[mMoving].mDeform, Deform::Rig);
+            EXPECT_EQ(mScene.deformers().kindOf(mScene.meshes().getRows()[mMoving]), Deform::Rig);
             EXPECT_EQ(mScene.meshes().getRows()[mMoving].mDeformer, mRig);
             EXPECT_EQ(mScene.meshes().getRows()[mMoving].mBindOffset, 0u);
             EXPECT_EQ(mScene.meshes().getRows()[mOther].mBindOffset, 4u);
@@ -593,7 +589,7 @@ namespace Rtx
 
             // The last mesh on the first rig is the highest mesh slot, which is what makes the sweep
             // free the two rigs in the order that catches this.
-            const Index late = scene.addMesh(quad, {}, Deform::Rig, first.mDeformer);
+            const Index late = scene.addMesh(quad, {}, first.mDeformer);
             ASSERT_LT(second.mMesh, late);
 
             ASSERT_TRUE(scene.release({}, {}));
@@ -688,7 +684,7 @@ namespace Rtx
             EXPECT_EQ(scene.deformers().getMorphOffsets()[6], osg::Vec3f(0.0f, 0.0f, 1.0f));
             EXPECT_EQ(sorted(scene.deformers().getArrived()), (std::vector<Index>{ morph }));
 
-            EXPECT_EQ(scene.meshes().getRows()[face].mDeform, Deform::Morph);
+            EXPECT_EQ(scene.deformers().kindOf(scene.meshes().getRows()[face]), Deform::Morph);
             EXPECT_EQ(scene.deformers().getHolds(morph), 1u);
             EXPECT_EQ(scene.deformers().getPoses().size(), 1u) << "two weights fit one word";
             EXPECT_EQ(scene.deformers().getBindVertexCount(), 4u);
@@ -771,12 +767,12 @@ namespace Rtx
             SceneDesc scene;
             const Index still
                 = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
-            EXPECT_EQ(scene.meshes().getRows()[still].mDeform, Deform::None);
+            EXPECT_EQ(scene.deformers().kindOf(scene.meshes().getRows()[still]), Deform::None);
 
             const Index rig = Testing::addOneBoneBody(
                 scene, MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices })
                                   .mMesh;
-            EXPECT_EQ(scene.meshes().getRows()[rig].mDeform, Deform::Rig);
+            EXPECT_EQ(scene.deformers().kindOf(scene.meshes().getRows()[rig]), Deform::Rig);
 
             const Index dressed
                 = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });

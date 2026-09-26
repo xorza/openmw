@@ -56,7 +56,7 @@ namespace Rtx::Testing
 
             // The mesh holds the bind pose, and the rig beside it is the quad's four one-bone runs.
             ASSERT_EQ(mScene.meshes().getRows().size(), 1u);
-            EXPECT_EQ(mScene.meshes().getRows()[0].mDeform, Rtx::Deform::Rig);
+            EXPECT_EQ(mScene.deformers().kindOf(mScene.meshes().getRows()[0]), Rtx::Deform::Rig);
             EXPECT_EQ(mScene.meshes().getMeshPositions(0)[2], osg::Vec3f(1.0f, 1.0f, 0.0f))
                 << "the bind pose, never a vertex posed";
             ASSERT_EQ(mScene.deformers().getDeformers().size(), 1u);
@@ -340,7 +340,7 @@ namespace Rtx::Testing
             EXPECT_EQ(stats.mDeformed, 0u);
             EXPECT_EQ(stats.mUnskinned, 1u);
             ASSERT_EQ(mScene.meshes().getRows().size(), 1u);
-            EXPECT_EQ(mScene.meshes().getRows()[0].mDeform, Rtx::Deform::None);
+            EXPECT_EQ(mScene.deformers().kindOf(mScene.meshes().getRows()[0]), Rtx::Deform::None);
             EXPECT_TRUE(mScene.deformers().getDeformers().empty());
             EXPECT_EQ(mScene.meshes().getMeshPositions(0)[2], osg::Vec3f(1.0f, 1.0f, 0.0f))
                 << "the bind pose, where it stands";
@@ -382,7 +382,7 @@ namespace Rtx::Testing
             const ExtractionStats first = walk(*root);
             EXPECT_EQ(first.mMeshesAdded, 2u);
             EXPECT_EQ(first.mDeformed, 1u);
-            EXPECT_EQ(mScene.meshes().getRows()[sFace].mDeform, Rtx::Deform::Morph);
+            EXPECT_EQ(mScene.deformers().kindOf(mScene.meshes().getRows()[sFace]), Rtx::Deform::Morph);
             EXPECT_EQ(mScene.meshes().getMeshPositions(sFace)[2], osg::Vec3f(1.0f, 1.0f, 0.0f))
                 << "the base, and never a pose";
 

@@ -85,7 +85,7 @@ namespace Rtx
         for (const Index index : whole ? everyBelow(ranges.size(), mEvery) : meshes)
         {
             const MeshRange& mesh = ranges[index];
-            if (mesh.mDeform == Deform::None || mesh.mVertices.mCount == 0)
+            if (!mesh.deforms() || mesh.mVertices.mCount == 0)
                 continue;
 
             const VkDeviceSize at = VkDeviceSize{ mesh.mBindOffset } * sizeof(osg::Vec3f);
@@ -132,7 +132,7 @@ namespace Rtx
         for (const Index index : meshes)
         {
             const MeshRange& mesh = ranges[index];
-            if (mesh.mDeform == Deform::None)
+            if (!mesh.deforms())
                 continue;
 
             stageInto(batch, mPoses.at(FrameSlot{}), VkDeviceSize{ mesh.mPoseOffset } * sizeof(PoseWord),

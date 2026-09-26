@@ -274,7 +274,7 @@ namespace Rtx::Testing
             const SceneDesc& right = resolved.mScene;
             EXPECT_EQ(left.meshes().getRows()[0].mVertices.mCount, right.meshes().getRows()[0].mVertices.mCount);
             EXPECT_EQ(left.meshes().getRows()[0].mIndices.mCount, right.meshes().getRows()[0].mIndices.mCount);
-            EXPECT_EQ(left.meshes().getRows()[0].mDeform, Deform::None);
+            EXPECT_EQ(left.deformers().kindOf(left.meshes().getRows()[0]), Deform::None);
             const std::span<const osg::Vec3f> leftPositions = left.meshes().getMeshPositions(0);
             const std::span<const osg::Vec3f> rightPositions = right.meshes().getMeshPositions(0);
             const std::span<const std::uint32_t> leftIndices = left.meshes().getMeshIndices(0);

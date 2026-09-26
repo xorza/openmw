@@ -296,11 +296,6 @@ namespace Rtx
         if (image == nullptr || image->getFileName().empty())
             return sNoIndex;
 
-        // Outside the cache, because what this counts is what the walk met and not what it
-        // added. `openmw-rtxtool scene` reads these off a second walk of one graph, and a
-        // count that only rose on an arrival would report nothing there.
-        stats.mFormats.count(*image, encoding);
-
         auto known = mTextureOf.find(image);
         if (known != mTextureOf.end())
             mTextureOf.stamp(known);
@@ -317,13 +312,10 @@ namespace Rtx
             1u << (static_cast<std::size_t>(encoding) * sTextureWrapCount + static_cast<std::size_t>(use.mWrap)));
         if (slot == sNoIndex && (held.mRefused & bit) == 0)
         {
-            slot = mScene.textures().add(VFS::Path::Normalized(image->getFileName()), use.mWrap, encoding);
-
             // Held, because this entry is the reference. `mTextureOf` says why a slot the map names
             // has to be one nothing else can hand out.
-            if (slot != sNoIndex)
-                mScene.textures().hold(slot);
-            else
+            slot = mScene.textures().take(VFS::Path::Normalized(image->getFileName()), *image, use.mWrap, encoding);
+            if (slot == sNoIndex)
             {
                 held.mRefused |= bit;
                 held.mRefusedAt = freed;

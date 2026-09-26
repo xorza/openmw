@@ -169,11 +169,6 @@ namespace Rtx
         /// means; the scene keeps them and draws nothing from them.
         FoldedShape mShape;
 
-        /// Whether this mesh is re-posed by `SceneDesc::pose` — a skinned body, a morphed
-        /// face — which is what tells a backend to build its structure so it can be refitted rather
-        /// than built again, and which kernel poses it. The caller's finding, like `mShape`.
-        Deform mDeform = Deform::None;
-
         /// The rig or the morph that poses it, into `DeformerTable::getDeformers`. `sNoIndex` for
         /// a mesh that stands.
         Index mDeformer = sNoIndex;
@@ -200,6 +195,11 @@ namespace Rtx
         osg::BoundingBoxf mBounds;
 
         Index getTriangleCount() const { return mIndices.mCount / 3; }
+
+        /// Whether this mesh is re-posed by `SceneDesc::pose` — a skinned body, a morphed face —
+        /// which is what tells a backend to build its structure so it can be refitted rather than
+        /// built again. Which kernel poses it is the deformer's to say, `DeformerTable::kindOf`.
+        bool deforms() const { return mDeformer != sNoIndex; }
     };
 
     /// How many instances a scene places, and how many of those each kind of traversal has to stop

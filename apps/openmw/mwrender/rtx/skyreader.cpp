@@ -13,6 +13,7 @@
 
 #include <components/fallback/fallback.hpp>
 #include <components/misc/constants.hpp>
+#include <components/resource/scenemanager.hpp>
 #include <components/rtx/colour.hpp>
 #include <components/rtx/fogbuilder.hpp>
 #include <components/rtx/scenedesc.hpp>
@@ -77,7 +78,7 @@ namespace MWRender
 
     void SkyReader::attach(Rtx::SceneDesc& scene, Resource::SceneManager& scenes)
     {
-        mMoonFaces = Rtx::addMoonFaces(scene, mMoonSizes);
+        mMoonFaces = Rtx::addMoonFaces(scene, *scenes.getImageManager(), mMoonSizes);
         mSkyContent = Rtx::addSkyContent(scene, scenes, meshes());
     }
 
@@ -112,10 +113,10 @@ namespace MWRender
         // records. Decoded here, because the world does not know what a transport is.
         const osg::Vec3f haze = room.has_value() ? room->mSkyHorizon : Rtx::decodeColour(world.mAir.mColour);
 
-        // Whether there is a sky to draw: outdoors, and `tsky` has not turned it off. Off, the
+        // Whether there is a sky to draw, as the game decides it — `WorldState::mSkyShown`. Off, the
         // rasterizer hides the sky node whole — the dome, the decks, the stars, the sun's disc and
         // the moons — and clears to the fog colour, while the sun and the weather go on lighting.
-        const bool skyShown = world.isOutdoors() && world.mSkyShown;
+        const bool skyShown = world.mSkyShown;
 
         // An interior has no sky colour: the weather system stops writing it indoors, so the air's
         // own colour stands in. A quasi-exterior has weather and so has one. A sky turned off is
@@ -216,9 +217,7 @@ namespace MWRender
             .mSeconds = seconds,
             .mSkySeconds = mClock.mSeconds,
 
-            // How much of what is falling rings the water, nought to one: the precipitation's
-            // alpha where its kind makes ripples. `Water::setRainIntensity` takes the same number.
-            .mRainOnWater = falling.getRainRipplesEnabled() ? falling.getPrecipitationAlpha() : 0.0f,
+            .mRainOnWater = falling.getRainOnWater(),
 
             // The top of the box the rasterizer's `PrecipitationOccluder::update` draws its depth
             // map from: the precipitation's own range and a cell over it, above the eye. Nought

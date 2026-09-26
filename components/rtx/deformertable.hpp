@@ -137,6 +137,13 @@ namespace Rtx
         void release(MeshRange& range);
 
         std::span<const Deformer> getDeformers() const { return mDeformers.getRows(); }
+
+        /// What poses `mesh`: its deformer's kind, or `Deform::None` for a mesh that stands.
+        Deform kindOf(const MeshRange& mesh) const
+        {
+            return mesh.deforms() ? mDeformers.at(mesh.mDeformer).mKind : Deform::None;
+        }
+
         std::span<const std::uint32_t> getRuns() const { return mRuns.getAll(); }
         std::span<const Shaders::GpuInfluence> getInfluences() const { return mInfluences.getAll(); }
         std::span<const osg::Vec3f> getMorphOffsets() const { return mOffsets.getAll(); }

@@ -369,8 +369,8 @@ slot. They are never a framebuffer and never in main memory unless somebody asks
 - `redraw()` queues the view. The host draws the queue in the next frame's `Views` phase,
   after the world was placed and before it was traced: every subject picture, and up to three
   world pictures per frame (a cell crossing asks for a row of three tiles, a load for nine).
-- `TracedView::draw(moment)`: a subject is posed at the `PoseMoment` the queue hands every view
-  it draws — the renderer's own frame stamp — walked by the
+- `TracedView::draw(posing)`: a subject is posed at the renderer's own frame stamp, which the
+  queue hands every view it draws, walked by the
   view's own `SceneExtractor` into its own `SceneDesc`, and handed over into its own
   `ViewScene` slot; then `Rtx::OffscreenTrace::traceInto(slot, keepCopy)` →
   `GuiRenderer::traceGuiTexture`.
@@ -543,7 +543,8 @@ written once for the game, the harness and a doll:
 | `Rebuilt`  | the backend holds nothing for this scene's identity                              | a fifth of a second |
 
 The order: `describeHeld`, `orderLights`, `CompositeQueue::advance`, describe the textures
-(`SceneTextures`, spans over the files' own levels), `dropTextures`, one of `placeScene`,
+(`SceneTextures`, spans over the levels of the images the slots keep — `TextureTable::take`
+keeps the adder's image, so the upload opens no file), `dropTextures`, one of `placeScene`,
 `extendScene`, `setScene`, then `clearArrivals`, `releaseFinished`, and
 `PlacementTable::advance` where the handing says so.
 

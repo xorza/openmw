@@ -80,7 +80,7 @@ namespace Rtx
 
             // Nothing else in the map is re-read: the whole point of it is that a crate met again is
             // the crate already uploaded, and a cell is tens of thousands of these a frame.
-            if (read.mDeform == Deform::None && range.mDeform == Deform::None)
+            if (read.mDeform == Deform::None && !range.deforms())
             {
                 ++stats.mMeshesReused;
                 mMeshes.stamp(known);
@@ -97,7 +97,8 @@ namespace Rtx
 
             const Held held = holdDeformer(read);
 
-            if (vertices == range.mVertices.mCount && read.mDeform == range.mDeform && held.mIndex == range.mDeformer)
+            // The same deformer is the same kind: `fits` held the reading's kind against it.
+            if (vertices == range.mVertices.mCount && held.mIndex == range.mDeformer)
             {
                 ++stats.mMeshesReused;
                 mMeshes.stamp(known);
@@ -183,7 +184,7 @@ namespace Rtx
             // A template's drawable is never the walk's: the walk meets clones, and a clone of a
             // deforming drawable is a deep copy at another address. So what the map holds under
             // this key is what this class adopted, and that stands.
-            assert(mScene.meshes().getRows()[known->second.mIndex].mDeform == Deform::None
+            assert(!mScene.meshes().getRows()[known->second.mIndex].deforms()
                 && "a reading adopted under a drawable the mirror poses");
 
             ++stats.mMeshesReused;
@@ -193,7 +194,7 @@ namespace Rtx
             if (reading.mShape.mSheet)
                 ++stats.mSheets;
 
-            const Index mesh = mScene.addMesh(reading.mArrays, reading.mShape, Deform::None, sNoIndex);
+            const Index mesh = mScene.addMesh(reading.mArrays, reading.mShape);
             known = mMeshes.add(&drawable, Known{ .mIndex = mesh });
             ++stats.mMeshesAdded;
         }
@@ -222,7 +223,7 @@ namespace Rtx
             return Err{ fits.error() };
 
         if (read.mDeform == Deform::None)
-            return mScene.addMesh(reading.mArrays, reading.mShape, Deform::None, sNoIndex);
+            return mScene.addMesh(reading.mArrays, reading.mShape);
 
         // A deformer the mirror holds that fits this drawable — the same kind, the same targets
         // and exactly these vertices — is added once per skin and once per set of targets however
@@ -233,7 +234,7 @@ namespace Rtx
         if (held.mIndex != sNoIndex && mScene.deformers().getDeformers()[held.mIndex].getVertexCount() == vertices)
         {
             stampDeformer(held);
-            return mScene.addMesh(reading.mArrays, reading.mShape, read.mDeform, held.mIndex);
+            return mScene.addMesh(reading.mArrays, reading.mShape, held.mIndex);
         }
 
         // Otherwise this drawable gets a deformer of its own, made with its mesh. A skin rewritten

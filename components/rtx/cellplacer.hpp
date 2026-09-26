@@ -114,8 +114,9 @@ namespace Rtx
         void stand(Stood& stood, std::uint32_t& standing);
         void drop(Stood& stood, std::uint32_t& standing);
 
-        /// Whether a cell's ground wants its stack flattened where the eye stands now.
-        static bool wantsFlattening(const osg::Vec2i& cell, const HeldGround& ground, const WorldAround& around);
+        /// Whether a cell's ground, whose material is `ground`, wants its stack flattened where the
+        /// eye stands now.
+        static bool wantsFlattening(const osg::Vec2i& cell, const Material& ground, const WorldAround& around);
 
         SceneDesc& mScene;
 

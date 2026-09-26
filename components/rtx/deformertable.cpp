@@ -98,10 +98,9 @@ namespace Rtx
 
     bool DeformerTable::pose(const MeshRange& range, const std::span<const PoseWord> words)
     {
-        assert(range.mDeform != Deform::None && "a pose for a mesh nothing deforms");
+        assert(range.deforms() && "a pose for a mesh nothing deforms");
 
         const Deformer& deformer = mDeformers.at(range.mDeformer);
-        assert(deformer.mKind == range.mDeform && "a pose of the other kind than what poses the mesh");
 
         const std::span<PoseWord> held
             = mPoses.in(Run{ .mOffset = range.mPoseOffset, .mCount = deformer.getPoseWords() });
@@ -118,13 +117,13 @@ namespace Rtx
 
     std::span<const PoseWord> DeformerTable::getMeshPose(const MeshRange& range) const
     {
-        assert(range.mDeform != Deform::None);
+        assert(range.deforms());
         return getPoses().subspan(range.mPoseOffset, mDeformers.at(range.mDeformer).getPoseWords());
     }
 
     void DeformerTable::release(MeshRange& range)
     {
-        if (range.mDeform == Deform::None)
+        if (!range.deforms())
             return;
 
         mBindRuns.release(Run{ .mOffset = range.mBindOffset, .mCount = range.mVertices.mCount });
@@ -146,14 +145,13 @@ namespace Rtx
             mArrived.remove(range.mDeformer);
         }
 
-        range.mDeform = Deform::None;
         range.mDeformer = sNoIndex;
         range.mPosed = false;
     }
 
     void DeformerTable::stand(MeshRange& range)
     {
-        if (range.mDeform == Deform::None)
+        if (!range.deforms())
             return;
 
         // A run in the bind table whichever kind it is, because the bind pose is the mesh's

@@ -59,20 +59,14 @@ namespace Rtx
         bool mDisabled = false;
     };
 
-    /// A cell's ground as the frame holds it: its rows, where it stands, and what shades it. Its
-    /// own type, because the five are empty together.
+    /// A cell's ground as the frame holds it: its rows, where it stands, and the readings of its
+    /// textures. Its own type, because they are empty together. How many layers it has and whether
+    /// it is flattened are its material row's, which is read and not copied.
     struct HeldGround
     {
         /// The rows the ring holds on the scene, which no drawable and no state set will ever
         /// name, at the cell's centre, which the mesh's own positions are relative to.
         Stood mStood;
-
-        /// How many layers the stack holds, which is whether a composite is worth asking for at all.
-        std::uint32_t mLayers = 0;
-
-        /// Whether the material row asks for a composite now, so a crossing of the active grid
-        /// rewrites it once.
-        bool mFlattened = false;
 
         /// The readings of its textures, held for as long as the cell is.
         std::vector<PreparedTexture*> mTextures;

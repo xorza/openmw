@@ -27,7 +27,6 @@
 
 namespace Resource
 {
-    class ImageManager;
     class ResourceSystem;
 }
 
@@ -101,8 +100,7 @@ namespace MWRender
 
         /// Hands the scene to `renderer`, building only what has to be built, and then ends the
         /// placement: where everything stands is what the next frame measures its motion against,
-        /// and the change lists the backend just took start again. After `attach`, because a
-        /// texture the mirror has not seen before is read through the world's images.
+        /// and the change lists the backend just took start again.
         Rtx::SceneUpload hand(Rtx::Renderer& renderer, Rtx::FrameSpend& spend);
 
         /// Whether each walk waits for the one cell it adopts. `Rtx::CellRing::setSettled` says
@@ -189,11 +187,6 @@ namespace MWRender
         /// call — and every picture inside the interface goes through that same call with no
         /// ground to flatten.
         Rtx::CompositeQueue mComposites;
-
-        /// Where the hand-over resolves its pictures. Borrowed: the world outlives this. The
-        /// scene manager beside it is read once, in `attach`, and is not kept — a frame asks for
-        /// one manager and holds one.
-        Resource::ImageManager* mImages = nullptr;
 
         /// Where the world's clock stood on the last frame, so the emitters are given the gap.
         double mLastSimulationTime = 0.0;

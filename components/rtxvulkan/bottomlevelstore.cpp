@@ -104,7 +104,7 @@ namespace Rtx
         for (std::size_t at = 0; at < meshes.size(); ++at)
         {
             const MeshRange& mesh = scene.meshes().getRows()[meshes[at]];
-            if (mesh.mDeform != Deform::None || mesh.mVertices.empty())
+            if (mesh.deforms() || mesh.mVertices.empty())
                 continue;
 
             mBuilding[at].mArrivedAt = arrivedBytes;
@@ -120,7 +120,7 @@ namespace Rtx
         {
             const Index mesh = meshes[at];
             const MeshRange& range = scene.meshes().getRows()[mesh];
-            if (range.mDeform != Deform::None || range.mVertices.empty())
+            if (range.deforms() || range.mVertices.empty())
                 continue;
 
             stageInto(batch, mArrived, mBuilding[at].mArrivedAt, std::as_bytes(scene.meshes().getMeshPositions(mesh)));
@@ -146,8 +146,8 @@ namespace Rtx
             // vertices staged above.
             VkDeviceAddress vertices = 0;
             if (!mesh.mVertices.empty())
-                vertices = mesh.mDeform != Deform::None ? poses.addressOf(mesh.mBindOffset)
-                                                        : arrivedAddress + mBuilding[at].mArrivedAt;
+                vertices
+                    = mesh.deforms() ? poses.addressOf(mesh.mBindOffset) : arrivedAddress + mBuilding[at].mArrivedAt;
 
             // Indices are mesh-local, so each structure is handed the slice of the shared buffers
             // that belongs to it and addresses vertex zero as its own first vertex. The addresses
@@ -159,13 +159,13 @@ namespace Rtx
             // Only a mesh that deforms is built to be refitted. The flag costs a structure its
             // tightness and the trace that reads it a little; a few dozen actors pay it and the
             // thousands of static meshes around them do not.
-            row.mUpdatable = mesh.mDeform != Deform::None;
+            row.mUpdatable = mesh.deforms();
 
             // ALLOW_DATA_ACCESS is what lets a shader read a hit triangle's vertices back out of
             // the structure, which is the whole reason nothing here binds a vertex buffer.
             VkBuildAccelerationStructureFlagsKHR flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR
                 | VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DATA_ACCESS_BIT_KHR;
-            if (mesh.mDeform != Deform::None)
+            if (mesh.deforms())
                 flags |= VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR;
             else
             {

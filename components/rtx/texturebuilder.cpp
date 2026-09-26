@@ -32,6 +32,9 @@ namespace Rtx
 {
     namespace
     {
+        /// Why a file slot has nothing to upload: the adder found no image at its path.
+        constexpr std::string_view sNoImage = "no image reads from the file";
+
         /// How many of an image's levels a description keeps: as many as the file carries, and no
         /// more than reach a single texel, because a header may count levels past the last one and
         /// a device takes no image with more levels than its size has.
@@ -155,7 +158,7 @@ namespace Rtx
         // The manager answers a file it cannot read with its warning image, having logged why:
         // an image, and not the one the file holds.
         if (image == nullptr || image == images.getWarningImage())
-            return Err{ "no image reads from the file" };
+            return Err{ std::string(sNoImage) };
 
         return image;
     }
@@ -298,17 +301,15 @@ namespace Rtx
         return described;
     }
 
-    void SceneTextures::describeAll(
-        const SceneDesc& scene, Resource::ImageManager& images, const CompositeQueue* composites)
+    void SceneTextures::describeAll(const SceneDesc& scene, const CompositeQueue* composites)
     {
         mEverything.resize(scene.textures().getRows().size());
         std::iota(mEverything.begin(), mEverything.end(), Index{ 0 });
 
-        describe(scene, images, mEverything, composites);
+        describe(scene, mEverything, composites);
     }
 
-    void SceneTextures::describe(const SceneDesc& scene, Resource::ImageManager& images, std::span<const Index> slots,
-        const CompositeQueue* composites)
+    void SceneTextures::describe(const SceneDesc& scene, std::span<const Index> slots, const CompositeQueue* composites)
     {
         mLevels.clear();
         mTexels.clear();
@@ -332,8 +333,12 @@ namespace Rtx
             const TextureRow& row = scene.textures().getRows()[slot];
             Kept kept{ .mSlot = slot, .mEncoding = row.mEncoding };
 
-            if (row.mKind == TextureKind::File)
-                kept.mImage = openImage(images, row.mPath);
+            // The image the adder held, and never the file opened again: this runs on the frame an
+            // arrival lands on, and a path is a lock and a disk read.
+            if (row.mKind == TextureKind::File && row.mImage != nullptr)
+                kept.mImage = row.mImage;
+            else if (row.mKind == TextureKind::File)
+                kept.mImage = Err{ std::string(sNoImage) };
             else if (const std::optional<VFS::Path::Normalized> source = SpriteLightMap::sourceOf(row.mBaked))
             {
                 // Made on the device from the sprite texture's own slot, which the emitter holds

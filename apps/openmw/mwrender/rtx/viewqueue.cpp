@@ -29,7 +29,7 @@ namespace MWRender
             mDeferred.push_back(&view);
     }
 
-    void ViewQueue::draw(const std::uint32_t worldViews, const PoseMoment& moment)
+    void ViewQueue::draw(const std::uint32_t worldViews, const osg::FrameStamp& posing)
     {
         assert(mDrawing.empty() && "a flush inside a flush");
 
@@ -51,7 +51,7 @@ namespace MWRender
             if (view->isOfWorld())
                 ++world;
 
-            view->draw(moment);
+            view->draw(posing);
         }
 
         mDrawing.clear();
