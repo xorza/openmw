@@ -85,10 +85,11 @@ namespace Rtx
 
     private:
         /// Two semaphores and one command buffer per swapchain image, and a present fence where the
-        /// device offers one, made again whenever the count changes.
-        void remakeImageSync();
+        /// device offers one, for the swapchain as it now stands. `releaseImageSync` comes first.
+        void makeImageSync();
 
-        /// Destroys what `remakeImageSync` made. The caller owes the `waitIdle` before it.
+        /// Destroys what `makeImageSync` made. The caller owes the `waitIdle` before it, and a
+        /// swapchain it guards stays up until this returns.
         void releaseImageSync();
 
         void destroy();

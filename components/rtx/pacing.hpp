@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstdint>
+#include <limits>
 #include <string_view>
 #include <utility>
 
@@ -49,12 +50,16 @@ namespace Rtx
     };
 
     /// The interval `[Video] framerate limit` asks for, in microseconds: a limit in frames a
-    /// second, or nought or less for none.
+    /// second, or nought or less for none. The setting takes any value above nought, and one
+    /// under a frame in 71 minutes asks for more microseconds than the field holds, so the
+    /// interval is held at the most it can say.
     inline constexpr std::uint32_t minimumIntervalOf(const float frameRateLimit)
     {
         if (!(frameRateLimit > 0.0f))
             return 0;
 
-        return static_cast<std::uint32_t>(1000000.0f / frameRateLimit + 0.5f);
+        const double interval = 1000000.0 / static_cast<double>(frameRateLimit) + 0.5;
+        constexpr std::uint32_t most = std::numeric_limits<std::uint32_t>::max();
+        return interval >= static_cast<double>(most) ? most : static_cast<std::uint32_t>(interval);
     }
 }

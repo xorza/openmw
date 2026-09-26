@@ -455,11 +455,12 @@ namespace RtxTool
             "given, the player's own under `view` and `off` for a measured run, where the driver's "
             "sleep is a limiter with no limit and its markers a measurement");
         option(sPlaces, "pos", bpo::value<std::string>()->default_value(""),
-            "where to put the camera, as x,y,z. Defaults to a view of the whole cell from outside it, "
-            "which is a poor view of an interior. Write --pos=-100,200,300, or a leading minus reads "
-            "as an option.");
+            "where to put the camera, as x,y,z. Defaults to the view's, and without a view to where the "
+            "game puts a player arriving in the cell, facing where it faces them. Write "
+            "--pos=-100,200,300, or a leading minus reads as an option.");
         option(sPlaces, "look", bpo::value<std::string>()->default_value(""),
-            "what the camera looks at, as x,y,z. Defaults to the centre of the cell.");
+            "what the camera looks at, as x,y,z, from --pos or the view's eye, and refused without "
+            "either. Defaults to the view's, and without one to due north.");
 
         option(Verbs::Shot, "accumulate", bpo::value<std::uint32_t>()->default_value(0),
             "average this many differently-seeded frames into one picture. A converged reference, "

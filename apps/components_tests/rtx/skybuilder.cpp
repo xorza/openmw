@@ -8,8 +8,13 @@
 
 #include <gtest/gtest.h>
 
+#include <osg/Array>
 #include <osg/GL>
+#include <osg/Geometry>
+#include <osg/Group>
 #include <osg/Image>
+#include <osg/Math>
+#include <osg/Texture2D>
 #include <osg/Vec2f>
 #include <osg/Vec3f>
 #include <osg/ref_ptr>
@@ -182,6 +187,16 @@ namespace Rtx
 
             EXPECT_EQ(night.mShadowed, day.mShadowed);
             EXPECT_NEAR(night.mLit.x() - night.mShadowed.x(), 0.015915f, 1.0e-5f);
+
+            // **A moon painted red lights the deck red**, as it lights the ground: green and blue go
+            // with the paint, 0.8 * 0.5 * 0.25 / pi = 0.031831 of green before it.
+            EXPECT_NEAR(night.mLit.y() - night.mShadowed.y(), 0.031831f, 1.0e-5f);
+            moons[0].mPaint = osg::Vec3f(1.0f, 0.0f, 0.0f);
+            const Rtx::DeckLight red = Rtx::deckLight(sun, skyMean, moons);
+            EXPECT_NEAR(red.mLit.x() - red.mShadowed.x(), 0.015915f, 1.0e-5f);
+            EXPECT_EQ(red.mLit.y(), red.mShadowed.y());
+            EXPECT_EQ(red.mLit.z(), red.mShadowed.z());
+            moons[0].mPaint = osg::Vec3f(1.0f, 1.0f, 1.0f);
 
             // A moon under the horizon delivers nothing to a layer over it, and needs no test of its
             // own to say so — the cosine does it.
@@ -417,6 +432,79 @@ namespace Rtx
             EXPECT_EQ(scene.refusals().count(Refused::SkyLayer), 4u) << "both decks, the cloud cap and the star dome";
 
             dropSkyContent(scene, content);
+            EXPECT_TRUE(scene.isEmpty());
+        }
+
+        /// A scene manager a test can put a loaded mesh into, for the reason `HeldImages` gives.
+        class HeldScenes : public Resource::SceneManager
+        {
+        public:
+            using Resource::SceneManager::SceneManager;
+
+            void hold(VFS::Path::NormalizedView path, osg::ref_ptr<osg::Node> node)
+            {
+                mCache->addEntryToObjectCache(std::string(path.value()), node);
+            }
+        };
+
+        /// A patch of the dome ten degrees across, straight up, painted with `image`.
+        osg::ref_ptr<osg::Geometry> patchOf(osg::ref_ptr<osg::Image> image)
+        {
+            const float edge = std::sin(osg::DegreesToRadians(5.0f));
+            osg::ref_ptr<osg::Vec3Array> vertices = new osg::Vec3Array;
+            for (const osg::Vec3f& corner : { osg::Vec3f(-edge, -edge, 1.0f), osg::Vec3f(edge, -edge, 1.0f),
+                     osg::Vec3f(edge, edge, 1.0f), osg::Vec3f(-edge, edge, 1.0f) })
+                vertices->push_back(corner);
+            osg::ref_ptr<osg::Vec2Array> coords = new osg::Vec2Array;
+            for (const osg::Vec2f& coord :
+                { osg::Vec2f(0.0f, 0.0f), osg::Vec2f(1.0f, 0.0f), osg::Vec2f(1.0f, 1.0f), osg::Vec2f(0.0f, 1.0f) })
+                coords->push_back(coord);
+
+            osg::ref_ptr<osg::Geometry> patch = new osg::Geometry;
+            patch->setVertexArray(vertices);
+            patch->setTexCoordArray(0, coords);
+            patch->getOrCreateStateSet()->setTextureAttribute(0, new osg::Texture2D(image));
+            return patch;
+        }
+
+        /// **A star sheet this cannot upload is refused by name and left out**, as a deck's is:
+        /// taken, it would stand in as an opaque grey. The dome holds two patches, three channels
+        /// first, which no upload takes, and four after it, which takes the first patch.
+        TEST(RtxSkyBuilderTest, aStarSheetThisCannotUploadIsRefusedByNameAndLeftOut)
+        {
+            constexpr VFS::Path::NormalizedView dome("meshes/sky_night_02.nif");
+            const std::unique_ptr<VFS::Manager> vfs = TestingOpenMW::createTestVFS({ { dome, nullptr } });
+            Resource::ImageManager images(vfs.get(), 0);
+            Resource::NifFileManager nifs(vfs.get(), nullptr);
+            Resource::BgsmFileManager materials(vfs.get(), 0);
+            HeldScenes scenes(vfs.get(), &images, &nifs, &materials, 0);
+
+            osg::ref_ptr<osg::Image> rgb = new osg::Image;
+            rgb->setFileName("textures/star_rgb.dds");
+            rgb->allocateImage(4, 4, 1, GL_RGB, GL_UNSIGNED_BYTE);
+            osg::ref_ptr<osg::Image> rgba = new osg::Image;
+            rgba->setFileName("textures/star_rgba.dds");
+            rgba->allocateImage(4, 4, 1, GL_RGBA, GL_UNSIGNED_BYTE);
+
+            osg::ref_ptr<osg::Group> night = new osg::Group;
+            night->addChild(patchOf(rgb));
+            night->addChild(patchOf(rgba));
+            scenes.hold(dome, night);
+
+            SceneDesc scene;
+            const Result<NightSky, std::string> sky
+                = readNightSky(scene, scenes, dome, VFS::Path::NormalizedView("meshes/sky_night_01.nif"));
+            ASSERT_TRUE(sky.isOk()) << sky.error();
+
+            EXPECT_EQ(scene.refusals().count(Refused::SkyLayer), 1u);
+            EXPECT_EQ(scene.textures().findFile(VFS::Path::NormalizedView("textures/star_rgb.dds")), sNoIndex)
+                << "a slot the upload would stand in for";
+            EXPECT_EQ(sky.value().mPatches[0].mTexture,
+                scene.textures().findFile(VFS::Path::NormalizedView("textures/star_rgba.dds")));
+            EXPECT_NE(sky.value().mPatches[0].mTexture, sNoIndex);
+            EXPECT_EQ(sky.value().mPatches[1].mTexture, sNoIndex) << "the refused sheet took a patch";
+
+            dropNightSky(scene, sky.value());
             EXPECT_TRUE(scene.isEmpty());
         }
 

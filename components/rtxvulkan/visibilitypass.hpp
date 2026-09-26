@@ -110,12 +110,15 @@ namespace Rtx
         /// because the frame zeroes them ahead of its own trace.
         const Buffer* mSunGlare = nullptr;
 
-        /// Whether the eye can meet water in this scene — the scene's answer and not the camera's,
-        /// and what `HAS_SEA` takes the waves out of for a room.
-        bool mWater = false;
+        /// Whether this trace has a sea: a water surface in the scene the eye can meet, or a level
+        /// the camera can be under, which a cell with no surface can still submerge the eye in.
+        /// The one answer the synthesis, the ripple step and `HAS_SEA` all read, so the kernel
+        /// never samples tiles that nothing wrote this frame.
+        bool mSea = false;
 
         /// Whether this scene places a material with a normal map or a specular map, and so whether
-        /// the trace needs the maps' code — `HAS_MAPS`. The scene's answer, for `mWater`'s reason.
+        /// the trace needs the maps' code — `HAS_MAPS`. The scene's answer, because which materials
+        /// a camera's rays meet is not known until they are traced.
         bool mMapped = false;
     };
 
@@ -130,9 +133,9 @@ namespace Rtx
         bool mSea = true;
         bool mMaps = true;
 
-        /// What this frame is. `water` and `mapped` are `VisibilityInputs::mWater` and `mMapped`, for
+        /// What this frame is. `sea` and `mapped` are `VisibilityInputs::mSea` and `mMapped`, for
         /// the reason given there.
-        static VisibilityVariant resolve(const Shaders::VisibilityConstants& frame, bool water, bool mapped);
+        static VisibilityVariant resolve(const Shaders::VisibilityConstants& frame, bool sea, bool mapped);
 
         /// Which of the table's pipelines this tuple is.
         std::uint32_t index() const;

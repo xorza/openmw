@@ -392,7 +392,12 @@ namespace Debug
 
         const std::filesystem::path logFile = logDir / (Misc::StringUtils::lowerCase(appName) + ".log");
 #if !(defined(_WIN32) && defined(_DEBUG))
+        // Emptied once and then opened to append, so every write lands at the end of the file: the
+        // crash catcher's monitor appends its summaries from a process of its own, and a write at
+        // this stream's own offset would land over them.
         logfile.open(logFile, std::ios::out);
+        logfile.close();
+        logfile.open(logFile, std::ios::app);
 
         Identity log(logfile);
 

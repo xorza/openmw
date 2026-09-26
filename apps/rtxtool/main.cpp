@@ -468,8 +468,10 @@ namespace RtxTool
             if (const std::optional<osg::Vec3f> origin = pointGiven(variables, "pos"))
                 staged.mStand.mEye = origin;
 
-            if (const std::optional<osg::Vec3f> target = pointGiven(variables, "look"))
-                staged.mStand.mLook = target;
+            if (const std::optional<osg::Vec3f> target = pointGiven(variables, "look");
+                target.has_value() && !staged.mStand.lookAt(*target))
+                throw std::runtime_error(
+                    "--look faces the camera from an eye, and neither --pos nor the view names one");
 
             return staged;
         }

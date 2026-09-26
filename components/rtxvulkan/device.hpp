@@ -279,8 +279,16 @@ namespace Rtx
         void waitFor(std::uint64_t value, const char* what) const;
 
         /// Blocks until the queue has finished everything, tells the clock so, and collects as
-        /// `waitFor` does. For tearing down and for resizing, not for pacing a frame.
+        /// `waitFor` does. For tearing down and for resizing, not for pacing a frame. A lost device
+        /// is settled with `settleLost` before the throw.
         void waitIdle() const;
+
+        /// What a lost device leaves behind: nothing on its queue runs again, so every submit made
+        /// counts as finished, and the batches deferred for a submit that will not come are given
+        /// back. The idle collect a teardown makes after the fault then frees everything, where it
+        /// would assert over a queue that is gone. Public for the test, which cannot lose a device
+        /// to reach it through `waitIdle`.
+        void settleLost() const;
 
         /// Lets go of everything the graveyard and the pool hold, a burial stamped for a submit
         /// nobody has made included. For a queue nothing is on and nothing is recorded for — a

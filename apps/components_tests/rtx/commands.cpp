@@ -175,5 +175,36 @@ namespace Rtx
             }
             EXPECT_EQ(blocks(), full + 1) << "a batch after the busiest stretch allocated";
         }
+
+        /// A lost device leaves nothing the idle collect after it asserts over: every submit counts
+        /// as run, and a batch handed over for a submit that will not come is given back.
+        ///
+        /// **Settled by hand, because a test cannot lose a device**, and `waitIdle` settles by
+        /// the same call before it throws. A debug build is the check: `collectIdle` aborts on a
+        /// submit not waited for and on a deferred batch.
+        TEST_F(RtxBatchTest, aLostDeviceLeavesNothingForTheIdleCollectToAssertOver)
+        {
+            CommandPool& pool = getPool();
+            const Buffer target = Buffer::readBack(getDevice(), 64, VK_BUFFER_USAGE_TRANSFER_DST_BIT, "test");
+            const std::vector<std::byte> some(64, std::byte{ 1 });
+
+            const VkCommandBuffer commands = pool.take();
+            pool.begin(commands);
+            pool.submit(commands);
+            {
+                Batch handed(pool);
+                stageInto(handed, target, 0, some);
+                handed.defer();
+            }
+            ASSERT_FALSE(getDevice().getTimeline().isIdle())
+                << "the submit was waited for, and nothing is left to settle";
+
+            getDevice().settleLost();
+            EXPECT_TRUE(getDevice().getTimeline().isIdle());
+            getDevice().collectIdle();
+
+            // The device is not lost, so what it still runs is waited for before the next test.
+            getDevice().waitIdle();
+        }
     }
 }

@@ -28,8 +28,15 @@ namespace Rtx
             EXPECT_NEAR(up.getRotation().x(), -osg::PI_2, 1e-6);
 
             // A stand with no look faces north, as `getLook` says.
-            const Stand bare{ .mEye = eye };
+            Stand bare{ .mEye = eye };
             EXPECT_EQ(bare.getRotation(), osg::Vec3f(0.0f, 0.0f, 0.0f));
+
+            // A look is taken over an eye and refused without one, where it would be dropped.
+            EXPECT_TRUE(bare.lookAt(eye + osg::Vec3f(100.0f, 0.0f, 0.0f)));
+            EXPECT_NEAR(bare.getRotation().z(), osg::PI_2, 1e-6);
+            Stand blind{ .mCell = "-2,-9" };
+            EXPECT_FALSE(blind.lookAt(eye));
+            EXPECT_FALSE(blind.mLook.has_value());
         }
 
         /// The ship at Seyda Neen, by hand: forward (-4411, 2767, -120) is 5208.4 long, so the yaw

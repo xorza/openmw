@@ -67,7 +67,7 @@ namespace Rtx
 
             mSwapchain = std::make_unique<Swapchain>(
                 device, mSurface, drawableSize(window), verticalSync, pacing.mMode != LatencyMode::Off, mPacedModes);
-            remakeImageSync();
+            makeImageSync();
 
             mPacer.setPacing(pacing);
             followSwapchain();
@@ -125,16 +125,14 @@ namespace Rtx
         mImages.clear();
     }
 
-    void Presenter::remakeImageSync()
+    void Presenter::makeImageSync()
     {
-        releaseImageSync();
-
         const std::uint32_t images = mSwapchain->getImageCount();
 
         // Made again rather than reused, because a slot can arrive here signalled with nothing
         // left to wait it: a suboptimal acquire hands back both an image and a signal, and it is the
         // present after it that reports the swapchain stale. Destroying the semaphore is what clears
-        // that signal, and `releaseImageSync` above is where it happens.
+        // that signal, and `releaseImageSync`, run before this, is where it happens.
         mAcquiring.resize(images);
         for (Acquisition& acquisition : mAcquiring)
             acquisition.mSemaphore = makeSemaphore(mDevice);
@@ -196,9 +194,13 @@ namespace Rtx
 
     void Presenter::remake(const VkExtent2D extent)
     {
+        // The sync released between the idle and the recreate, because the present fences it waits
+        // are the only word that the presentation engine is done with the old swapchain's images,
+        // and destroying a swapchain with a present still reading one is invalid usage.
         mDevice.waitIdle();
+        releaseImageSync();
         mSwapchain->recreate(extent);
-        remakeImageSync();
+        makeImageSync();
         followSwapchain();
     }
 

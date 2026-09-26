@@ -115,8 +115,8 @@ namespace Rtx
     Shaders::MoonDisc describeMoon(const MoonPlacement& placement)
     {
         return Shaders::MoonDisc{
-            .mSource = Shaders::moonSource(placement.mDirection,
-                osg::componentMultiply(placement.mIrradiance, placement.mPaint), placement.mAngularRadius),
+            .mSource
+            = Shaders::moonSource(placement.mDirection, placement.getPaintedIrradiance(), placement.mAngularRadius),
             .mRight = placement.mRight,
             .mUp = placement.mUp,
             .mColour = placement.mColour,

@@ -200,6 +200,10 @@ namespace Rtx
             std::optional<Worn> mWorn;
         };
 
+        /// How many controllers one node's chains are applied from: an actor's root carries a glow
+        /// and a fade at the most, and a controller past these is left unapplied.
+        static constexpr std::size_t sMostUpdaters = 4;
+
         /// The state set a node's controllers write into, kept so that the address a material is
         /// keyed on is the same one next frame. See `animate`. An entry like any other, so the map
         /// sweeps it by the epoch every entry carries; its index names nothing.
@@ -207,10 +211,12 @@ namespace Rtx
         {
             osg::ref_ptr<osg::StateSet> mStateSet;
 
-            /// The controller found on the node's callback chains, or null where there was none —
-            /// which is every node animated by an ancestor alone — and what the chains looked like
-            /// when it was found.
-            SceneUtil::StateSetUpdater* mUpdater = nullptr;
+            /// The controllers found on the node's callback chains, in the order the rasterizer runs
+            /// them, and what the chains looked like when they were found. None where the node is
+            /// animated by an ancestor alone.
+            std::array<SceneUtil::StateSetUpdater*, sMostUpdaters> mUpdaters{};
+            std::size_t mUpdaterCount = 0;
+            bool mSetUp = false;
             std::uintptr_t mChains = 0;
         };
 

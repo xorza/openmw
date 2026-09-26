@@ -122,6 +122,11 @@ namespace Rtx
         /// names an eye.
         osg::Vec3f getLook() const;
 
+        /// Faces the eye at `look`, and answers whether there was an eye to face: a stand with none
+        /// puts the player where the cell puts one, facing where it faces them, so a look over it
+        /// would be dropped without a word.
+        bool lookAt(const osg::Vec3f& look);
+
         /// The same facing as the game's own rotation of a body, in radians: `(pitch, 0, yaw)` in
         /// the order `ESM::Position::rot` keeps them, yaw clockwise from north and pitch negative
         /// looking up, which is what `MWRender::Camera` negates into its own angles. The one

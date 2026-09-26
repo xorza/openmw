@@ -47,9 +47,10 @@ namespace Rtx
         /// The painted face in the scene's texture table, or `sNoIndex` for none.
         Index mFace = sNoIndex;
 
-        /// What this moon delivers to a surface facing it, linear. Zero exactly where the fade is,
-        /// which is the one test a shader makes before it spends a shadow ray; a new moon is three
-        /// parts in ten thousand, which is what the photometry says.
+        /// What this moon delivers to a surface facing it, linear, before `mPaint`: what lights
+        /// anything is `getPaintedIrradiance`. Zero exactly where the fade is, which is the one
+        /// test a shader makes before it spends a shadow ray; a new moon is three parts in ten
+        /// thousand, which is what the photometry says.
         osg::Vec3f mIrradiance;
 
         /// What the air leaves of it, per channel — `Rtx::airTransmittance` at its own elevation,
@@ -67,6 +68,10 @@ namespace Rtx
         /// alike, because a moon that is drawn red lights red — the rasterizer's `moonBlend` paints
         /// the disc alone, and the disc is the only light it has.
         osg::Vec3f mPaint{ 1.0f, 1.0f, 1.0f };
+
+        /// What the moon lights anything with: `mIrradiance` under `mPaint`. The one spelling, so
+        /// the ground and the cloud deck are lit by the same moon.
+        osg::Vec3f getPaintedIrradiance() const { return osg::componentMultiply(mIrradiance, mPaint); }
     };
 
     /// The two painted faces, in a scene's texture table, held rather than named by a material:

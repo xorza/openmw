@@ -1,9 +1,11 @@
 #include "materialresolver.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
 
 #include <osg/Callback>
@@ -43,17 +45,20 @@ namespace Rtx
             return blend == BlendKind::AddWhole ? mean.mWhole : mean.mColour;
         }
 
-        /// The state-set controller on `node`, from whichever callback chain carries it: `NifOsg`
-        /// hangs anything marked `AnimFlag_AutoPlay` from a cull callback and everything else from
-        /// an update callback.
-        SceneUtil::StateSetUpdater* findUpdater(osg::Node& node)
+        /// Every state-set controller on `node`'s two chains, into `into`, in the order the
+        /// rasterizer runs them: the update traversal's chain before the cull traversal's, so a fade
+        /// applied at cull lands over a glow applied at update. `NifOsg` hangs anything marked
+        /// `AnimFlag_AutoPlay` from a cull callback and everything else from an update callback.
+        std::size_t findUpdaters(osg::Node& node, std::span<SceneUtil::StateSetUpdater*> into)
         {
-            for (osg::Callback* chain : { node.getCullCallback(), node.getUpdateCallback() })
+            std::size_t count = 0;
+            for (osg::Callback* chain : { node.getUpdateCallback(), node.getCullCallback() })
                 for (osg::Callback* callback = chain; callback != nullptr; callback = callback->getNestedCallback())
-                    if (auto* updater = dynamic_cast<SceneUtil::StateSetUpdater*>(callback))
-                        return updater;
+                    if (auto* updater = dynamic_cast<SceneUtil::StateSetUpdater*>(callback);
+                        updater != nullptr && count < into.size())
+                        into[count++] = updater;
 
-            return nullptr;
+            return count;
         }
 
         /// What hangs on `node`'s two chains, as one number: a callback added, removed or swapped
@@ -90,27 +95,55 @@ namespace Rtx
         if (arrived || chains != held.mChains)
         {
             held.mChains = chains;
-            held.mUpdater = chained ? findUpdater(node) : nullptr;
+
+            std::array<SceneUtil::StateSetUpdater*, sMostUpdaters> found{};
+            const std::size_t count = chained ? findUpdaters(node, found) : 0;
+
+            if (count != held.mUpdaterCount
+                || !std::equal(found.begin(), found.begin() + count, held.mUpdaters.begin()))
+            {
+                held.mUpdaters = found;
+                held.mUpdaterCount = count;
+                held.mSetUp = false;
+            }
         }
 
-        SceneUtil::StateSetUpdater* updater = held.mUpdater;
-        if (updater == nullptr && !inherits)
+        const std::span<SceneUtil::StateSetUpdater* const> updaters(held.mUpdaters.data(), held.mUpdaterCount);
+        if (updaters.empty() && !inherits)
             return nullptr;
 
-        if (held.mStateSet == nullptr)
+        // **Set up again whenever the controllers that apply to it change**, so none applies to a
+        // state set it did not set up: a fade that came after a glow read the uniforms the glow's
+        // defaults never made, and a fade that went left its blend and its alpha behind. Reset in
+        // place rather than made anew, because the address is what the material table keys the
+        // surface by, and a new one would be a second material for the same surface.
+        if (!held.mSetUp)
         {
+            held.mSetUp = true;
+
+            if (held.mStateSet == nullptr)
+                held.mStateSet = new osg::StateSet;
+            held.mStateSet->clear();
+
             // A shallow copy of what the node already wears: `applyCull` starts from an empty state
             // set and lets the rasterizer's state stack supply the rest, so a fire would lose its
             // material along with its animation. Read rather than created, because
             // `getOrCreateStateSet` would leave an empty one on a node that had none, pushed over
             // the material a parent was contributing.
-            const osg::StateSet* base = node.getStateSet();
-            held.mStateSet = base != nullptr ? new osg::StateSet(*base, osg::CopyOp::SHALLOW_COPY) : new osg::StateSet;
-            if (updater != nullptr)
+            if (const osg::StateSet* base = node.getStateSet(); base != nullptr)
+            {
+                held.mStateSet->merge(*base);
+
+                // `merge` leaves the bin to the set merged into.
+                held.mStateSet->setRenderingHint(base->getRenderingHint());
+                held.mStateSet->setRenderBinDetails(base->getBinNumber(), base->getBinName(), base->getRenderBinMode());
+                held.mStateSet->setNestRenderBins(base->getNestRenderBins());
+            }
+            for (SceneUtil::StateSetUpdater* updater : updaters)
                 updater->setDefaults(held.mStateSet);
         }
 
-        if (updater != nullptr)
+        for (SceneUtil::StateSetUpdater* updater : updaters)
             updater->apply(held.mStateSet, visitor);
         return held.mStateSet;
     }

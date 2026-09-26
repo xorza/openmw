@@ -63,7 +63,8 @@ namespace Rtx
     /// Reads it, adding every texture it names to `scene` and holding them there. An error where
     /// neither file exists, having held nothing, saying why and leaving the name of `mesh` to
     /// whoever reports it: a gap in the content is refused and not read as a sky with no stars in
-    /// it, and what the sky does without them is `addSkyContent`'s answer.
+    /// it, and what the sky does without them is `addSkyContent`'s answer. A sheet the upload
+    /// cannot take is refused to `scene` by its file's name, and the dome goes on without it.
     ///
     /// @param mesh the star dome the configuration names.
     /// @param fallback the dome to read where the archives hold no `mesh`: Tribunal ships the

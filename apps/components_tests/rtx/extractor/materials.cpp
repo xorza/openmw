@@ -531,6 +531,67 @@ namespace Rtx::Testing
                 EXPECT_TRUE(mScene.textures().isFree(slot)) << "slot " << slot << " outlived the material";
         }
 
+        /// What `MWRender::TransparencyUpdater` does: sets its blend and its two uniforms up, and
+        /// writes the fade every frame with no test that the uniform is there.
+        class FadeController : public SceneUtil::StateSetUpdater
+        {
+        public:
+            float mFade = 1.0f;
+
+            void setDefaults(osg::StateSet* stateset) override
+            {
+                stateset->setAttributeAndModes(new osg::BlendFunc, osg::StateAttribute::ON);
+                stateset->addUniform(new osg::Uniform("alpha", 1.0f));
+                stateset->addUniform(new osg::Uniform("actorFade", 1.0f));
+            }
+
+            void apply(osg::StateSet* stateset, osg::NodeVisitor*) override
+            {
+                stateset->getUniform("actorFade")->set(mFade);
+            }
+        };
+
+        /// A fade that arrives after a glow finds its own defaults, both apply, and nothing the fade
+        /// set stays once it goes.
+        ///
+        /// **What an actor casting and then going invisible does**: the glow rides the root's update
+        /// chain and the fade its cull chain. A state set set up by the glow alone had no
+        /// `actorFade`, and the fade dereferenced it on the next walk.
+        TEST_F(RtxSceneExtractorTest, aFadeAfterAGlowFindsItsOwnDefaultsAndLeavesNothingWhenItGoes)
+        {
+            osg::ref_ptr<FlipController> glow = makeFlip();
+            osg::ref_ptr<FadeController> fade = new FadeController;
+            fade->mFade = 0.25f;
+
+            osg::ref_ptr<osg::Group> root = makeShape(shapeState());
+            root->addUpdateCallback(glow);
+
+            osgUtil::UpdateVisitor update;
+            const auto frame = [&](unsigned int number) {
+                glow->mShown = number - 1;
+                update.setTraversalNumber(number);
+                root->accept(update);
+
+                mScene.clearPlacement();
+                walk(*root, 0, number);
+                mExtractor.retire();
+                mScene.clearArrivals();
+
+                EXPECT_EQ(mScene.materials().getRows().front().mEnvironment, glow->mShown + 1)
+                    << "the glow on frame " << number;
+                return mScene.placements().getRows().front().mInstance.mOpacity;
+            };
+
+            EXPECT_EQ(frame(1), 1.0f);
+
+            root->addCullCallback(fade);
+            EXPECT_EQ(frame(2), 0.25f) << "the fade that arrived after the glow";
+            EXPECT_EQ(frame(3), 0.25f);
+
+            root->removeCullCallback(fade);
+            EXPECT_EQ(frame(4), 1.0f) << "a fade that went, still applied";
+        }
+
         /// A material read once keeps every map it names for as long as it stands. The walk's own
         /// hold on an image goes on the frame after the material arrived, so the row's is the one
         /// that lasts — and a map the row does not hold is freed under it, its slot handed to the

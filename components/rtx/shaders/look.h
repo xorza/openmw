@@ -723,12 +723,10 @@ namespace Rtx::Shaders
     /// — and reading this either way would take the air off precisely there.
     const float FOG_EDGE_RISE = 0.4226183f;
 
-    /// Water's index of refraction, and the reflectance it gives head-on.
-    ///
-    /// `((1.333 - 1) / (1.333 + 1))^2`, which is why water is a window seen from above and a mirror
-    /// seen along it.
+    /// Water's index of refraction, and the reflectance it gives head-on: `((n - 1) / (n + 1))^2`,
+    /// 0.02037, which is why water is a window seen from above and a mirror seen along it.
     const float WATER_IOR = 1.333f;
-    const float WATER_F0 = 0.02f;
+    const float WATER_F0 = ((WATER_IOR - 1.0f) / (WATER_IOR + 1.0f)) * ((WATER_IOR - 1.0f) / (WATER_IOR + 1.0f));
 
     /// The most radiance the sun's disc is drawn with.
     ///

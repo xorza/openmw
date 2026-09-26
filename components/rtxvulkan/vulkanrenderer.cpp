@@ -4,6 +4,7 @@
 #include <bit>
 #include <cassert>
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -334,7 +335,8 @@ namespace Rtx
     }
 
     VisibilityInputs VulkanRenderer::describeInputs(const DeviceScene& held, const TraceChain& chain,
-        const std::uint32_t rayMask, const Image& shown, const Buffer& counts, const FrameSlot traceSlot) const
+        const Shaders::VisibilityConstants& camera, const Image& shown, const Buffer& counts,
+        const FrameSlot traceSlot) const
     {
         return VisibilityInputs{
             .mScene = held.getAcceleration().getTopLevel(),
@@ -352,10 +354,10 @@ namespace Rtx
             .mRipples = &mRipples,
             .mFog = &mFog,
             .mFogVolume = &chain.getFogVolume(),
-            .mSpriteList = (rayMask & Shaders::MASK_PARTICLE) != 0 ? 0 : mNoSprites.addressFor(),
+            .mSpriteList = (camera.mRayMask & Shaders::MASK_PARTICLE) != 0 ? 0 : mNoSprites.addressFor(),
             .mShown = &shown,
             .mSunGlare = &mDisplay.getGlareCounts(),
-            .mWater = held.getCounts().mWater > 0,
+            .mSea = held.getCounts().mWater > 0 || !std::isinf(camera.mWaterLevel),
             .mMapped = held.getCounts().mMapped > 0,
         };
     }
@@ -383,9 +385,9 @@ namespace Rtx
         sampled.mArms.mJitter = sampled.mCamera.mJitter;
         sampled.mArmsSpread = armsSpreadOf(camera);
 
-        // The scene's answer and not the camera's, for the reason `VisibilityInputs::mWater` is one:
-        // a cell with no cloud in it has nothing for the medium walk to find, wherever it is looked
-        // at from. The arms are the scene's and the camera's both: a map draws none.
+        // The scene's answer and not the camera's: a cell with no cloud in it has nothing for the
+        // medium walk to find, wherever it is looked at from. The arms are the scene's and the
+        // camera's both: a map draws none.
         const InstanceCounts& counts = scene.getCounts();
         sampled.mMediumInFrame = counts.mMedium > 0 ? 1 : 0;
         sampled.mAdditiveInFrame = counts.mAdditive > 0 ? 1 : 0;
@@ -844,7 +846,7 @@ namespace Rtx
         // The puffs are composited over the reconstruction where something upscales, and over the
         // trace's own composite where nothing does. Named before the trace, because the set that
         // carries it is pushed for every launch.
-        const VisibilityInputs inputs = describeInputs(*mWorld, mFrame, camera.mRayMask,
+        const VisibilityInputs inputs = describeInputs(*mWorld, mFrame, camera,
             upscaling() ? mUpscaler->getOutput() : mFrame.getColour(), frame.mCounts, mRing.getRecordingSlot());
 
         // Made by the first frame that averages, and that frame is the one that fills it.
@@ -872,7 +874,7 @@ namespace Rtx
         // What walked through the water, stepped before the trace reads it and only where the
         // world stands in a sea: one field under every picture of this frame, anchored where the
         // step left it. A frame with no sea leaves the tiles as they were and stands no field.
-        if (inputs.mWater)
+        if (inputs.mSea)
         {
             mRipples.record(commands, mRing.getRecordingSlot(), mFrameRipples,
                 osg::Vec2f(camera.mOrigin.x(), camera.mOrigin.y()), static_cast<double>(camera.mSkyTime), &timer);
@@ -1085,7 +1087,7 @@ namespace Rtx
         DeviceScene& traced = sceneAt(options.mScene);
 
         const VisibilityInputs inputs
-            = describeInputs(traced, mView, camera.mRayMask, mView.getColour(), mViewCounts, FrameSlot{});
+            = describeInputs(traced, mView, camera, mView.getColour(), mViewCounts, FrameSlot{});
 
         // Nothing reconstructs a picture, so nothing jitters it, and it has no frame before it.
         Shaders::VisibilityConstants sampled = sampleCamera(camera, traced, Reconstruction{}, nullptr);

@@ -19,10 +19,12 @@
 #include <components/resource/scenemanager.hpp>
 #include <components/vfs/manager.hpp>
 
+#include "refusals.hpp"
 #include "result.hpp"
 #include "scenedesc.hpp"
 #include "shaders/look.h"
 #include "texels.hpp"
+#include "texturebuilder.hpp"
 
 namespace Rtx
 {
@@ -266,6 +268,14 @@ namespace Rtx
         std::size_t next = 0;
         for (const Layer& layer : read.mLayers)
         {
+            // Asked before a slot is taken, as a deck's sheet is: one the upload refuses would stand
+            // in as an opaque grey, and the field is laid over the whole dome.
+            if (const Result<void, std::string> uploadable = checkUploadable(*layer.mImage); !uploadable.isOk())
+            {
+                scene.refusals().refuse(Refused::SkyLayer, layer.mImage->getFileName(), uploadable.error());
+                continue;
+            }
+
             const Index slot = scene.textures().add(VFS::Path::Normalized(layer.mImage->getFileName()));
             scene.textures().hold(slot);
 

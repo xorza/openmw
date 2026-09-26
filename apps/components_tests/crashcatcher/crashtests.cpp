@@ -27,7 +27,10 @@
 #include <components/crashcatcher/crash.hpp>
 #include <components/crashcatcher/crashnote.hpp>
 #include <components/crashcatcher/crashsummary.hpp>
+#include <components/debug/debugging.hpp>
+#include <components/debug/debuglog.hpp>
 #include <components/files/conversion.hpp>
+#include <components/platform/process.hpp>
 
 #if defined(_MSC_VER)
 #include <intrin.h>
@@ -171,24 +174,20 @@ namespace
         }
     }
 
+    /// **Started the way the game starts**: `setupLogging` opens the log and installs the catcher
+    /// beside it, so what a mode writes afterwards goes through the stream the game writes its log
+    /// with, the one the monitor's summaries have to survive.
     int run(std::string_view mode, const std::filesystem::path& folder)
     {
-        Crash::Settings settings;
-        settings.mApplication = "crash-tests";
-        settings.mReportFolder = folder / "crashes";
-        settings.mLogFile = folder / "crash-tests.log";
-        settings.mDialog = false;
-        if (const std::optional<std::string> why = Crash::install(settings))
-        {
-            std::cerr << "crash-tests: no catcher: " << *why << '\n';
-            return 2;
-        }
+        Platform::Process::setEnvironment("OPENMW_CRASH_DIALOG", "0");
+        std::filesystem::create_directories(folder);
+        Debug::setupLogging(folder, "crash-tests");
         Crash::setHangLimit(std::chrono::seconds(2));
         Crash::annotate("mode", mode);
         Crash::note("running the mode", mode);
 
-        const auto livedOn = [&] {
-            std::ofstream(settings.mLogFile, std::ios::app) << "crash-tests lived on\n";
+        const auto livedOn = [] {
+            Log(Debug::Info) << "crash-tests lived on";
             return 0;
         };
 
@@ -231,7 +230,7 @@ namespace
         if (mode == "hang")
         {
             stall(std::chrono::milliseconds(4500));
-            return 0;
+            return livedOn();
         }
         if (mode == "short-stall")
         {
@@ -344,6 +343,13 @@ namespace
         };
         const auto first = std::find_if(said.begin(), said.end(), headed);
 
+        // `setupLogging` says so in the log and carries on, as the game does, where a mode that
+        // reports nothing would then pass without a catcher to have kept quiet.
+        if (const auto missing = std::find_if(
+                said.begin(), said.end(), [](const std::string& line) { return line.starts_with("No crash catcher"); });
+            missing != said.end())
+            return *missing;
+
         if (!mode.mReports)
         {
             if (first != said.end())
@@ -418,10 +424,13 @@ namespace
             std::filesystem::create_directories(folder);
 
             const auto start = std::chrono::steady_clock::now();
-            // Its errors and its monitor's, which share them, to show where the mode fails.
+            // Its errors and its monitor's, which share them, to show where the mode fails. Its
+            // output apart, because the log is teed to it, and the matrix's own is the table.
             const std::filesystem::path errors = folder / "stderr.txt";
             const std::string command = quoted(Files::pathToUnicodeString(self)) + " " + std::string(mode.mName) + " "
-                + quoted(Files::pathToUnicodeString(folder)) + " 2>" + quoted(Files::pathToUnicodeString(errors));
+                + quoted(Files::pathToUnicodeString(folder)) + " >"
+                + quoted(Files::pathToUnicodeString(folder / "stdout.txt")) + " 2>"
+                + quoted(Files::pathToUnicodeString(errors));
 #if defined(_WIN32)
             // `cmd /c` takes the whole line in one more pair of quotes.
             const int status = std::system(quoted(command).c_str());
@@ -458,7 +467,9 @@ int main(int argc, char* argv[])
     if (argc == 3 && std::string_view(argv[1]) == "--matrix")
         return matrix(std::filesystem::absolute(argv[0]), std::filesystem::absolute(argv[2]));
     if (argc == 3)
-        return run(argv[1], std::filesystem::absolute(argv[2]));
+        return Debug::wrapApplication(
+            [](int, char* arguments[]) { return run(arguments[1], std::filesystem::absolute(arguments[2])); }, argc,
+            argv, "crash-tests");
 
     std::cerr << "usage: crash-tests <mode> <folder> | --matrix <folder>\n";
     return 2;

@@ -138,6 +138,15 @@ namespace Rtx
         return *mLook;
     }
 
+    bool Stand::lookAt(const osg::Vec3f& look)
+    {
+        if (!mEye.has_value())
+            return false;
+
+        mLook = look;
+        return true;
+    }
+
     osg::Vec3f Stand::getRotation() const
     {
         osg::Vec3f forward = getLook() - *mEye;

@@ -1,4 +1,5 @@
 #include <array>
+#include <limits>
 #include <optional>
 #include <stdexcept>
 
@@ -50,6 +51,12 @@ namespace Rtx
             EXPECT_EQ(minimumIntervalOf(120.0f), 8333u) << "1000000 / 120 = 8333.33, to the nearest";
             EXPECT_EQ(minimumIntervalOf(144.0f), 6944u) << "6944.44";
             EXPECT_EQ(minimumIntervalOf(240.0f), 4167u) << "4166.67";
+
+            // 1000000 / 2^-10 = 1024000000 fits the field, 1000000 / 1e-5 = 1e11 is past its
+            // 4294967295, and a limit past every frame rate asks for no wait at all.
+            EXPECT_EQ(minimumIntervalOf(0.0009765625f), 1024000000u);
+            EXPECT_EQ(minimumIntervalOf(1e-5f), 4294967295u);
+            EXPECT_EQ(minimumIntervalOf(std::numeric_limits<float>::infinity()), 0u);
         }
     }
 }

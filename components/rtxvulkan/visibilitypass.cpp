@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
-#include <cmath>
 #include <cstddef>
 #include <filesystem>
 #include <memory>
@@ -171,7 +170,7 @@ namespace Rtx
     static_assert(static_cast<std::uint32_t>(MaterialKind::Water) == 2);
 
     VisibilityVariant VisibilityVariant::resolve(
-        const Shaders::VisibilityConstants& frame, const bool water, const bool mapped)
+        const Shaders::VisibilityConstants& frame, const bool sea, const bool mapped)
     {
         // A moon that is drawn and a moon that lights are two facts, and the sky needs the first
         // where no surface asks for the second: the game fades both out over the hours around dawn,
@@ -187,9 +186,7 @@ namespace Rtx
             .mSun = frame.mSun.mIrradiance != Shaders::vec3(),
             .mMoons = moons,
 
-            // Either half is water in the frame: a surface the eye can meet, or a level it can be
-            // under. A cell with a level and no surface is one the eye can still be submerged in.
-            .mSea = water || !std::isinf(frame.mWaterLevel),
+            .mSea = sea,
             .mMaps = mapped,
         };
     }
@@ -541,7 +538,7 @@ namespace Rtx
 
         // Resolved from the constants this frame is about to be traced with, and from nothing
         // kept between frames: a dusk moves the tuple and a doorway moves it again.
-        const VisibilityVariant variant = VisibilityVariant::resolve(constants, inputs.mWater, inputs.mMapped);
+        const VisibilityVariant variant = VisibilityVariant::resolve(constants, inputs.mSea, inputs.mMapped);
 
         const FrameSlot trace = inputs.mTraceSlot;
         inputs.mFogVolume->begin(commands, trace);

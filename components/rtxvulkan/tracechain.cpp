@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cassert>
-#include <cmath>
 
 #include <components/rtx/frameimage.hpp>
 #include <components/rtx/shaders/composite.h>
@@ -23,17 +22,6 @@
 
 namespace Rtx
 {
-    namespace
-    {
-        /// Whether this camera has a sea to synthesise — the shader's own test, so the two cannot
-        /// disagree. Every interior is such a frame, and the synthesis was a fifth of a millisecond
-        /// of device time in each of them.
-        bool hasSea(const Shaders::VisibilityConstants& camera)
-        {
-            return !std::isinf(camera.mWaterLevel);
-        }
-    }
-
     TraceChain::TraceChain(const Device& device, const TracePasses& passes, const VkImageUsageFlags colourUsage,
         const std::string_view colourName)
         : mDevice(device)
@@ -115,9 +103,9 @@ namespace Rtx
             image->transition(commands, Use::sUndefined, Use::sComputeWrite);
 
         // Before the trace and outside its zone, because the sea is a function of the clock and of
-        // nothing the camera does — one synthesis serves every ray. None where there is no water:
-        // `WavePass::record` says where the tiles are left.
-        if (hasSea(what.mSampled))
+        // nothing the camera does — one synthesis serves every ray. None where there is no sea,
+        // which is most interiors, and a fifth of a millisecond of device time in each of them.
+        if (what.mInputs.mSea)
         {
             openZone(what.mTimer, commands, "waves");
             what.mInputs.mWaves->record(commands, what.mSampled.mTime);

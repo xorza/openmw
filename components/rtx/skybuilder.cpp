@@ -160,7 +160,7 @@ namespace Rtx
 
         osg::Vec3f direct = sentDown(sun.mIrradiance, sun.mPosition);
         for (const MoonPlacement& moon : moons)
-            direct += sentDown(moon.mIrradiance, moon.mDirection);
+            direct += sentDown(moon.getPaintedIrradiance(), moon.mDirection);
 
         return DeckLight{ .mLit = fromSky + direct, .mShadowed = fromSky };
     }
