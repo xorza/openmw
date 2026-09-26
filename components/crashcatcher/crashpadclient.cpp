@@ -143,6 +143,18 @@ namespace Crash
 #endif
         }
 
+#if defined(_WIN32)
+        /// **The terminate hook on every thread**, because MSVC's runtime keeps one per thread and a
+        /// new one starts with the default, which aborts. The loader calls this in each thread it
+        /// starts, before the thread's own function; a thread started before `install` keeps the
+        /// runtime's.
+        void NTAPI onThreadStart(PVOID, DWORD reason, PVOID)
+        {
+            if (reason == DLL_THREAD_ATTACH && sInstalled.load(std::memory_order_acquire))
+                std::set_terminate(onTerminate);
+        }
+#endif
+
         void hookEveryEnd()
         {
             std::set_terminate(onTerminate);
@@ -248,3 +260,17 @@ namespace Crash
         setReport(ReportKind::Crash, {});
     }
 }
+
+#if defined(_MSC_VER)
+// The loader calls every pointer in `.CRT$XL*` at each thread's start. The two names keep the
+// linker from dropping the table and the entry, which nothing else refers to.
+#if defined(_M_IX86)
+#pragma comment(linker, "/INCLUDE:__tls_used")
+#pragma comment(linker, "/INCLUDE:_openmwCrashThreadStart")
+#else
+#pragma comment(linker, "/INCLUDE:_tls_used")
+#pragma comment(linker, "/INCLUDE:openmwCrashThreadStart")
+#endif
+#pragma section(".CRT$XLY", long, read)
+extern "C" __declspec(allocate(".CRT$XLY")) const PIMAGE_TLS_CALLBACK openmwCrashThreadStart = Crash::onThreadStart;
+#endif
