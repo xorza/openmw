@@ -1,5 +1,9 @@
 #pragma once
 
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <optional>
 #include <vector>
 
@@ -44,6 +48,67 @@ namespace Terrain
         return (static_cast<unsigned int>(set) & static_cast<unsigned int>(one)) != 0;
     }
 
+    /// What a walk of the content files says of each reference, in the order the files stack,
+    /// reduced the way they stack: a reference's last word wins, and a last word that deletes it
+    /// leaves it out. Flat and sorted once, where a map makes a node per reference and is made again
+    /// per cell; kept by a collector and emptied per call, so a walk of cell after cell allocates
+    /// nothing once it has held the most any cell said.
+    class RefStack
+    {
+    public:
+        void assign(const ESM::RefNum& refNum, const PagedCellRef& ref)
+        {
+            mSaid.push_back(Said{ refNum, static_cast<std::uint32_t>(mSaid.size()), false, ref });
+        }
+
+        void erase(const ESM::RefNum& refNum)
+        {
+            mSaid.push_back(Said{ refNum, static_cast<std::uint32_t>(mSaid.size()), true, PagedCellRef{} });
+        }
+
+        void clear() { mSaid.clear(); }
+
+        /// Every reference whose last word was not a deletion, that word, appended to `into` in
+        /// reference order.
+        void reduceInto(std::vector<PagedCellRef>& into)
+        {
+            std::sort(mSaid.begin(), mSaid.end(), [](const Said& a, const Said& b) {
+                return a.mRefNum < b.mRefNum || (a.mRefNum == b.mRefNum && a.mOrder < b.mOrder);
+            });
+
+            for (std::size_t at = 0; at < mSaid.size(); ++at)
+            {
+                const Said& said = mSaid[at];
+                const bool last = at + 1 == mSaid.size() || !(mSaid[at + 1].mRefNum == said.mRefNum);
+                if (last && !said.mErased)
+                    into.push_back(said.mRef);
+            }
+        }
+
+    private:
+        struct Said
+        {
+            ESM::RefNum mRefNum;
+
+            /// Which word this was, so the last on a reference is the one kept.
+            std::uint32_t mOrder;
+
+            bool mErased;
+            PagedCellRef mRef;
+        };
+        std::vector<Said> mSaid;
+    };
+
+    /// What one caller of `ObjectStorage::collect` keeps from one call to the next: whatever an
+    /// implementation reads the content files with and reduces the references in. Made by
+    /// `makeCollector` and handed back to every call that caller makes, so a thread walking cell
+    /// after cell reuses its readers and its buffers and two threads never share them.
+    class RefCollector
+    {
+    public:
+        virtual ~RefCollector() = default;
+    };
+
     /// What the paging and the ray tracer ask of the content files.
     ///
     /// **The seam `Terrain::Storage` already is, for the same reason.** The paging is a thousand
@@ -63,9 +128,14 @@ namespace Terrain
         /// reference is.
         ///
         /// `into` is cleared first. Called from the paging's own working threads, so an
-        /// implementation must be safe to call on several at once.
+        /// implementation must be safe to call on several at once, each with a collector of its own.
+        ///
+        /// @param collector what `makeCollector` made for this caller.
         virtual void collect(float size, const osg::Vec2i& startCell, ESM::RefId worldspace, RefKinds kinds,
-            std::vector<PagedCellRef>& into) const = 0;
+            RefCollector& collector, std::vector<PagedCellRef>& into) const = 0;
+
+        /// A collector for one caller of `collect`, which that caller keeps.
+        virtual std::unique_ptr<RefCollector> makeCollector() const = 0;
 
         /// What a `LIGH` record says its light is, or nothing where the id names no such record.
         ///

@@ -251,15 +251,18 @@ namespace RtxTool
                 mFlown = eye;
             }
 
-            /// Empties it for the next stop, keeping the room the frame series and the latency
-            /// series grew — the two the longest stop of a run reserves.
+            /// Empties it for the next stop, keeping the room the frame series, the latency series and
+            /// the zones' rows grew — what the longest stop of a run reserves.
             ///
             /// **Every field not named is reset by being unnamed**, which is what `beginStop`
             /// promises of this call: a field added to the struct is reset here whether or not its
             /// author remembered to. The route's three — `mFrom`, `mFromLook` and `mFlown` — are
             /// reset with the rest, because every branch of `beginStop` reaches `standAt` after
             /// this and writes all three.
-            void restart() { Rtx::reuseKeeping(*this, &StopProgress::mSamples, &StopProgress::mLatencyMs); }
+            void restart()
+            {
+                Rtx::reuseKeeping(*this, &StopProgress::mSamples, &StopProgress::mLatencyMs, &StopProgress::mGpu);
+            }
         };
 
         Rtx::SessionRequest mRequest;

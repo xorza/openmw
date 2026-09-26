@@ -34,16 +34,18 @@ namespace Rtx
     {
         const Timeline& timeline = mDevice.getTimeline();
         const std::uint32_t count = source.mSpriteCount;
-        const VkDeviceSize bytes = source.mSprites->getSize();
+        const VkDeviceSize bytes = VkDeviceSize{ count } * sizeof(Shaders::GpuSprite);
 
-        growTo(mSprites, mDevice, BufferKind::HostWritten, bytes, sTableFilledUsage, "binned sprites");
-        growTo(mOrder, mDevice, BufferKind::HostWritten,
+        // At twice the high-water mark past it, as every table a frame writes: a storm thickens by a
+        // few sprites a frame, and a table sized to each count would be made again on every one.
+        outgrow(mSprites, mDevice, BufferKind::HostWritten, bytes, sTableFilledUsage, "binned sprites");
+        outgrow(mOrder, mDevice, BufferKind::HostWritten,
             VkDeviceSize{ count } * Shaders::SPRITE_SHADE_LIGHTS * sizeof(std::uint64_t), sTableUsage, "sprite order");
-        growTo(mRects, mDevice, BufferKind::HostWritten, VkDeviceSize{ count } * sizeof(std::uint64_t), sTableUsage,
+        outgrow(mRects, mDevice, BufferKind::HostWritten, VkDeviceSize{ count } * sizeof(std::uint64_t), sTableUsage,
             "sprite rects");
-        growTo(mEmitterFrames, mDevice, BufferKind::HostWritten,
+        outgrow(mEmitterFrames, mDevice, BufferKind::HostWritten,
             VkDeviceSize{ source.mEmitterCount } * sizeof(Shaders::GpuEmitterFrame), sTableUsage, "emitter frames");
-        growTo(mPresence, mDevice, BufferKind::HostWritten,
+        outgrow(mPresence, mDevice, BufferKind::HostWritten,
             VkDeviceSize{ Shaders::spriteTilesIn(camera.mWidth, camera.mHeight) } * sizeof(std::uint32_t),
             sTableFilledUsage, "sprite presence");
 
@@ -58,7 +60,9 @@ namespace Rtx
             = timeline.hasFinished(mReport.getNamedUntil()) ? *static_cast<const std::uint32_t*>(mReport.map()) : 0;
         mListSize.sizeFor(Shaders::spriteTilesIn(camera.mWidth, camera.mHeight), count, reported);
 
-        growTo(
+        // Past the need as the tables above are; the pass is told the capacity the rule gave, which
+        // the buffer holds.
+        outgrow(
             mTileList, mDevice, BufferKind::HostWritten, mListSize.getBytes(), sTableFilledUsage, "sprite tile list");
 
         // The placement's table, whole, because the shade writes over what it reads: the copy is
@@ -68,7 +72,8 @@ namespace Rtx
         // last is behind on the queue, and the barrier `CommandPool::begin` records at the head
         // of these commands is what orders the copy after it. Handed to the launch and the
         // dispatch both, because the shelter launch writes it before the shade does.
-        source.mSprites->copyTo(commands, mSprites, bytes);
+        if (bytes > 0)
+            source.mSprites->copyTo(commands, mSprites, bytes);
         mSprites.transition(commands, Use::sBufferCopyWrite, Use::sBufferShaderReadWrite);
     }
 
@@ -83,7 +88,8 @@ namespace Rtx
         GpuTimer* const timer = what.mTimer;
 
         const std::uint32_t count = source.mSpriteCount;
-        assert(mSprites.getSize() >= source.mSprites->getSize() && "a bin recorded over sprites it never took");
+        assert(mSprites.getSize() >= VkDeviceSize{ source.mSpriteCount } * sizeof(Shaders::GpuSprite)
+            && "a bin recorded over sprites it never took");
 
         shading.record(commands,
             Shaders::SpriteShadeConstants{

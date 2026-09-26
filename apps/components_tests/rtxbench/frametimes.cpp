@@ -262,6 +262,24 @@ namespace Rtx
             EXPECT_EQ(describeZone(zones[0]), "trace 4.00") << "a zone every frame ran needs no qualification";
             EXPECT_EQ(describeZone(zones[1]), "blas 3.00 (10.00 on 2 of 10)");
             EXPECT_EQ(describeZones(zones), "  gpu ms    trace 4.00  blas 3.00 (10.00 on 2 of 10)\n");
+
+            // **The next stop keeps the rows and quotes only what it met.** Emptied, a stop that
+            // ran `trace` alone reports `trace` alone, over its own ten frames and out of the room
+            // the rows were made: a row a zone outgrew mid-run grew inside a frame it was timing.
+            breakdown.reserve(16);
+            breakdown.clear();
+            EXPECT_TRUE(breakdown.empty());
+
+            const std::size_t before = Testing::getAllocationCount();
+            for (int frame = 0; frame < 10; ++frame)
+                breakdown.add(std::span<const GpuSpan>(&trace, 1));
+            const std::span<const GpuZone> again = breakdown.summariseZones();
+            EXPECT_EQ(Testing::getAllocationCount() - before, 0u) << "a second stop grew a row or the summary";
+
+            ASSERT_EQ(again.size(), 1u) << "a zone the first stop met and this one did not is not quoted";
+            EXPECT_EQ(again[0].mName, "trace");
+            EXPECT_DOUBLE_EQ(again[0].mShareMs, 4.0);
+            EXPECT_EQ(again[0].mOfFrames, 10u);
         }
 
         /// A pass recorded in batches opens its zone several times over one frame, and the frame is

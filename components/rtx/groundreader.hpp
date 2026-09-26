@@ -2,9 +2,11 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <vector>
 
 #include <osg/Array>
+#include <osg/Image>
 #include <osg/Vec2f>
 #include <osg/Vec2i>
 #include <osg/Vec4f>
@@ -14,6 +16,7 @@
 #include <components/terrain/buffercache.hpp>
 #include <components/terrain/defs.hpp>
 #include <components/terrain/storage.hpp>
+#include <components/vfs/pathutil.hpp>
 
 #include "prepared.hpp"
 
@@ -33,7 +36,24 @@ namespace Rtx
         /// Reads the ground of `cell` into `into`, which has been through `reuse`. A layer whose
         /// texture cannot be opened keeps its place and its path, for the texture table to stand
         /// in and refuse: left out, the ground under it would show another layer with nothing said.
+        /// The layers' textures are `getLayerFiles`', for the caller to hold them by.
         void read(const osg::Vec2i& cell, PreparedGround& into);
+
+        /// What one layer's land names and what opening it found: the diffuse, and the normal map
+        /// the storage found beside it, with an empty path where there is none and a null image
+        /// where a file would not read.
+        struct LayerFiles
+        {
+            osg::ref_ptr<const osg::Image> mImage;
+            VFS::Path::Normalized mPath;
+            osg::ref_ptr<const osg::Image> mNormalImage;
+            VFS::Path::Normalized mNormalPath;
+        };
+
+        /// The last `read`'s, one a layer in the layers' order, until the next `read`. Here and not
+        /// on the layer, because a layer holds the reader's description of each texture, which
+        /// holds the same pair for as long as any cell names it.
+        std::span<const LayerFiles> getLayerFiles() const { return mFiles; }
 
         /// Cell texture coordinates to a layer's diffuse texture, which tiles `tileCount` times
         /// across the cell: what `LayerTexMat` in `components/terrain/material.cpp` attaches.
@@ -76,5 +96,6 @@ namespace Rtx
         osg::ref_ptr<osg::Vec4ubArray> mColours = new osg::Vec4ubArray;
         Terrain::Storage::ImageVector mBlendmaps;
         std::vector<Terrain::LayerInfo> mLayerInfos;
+        std::vector<LayerFiles> mFiles;
     };
 }

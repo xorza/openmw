@@ -11,7 +11,9 @@ namespace MWRender
     {
     public:
         void collect(float size, const osg::Vec2i& startCell, ESM::RefId worldspace, Terrain::RefKinds kinds,
-            std::vector<Terrain::PagedCellRef>& into) const override;
+            Terrain::RefCollector& collector, std::vector<Terrain::PagedCellRef>& into) const override;
+
+        std::unique_ptr<Terrain::RefCollector> makeCollector() const override;
 
         std::optional<SceneUtil::LightCommon> getLight(const ESM::RefId& id) const override;
 

@@ -129,6 +129,22 @@ namespace Rtx
         /// Gives a block back, read until the timeline has passed `readUntil`.
         void giveStaging(std::size_t block, std::uint64_t readUntil);
 
+        /// What one batch holds until it ends: what callers handed over with `Batch::keep`, and the
+        /// staging blocks it took. The pool's and lent to each batch in turn, emptied and never
+        /// freed, so an arrival's batch allocates nothing once as many batches have been open at
+        /// once as ever will be — the interface keeps one open across frames beside the load's.
+        struct BatchHold
+        {
+            std::vector<Buffer> mBuffers;
+            std::vector<Image> mImages;
+            std::vector<std::size_t> mBlocks;
+        };
+
+        /// A hold nothing else has, as an index, taken until `giveHold`.
+        std::size_t takeHold();
+        BatchHold& holdAt(std::size_t hold) { return mHolds[hold]; }
+        void giveHold(std::size_t hold);
+
         /// Submits every deferred batch and then `commands`, as one submit signalling the next
         /// value of the timeline, which it returns. A deferred batch ends every upload and every
         /// build in a barrier, so what `commands` reads of them is what it would have read had
@@ -160,6 +176,9 @@ namespace Rtx
             bool mTaken = false;
         };
         std::vector<StagingBlock> mStaging;
+
+        std::vector<BatchHold> mHolds;
+        std::vector<std::size_t> mFreeHolds;
 
         /// Refilled per submit: a frame is three of them, and none allocates.
         std::vector<VkCommandBufferSubmitInfo> mSubmitScratch;
@@ -200,8 +219,12 @@ namespace Rtx
     public:
         explicit Batch(CommandPool& pool)
             : mPool(pool)
+            , mHold(pool.takeHold())
         {
         }
+
+        Batch(const Batch&) = delete;
+        Batch& operator=(const Batch&) = delete;
 
         /// Throws away anything still recorded. A destructor is not where a submit belongs: it
         /// runs during unwinding too, and a constructor that fails half way leaves a recording
@@ -247,13 +270,9 @@ namespace Rtx
         CommandPool& mPool;
         VkCommandBuffer mCommands = VK_NULL_HANDLE;
 
-        /// What callers handed over with `keep`.
-        std::vector<Buffer> mKeptBuffers;
-        std::vector<Image> mKeptImages;
-
-        /// The ring's blocks this batch took, and how much of the last one is spoken for. See
-        /// `stage`.
-        std::vector<std::size_t> mBlocks;
+        /// The pool's `BatchHold` this batch has, and how much of its last block is spoken for.
+        /// See `stage`.
+        std::size_t mHold;
         VkDeviceSize mFilled = 0;
     };
 

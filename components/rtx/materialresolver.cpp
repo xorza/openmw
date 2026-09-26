@@ -307,14 +307,27 @@ namespace Rtx
         else
             known = mTextureOf.add(image, HeldTexture{});
 
-        Index& slot = known->second.mSlots[static_cast<std::size_t>(encoding)][static_cast<std::size_t>(use.mWrap)];
-        if (slot == sNoIndex)
+        HeldTexture& held = known->second;
+        Index& slot = held.mSlots[static_cast<std::size_t>(encoding)][static_cast<std::size_t>(use.mWrap)];
+        const std::uint64_t freed = mScene.textures().getFreedCount();
+        if (held.mRefusedAt != freed)
+            held.mRefused = 0;
+
+        const std::uint8_t bit = static_cast<std::uint8_t>(
+            1u << (static_cast<std::size_t>(encoding) * sTextureWrapCount + static_cast<std::size_t>(use.mWrap)));
+        if (slot == sNoIndex && (held.mRefused & bit) == 0)
         {
             slot = mScene.textures().add(VFS::Path::Normalized(image->getFileName()), use.mWrap, encoding);
 
             // Held, because this entry is the reference. `mTextureOf` says why a slot the map names
             // has to be one nothing else can hand out.
-            mScene.textures().hold(slot);
+            if (slot != sNoIndex)
+                mScene.textures().hold(slot);
+            else
+            {
+                held.mRefused |= bit;
+                held.mRefusedAt = freed;
+            }
         }
 
         if (worn != nullptr)

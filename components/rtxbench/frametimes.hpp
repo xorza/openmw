@@ -211,7 +211,16 @@ namespace Rtx
         /// the question "where did the frame go" wants read. Empty where no frame reported a zone.
         std::span<const GpuZone> summariseZones();
 
-        bool empty() const { return mRows.empty(); }
+        bool empty() const { return mFrames == 0; }
+
+        /// Makes every row room for `frames` samples, now and as each zone first reports: the
+        /// longest stop's measured frames, so no measured frame grows a row. A growth copies every
+        /// sample taken so far, inside a frame it is timing, and reports as that frame's worst.
+        void reserve(std::uint32_t frames);
+
+        /// Empties it for the next stop, keeping the rows and the room each grew: a stop meets the
+        /// zones the last one met.
+        void clear();
 
     private:
         /// One zone's name and what it has cost.
@@ -240,6 +249,9 @@ namespace Rtx
 
         /// Frames `add` was called for, which is what a zone's row is short against.
         std::uint32_t mFrames = 0;
+
+        /// What `reserve` said a row is made room for.
+        std::uint32_t mReserved = 0;
 
         std::vector<GpuZone> mZones;
     };

@@ -1167,6 +1167,100 @@ namespace Rtx::Testing
             EXPECT_TRUE(mScene.textures().isFree(0)) << "the walk's own hold outlived the surface";
         }
 
+        /// **A texture a full table refused is not asked again until the table frees a slot.** An
+        /// animated material asks for its images every frame, and each refusal built the image's
+        /// path off the heap only to be refused again.
+        ///
+        /// Three walks against the full table, one beside a clamped surface, then one after a slot is
+        /// freed: the second and third are where a refusal asked again would spend and count, and
+        /// the fifth is where a remembered refusal that outlived the room it lacked would leave the
+        /// surface untextured.
+        ///
+        /// **The refusal is the wrap's and not the file's.** Slot 5 holds the banner clamped, which
+        /// the full table answers all the same, so a clamped surface wearing the banner image the
+        /// animated one was refused under a repeat still finds it.
+        TEST_F(RtxSceneExtractorTest, aRefusedTextureIsAskedAgainOnlyOnceASlotIsFreed)
+        {
+            TextureTable& textures = mScene.textures();
+            constexpr Index clampedSlot = 5;
+            for (std::size_t at = 0; at < TextureTable::sCapacity; ++at)
+            {
+                const Index slot = at == clampedSlot
+                    ? textures.add(VFS::Path::NormalizedView("textures/tx_banner.dds"), TextureWrap::Clamp)
+                    : textures.add(VFS::Path::Normalized("textures/tx_" + std::to_string(at) + ".dds"));
+                ASSERT_EQ(slot, at);
+                textures.hold(slot);
+            }
+
+            osg::ref_ptr<osg::Image> banner = new osg::Image;
+            banner->setFileName("textures/tx_banner.dds");
+
+            osg::ref_ptr<ColourController> controller = new ColourController;
+            controller->mDiffuse = banner;
+
+            osg::ref_ptr<osg::Group> node = new osg::Group;
+            node->addChild(makeQuad());
+            node->addUpdateCallback(controller);
+
+            osg::ref_ptr<osg::Texture2D> clamp = new osg::Texture2D(banner);
+            clamp->setWrap(osg::Texture::WRAP_S, osg::Texture::CLAMP_TO_EDGE);
+            clamp->setWrap(osg::Texture::WRAP_T, osg::Texture::CLAMP_TO_EDGE);
+            osg::ref_ptr<osg::Geometry> clamped = makeQuad();
+            clamped->getOrCreateStateSet()->setTextureAttributeAndModes(0, clamp, osg::StateAttribute::ON);
+            clamped->getOrCreateStateSet()->setTextureAttribute(0,
+                new SceneUtil::TextureType(std::string(textureRoleName(TextureRole::Diffuse))),
+                osg::StateAttribute::ON);
+
+            osgUtil::UpdateVisitor update;
+            for (unsigned int frame = 1; frame <= 3; ++frame)
+            {
+                update.setTraversalNumber(frame);
+                node->accept(update);
+                mScene.clearPlacement();
+
+                const std::size_t before = Testing::getAllocationCount();
+                walk(*node, 0, frame);
+                const std::size_t spent = Testing::getAllocationCount() - before;
+
+                if (frame > 1)
+                {
+                    EXPECT_EQ(spent, 0u) << spent << " allocations on frame " << frame;
+                }
+
+                EXPECT_EQ(textures.getRefused(), 1u) << "asked again on frame " << frame;
+                ASSERT_EQ(mScene.materials().getRows().size(), 1u);
+                EXPECT_EQ(mScene.materials().getRows()[0].mDiffuse, sNoIndex);
+
+                mExtractor.retire();
+            }
+
+            osg::ref_ptr<osg::Group> both = new osg::Group;
+            both->addChild(node);
+            both->addChild(clamped);
+
+            update.setTraversalNumber(4);
+            both->accept(update);
+            mScene.clearPlacement();
+            walk(*both, 0, 4);
+            mExtractor.retire();
+
+            EXPECT_EQ(textures.getRefused(), 1u);
+            ASSERT_EQ(mScene.materials().getRows().size(), 2u);
+            EXPECT_EQ(mScene.materials().getRows()[0].mDiffuse, sNoIndex);
+            EXPECT_EQ(mScene.materials().getRows()[1].mDiffuse, clampedSlot) << "refused for another wrap's want";
+
+            textures.drop(9);
+
+            update.setTraversalNumber(5);
+            both->accept(update);
+            mScene.clearPlacement();
+            walk(*both, 0, 5);
+
+            EXPECT_EQ(textures.getRefused(), 1u);
+            ASSERT_EQ(mScene.materials().getRows().size(), 2u);
+            EXPECT_EQ(mScene.materials().getRows()[0].mDiffuse, 9u) << "the freed slot is the refused texture's";
+        }
+
         /// The surface is read from its controller every frame, and from whichever controller the
         /// node carries now.
         ///

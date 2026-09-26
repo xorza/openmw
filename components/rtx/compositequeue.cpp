@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <charconv>
+#include <cstddef>
 #include <span>
 #include <string_view>
 
@@ -65,27 +66,51 @@ namespace Rtx
 
             const Asked wanted{ .mMaterial = at, .mLayers = material.mLayers };
 
-            const auto waiting
-                = std::find_if(mWaiting.begin(), mWaiting.end(), [&](const Asked& one) { return one.mMaterial == at; });
-            if (waiting != mWaiting.end() && *waiting == wanted)
+            Asked* waiting = nullptr;
+            for (std::size_t age = 0; age < mCount && waiting == nullptr; ++age)
+                if (Asked& one = waitingAt(age); one.mMaterial == at)
+                    waiting = &one;
+
+            if (waiting != nullptr && *waiting == wanted)
                 continue;
 
             // A slot taken over by another chunk while its predecessor waited: what was asked is
-            // ground that has gone, and the new chunk goes to the back of the schedule.
-            if (waiting != mWaiting.end())
-                mWaiting.erase(waiting);
+            // ground that has gone, and the new chunk goes to the back of the schedule. The old ask
+            // stays where it stands, naming no material, for `take` to pass over — closing the gap
+            // would move every ask behind it.
+            if (waiting != nullptr)
+                waiting->mMaterial = sNoIndex;
 
-            mWaiting.push_back(wanted);
+            wait(wanted);
         }
+    }
+
+    void CompositeQueue::wait(const Asked& asked)
+    {
+        // By doubling, and unrolled so the oldest is at the front again: a region's worth of chunks
+        // asks in one walk, and the ring settles at the most that ever waited at once.
+        if (mCount == mWaiting.size())
+        {
+            std::vector<Asked> grown(std::max<std::size_t>(mWaiting.size() * 2, 8));
+            for (std::size_t age = 0; age < mCount; ++age)
+                grown[age] = waitingAt(age);
+
+            mWaiting.swap(grown);
+            mFront = 0;
+        }
+
+        mWaiting[(mFront + mCount) % mWaiting.size()] = asked;
+        ++mCount;
     }
 
     std::size_t CompositeQueue::take(SceneDesc& scene, const std::size_t limit)
     {
         std::size_t finished = 0;
-        while (finished < limit && !mWaiting.empty())
+        while (finished < limit && mCount > 0)
         {
-            const Asked asked = mWaiting.front();
-            mWaiting.pop_front();
+            const Asked asked = mWaiting[mFront];
+            mFront = (mFront + 1) % mWaiting.size();
+            --mCount;
 
             // What it asked for has to still be what stands there, or one hillside's ground lands
             // on another's.

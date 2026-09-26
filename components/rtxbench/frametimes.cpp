@@ -139,14 +139,23 @@ namespace Rtx
 
 namespace Rtx
 {
-    namespace
+    void GpuBreakdown::reserve(const std::uint32_t frames)
     {
-        /// How many frames a row is made room for when its zone first reports one.
-        ///
-        /// **Longer than the runs anyone measures**, which is ten seconds of stepped frames for
-        /// `bench` and a handful for `shot`. A run past it pays one growth per zone and is right
-        /// either way — this is room, not a limit.
-        constexpr std::size_t sExpectedFrames = 1024;
+        mReserved = frames;
+        for (ZoneRow& row : mRows)
+            row.mTimes.reserve(frames);
+    }
+
+    void GpuBreakdown::clear()
+    {
+        for (ZoneRow& row : mRows)
+        {
+            row.mTimes.clear();
+            row.mSeen = 0;
+        }
+
+        mFrames = 0;
+        mZones.clear();
     }
 
     void GpuBreakdown::add(std::span<const GpuSpan> spans)
@@ -168,7 +177,7 @@ namespace Rtx
                 // **Room for the run taken on the frame the zone first appears.** A row that grows
                 // does it inside a frame it is timing, and what a growth costs is a copy of every
                 // sample taken so far — landing on one frame of the run and reported as its worst.
-                mRows.back().mTimes.reserve(sExpectedFrames);
+                mRows.back().mTimes.reserve(mReserved);
             }
 
             ZoneRow& row = mRows[at];
@@ -195,6 +204,10 @@ namespace Rtx
 
         for (ZoneRow& row : mRows)
         {
+            // A zone an earlier stop met and this one did not.
+            if (row.mTimes.empty())
+                continue;
+
             const double spent = std::accumulate(row.mTimes.begin(), row.mTimes.end(), 0.0);
 
             mZones.push_back(GpuZone{

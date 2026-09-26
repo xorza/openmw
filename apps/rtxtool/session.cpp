@@ -110,6 +110,7 @@ namespace RtxTool
 
         mProgress.mSamples.reserve(longest);
         mProgress.mLatencyMs.reserve(longest);
+        mProgress.mGpu.reserve(longest);
 
         mRecord.reserve(mRequest.mStops.size());
 
@@ -785,7 +786,9 @@ namespace RtxTool
         mProgress.mPendingSpend = report.mSpend;
         mProgress.mPendingArrived = report.mArrivedMeshes;
 
-        if (mProgress.mSeen <= warmup)
+        // A window that runs until it is closed is looked at and not measured: nothing reads its
+        // figures, and every series kept for it grew for as long as the window stood open.
+        if (mProgress.mSeen <= warmup || stop.mSchedule.mSpec.mRun.isUntilClosed())
             return;
 
         mProgress.mSamples.add(closed);
@@ -838,7 +841,8 @@ namespace RtxTool
     void Session::answered(const Rtx::FrameResult& finished, const Rtx::FrameExtents& extents)
     {
         // A frame the warm-up drew: its picture has no row and its figures are nobody's.
-        if (mProgress.mSeen <= mRequest.mStops[mAt].mSchedule.mSpec.getWarmup(mRequest.mSetup.getWorldStep())
+        const Rtx::BenchSpec& spec = mRequest.mStops[mAt].mSchedule.mSpec;
+        if (mProgress.mSeen <= spec.getWarmup(mRequest.mSetup.getWorldStep()) || spec.mRun.isUntilClosed()
             || finished.mFrame < mProgress.mFirstMeasured)
             return;
 

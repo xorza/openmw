@@ -120,8 +120,8 @@ namespace Rtx
         };
 
         /// Reserves room for the scene's attributes, copies in the runs `meshes` names — into every
-        /// copy of the normals — and rewrites the per-mesh row table. Per mesh and not per scene,
-        /// because that is what an arrival is. Nothing is ordered here.
+        /// copy of the normals — and writes their rows of the mesh table, which every copy then owes.
+        /// Per mesh and not per scene, because that is what an arrival is. Nothing is ordered here.
         void writeMeshes(Batch& batch, const SceneDesc& scene, std::span<const Index> meshes);
 
         /// Stages the layer and mask runs that arrived — or a table whole where it had to be made
@@ -149,14 +149,15 @@ namespace Rtx
         Buffer mLayers;
         Buffer mMasks;
 
-        /// One row a mesh slot, so a hit can turn its slot into offsets into the tables above.
-        /// Rewritten whole whenever a mesh arrives or leaves, which is a few kilobytes.
-        Buffer mMeshes;
+        /// One row a mesh slot, so a hit can turn its slot into offsets into the tables above. A copy
+        /// per frame in flight with its rows owed, because a slot handed out again holds another
+        /// mesh's offsets in the same row, which the frame behind — still tracing the mesh that was
+        /// there — must not read; and an arrival writes its own rows and no other.
+        SlotTable<Shaders::GpuMesh> mMeshTable;
 
         // Host-visible and rewritten from `place`, not uploaded once.
         PerSlot<Tables> mTables;
 
-        std::vector<Shaders::GpuMesh> mMeshScratch;
         std::vector<Shaders::GpuPresence> mPresenceScratch;
 
         /// What the material table's runs stood at when they were last staged, which `shade` checks

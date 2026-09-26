@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -50,6 +51,7 @@ namespace Rtx
         , mWorldspace(worldspace)
         , mMask(mask)
         , mGround(ground, content, worldspace)
+        , mCollector(storage.makeCollector())
     {
     }
 
@@ -124,11 +126,14 @@ namespace Rtx
 
         // Each layer's texture counted once for the cell, so the reading stands until the frame
         // gives the cell's hold on it back.
-        for (PreparedLayer& layer : prepared.mGround.mLayers)
+        const std::span<const GroundReader::LayerFiles> files = mGround.getLayerFiles();
+        assert(files.size() == prepared.mGround.mLayers.size() && "a layer the ground reader found no files for");
+        for (std::size_t at = 0; at < files.size(); ++at)
         {
-            layer.mTexture = &readTexture(layer.mImage, layer.mPath);
-            if (!layer.mNormalPath.empty())
-                layer.mNormalTexture = &readTexture(layer.mNormalImage, layer.mNormalPath);
+            PreparedLayer& layer = prepared.mGround.mLayers[at];
+            layer.mTexture = &readTexture(files[at].mImage, files[at].mPath);
+            if (!files[at].mNormalPath.empty())
+                layer.mNormalTexture = &readTexture(files[at].mNormalImage, files[at].mNormalPath);
         }
 
         // One cell at a time, which is the paging's near answer: containers page here as they do
@@ -136,7 +141,7 @@ namespace Rtx
         // walk of the cell's records answers the lights too, which the paging never stands, and a
         // reference is a lamp where its record is a `LIGH`: the paging draws no lamp's mesh in the
         // distance, so neither is one stood here.
-        mStorage.collect(1.0f, cell, mWorldspace, Terrain::RefKinds::Both, mRefScratch);
+        mStorage.collect(1.0f, cell, mWorldspace, Terrain::RefKinds::Both, *mCollector, mRefScratch);
 
         // Which references are lamps, asked once per reference: the statics below skip them.
         mIsLampScratch.assign(mRefScratch.size(), 0);
@@ -177,11 +182,20 @@ namespace Rtx
             if (mIsLampScratch[at] != 0 || Misc::ResourceHelpers::isHiddenMarker(ref.mRefId))
                 continue;
 
-            VFS::Path::Normalized model = mStorage.getModel(ref.mRefId);
+            // The path a record names, built once for the record and not once for every
+            // reference to it: a town is a few hundred references to a few dozen models.
+            auto named = mModelPaths.find(ref.mRefId);
+            if (named == mModelPaths.end())
+            {
+                VFS::Path::Normalized model = mStorage.getModel(ref.mRefId);
+                if (!model.empty())
+                    model = Misc::ResourceHelpers::correctMeshPath(model);
+                named = mModelPaths.emplace(ref.mRefId, std::move(model)).first;
+            }
+
+            const VFS::Path::Normalized& model = named->second;
             if (model.empty())
                 continue;
-
-            model = Misc::ResourceHelpers::correctMeshPath(model);
 
             // A model this cannot read is a reference left out and refused, and never a cell
             // left out: a settled walk waits for every cell of the ring, and one that never came

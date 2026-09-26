@@ -118,6 +118,10 @@ namespace Rtx
         /// and reported by `SceneTextures`.
         std::uint32_t getRefused() const { return mRefused; }
 
+        /// How many slots this has ever given back, which is what says a texture refused for want of
+        /// room may find some now: until it moves, asking again is a path built to be refused.
+        std::uint64_t getFreedCount() const { return mFreed; }
+
     private:
         /// Whether a new slot may be taken, counting and reporting the refusal where it may not.
         bool hasRoom();
@@ -149,5 +153,6 @@ namespace Rtx
 
         std::uint64_t mRevision = 0;
         std::uint32_t mRefused = 0;
+        std::uint64_t mFreed = 0;
     };
 }

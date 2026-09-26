@@ -1,9 +1,11 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <string_view>
 #include <vector>
 
+#include <boost/container/flat_map.hpp>
 #include <boost/container/flat_set.hpp>
 #include <osg/Image>
 #include <osg/Node>
@@ -78,6 +80,9 @@ namespace Rtx
         GroundReader mGround;
         TemplateWalk mWalk;
 
+        /// What the storage reads this reader's cells with, kept from one cell to the next.
+        std::unique_ptr<Terrain::RefCollector> mCollector;
+
         // Refilled per cell, per model and per image.
         std::vector<Terrain::PagedCellRef> mRefScratch;
 
@@ -102,5 +107,11 @@ namespace Rtx
             mModelsByPath;
         boost::container::flat_set<PreparedTexture*, KeyedLess<std::string_view, PathOf>, std::vector<PreparedTexture*>>
             mTexturesByPath;
+
+        /// The model path each record names, as `readModel` files it — empty where the record
+        /// names none. Built the first time a reference to the record is met and kept for the
+        /// reader's life, because a record's model does not change and building the path is two
+        /// strings, which every static reference of every cell read would otherwise pay.
+        boost::container::flat_map<ESM::RefId, VFS::Path::Normalized> mModelPaths;
     };
 }

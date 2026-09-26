@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <initializer_list>
 #include <map>
+#include <memory>
 #include <optional>
 #include <span>
 #include <stdexcept>
@@ -123,8 +124,13 @@ namespace Rtx::Testing
                 { "dark", describeLamp(ESM::Light::Negative) },
             };
 
+            std::unique_ptr<Terrain::RefCollector> makeCollector() const override
+            {
+                return std::make_unique<Terrain::RefCollector>();
+            }
+
             void collect(float, const osg::Vec2i& startCell, ESM::RefId, Terrain::RefKinds kinds,
-                std::vector<Terrain::PagedCellRef>& into) const override
+                Terrain::RefCollector&, std::vector<Terrain::PagedCellRef>& into) const override
             {
                 if (mThrows)
                     throw std::runtime_error("a storage that cannot be read");
@@ -161,8 +167,12 @@ namespace Rtx::Testing
             /// The record's id doubles as its model here.
             VFS::Path::Normalized getModel(const ESM::RefId& id) const override
             {
+                ++mModelsAsked;
                 return VFS::Path::Normalized(id.getRefIdString());
             }
+
+            /// How many times `getModel` was asked, which a reader asks once a record.
+            mutable int mModelsAsked = 0;
         };
 
         /// Templates by name — a square sheet of a radius the size rule can be asked about, five
@@ -1001,6 +1011,29 @@ namespace Rtx::Testing
                 return root;
             }();
         };
+
+        /// A record's model path is built once, however many references name it and however often
+        /// the cell is read.
+        ///
+        /// **Two strings a static reference, on every read of every cell**, is what asking the
+        /// storage and correcting the path came to: a town is a few hundred references to a few
+        /// dozen models, and a ring reads a band of cells at every crossing. Three references to one
+        /// record, read three times: asked once.
+        TEST(RtxCellReaderTest, aRecordsModelPathIsBuiltOnceWhateverNamesIt)
+        {
+            FakeLand land;
+            FewStatics storage;
+            for (std::uint32_t at = 0; at < 3; ++at)
+                storage.mPlaced.push_back(
+                    Placed{ .mCell = osg::Vec2i(0, 0), .mModel = "face", .mRefNum = ESM::RefNum{ at, 0 } });
+            ShortMorph content;
+
+            CellReader reader(storage, land, content, ESM::Cell::sDefaultWorldspaceId, ~0u);
+            for (int pass = 0; pass < 3; ++pass)
+                reader.giveBack(reader.read(osg::Vec2i(0, 0), true));
+
+            EXPECT_EQ(storage.mModelsAsked, 1) << "the storage was asked for a record's model more than once";
+        }
 
         /// **A model the walk refuses costs the reader nothing it keeps.** The reference is left
         /// out and named, as `CellReader::read` promises, and the spare the attempt was made in

@@ -194,6 +194,27 @@ namespace Rtx
         return mStaging.size() - 1;
     }
 
+    std::size_t CommandPool::takeHold()
+    {
+        if (!mFreeHolds.empty())
+        {
+            const std::size_t hold = mFreeHolds.back();
+            mFreeHolds.pop_back();
+            return hold;
+        }
+
+        mHolds.emplace_back();
+        return mHolds.size() - 1;
+    }
+
+    void CommandPool::giveHold(const std::size_t hold)
+    {
+        [[maybe_unused]] const BatchHold& given = mHolds[hold];
+        assert(given.mBuffers.empty() && given.mImages.empty() && given.mBlocks.empty()
+            && "a hold given back still holding what its batch never released");
+        mFreeHolds.push_back(hold);
+    }
+
     void CommandPool::giveStaging(const std::size_t block, const std::uint64_t readUntil)
     {
         assert(mStaging[block].mTaken && "a staging block given back twice");
@@ -259,6 +280,7 @@ namespace Rtx
         }
 
         release();
+        mPool.giveHold(mHold);
     }
 
     VkCommandBuffer Batch::getCommands()
@@ -271,25 +293,26 @@ namespace Rtx
 
     void Batch::keep(Buffer&& buffer)
     {
-        mKeptBuffers.push_back(std::move(buffer));
+        mPool.holdAt(mHold).mBuffers.push_back(std::move(buffer));
     }
 
     void Batch::keep(Image&& image)
     {
-        mKeptImages.push_back(std::move(image));
+        mPool.holdAt(mHold).mImages.push_back(std::move(image));
     }
 
     StagingRun Batch::stage(std::span<const std::byte> bytes)
     {
         VkDeviceSize at = alignUp(mFilled, sStagingAlignment);
 
-        if (mBlocks.empty() || at + bytes.size() > mPool.stagingAt(mBlocks.back()).getSize())
+        std::vector<std::size_t>& blocks = mPool.holdAt(mHold).mBlocks;
+        if (blocks.empty() || at + bytes.size() > mPool.stagingAt(blocks.back()).getSize())
         {
-            mBlocks.push_back(mPool.takeStaging(bytes.size()));
+            blocks.push_back(mPool.takeStaging(bytes.size()));
             at = 0;
         }
 
-        const Buffer& block = mPool.stagingAt(mBlocks.back());
+        const Buffer& block = mPool.stagingAt(blocks.back());
         block.writeAt(at, bytes);
         mFilled = at + bytes.size();
 
@@ -298,20 +321,21 @@ namespace Rtx
 
     void Batch::release()
     {
+        CommandPool::BatchHold& hold = mPool.holdAt(mHold);
         Graveyard& graveyard = getDevice().getGraveyard();
-        for (Buffer& buffer : mKeptBuffers)
+        for (Buffer& buffer : hold.mBuffers)
             graveyard.bury(std::move(buffer));
-        for (Image& image : mKeptImages)
+        for (Image& image : hold.mImages)
             graveyard.bury(std::move(image));
 
         // Under the same value a burial would be, for the same reason.
         const std::uint64_t readUntil = getDevice().getTimeline().getNext();
-        for (const std::size_t block : mBlocks)
+        for (const std::size_t block : hold.mBlocks)
             mPool.giveStaging(block, readUntil);
 
-        mKeptBuffers.clear();
-        mKeptImages.clear();
-        mBlocks.clear();
+        hold.mBuffers.clear();
+        hold.mImages.clear();
+        hold.mBlocks.clear();
         mFilled = 0;
     }
 

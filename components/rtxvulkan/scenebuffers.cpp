@@ -122,6 +122,7 @@ namespace Rtx
         mSecondTexCoords.open(device, sTableUsage, "second uvs");
         mColours.open(device, sTableUsage, "vertex colours");
         mInstanceTable.open(device, slots, sTableUsage, "instance rows");
+        mMeshTable.open(device, slots, sTableUsage, "meshes");
         mMaterialTable.open(device, slots, sTableUsage, "materials");
         mNormalTable.open(device, slots, sTableUsage, "normals");
         mTangentTable.open(device, slots, sTableUsage, "tangents");
@@ -193,13 +194,11 @@ namespace Rtx
                     range.mSecondTexCoords.in(scene.meshes().getSecondTexCoords()));
         }
 
-        // Whole, and it is twenty-four bytes a slot. A mesh arriving moves nothing already in this,
-        // but sizing it to the scene means growing it, and growing means writing it — so the rows
-        // that did not change are written again for the price of not having to know which did.
-        mMeshScratch.clear();
-        mMeshScratch.reserve(scene.meshes().getRows().size());
-        for (const MeshRange& mesh : scene.meshes().getRows())
-            mMeshScratch.push_back(Shaders::GpuMesh{
+        mMeshTable.grow(scene.meshes().getRows().size());
+        for (const Index at : meshes)
+        {
+            const MeshRange& mesh = scene.meshes().getRows()[at];
+            mMeshTable.write(at) = Shaders::GpuMesh{
                 .mVertexOffset = mesh.mVertices.mOffset,
                 .mIndexOffset = mesh.mIndices.mOffset,
                 .mShape = (mesh.mShape.mSheet ? Shaders::MESH_SHEET : 0u)
@@ -209,16 +208,8 @@ namespace Rtx
                 = mesh.mSecondTexCoords.empty() ? Shaders::NO_STREAM : mesh.mSecondTexCoords.mOffset,
                 .mUnitStreams = mesh.mUnitStreams,
                 .mBindOffset = mesh.mDeform != Deform::None ? mesh.mBindOffset : Shaders::NO_STREAM,
-            });
-
-        // **A new table on every arrival, and the old one buried**, because the frame behind is
-        // reading the old one: an arrival does not wait for the frames in flight, and a slot the
-        // scene handed out again holds another mesh's offsets in the same row — which the frame
-        // behind, still tracing the mesh that was there, would read as that mesh's geometry. One
-        // copy is the versioned kind, and a version is never written in place.
-        const VkDeviceSize bytes = mMeshScratch.size() * sizeof(Shaders::GpuMesh);
-        mDevice.getGraveyard().replace(mMeshes, Buffer::hostWritten(mDevice, bytes, sTableUsage, "meshes"));
-        mMeshes.write(std::span<const Shaders::GpuMesh>(mMeshScratch));
+            };
+        }
     }
 
     SpriteSource SceneBuffers::describeSprites(const FrameSlot slot) const
@@ -349,14 +340,16 @@ namespace Rtx
             placeRow(at);
 
         mInstanceTable.sync(slot);
+        mMeshTable.sync(slot);
 
         mLightGrid.rebuild(scene.lights());
 
         // The tables go over as they lie: the scene's rows are the device's, so a placement is a
         // copy and never a conversion. Empty ones included: something has to stand at every
-        // address the frame carries, and `growTo` makes a table that is empty rather than leaving
+        // address the frame carries, and `outgrow` makes a table that is empty rather than leaving
         // the slot empty — a stand-in per table is one table without one, and that costs a
-        // device. What stops the shader reading an empty table is its count.
+        // device. What stops the shader reading an empty table is its count. Grown past each high
+        // by twice, because a crowd walking in raises the high a few rows a frame.
         const std::span<const Light> lights = scene.lights();
         const std::span<const std::uint32_t> lightList = mLightGrid.getList().getWhole();
         const std::span<const SpriteEmitter> emitters = scene.emitters();
@@ -364,12 +357,12 @@ namespace Rtx
         scene.placements().describePresences(scene.meshes().getRows(), mPresenceScratch);
         const std::span<const Shaders::GpuPresence> presences = mPresenceScratch;
 
-        growTo(tables.mLights, mDevice, BufferKind::HostWritten, lights.size_bytes(), sTableUsage, "lights");
-        growTo(tables.mLightList, mDevice, BufferKind::HostWritten, lightList.size_bytes(), sTableUsage, "light list");
-        growTo(tables.mEmitters, mDevice, BufferKind::HostWritten, emitters.size_bytes(), sTableUsage, "emitters");
-        growTo(
+        outgrow(tables.mLights, mDevice, BufferKind::HostWritten, lights.size_bytes(), sTableUsage, "lights");
+        outgrow(tables.mLightList, mDevice, BufferKind::HostWritten, lightList.size_bytes(), sTableUsage, "light list");
+        outgrow(tables.mEmitters, mDevice, BufferKind::HostWritten, emitters.size_bytes(), sTableUsage, "emitters");
+        outgrow(
             tables.mSprites, mDevice, BufferKind::HostWritten, sprites.size_bytes(), sTableCopiedFromUsage, "sprites");
-        growTo(tables.mPresences, mDevice, BufferKind::HostWritten, presences.size_bytes(), sTableUsage, "presences");
+        outgrow(tables.mPresences, mDevice, BufferKind::HostWritten, presences.size_bytes(), sTableUsage, "presences");
 
         tables.mLights.write(lights);
         tables.mLightList.write(lightList);
@@ -389,6 +382,7 @@ namespace Rtx
     void SceneBuffers::finishReads(const FrameSlot slot) const
     {
         mInstanceTable.finishReads(slot);
+        mMeshTable.finishReads(slot);
         mMaterialTable.finishReads(slot);
 
         const Tables& tables = mTables.at(slot);
@@ -412,7 +406,7 @@ namespace Rtx
         into.mTexCoordBlocks = mTexCoords.getTableAddress();
         into.mColourBlocks = mColours.getTableAddress();
         into.mSecondTexCoordBlocks = mSecondTexCoords.getTableAddress();
-        into.mMeshes = mMeshes.addressFor();
+        into.mMeshes = mMeshTable.addressFor(slot);
         into.mInstances = mInstanceTable.addressFor(slot);
         into.mMaterials = mMaterialTable.addressFor(slot);
         into.mLayers = mLayers.addressFor();
@@ -433,7 +427,7 @@ namespace Rtx
         // The indices are not counted here: they belong to the acceleration structure, which reports
         // its own size.
         VkDeviceSize total = mTexCoords.getBytes() + mSecondTexCoords.getBytes() + mColours.getBytes()
-            + mMeshes.getSize() + mLayers.getSize() + mMasks.getSize() + mInstanceTable.getBytes()
+            + mMeshTable.getBytes() + mLayers.getSize() + mMasks.getSize() + mInstanceTable.getBytes()
             + mMaterialTable.getBytes() + mNormalTable.getBytes() + mTangentTable.getBytes();
         for (const Tables& tables : mTables.live())
             total += tables.getBytes();

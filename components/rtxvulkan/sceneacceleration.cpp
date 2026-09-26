@@ -60,6 +60,7 @@ namespace Rtx
 
         // The rows after the structures, because a row names the address of the structure it places.
         mBottomLevel.build(batch, scene, mEveryMesh, mPoses.at(FrameSlot{}), mIndices, mPlacements, refused);
+        sizeRefitScratch();
         writeRows(records, {});
         prepareTopLevel(scene, FrameSlot{});
         recordTopLevel(batch.getCommands(), nullptr);
@@ -119,8 +120,32 @@ namespace Rtx
 
         mBottomLevel.build(
             batch, scene, scene.meshes().getArrived(), mPoses.at(FrameSlot{}), mIndices, mPlacements, refused);
+        sizeRefitScratch();
 
         closeZone(timer, batch.getCommands());
+    }
+
+    void SceneAcceleration::sizeRefitScratch()
+    {
+        // `prepareRefit` lays each refit at the aligned end of the one before, so a structure's
+        // share is its own scratch aligned up, and the rota's is the build's where the update's was.
+        const VkDeviceSize alignment = mDevice.getPhysicalDevice().getStructureScratchAlignment();
+
+        VkDeviceSize updates = 0;
+        VkDeviceSize rebuild = 0;
+        for (Index mesh = 0; mesh < mBottomLevel.size(); ++mesh)
+        {
+            if (!mBottomLevel.stands(mesh) || !mBottomLevel.isUpdatable(mesh))
+                continue;
+
+            const VkDeviceSize update = alignUp(mBottomLevel.getUpdateScratch(mesh), alignment);
+            const VkDeviceSize build = alignUp(mBottomLevel.getBuildScratch(mesh), alignment);
+            updates += update;
+            rebuild = std::max(rebuild, build > update ? build - update : 0);
+        }
+
+        if (updates > 0)
+            growTo(mRefitScratch, mDevice, BufferKind::DeviceLocal, updates + rebuild, sScratchUsage, "refit scratch");
     }
 
     void SceneAcceleration::prepareRefit(const SceneDesc& scene, const FrameSlot slot)
@@ -180,11 +205,10 @@ namespace Rtx
             ++mRebuildCount;
         }
 
-        VkDeviceSize scratchTotal = 0;
+        [[maybe_unused]] VkDeviceSize scratchTotal = 0;
         for (const Index mesh : deformed)
             scratchTotal = alignUp(scratchTotal + refitScratchOf(mesh), scratchAlignment);
-
-        growTo(mRefitScratch, mDevice, BufferKind::DeviceLocal, scratchTotal, sScratchUsage, "refit scratch");
+        assert(scratchTotal <= mRefitScratch.getSize() && "a refit past what the arrivals sized its scratch to");
 
         const VkDeviceAddress scratchAddress = mRefitScratch.addressFor();
 
@@ -326,9 +350,11 @@ namespace Rtx
 
         mRowTable.sync(slot);
 
+        // At twice the rows it held past them, as the row table itself grows: a crossing adds rows a
+        // few at a time, and each growth is a structure and its storage made again.
         const auto count = static_cast<std::uint32_t>(mRowTable.size());
         if (mTopLevel.isEmpty() || count > mTopLevelSlots)
-            sizeTopLevel(count);
+            sizeTopLevel(std::max(count, 2 * mTopLevelSlots));
 
         // The top level is built from this frame's copy, so the address moves with the slot.
         mTopLevelGeometry.geometry.instances.data.deviceAddress = mRowTable.addressFor(slot);
@@ -439,7 +465,11 @@ namespace Rtx
 
     void SceneAcceleration::recordTopLevel(VkCommandBuffer commands, GpuTimer* timer)
     {
-        const VkAccelerationStructureBuildRangeInfoKHR range{ .primitiveCount = mTopLevelSlots };
+        // The rows and not the room: the structure is sized past them, and the copy the build reads
+        // holds the rows alone, so a count of the room reads instances past its end.
+        const auto rows = static_cast<std::uint32_t>(mRowTable.size());
+        assert(rows <= mTopLevelSlots && "a top level built over more rows than it was sized for");
+        const VkAccelerationStructureBuildRangeInfoKHR range{ .primitiveCount = rows };
         const VkAccelerationStructureBuildRangeInfoKHR* ranges = &range;
 
         // The build reads every bottom level through the instance table, so the store is named

@@ -18,11 +18,13 @@
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/visibility.h>
 #include <components/rtx/slot.hpp>
+#include <components/rtx/sprite.hpp>
 #include <components/rtx/texturedata.hpp>
 #include <components/rtxvulkan/commands.hpp>
 #include <components/rtxvulkan/device.hpp>
 #include <components/rtxvulkan/handles.hpp>
 #include <components/rtxvulkan/texture.hpp>
+#include <components/vfs/pathutil.hpp>
 
 #include "../allocations.hpp"
 #include "../geometry.hpp"
@@ -64,12 +66,14 @@ namespace Rtx::Testing
         /// bloom, the tone curve, the exposure, the ring the frame is drawn into and `finishFrame`.
         /// Asked of the renderer, all of it is measured and none of it can drift.
         ///
-        /// **Four shapes, because they light different code.** A plain frame traces and composites; a
+        /// **Five shapes, because they light different code.** A plain frame traces and composites; a
         /// filtered one adds the wavelet's five levels and its history; an accumulating one adds the
-        /// sum image; and a body walking is the one thing the frame path *computes* rather than
-        /// copies — a pose the host writes, a dispatch, a refit, and a rebuild of what moved. The
-        /// camera stands still through all four, which is what pins them: a moving camera would
-        /// allocate nothing either, and then nothing would be pinned.
+        /// sum image; a body walking is the one thing the frame path *computes* rather than copies —
+        /// a pose the host writes, a dispatch, a refit, and a rebuild of what moved; and a storm
+        /// thickening and thinning is every table a frame writes changing length under it, below the
+        /// high-water mark its warm-up set. The camera stands still through all five, which is what
+        /// pins them: a moving camera would allocate nothing either, and then nothing would be
+        /// pinned.
         ///
         /// **Warmed first, because the first of anything legitimately allocates**: descriptor pools
         /// grow, the driver caches its first call, and a command buffer finds its size.
@@ -96,6 +100,7 @@ namespace Rtx::Testing
                 = addOneBoneBody(scene, MeshArrays{ .mPositions = sWallQuad, .mIndices = sQuadIndices }).mMesh;
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::translate(0.0f, 100.0f, 0.0f), .mMesh = body });
             poseByOneBone(scene, body, osg::Matrixf::identity());
+            const Index puff = scene.textures().add(VFS::Path::NormalizedView("puff.dds"));
 
             renderer->resize(size, size);
             renderer->setScene(Rtx::SceneSlot::world(), scene, {});
@@ -110,16 +115,39 @@ namespace Rtx::Testing
             std::uint32_t index = 0;
             float walked = 0.0f;
 
-            const auto measure = [&](const char* what, const FrameOptions& options, bool moving) {
+            // What the game's walk does to a body every frame: a new pose, placed.
+            const auto walk = [&] {
+                walked += 1.0f;
+                scene.clearPlacement();
+                poseByOneBone(scene, body, osg::Matrixf::translate(0.0f, walked, 0.0f));
+                renderer->placeScene(Rtx::SceneSlot::world(), scene);
+            };
+
+            // Sixty-four sprites on the first frame and fewer on every one after, a different count
+            // each: the warm-up sets the mark and the measured frames stay under it.
+            constexpr std::uint32_t mostSprites = 64;
+            std::uint32_t storm = 0;
+            std::vector<Sprite> sprites;
+            sprites.reserve(2 * mostSprites);
+            const auto rain = [&](std::uint32_t count) {
+                sprites.clear();
+                for (std::uint32_t at = 0; at < count; ++at)
+                    sprites.push_back(Sprite{ .mPosition = osg::Vec3f(static_cast<float>(at) - 32.0f, 50.0f, 0.0f),
+                        .mRadius = 2.0f,
+                        .mColour = osg::Vec3f(1.0f, 1.0f, 1.0f),
+                        .mAlpha = 0.5f });
+
+                scene.clearPlacement();
+                scene.addEmitter(sprites, puff, false);
+                renderer->placeScene(Rtx::SceneSlot::world(), scene);
+            };
+            const auto thicken = [&] { rain(mostSprites - storm++ % mostSprites); };
+
+            const auto still = [] {};
+
+            const auto measure = [&](const char* what, const FrameOptions& options, const auto& change) {
                 const auto frame = [&] {
-                    if (moving)
-                    {
-                        // What the game's walk does to a body every frame: a new pose, placed.
-                        walked += 1.0f;
-                        scene.clearPlacement();
-                        poseByOneBone(scene, body, osg::Matrixf::translate(0.0f, walked, 0.0f));
-                        renderer->placeScene(Rtx::SceneSlot::world(), scene);
-                    }
+                    change();
 
                     camera.mFrame = index++;
                     renderer->renderFrame(camera, options);
@@ -139,13 +167,34 @@ namespace Rtx::Testing
             };
 
             measure(
-                "a plain frame", FrameOptions{ .mReconstruction = ReconstructionRequest{ .mFilter = false } }, false);
+                "a plain frame", FrameOptions{ .mReconstruction = ReconstructionRequest{ .mFilter = false } }, still);
             measure(
-                "a filtered frame", FrameOptions{ .mReconstruction = ReconstructionRequest{ .mFilter = true } }, false);
+                "a filtered frame", FrameOptions{ .mReconstruction = ReconstructionRequest{ .mFilter = true } }, still);
             measure("an accumulating frame",
-                FrameOptions{ .mAccumulate = 1, .mReconstruction = ReconstructionRequest{ .mFilter = true } }, false);
+                FrameOptions{ .mAccumulate = 1, .mReconstruction = ReconstructionRequest{ .mFilter = true } }, still);
             measure(
-                "a body walking", FrameOptions{ .mReconstruction = ReconstructionRequest{ .mFilter = true } }, true);
+                "a body walking", FrameOptions{ .mReconstruction = ReconstructionRequest{ .mFilter = true } }, walk);
+            measure("a storm thickening and thinning",
+                FrameOptions{ .mReconstruction = ReconstructionRequest{ .mFilter = true } }, thicken);
+
+            // **And one that keeps thickening, a new high every frame.** Past sixty-four every table
+            // a frame writes doubles its room at the first new high, so the thirty-two highs from
+            // ninety-seven to a hundred and twenty-eight are all inside it. A table grown to each
+            // frame's exact size made itself again on every one of them.
+            std::uint32_t rising = mostSprites;
+            const auto rise = [&] {
+                rain(++rising);
+                camera.mFrame = index++;
+                renderer->renderFrame(camera, FrameOptions{});
+                renderer->finishFrame();
+            };
+            for (int i = 0; i < 32; ++i)
+                rise();
+            const std::size_t risen = Testing::getAllocationCount();
+            for (int i = 0; i < 32; ++i)
+                rise();
+            EXPECT_EQ(rising, 2 * mostSprites);
+            EXPECT_EQ(Testing::getAllocationCount() - risen, 0u) << "a new high inside the room a doubling made";
 
             // **And the read back, which the harness does every frame and the window does never.**
             // Warmed by one call, because the first sizes the caller's vector.

@@ -153,6 +153,7 @@ namespace Rtx
         // is more than one, and none where a single type covers the cell.
         mBlendmaps.clear();
         mLayerInfos.clear();
+        mFiles.clear();
         mStorage.getBlendmaps(1.0f, centre, mBlendmaps, mLayerInfos, mWorldspace);
         assert(mBlendmaps.empty() || mBlendmaps.size() == mLayerInfos.size());
 
@@ -164,9 +165,11 @@ namespace Rtx
             const Result<osg::ref_ptr<const osg::Image>, std::string> image
                 = mContent.getImage(mLayerInfos[index].mDiffuseMap);
 
+            LayerFiles& files = mFiles.emplace_back();
+            files.mImage = image.isOk() ? image.value() : nullptr;
+            files.mPath = std::move(mLayerInfos[index].mDiffuseMap);
+
             PreparedLayer layer;
-            layer.mImage = image.isOk() ? image.value() : nullptr;
-            layer.mPath = std::move(mLayerInfos[index].mDiffuseMap);
             layer.mRow.mDiffuseTransform = diffuseTransform(mTileCount);
             layer.mDiffuseSpec = mLayerInfos[index].mSpecular;
 
@@ -176,10 +179,10 @@ namespace Rtx
             {
                 const Result<osg::ref_ptr<const osg::Image>, std::string> normal
                     = mContent.getImage(mLayerInfos[index].mNormalMap);
-                layer.mNormalImage = normal.isOk() ? normal.value() : nullptr;
-                layer.mNormalPath = std::move(mLayerInfos[index].mNormalMap);
-                layer.mParallax = mLayerInfos[index].mParallax && layer.mNormalImage != nullptr
-                    && carriesHeight(*layer.mNormalImage);
+                files.mNormalImage = normal.isOk() ? normal.value() : nullptr;
+                files.mNormalPath = std::move(mLayerInfos[index].mNormalMap);
+                layer.mParallax = mLayerInfos[index].mParallax && files.mNormalImage != nullptr
+                    && carriesHeight(*files.mNormalImage);
             }
 
             if (!mBlendmaps.empty() && mBlendmaps[index] != nullptr)

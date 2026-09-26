@@ -109,21 +109,24 @@ namespace Rtx::Testing
             ASSERT_EQ(ground.mLayers.size(), 2u);
             const PreparedLayer& grass = ground.mLayers[0];
             const PreparedLayer& rock = ground.mLayers[1];
-            EXPECT_EQ(grass.mImage->getFileName(), "textures/grass.dds");
-            EXPECT_EQ(rock.mImage->getFileName(), "textures/rock_diffusespec.dds");
+            ASSERT_EQ(reader.getLayerFiles().size(), 2u) << "one layer's files a layer";
+            const GroundReader::LayerFiles& grassFiles = reader.getLayerFiles()[0];
+            const GroundReader::LayerFiles& rockFiles = reader.getLayerFiles()[1];
+            EXPECT_EQ(grassFiles.mImage->getFileName(), "textures/grass.dds");
+            EXPECT_EQ(rockFiles.mImage->getFileName(), "textures/rock_diffusespec.dds");
             EXPECT_EQ(grass.mRow.mDiffuseTransform, osg::Vec4f(16.0f, 16.0f, 0.0f, 0.0f));
 
             // The rock's maps as the storage named them, its normal map read beside its diffuse;
             // the grass has neither.
             EXPECT_TRUE(rock.mDiffuseSpec);
-            EXPECT_EQ(rock.mNormalPath, "textures/rock_nh.dds");
-            ASSERT_NE(rock.mNormalImage, nullptr);
-            EXPECT_EQ(rock.mNormalImage->getFileName(), "textures/rock_nh.dds");
+            EXPECT_EQ(rockFiles.mNormalPath, "textures/rock_nh.dds");
+            ASSERT_NE(rockFiles.mNormalImage, nullptr);
+            EXPECT_EQ(rockFiles.mNormalImage->getFileName(), "textures/rock_nh.dds");
             EXPECT_TRUE(rock.mParallax) << "an `_nh` of four channels carries a height";
             EXPECT_FALSE(grass.mParallax);
             EXPECT_FALSE(grass.mDiffuseSpec);
-            EXPECT_TRUE(grass.mNormalPath.empty());
-            EXPECT_EQ(grass.mNormalImage, nullptr);
+            EXPECT_TRUE(grassFiles.mNormalPath.empty());
+            EXPECT_EQ(grassFiles.mNormalImage, nullptr);
 
             // `BlendmapTexMat` at sixteen tiles: a scale of 16 / 17 about the centre and a nudge of
             // a quarter texel, which comes to an offset of 0.75 / 17 in x and 0.25 / 17 in y.
@@ -181,8 +184,9 @@ namespace Rtx::Testing
             expectSameTriangles(ground.mIndices, *buffers.getIndexBuffer(2, 0));
 
             ASSERT_EQ(ground.mLayers.size(), 1u);
-            EXPECT_EQ(ground.mLayers[0].mImage->getFileName(), "textures/_land_default.dds");
-            EXPECT_EQ(ground.mLayers[0].mPath, "textures/_land_default.dds");
+            ASSERT_EQ(reader.getLayerFiles().size(), 1u);
+            EXPECT_EQ(reader.getLayerFiles()[0].mImage->getFileName(), "textures/_land_default.dds");
+            EXPECT_EQ(reader.getLayerFiles()[0].mPath, "textures/_land_default.dds");
             EXPECT_EQ(ground.mLayers[0].mWeights.mCount, 0u) << "one ground type covers the cell";
             EXPECT_TRUE(ground.mWeights.empty());
 
@@ -193,8 +197,8 @@ namespace Rtx::Testing
             PreparedGround unread;
             reader.read(osg::Vec2i(2, 0), unread);
             ASSERT_EQ(unread.mLayers.size(), 1u);
-            EXPECT_EQ(unread.mLayers[0].mImage, nullptr);
-            EXPECT_EQ(unread.mLayers[0].mPath, "textures/_land_default.dds");
+            EXPECT_EQ(reader.getLayerFiles()[0].mImage, nullptr);
+            EXPECT_EQ(reader.getLayerFiles()[0].mPath, "textures/_land_default.dds");
         }
 
         /// A land whose one cell blends two masks of two formats: the game's own, and one a mod

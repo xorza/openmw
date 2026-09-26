@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <string>
@@ -103,34 +104,49 @@ namespace Rtx
         /// **The bound is on what an arrival frame pays**, a texture stood and a dispatch over it
         /// apiece — so a walk that queued a region's worth still takes them a couple at a time, and
         /// the first asked is the first flattened.
+        ///
+        /// **Two waves, so the order survives the ring wrapping and growing.** The first six fill a
+        /// ring of eight from the front and a frame takes two, which leaves four from slot two on;
+        /// of the second five, four wrap round into slots six, seven, nought and one, and the fifth
+        /// finds the ring full and grows it with the oldest ask anywhere but slot nought.
         TEST(RtxCompositeQueueTest, aFrameTakesNoMoreThanItsBoundInTheOrderAsked)
         {
             SceneDesc scene;
-            constexpr std::size_t chunks = sCompositesPerFrame * 3;
+            constexpr std::size_t first = sCompositesPerFrame * 3;
+            constexpr std::size_t second = sCompositesPerFrame * 2 + 1;
 
             // Held rather than made per call: a view does not own its path, and each chunk wants two
             // of its own so that no two share a texture slot.
             std::vector<VFS::Path::Normalized> paths;
             std::vector<Index> materials;
-            paths.reserve(chunks * 2);
-            for (std::size_t at = 0; at < chunks; ++at)
-            {
-                paths.emplace_back("textures/ground" + std::to_string(at) + "a.dds");
-                paths.emplace_back("textures/ground" + std::to_string(at) + "b.dds");
-                materials.push_back(addChunk(scene, paths[at * 2], paths[at * 2 + 1]));
-            }
+            paths.reserve((first + second) * 2);
+            const auto ask = [&](const std::size_t count) {
+                for (std::size_t at = 0; at < count; ++at)
+                {
+                    const std::size_t chunk = materials.size();
+                    paths.emplace_back("textures/ground" + std::to_string(chunk) + "a.dds");
+                    paths.emplace_back("textures/ground" + std::to_string(chunk) + "b.dds");
+                    materials.push_back(addChunk(scene, paths[chunk * 2], paths[chunk * 2 + 1]));
+                }
+            };
 
             CompositeQueue queue;
-            for (std::size_t taken = 0; taken < chunks; taken += sCompositesPerFrame)
-            {
-                EXPECT_EQ(frame(queue, scene), sCompositesPerFrame)
-                    << "a frame took other than its bound with " << (chunks - taken) << " waiting";
+            std::size_t taken = 0;
+            const auto expectTaken = [&](const std::size_t now) {
+                EXPECT_EQ(frame(queue, scene), now) << "a frame took other than its bound";
+                taken += now;
 
-                for (std::size_t at = 0; at < chunks; ++at)
-                    EXPECT_EQ(scene.materials().getRows()[materials[at]].mDiffuse != sNoIndex,
-                        at < taken + sCompositesPerFrame)
-                        << "chunk " << at << " after " << (taken + sCompositesPerFrame) << " were taken";
-            }
+                for (std::size_t at = 0; at < materials.size(); ++at)
+                    EXPECT_EQ(scene.materials().getRows()[materials[at]].mDiffuse != sNoIndex, at < taken)
+                        << "chunk " << at << " after " << taken << " were taken";
+            };
+
+            ask(first);
+            expectTaken(sCompositesPerFrame);
+
+            ask(second);
+            while (taken < materials.size())
+                expectTaken(std::min(sCompositesPerFrame, materials.size() - taken));
 
             EXPECT_EQ(frame(queue, scene), 0u) << "more were given out than ever asked";
         }

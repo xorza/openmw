@@ -52,21 +52,13 @@ namespace Rtx
     /// One ground texture a cell's land names, and the weights that place it.
     struct PreparedLayer
     {
-        /// The tiling ground texture, opened on the thread, or null where it does not read — a
-        /// layer the texture table stands in for.
-        osg::ref_ptr<const osg::Image> mImage;
-
-        /// The path the land names it by, which its reading is filed under.
-        VFS::Path::Normalized mPath;
-
-        /// The reader's description of it, lent for as long as the cell is held.
+        /// The reader's description of the tiling ground texture, lent for as long as the cell is
+        /// held: its image, opened on the thread or null where it does not read — a layer the
+        /// texture table stands in for — and the path the land names it by.
         PreparedTexture* mTexture = nullptr;
 
-        /// The layer's normal map as the storage found it beside the diffuse (`_nh` before `_n`),
-        /// opened on the thread, and the reader's description of it. An empty path where there is
-        /// none, and a null image where one would not read, which the table stands in for.
-        osg::ref_ptr<const osg::Image> mNormalImage;
-        VFS::Path::Normalized mNormalPath;
+        /// The same for the layer's normal map as the storage found it beside the diffuse (`_nh`
+        /// before `_n`), or null where there is none.
         PreparedTexture* mNormalTexture = nullptr;
 
         /// Whether that normal map's alpha is a height: an `_nh` the storage found, and

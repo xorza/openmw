@@ -163,7 +163,7 @@ namespace Rtx
         // The lines first and the triangles after them, in the slot's own buffer: the frame
         // behind read its own slot's, so nothing here is written under a submit.
         const std::size_t count = debug.mLines.size() + debug.mTriangles.size();
-        growTo(*what.mDebugVertices, mDevice, BufferKind::HostWritten, count * sizeof(DebugVertex),
+        outgrow(*what.mDebugVertices, mDevice, BufferKind::HostWritten, count * sizeof(DebugVertex),
             VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, "debug vertices");
 
         const std::span<DebugVertex> written = what.mDebugVertices->writable<DebugVertex>(0, count);

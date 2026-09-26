@@ -1,6 +1,10 @@
 #include "objectpaging.hpp"
 
+#include <algorithm>
+#include <cassert>
 #include <limits>
+#include <map>
+#include <memory>
 #include <unordered_map>
 #include <vector>
 
@@ -509,11 +513,21 @@ namespace MWRender
             };
         }
 
-        std::map<ESM::RefNum, PagedCellRef> collectESM3References(float size, const osg::Vec2i& startCell,
-            const MWWorld::ESMStore& store, Terrain::RefKinds kinds = Terrain::RefKinds::Paged)
+        // The walks tell a sink what each reference comes to, `assign` or `erase`, in the order the
+        // content files stack; the paging reduces into a map and the ray tracer's collector into a
+        // buffer it keeps.
+        struct RefMap
         {
-            std::map<ESM::RefNum, PagedCellRef> refs;
-            ESM::ReadersCache readers;
+            std::map<ESM::RefNum, PagedCellRef> mRefs;
+
+            void assign(const ESM::RefNum& refNum, const PagedCellRef& ref) { mRefs.insert_or_assign(refNum, ref); }
+            void erase(const ESM::RefNum& refNum) { mRefs.erase(refNum); }
+        };
+
+        template <class Sink>
+        void visitESM3References(float size, const osg::Vec2i& startCell, const MWWorld::ESMStore& store,
+            Terrain::RefKinds kinds, ESM::ReadersCache& readers, Sink& refs)
+        {
             for (int cellX = startCell.x(); cellX < startCell.x() + size; ++cellX)
             {
                 for (int cellY = startCell.y(); cellY < startCell.y() + size; ++cellY)
@@ -550,7 +564,7 @@ namespace MWRender
                                     refs.erase(ref.mRefNum);
                                     continue;
                                 }
-                                refs.insert_or_assign(ref.mRefNum, makePagedCellRef(ref));
+                                refs.assign(ref.mRefNum, makePagedCellRef(ref));
                             }
                         }
                         catch (const std::exception& e)
@@ -570,17 +584,25 @@ namespace MWRender
                         int type = store.findStatic(ref.mRefID);
                         if (!typeFilter(type, size >= 2, kinds))
                             continue;
-                        refs.insert_or_assign(ref.mRefNum, makePagedCellRef(ref));
+                        refs.assign(ref.mRefNum, makePagedCellRef(ref));
                     }
                 }
             }
-            return refs;
         }
 
-        std::map<ESM::RefNum, PagedCellRef> collectESM4References(float size, const osg::Vec2i& startCell,
-            ESM::RefId worldspace, Terrain::RefKinds kinds = Terrain::RefKinds::Paged)
+        std::map<ESM::RefNum, PagedCellRef> collectESM3References(float size, const osg::Vec2i& startCell,
+            const MWWorld::ESMStore& store, Terrain::RefKinds kinds = Terrain::RefKinds::Paged)
         {
-            std::map<ESM::RefNum, PagedCellRef> refs;
+            RefMap refs;
+            ESM::ReadersCache readers;
+            visitESM3References(size, startCell, store, kinds, readers, refs);
+            return std::move(refs.mRefs);
+        }
+
+        template <class Sink>
+        void visitESM4References(
+            float size, const osg::Vec2i& startCell, ESM::RefId worldspace, Terrain::RefKinds kinds, Sink& refs)
+        {
             const auto& store = MWBase::Environment::get().getWorld()->getStore();
             for (int cellX = startCell.x(); cellX < startCell.x() + size; ++cellX)
             {
@@ -609,12 +631,28 @@ namespace MWRender
                                     continue;
                             }
                         }
-                        refs.insert_or_assign(ref4->mId, makePagedCellRef(*ref4));
+                        refs.assign(ref4->mId, makePagedCellRef(*ref4));
                     }
                 }
             }
-            return refs;
         }
+
+        std::map<ESM::RefNum, PagedCellRef> collectESM4References(float size, const osg::Vec2i& startCell,
+            ESM::RefId worldspace, Terrain::RefKinds kinds = Terrain::RefKinds::Paged)
+        {
+            RefMap refs;
+            visitESM4References(size, startCell, worldspace, kinds, refs);
+            return std::move(refs.mRefs);
+        }
+
+        /// `ObjectStorage`'s collector: the readers the walk opens, kept open for the next cell,
+        /// and what the walk said of each reference.
+        class RefBuffer final : public Terrain::RefCollector
+        {
+        public:
+            ESM::ReadersCache mReaders;
+            Terrain::RefStack mStack;
+        };
     }
 
     osg::ref_ptr<osg::Node> ObjectPaging::createChunk(float size, const osg::Vec2f& center, bool activeGrid,
@@ -1112,17 +1150,26 @@ namespace MWRender
 
     // Defined here because the walk it wraps is file-local
     void ObjectStorage::collect(float size, const osg::Vec2i& startCell, ESM::RefId worldspace, Terrain::RefKinds kinds,
-        std::vector<Terrain::PagedCellRef>& into) const
+        Terrain::RefCollector& collector, std::vector<Terrain::PagedCellRef>& into) const
     {
+        assert(dynamic_cast<RefBuffer*>(&collector) != nullptr && "a collector another storage made");
+        RefBuffer& buffer = static_cast<RefBuffer&>(collector);
+
         into.clear();
+        buffer.mStack.clear();
 
         const MWWorld::ESMStore& store = MWBase::Environment::get().getWorld()->getStore();
-        const std::map<ESM::RefNum, PagedCellRef> refs = worldspace == ESM::Cell::sDefaultWorldspaceId
-            ? collectESM3References(size, startCell, store, kinds)
-            : collectESM4References(size, startCell, worldspace, kinds);
+        if (worldspace == ESM::Cell::sDefaultWorldspaceId)
+            visitESM3References(size, startCell, store, kinds, buffer.mReaders, buffer.mStack);
+        else
+            visitESM4References(size, startCell, worldspace, kinds, buffer.mStack);
 
-        for (const auto& [refNum, ref] : refs)
-            into.push_back(ref);
+        buffer.mStack.reduceInto(into);
+    }
+
+    std::unique_ptr<Terrain::RefCollector> ObjectStorage::makeCollector() const
+    {
+        return std::make_unique<RefBuffer>();
     }
 
     std::optional<SceneUtil::LightCommon> ObjectStorage::getLight(const ESM::RefId& id) const

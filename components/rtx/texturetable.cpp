@@ -146,5 +146,6 @@ namespace Rtx
         row = TextureRow{};
         mRows.free(texture);
         mChanges.note(texture, SlotNews::Freed);
+        ++mFreed;
     }
 }

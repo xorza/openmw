@@ -141,9 +141,18 @@ namespace Rtx
         /// everything else.
         void writeGeometry(Batch& batch, const SceneDesc& scene, std::span<const Index> meshes);
 
-        /// Fills the refit build infos and sizes the scratch. Leaves `mRefit` holding exactly
-        /// this frame's rebuilds, which is what both the caller and `recordRefit` read.
+        /// Fills the refit build infos over the scratch `sizeRefitScratch` made. Leaves `mRefit`
+        /// holding exactly this frame's rebuilds, which is what both the caller and `recordRefit`
+        /// read.
         void prepareRefit(const SceneDesc& scene, FrameSlot slot);
+
+        /// Grows the refit scratch to what any placement's refit can ask of it: every standing
+        /// structure built to be refitted updated at once, and the one the rota builds whole taking
+        /// its build's scratch in place of its update's — the largest such step. Where meshes
+        /// arrive, and never on a placement: which mesh the rota picks moves every placement, and a
+        /// scratch sized to each one's exact total would be a buffer made on whichever frame outgrew
+        /// it.
+        void sizeRefitScratch();
 
         /// What `mesh`'s place in this placement's refit works in: a whole build's scratch for the
         /// one the rota picked, an update's for the rest.
@@ -215,7 +224,7 @@ namespace Rtx
 
         BottomLevelStore mBottomLevel;
 
-        /// Kept across frames rather than made per refit, settling at the high-water mark. Grown
+        /// Kept across frames rather than made per refit, and sized by `sizeRefitScratch`. Grown
         /// through the graveyard and never destroyed outright: a frame places twice at a crossing,
         /// and a buffer freed under a build in flight was a device lost on every crossing.
         Buffer mRefitScratch;

@@ -34,7 +34,7 @@ namespace Rtx
         // turns on the same signal.
         mTextures.startFrame();
 
-        growTo(slot.mVertices, mDevice, BufferKind::HostWritten, vertices.size_bytes(),
+        outgrow(slot.mVertices, mDevice, BufferKind::HostWritten, vertices.size_bytes(),
             VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, "gui vertices");
         slot.mVertices.write(vertices);
 

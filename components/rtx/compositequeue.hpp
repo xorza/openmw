@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstddef>
-#include <deque>
 #include <string>
 #include <vector>
 
@@ -79,8 +78,18 @@ namespace Rtx
         /// whose slot another chunk took over while it waited is dropped.
         std::size_t take(SceneDesc& scene, std::size_t limit);
 
-        /// Oldest first: the order the walks asked in, which is the order the device flattens in.
-        std::deque<Asked> mWaiting;
+        /// Puts `asked` at the back of the schedule, growing the ring where it is full.
+        void wait(const Asked& asked);
+
+        /// The ask `age` places behind the oldest.
+        Asked& waitingAt(std::size_t age) { return mWaiting[(mFront + age) % mWaiting.size()]; }
+
+        /// A ring of the asks, `mCount` of them from `mFront` on, oldest first: the order the walks
+        /// asked in, which is the order the device flattens in. A ring and not a `deque`, which
+        /// gives a block back and takes one again as a crossing's chunks come and go.
+        std::vector<Asked> mWaiting;
+        std::size_t mFront = 0;
+        std::size_t mCount = 0;
 
         /// A slot given out, and the chunk it is the ground of.
         struct Given
