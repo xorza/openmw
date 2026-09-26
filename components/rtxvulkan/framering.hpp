@@ -58,10 +58,6 @@ namespace Rtx
         /// The world's: every placement of this frame, then the trace.
         Submission mWorld;
 
-        /// The interface's own ring beside the frame's: it is drawn after the frame is submitted
-        /// and waited for on its own, by the stamp its vertices carry.
-        VkCommandBuffer mGuiCommands = VK_NULL_HANDLE;
-
         Stepped<FrameState> mState{ FrameState::Idle };
 
         /// Whether the trace closed the frame, or `FrameRing::skip` did with none. An untraced
@@ -84,13 +80,9 @@ namespace Rtx
 
         Reconstruction mReconstruction;
 
-        /// What the GUI is drawn out of, rewritten every frame it has anything in it and grown
-        /// to the busiest frame so far. Host-visible device memory, so writing it is a memcpy
-        /// and there is no staging copy and no transfer to record.
-        Buffer mGuiVertices;
-
-        /// The debug lines' vertices, the same way, in the frame's own commands: the slot is the
-        /// frame's, so a write lands under no submit in flight.
+        /// The debug lines' vertices, rewritten every frame that draws any and grown to the busiest
+        /// frame so far, in the frame's own commands: the slot is the frame's, so a write lands
+        /// under no submit in flight.
         Buffer mDebugVertices;
 
         /// How much of `FrameRing::pictureOf` this frame wrote where `FrameOptions::mReadBack`
@@ -124,7 +116,7 @@ namespace Rtx
         /// open the frame, which `begin` is for.
         FrameRecord& recording();
 
-        /// The slot `frame` used, for a caller counting on a ring of its own — the interface's.
+        /// The slot `frame` used.
         FrameRecord& slotOf(std::uint64_t frame)
         {
             return mSlots.at(FrameSlot{ static_cast<std::uint32_t>(frame % sFrameSlots) });

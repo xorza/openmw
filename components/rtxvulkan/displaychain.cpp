@@ -16,6 +16,7 @@
 #include "gputimer.hpp"
 #include "image.hpp"
 #include "imageuse.hpp"
+#include "tracerecording.hpp"
 #include "visibilitypass.hpp"
 
 namespace Rtx
@@ -72,18 +73,19 @@ namespace Rtx
 
     void DisplayChain::record(const VkCommandBuffer commands, const Display& what)
     {
-        assert(what.mShown.getWidth() >= what.mExtent.width && what.mShown.getHeight() >= what.mExtent.height);
+        const VisibilityInputs& inputs = what.mTrace.mInputs;
+        const Image& shown = *inputs.mShown;
+        assert(shown.getWidth() >= what.mExtent.width && shown.getHeight() >= what.mExtent.height);
 
         // The puffs over the picture, at its own extent, and then the picture is what the lens
         // spreads and the curve maps. The bloom samples what this leaves, rather than loading it —
         // `BloomPass` binds the frame as a combined image sampler — so the scope after it names
         // both reads.
-        assert(what.mInputs.mChannels != nullptr && "a display over a trace that left no channels");
-        const GBuffer& channels = *what.mInputs.mChannels;
+        const GBuffer& channels = *inputs.mChannels;
 
-        mPuffs.recordSpriteComposite(commands, what.mInputs, what.mExtent,
+        mPuffs.recordSpriteComposite(commands, inputs, what.mExtent,
             VkExtent2D{ what.mSampled.mCamera.mWidth, what.mSampled.mCamera.mHeight }, what.mTimer);
-        what.mShown.transition(commands, Use::sTraceReadWrite, Use::sComputeReadOrSample);
+        shown.transition(commands, Use::sTraceReadWrite, Use::sComputeReadOrSample);
 
         // What the lens will spread, built here and applied by the curve. Nothing is written back
         // over the frame — `BloomPass` says why the trace's own answer has to reach `readComposite`
@@ -91,7 +93,7 @@ namespace Rtx
         if (what.mBloom)
         {
             openZone(what.mTimer, commands, "bloom");
-            mBloom.record(commands, what.mShown);
+            mBloom.record(commands, shown);
             closeZone(what.mTimer, commands);
         }
 
@@ -108,7 +110,8 @@ namespace Rtx
             else
             {
                 const Display::Measured& measured = std::get<Display::Measured>(what.mExposure);
-                mExposure.record(commands, what.mShown, measured.mSeconds, measured.mReset, measured.mBias);
+                mExposure.record(commands, shown, measured.mSeconds, measured.mReset || mExposureStale, measured.mBias);
+                mExposureStale = false;
             }
             closeZone(what.mTimer, commands);
             exposure = &mExposure.getExposure();
@@ -121,7 +124,8 @@ namespace Rtx
         if (what.mGlare.has_value())
         {
             openZone(what.mTimer, commands, "glare");
-            mSunGlare.record(commands, what.mGlare->mSeconds, what.mGlare->mReset);
+            mSunGlare.record(commands, what.mGlare->mSeconds, what.mGlare->mReset || mGlareStale);
+            mGlareStale = false;
             closeZone(what.mTimer, commands);
             share = &mSunGlare.getShare();
         }
@@ -129,16 +133,16 @@ namespace Rtx
         openZone(what.mTimer, commands, "tone");
         mTone.record(commands,
             Tone{
-                .mColour = what.mShown,
+                .mColour = shown,
                 .mExposure = *exposure,
                 .mSunGlare = *share,
                 .mStarsShown = channels.get(Channel::StarsShown),
                 .mPuffsDepth = channels.get(Channel::PuffsDepth),
                 .mBloom = what.mBloom ? mBloom.getPyramid() : nullptr,
-                .mTextures = what.mInputs.mTextures,
+                .mTextures = inputs.mTextures,
                 .mTarget = what.mTarget,
                 .mConstants = toneFor(what.mSampled, what.mGlare.has_value() ? what.mGlare->mFader : SunGlare{},
-                    what.mSpriteTileList, what.mInputs.mTextureTexels, what.mExtent.width, what.mExtent.height,
+                    what.mTrace.mSpriteTileList, inputs.mTextureTexels, what.mExtent.width, what.mExtent.height,
                     channels.getWidth(), channels.getHeight()),
             });
         closeZone(what.mTimer, commands);
@@ -153,7 +157,7 @@ namespace Rtx
             return;
 
         assert(what.mDebugVertices != nullptr && "lines to draw and no buffer to draw them from");
-        const GBuffer& channels = *what.mInputs.mChannels;
+        const GBuffer& channels = *what.mTrace.mInputs.mChannels;
 
         // The lines first and the triangles after them, in the slot's own buffer: the frame
         // behind read its own slot's, so nothing here is written under a submit.

@@ -29,6 +29,7 @@ namespace Rtx
     class SpriteShadePass;
     class VisibilityPass;
     struct TraceRecording;
+    struct TraceResult;
     struct VisibilityInputs;
 
     /// What every chain shares, whichever camera it is for: the layouts every `GBuffer` and every
@@ -97,22 +98,28 @@ namespace Rtx
         /// What the trace writes and the composite reads: one picture's light, still in pieces.
         const GBuffer& getChannels() const { return *mChannels; }
 
-        /// Where the air is integrated, one column to a block of pixels.
-        const FogVolume& getFogVolume() const { return *mFogVolume; }
+        /// Records one camera's whole trace, from the discards it opens with to the barrier after
+        /// the composite, and hands back what the display reads of it. What the caller keeps is
+        /// what a frame has and a picture has not — the frame ring, the upscaler, the lens, the
+        /// measured exposure and the display curve.
+        TraceResult record(VkCommandBuffer commands, const TraceRecording& what);
 
+        /// Says the accumulator's history and the air's are worthless, each until the next trace
+        /// that reads it: the air is read by every trace, and the accumulator only where the
+        /// wavelet runs.
+        void resetHistory();
+
+        /// Lets go of the running total, which a new scene or a new size has no use for: a sum over
+        /// one scene means nothing over the next. The first frame that averages makes another.
+        void dropSum() { mSum = Image(); }
+
+    private:
         /// The sprite tile list the trace of `inputs` reads: the camera's own where it was handed
         /// one, which is the list of nothing, and the slot's bin otherwise. The one rule, which
         /// the block is written by and the display's `puffsCoverNothing` asks after the trace —
         /// after, because the bin's `take` may have grown the table.
         VkDeviceAddress getSpriteTileList(const VisibilityInputs& inputs) const;
 
-        /// Records one camera's whole trace, from the discards it opens with to the barrier after
-        /// the composite, and hands back the composite's output. What the caller keeps is what a
-        /// frame has and a picture has not — the frame ring, the upscaler, the lens, the measured
-        /// exposure and the display curve.
-        const Image& record(VkCommandBuffer commands, const TraceRecording& what);
-
-    private:
         /// The bounce resolved: the temporal mean, and then the cascade over it, with the barrier
         /// between them that makes this one call.
         ///
@@ -141,5 +148,14 @@ namespace Rtx
         /// filter's other half of the ping-pong (`AtrousPass::makeScratch`). Both at the extent.
         AccumulateHistory mHistory;
         Image mFilterScratch;
+
+        /// Set by `resetHistory` and spent by the next trace, which always integrates the air.
+        bool mAirStale = false;
+
+        /// The running sum a reference is built out of, empty until a trace averages. Not a history
+        /// and nothing here reprojects: a plain per-pixel total over however many frames the caller
+        /// asked to average. Whether it exists is also whether anything has written it, because the
+        /// trace that makes one fills it.
+        Image mSum;
     };
 }

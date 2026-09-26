@@ -45,16 +45,15 @@ namespace Rtx
         , mReadsCounts(readsCounts)
         , mSlots([&](FrameSlot) { return FrameRecord{ device }; })
     {
-        // Three command buffers a frame to begin with — the first placement's, the trace's, the
-        // interface's — allocated once and recorded into again. A frame placed more than once takes
-        // another from the same pool and keeps it, which `FrameRecord::mPlaceCommands` explains.
-        const std::vector<VkCommandBuffer> commands = mDevice.getPool().allocate(3 * sFrameSlots);
+        // Two command buffers a frame to begin with — the first placement's and the trace's —
+        // allocated once and recorded into again. A frame placed more than once takes another from
+        // the same pool and keeps it, which `FrameRecord::mPlaceCommands` explains.
+        const std::vector<VkCommandBuffer> commands = mDevice.getPool().allocate(2 * sFrameSlots);
         for (std::uint32_t slot = 0; slot < sFrameSlots; ++slot)
         {
             FrameRecord& frame = mSlots.at(FrameSlot{ slot });
-            frame.mPlaceCommands.push_back(commands[3 * slot]);
-            frame.mWorld.mCommands = commands[3 * slot + 1];
-            frame.mGuiCommands = commands[3 * slot + 2];
+            frame.mPlaceCommands.push_back(commands[2 * slot]);
+            frame.mWorld.mCommands = commands[2 * slot + 1];
         }
     }
 

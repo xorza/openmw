@@ -2,7 +2,10 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cassert>
+#include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <utility>
 
@@ -18,6 +21,30 @@ namespace Rtx
 {
     namespace
     {
+        /// One half float, as the number it stands for. By bits, where the test harness spells the
+        /// same conversion out by arithmetic, so that each derivation checks the other.
+        float fromHalf(std::uint16_t bits)
+        {
+            const std::uint32_t sign = static_cast<std::uint32_t>(bits & 0x8000u) << 16;
+            const std::uint32_t exponent = (bits >> 10) & 0x1fu;
+            const std::uint32_t mantissa = bits & 0x3ffu;
+
+            if (exponent == 31)
+                return std::bit_cast<float>(sign | 0x7f800000u | (mantissa << 13));
+
+            // A subnormal half is its mantissa times 2^-24, and the float it widens to is normal —
+            // so the shuffle below cannot make it and a multiply is what does.
+            if (exponent == 0)
+            {
+                const float magnitude = static_cast<float>(mantissa) * 0x1p-24f;
+
+                return (bits & 0x8000u) != 0 ? -magnitude : magnitude;
+            }
+
+            // Bias 15 to bias 127, and ten mantissa bits to twenty-three.
+            return std::bit_cast<float>(sign | ((exponent + 112u) << 23) | (mantissa << 13));
+        }
+
         /// How many bytes one texel takes, for the formats this renderer makes images in, because
         /// a read-back has to know. Nought for a block format, whose texels have no size of their
         /// own and which nothing reads back.
@@ -411,6 +438,42 @@ namespace Rtx
 
         pixels.resize(bytes);
         std::memcpy(pixels.data(), landing.map(), bytes);
+    }
+
+    void Image::readFloats(VkImageLayout layout, std::vector<float>& values) const
+    {
+        std::vector<std::uint8_t> bytes;
+        read(layout, bytes);
+
+        // Every format read back this way is named, and one that is not is a throw rather than a
+        // `memcpy`, which is how the motion channels came back as pairs of halves the day they
+        // narrowed. Tested on the format, because several macros across three headers name each
+        // of these.
+        switch (mFormat)
+        {
+            case VK_FORMAT_R16G16_SFLOAT:
+            case VK_FORMAT_R16G16B16A16_SFLOAT:
+                values.resize(bytes.size() / sizeof(std::uint16_t));
+                for (std::size_t at = 0; at < values.size(); ++at)
+                {
+                    std::uint16_t half = 0;
+                    std::memcpy(&half, bytes.data() + at * sizeof(half), sizeof(half));
+                    values[at] = fromHalf(half);
+                }
+
+                return;
+
+            case VK_FORMAT_R32_SFLOAT:
+            case VK_FORMAT_R32G32_SFLOAT:
+            case VK_FORMAT_R32G32B32A32_SFLOAT:
+                values.resize(bytes.size() / sizeof(float));
+                std::memcpy(values.data(), bytes.data(), bytes.size());
+
+                return;
+
+            default:
+                broken("no float decode is recorded for this image format");
+        }
     }
 
     Image makeStandIn(

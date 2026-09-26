@@ -14,11 +14,9 @@
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/refusal.hpp>
 #include <components/rtx/renderer.hpp>
-#include <components/rtx/ripple.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/shaders/visibility.h>
 #include <components/rtx/slot.hpp>
-#include <components/rtx/slots.hpp>
 #include <components/rtx/texturedata.hpp>
 #include <components/rtx/upscale.hpp>
 #include <components/rtx/wavespectrum.hpp>
@@ -26,24 +24,21 @@
 
 #include "accumulatepass.hpp"
 #include "atrouspass.hpp"
-#include "buffer.hpp"
 #include "commands.hpp"
 #include "compositepass.hpp"
 #include "device.hpp"
 #include "digestpass.hpp"
 #include "displaychain.hpp"
-#include "fogvolume.hpp"
 #include "framering.hpp"
-#include "frameslots.hpp"
 #include "groundcompositepass.hpp"
-#include "guipass.hpp"
-#include "guitextures.hpp"
+#include "guidrawer.hpp"
 #include "handles.hpp"
 #include "image.hpp"
 #include "instance.hpp"
 #include "mipchainpass.hpp"
+#include "picturetracer.hpp"
 #include "presenttargets.hpp"
-#include "ripplepass.hpp"
+#include "sceneslots.hpp"
 #include "shadingpass.hpp"
 #include "skinpass.hpp"
 #include "spritelightpass.hpp"
@@ -51,12 +46,11 @@
 #include "stresspass.hpp"
 #include "texture.hpp"
 #include "tracechain.hpp"
+#include "tracemedia.hpp"
 #include "visibilitypass.hpp"
-#include "wavepass.hpp"
 
 namespace Rtx
 {
-    class DeviceScene;
     class Presenter;
     class Upscaler;
 
@@ -71,11 +65,7 @@ namespace Rtx
 
         std::string describeDevice() const override;
         bool isValidating() const override;
-        void resetHistory() override
-        {
-            mDenoiserStale = mAirStale = true;
-            mRipples.reset();
-        }
+        void resetHistory() override;
 
         void setScene(SceneSlot slot, const SceneDesc& scene, std::span<const TextureData> textures) override;
         void extendScene(SceneSlot slot, const SceneDesc& scene, std::span<const TextureData> arrived) override;
@@ -151,30 +141,9 @@ namespace Rtx
         /// the chains to be built for.
         TracePasses describeTracePasses() const;
 
-        /// Widens a channel stored as bytes or as halves on the way out.
-        void readImage(const Image& image, std::vector<float>& values);
-
         /// The image this frame writes, with the present that last read it waited for — once per
         /// frame, at the first of the trace and the interface to want it.
         Image& claimTarget();
-
-        /// Where the scene a slot names sits — the world's, or a picture's — which holds null until
-        /// `setScene` fills it. A slot nothing was ever given is a caller bug, so it is asserted.
-        const std::unique_ptr<DeviceScene>& slotAt(SceneSlot slot) const;
-        std::unique_ptr<DeviceScene>& slotAt(SceneSlot slot);
-
-        /// The scene a slot names, which `setScene` has filled: asked of an empty slot is a caller
-        /// bug, so it is asserted rather than reported.
-        const DeviceScene& sceneAt(SceneSlot slot) const;
-        DeviceScene& sceneAt(SceneSlot slot);
-
-        /// What the trace reads a scene through, for the copy its last placement wrote, and what
-        /// its launches bind beside it. One description for a frame and for a picture inside the
-        /// interface, which differ in the chain they trace into, the image the puffs are
-        /// composited over, the census they sum into and which of the chain's slots they take.
-        VisibilityInputs describeInputs(const DeviceScene& held, const TraceChain& chain,
-            const Shaders::VisibilityConstants& camera, const Image& shown, const Buffer& counts,
-            FrameSlot traceSlot) const;
 
         /// @param width, height what the frame is presented at. What it is traced at is the
         ///        upscaler's answer for that, or the same numbers where nothing upscales.
@@ -182,10 +151,6 @@ namespace Rtx
 
         /// Brings the upscaler's runtime up if it is not already, and throws where it cannot be.
         void startUpscaler();
-
-        /// Copies what the world's scene says disturbed the water into `mFrameRipples`, at the
-        /// two places the world's scene passes through: built and placed.
-        void keepRipples(const SceneDesc& scene);
 
         /// Everything the queue was given and everything waiting to be given it, finished, and
         /// everything buried let go: what a rebuild, a resize and a scene going away do before
@@ -195,23 +160,16 @@ namespace Rtx
         /// submits the ring does not count; and the graveyard last, once nothing can be reading.
         void drain();
 
-        /// Whether a frame is upscaled: a runtime that is up and a mode that wants one. The
-        /// runtime outlives a mode being turned off, because raising it again costs a quarter of a
-        /// second.
-        bool upscaling() const;
-
-        /// Makes the picture-inside-the-interface chain at least this big, and the byte image the
-        /// interface is handed with it.
-        void growViewTargets(std::uint32_t width, std::uint32_t height);
+        /// Whether a frame is upscaled, which is the mode alone: a mode that wants a runtime has
+        /// one, because `setUpscale` raises it before it moves the mode. The runtime outlives a
+        /// mode being turned off, because raising it again costs a quarter of a second.
+        bool upscaling() const { return mProfile.mUpscaling.mMode != Upscale::Off; }
 
         // Declaration order is destruction order reversed, and everything below the device is built
         // on it.
         Instance mInstance;
 
         Device mDevice;
-
-        /// The interface's ring runs on its own count: a menu is drawn on frames with no world.
-        std::uint64_t mGuiFrame = 0;
 
         /// Whether the frame this builds counts for the host. `RendererOptions::mCounting` says why
         /// the game's does not.
@@ -234,15 +192,10 @@ namespace Rtx
         /// The frames in flight and what each came to. After the flag it is handed.
         FrameRing mRing{ mDevice, mReadsCounts };
 
-        /// Whether the next frame has to be reconstructed without a past. Set by `resetHistory` and
-        /// spent by the next frame that reconstructs from one, which is not always the one after.
-        bool mDenoiserStale = false;
-
-        /// The same for the fog volume, which keeps a past of its own. Two flags because two
-        /// histories are spent by different frames: the denoisers run only where a frame
-        /// reconstructs, so their signal has to survive a frame that runs none, while the air is
-        /// filled by every trace, so its signal is spent by the very next one.
-        bool mAirStale = false;
+        /// Whether the upscaler's history is worthless. Set by `resetHistory` and spent by the next
+        /// frame that upscales, which is not always the one after. The other histories keep their
+        /// own: the chain's, `TraceChain::resetHistory`, and the display's.
+        bool mUpscalerStale = false;
 
         /// When the last frame was recorded, so the next can say how long ago that was. Measured
         /// here rather than asked of the caller, because this is the function the frames the
@@ -255,12 +208,6 @@ namespace Rtx
         /// of members something would have to keep level. `PresentTargets`
         /// says why there are two.
         PresentTargets mTargets;
-
-        /// The running sum a reference is built out of, and empty until a frame asks for one. Not
-        /// a history and nothing here reprojects: a plain per-pixel total over however many frames
-        /// the caller asked to average. Whether it exists is also whether anything has written it,
-        /// because the frame that makes one fills it.
-        Image mSum;
 
         /// What every `GBuffer` here is shaped by — one description, however many of them the
         /// frame's size brings and takes away. Declared before both chains, which allocate from it.
@@ -294,19 +241,10 @@ namespace Rtx
         /// wherever nothing upscales.
         TraceChain mFrame;
 
-        /// What a picture inside the interface is traced into: a map tile, the inventory doll, the
-        /// race preview. Its own chain and not the frame's, because borrowing the frame's images
-        /// would mean resizing them away from the frame and back between two of them.
-        TraceChain mView;
-
         /// The camera the last frame was traced with, for reprojecting this one against. Its basis
         /// is all zero until a frame is traced, and after a resize or a new scene, which the shader
         /// reads as "there is no previous frame" and answers with no motion at all.
         Shaders::VisibilityConstants mPreviousCamera{};
-
-        /// The world's, which is one of these like any other: what `SceneSlot::world` names. Null
-        /// until the first `setScene`.
-        std::unique_ptr<DeviceScene> mWorld;
 
         SceneStats mStats;
 
@@ -317,24 +255,7 @@ namespace Rtx
         /// What folds the frame's images into `FrameResult::mDigest`, on the frames that ask.
         DigestPass mDigest;
 
-        /// One sea for everything traced, the doll and the map included: the water is not a
-        /// property of a scene, so it is synthesised once a frame here rather than held per scene.
-        WavePass mWaves;
-
-        /// What walked through the water, stepped once a frame the world stands in a sea and read
-        /// by every picture beside the waves.
-        RipplePass mRipples;
-
-        /// What disturbed the water, as the world's scene said it when it was last built or
-        /// placed — `SceneDesc::ripples`, a per-frame list of the scene like its lights — kept
-        /// for the trace that follows. A copy and not a span, because the scene's list is cleared
-        /// by the next walk and nothing here would say so. Refilled and never freed.
-        std::vector<RippleImpulse> mFrameRipples;
-
-        /// One field for everything traced, drawn once for the life of the device. Nothing about
-        /// it turns on the weather or the cell — those decide the extinction and the layer's height,
-        /// which are numbers the shader already has.
-        FogTile mFog;
+        TraceMedia mMedia;
 
         /// One pass for everything posed, the doll included: what differs per scene is the
         /// tables, which each `DeviceScene` holds. Before the scenes, which hold it by reference.
@@ -356,32 +277,13 @@ namespace Rtx
         /// The hold `RenderProfile::mStressOverlapMs` asked for, or nothing.
         std::unique_ptr<StressPass> mStress;
 
-        /// An empty sprite tiles' list, for a camera that draws no sprites and so binned none.
-        /// `VisibilityInputs::mSpriteList` says why one buffer serves every extent.
-        Buffer mNoSprites;
+        /// After the passes above, which every scene holds by reference.
+        SceneSlots mScenes;
 
-        /// What a picture inside the interface sums its census into, which nothing reads: the hit
-        /// count and the crossings are the frame's, and a picture traced beside it must not add to
-        /// them.
-        Buffer mViewCounts;
+        GuiDrawer mGui;
 
-        /// The interface: `GuiTextures` holds the part with a rule, and the rest is a pipeline, a
-        /// scratch vector and a counter with nothing binding them.
-        GuiPass mGuiPass;
-        GuiTextures mGuiTextures;
-
-        /// The batches, resolved from slots to what the pass wants. Kept so that a frame of GUI
-        /// allocates nothing.
-        std::vector<GuiDraw> mGuiDraws;
-
-        /// Scenes belonging to pictures rather than to the world, by slot — null until each is
-        /// given a scene — and the slots nothing holds.
-        std::vector<std::unique_ptr<DeviceScene>> mViewScenes;
-        SlotPool mFreeViewScenes;
-
-        /// The picture as bytes, which is what the interface's texture is copied out of. Empty
-        /// until something asks for a picture, and grown with `mView`.
-        Image mViewTarget;
+        /// After the media, the display and the interface, which it holds by reference.
+        PictureTracer mPictures;
 
         /// Null where nothing asked for a window. After `mTargets`, so it is destroyed before them:
         /// its command buffers, out of the device's pool, still hold recordings that blit out of

@@ -265,6 +265,8 @@ set(RTX_VULKAN_FILES
     groundcompositepass.hpp
     guipass.cpp
     guipass.hpp
+    guidrawer.cpp
+    guidrawer.hpp
     guitextures.cpp
     guitextures.hpp
     handles.cpp
@@ -287,6 +289,8 @@ set(RTX_VULKAN_FILES
     pacedmodes.hpp
     physicaldevice.cpp
     physicaldevice.hpp
+    picturetracer.cpp
+    picturetracer.hpp
     pipeline.hpp
     pipelinecache.cpp
     pipelinecache.hpp
@@ -307,6 +311,8 @@ set(RTX_VULKAN_FILES
     sceneacceleration.hpp
     scenebuffers.cpp
     scenebuffers.hpp
+    sceneslots.cpp
+    sceneslots.hpp
     shadingpass.cpp
     shadingpass.hpp
     skinpass.cpp
@@ -338,6 +344,8 @@ set(RTX_VULKAN_FILES
     tonepass.hpp
     tracechain.cpp
     tracechain.hpp
+    tracemedia.cpp
+    tracemedia.hpp
     tracepipeline.cpp
     tracepipeline.hpp
     tracerecording.hpp

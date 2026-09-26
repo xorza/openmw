@@ -31,7 +31,8 @@ namespace Rtx
         /// How long the frame stood for, which the reconstruction tunes itself by.
         float mFrameDeltaMs = 0.0f;
 
-        /// Whether the frame told the reconstruction its history was worthless.
+        /// Whether the frame told the upscaler its history was worthless: never, where nothing
+        /// upscaled it.
         std::uint32_t mReset = 0;
     };
 }

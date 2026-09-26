@@ -339,11 +339,12 @@ frame that writes as much again, a video's every frame, allocates nothing. `writ
 traced picture); `readBackWith` and `takeCopy` carry a copy back to the host on the same
 submit as the trace that wrote it.
 
-`VulkanRenderer::drawGui(vertices, batches)` runs on the interface's own ring, counted by
-`mGuiFrame`, because a menu is drawn on frames with no world:
+`VulkanRenderer::drawGui(vertices, batches)` hands the frame's target to `GuiDrawer`
+(`guidrawer.hpp`), which runs on the interface's own two-slot ring, counted by its own draws,
+because a menu is drawn on frames with no world:
 
-1. Take the slot of `mGuiFrame`, and wait for the vertex buffer the interface drew from two
-   frames ago.
+1. Take the slot of this draw, and wait for the vertex buffer the interface drew from two
+   draws ago.
 2. `GuiTextures::startFrame`: take the staging that frame's fence freed.
 3. Write the vertices into the slot's host-visible buffer. No staging copy.
 4. Resolve every batch to an image view and a blend.
@@ -373,13 +374,15 @@ slot. They are never a framebuffer and never in main memory unless somebody asks
   view's own `SceneExtractor` into its own `SceneDesc`, and handed over into its own
   `ViewScene` slot; then `Rtx::OffscreenTrace::traceInto(slot, keepCopy)` →
   `GuiRenderer::traceGuiTexture`.
-- `VulkanRenderer::traceGuiTexture` traces into the `mView` chain, which is grown to the largest
-  picture and never shrunk. No reconstruction, no jitter, no previous frame. The display chain
+- `VulkanRenderer::traceGuiTexture` hands the picture to `PictureTracer` (`picturetracer.hpp`),
+  whose own chain is grown to the largest picture and never shrunk; growing it is the one drain a
+  picture pays. No reconstruction, no jitter, no previous frame. The display chain
   runs with the puffs and the tone curve only: a picture is measured off nothing, has no bloom
   and no glare, so the same armour is the same brightness in two windows. The picture is copied
   into the GUI texture through `writeWith`, after a clear where the picture does not cover the
   whole texture (the doll's window resizes; the texture does not). The batch is deferred and
-  rides the next submit.
+  rides the next submit, and so is the picture's scene: `setScene` into a picture's slot builds
+  on a deferred batch and buries the scene it replaces, so opening a doll waits for nothing.
 - `keepCopy()` asks for a read-back. `getCopy()` answers null until the trace that leaves the
   copy has landed, two frames on; a black image would be "a picture of nothing" and the global
   map would mark the cell done.
@@ -686,20 +689,32 @@ where a deforming triangle stood (`GpuTables::mPreviousPoseBlocks`).
 
 **`FrameRing`** (`framering.hpp`): two slots. The CPU works one frame ahead: frame N+1 is
 walked and placed while N is traced, and the frame after next takes N's slot and waits for it
-first. A `FrameRecord` holds the placement command buffers, the trace's submission, the GUI's
-command buffer and vertex buffer, a `GpuTimer`, the counts and the digest. Three picture
+first. A `FrameRecord` holds the placement command buffers, the trace's submission, the debug
+lines' vertex buffer, a `GpuTimer`, the counts and the digest. Three picture
 buffers for two slots, so a report's picture is not torn.
 
-**`TraceChain`** (`tracechain.hpp`): everything one camera's trace writes at one extent. The
-renderer holds two: `mFrame` at the render extent, and `mView` grown to the largest picture
-inside the interface. A chain owns the `GBuffer` (eleven channels: direct, indirect, albedo,
-specular, guide, motion, depth, reflection motion, stars shown, puffs, puffs depth), the
-`FogVolume`, one `SpriteBin` per slot, the accumulator's `AccumulateHistory` and the filter's
-scratch image. The passes are shared and held by the renderer: `VisibilityPass` (the five ray
-tracing shaders and the fog dispatch, one pipeline per `VisibilityVariant`), `CompositePass`,
-the sprite passes, `AccumulatePass`, `AtrousPass`, `WavePass`, `RipplePass`, `SkinPass`, the
-three texture passes, `GroundCompositePass`, `DigestPass`, `StressPass`. A chain is handed the
-ones it traces with as one `TracePasses`.
+**`SceneSlots`** (`sceneslots.hpp`): the world's `DeviceScene` and one per picture, by slot, and
+the slots nothing holds. A scene given back or replaced is buried, never drained.
+
+**`TraceChain`** (`tracechain.hpp`): everything one camera's trace writes at one extent. There
+are two: the renderer's `mFrame` at the render extent, and `PictureTracer`'s, grown to the
+largest picture inside the interface. A chain owns the `GBuffer` (eleven channels: direct,
+indirect, albedo, specular, guide, motion, depth, reflection motion, stars shown, puffs, puffs
+depth), the `FogVolume`, one `SpriteBin` per slot, the accumulator's `AccumulateHistory`, the
+filter's scratch image and the running sum. `TraceChain::record` names its own images in the
+inputs it is handed and returns them as a `TraceResult`, which is what the display reads. The
+passes are shared and held by the renderer: `VisibilityPass` (the five ray tracing shaders and
+the fog dispatch, one pipeline per `VisibilityVariant`), `CompositePass`, the sprite passes,
+`AccumulatePass`, `AtrousPass`, `SkinPass`, the three texture passes, `GroundCompositePass`,
+`DigestPass`, `StressPass`. A chain is handed the ones it traces with as one `TracePasses`.
+
+**`TraceMedia`** (`tracemedia.hpp`): what every trace reads beside its scene and its chain —
+`WavePass`, `RipplePass`, the fog's tile and the empty sprite list — and the one description
+of a trace's inputs, the sea's answer among them.
+
+**Histories.** `resetHistory` marks each history's own flag, and each is spent by its reader
+alone: the accumulator's and the air's in the chain, the exposure's and the glare's in the
+display chain, the upscaler's in the renderer.
 
 **`DisplayChain`** (`displaychain.hpp`): after the trace and the upscaler: the puffs over the
 picture, `BloomPass`, `ExposurePass`, `SunGlarePass`, `TonePass`, `LinePass`. One chain for the
@@ -800,10 +815,12 @@ graph TD
         Dev["Instance, Device: queue, pool, Timeline, Graveyard, allocator, pipeline cache"]
         FR["FrameRing: 2 × FrameRecord"]
         Passes["the shared passes"]
-        Frame["TraceChain mFrame / mView: GBuffer, FogVolume, SpriteBin, Accumulate, Atrous"]
-        World["DeviceScene mWorld / mViewScenes[]: records, SceneAcceleration, SceneBuffers, SkinTables, TextureArray"]
+        Frame["TraceChain mFrame: GBuffer, FogVolume, SpriteBin, Accumulate, Atrous, sum"]
+        World["SceneSlots: DeviceScene per slot: records, SceneAcceleration, SceneBuffers, SkinTables, TextureArray"]
+        Media["TraceMedia: waves, ripples, fog tile, no sprites"]
         Disp["DisplayChain: bloom, exposure, glare, tone, lines"]
-        Gui["GuiPass, GuiTextures"]
+        Gui["GuiDrawer: GuiPass, GuiTextures, its own ring"]
+        Pics["PictureTracer: its own TraceChain, target, counts"]
         Pres["PresentTargets, Presenter: Swapchain"]
         Ups["Upscaler (DLSS RR or none)"]
         VR --> Dev
@@ -811,8 +828,13 @@ graph TD
         VR --> Passes
         VR --> Frame
         VR --> World
+        VR --> Media
         VR --> Disp
         VR --> Gui
+        VR --> Pics
+        Pics -.-> Media
+        Pics -.-> Disp
+        Pics -.-> Gui
         VR --> Pres
         VR --> Ups
     end
@@ -903,8 +925,8 @@ graph LR
     subgraph backend ["VulkanRenderer"]
         be["describeHeld, dropTextures, placeScene | extendScene | setScene → DeviceScene"]
         vrf["renderFrame → FrameRing, TraceChain::record, Upscaler, DisplayChain"]
-        gt["traceGuiTexture → TraceChain mView, DisplayChain, GuiTextures::writeWith"]
-        dg["drawGui → GuiPass"]
+        gt["traceGuiTexture → PictureTracer: TraceChain, DisplayChain, GuiTextures::writeWith"]
+        dg["drawGui → GuiDrawer"]
         pr["presentFrame → Presenter"]
         collect["collectFrame → FrameRing::collectFinished"]
     end
@@ -944,7 +966,8 @@ asserted so.
    refused; `Rtx::createVulkanRenderer(options)`; `mWindow.fit`; no GL context is asserted.
 3. `VulkanRenderer`'s constructor: the instance, the device with its pipeline cache, the three
    set layouts, every launch compiled (about six seconds on a cold cache), the shared passes,
-   the two chains and the display chain, the upscaler where the mode wants one, the presenter
+   the frame's chain, the display chain, the media, the scene slots, the interface and the
+   picture tracer, the upscaler where the mode wants one, the presenter
    where there is a window, the targets at the surface's extent.
 4. `Engine::go` hands the frame clock over, sets the icon, then `prepareEngine`:
    `setTraversalRoot` (the root is parented under the adopted camera), `prepareResources` (the
@@ -1071,7 +1094,7 @@ submit, then places.
 | `digest`, `upscale`    | the frame hash for a run that asks; DLSS Ray Reconstruction from colour, albedo, specular, guide, depth, motion, jitter, delta, reset |
 | `puffs`, `bloom`, `exposure`, `glare`, `tone`, `lines` | the display chain                                                  |
 | `stress`               | a hold of the queue, under a stress profile only                                                    |
-|                        | the read-back copy where asked; `FrameRing::submit`; the previous camera kept; the stale flags spent |
+|                        | the read-back copy where asked; `FrameRing::submit`; the previous camera kept                      |
 
 Then `drawGui` on the interface's ring (section 6.4) and `presentFrame`. A stale surface is not
 handled at the present: `RtxWindow::fit` calls `resize` every settled frame, and `resize` asks

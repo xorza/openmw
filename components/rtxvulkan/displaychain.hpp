@@ -26,41 +26,33 @@ namespace Rtx
     class GpuTimer;
     class Image;
     class VisibilityPass;
-    struct VisibilityInputs;
+    struct TraceResult;
 
     /// What one picture asks of the display chain, and what makes a frame's different from a
     /// picture's inside the interface: a picture has no lens, no share of the sun, no eye of its
     /// own and no lines over it. Nothing here is held.
     struct Display
     {
-        /// The frame as it will be shown, in `Use::sTraceReadWrite`: the puffs go over it and
-        /// the curve maps it. The upscaler's output where one runs, the trace's own composite
-        /// where none does, and a picture's own colour inside the interface.
-        const Image& mShown;
+        /// What the trace bound and the sprite tile list it read. The frame as it will be shown is
+        /// the inputs' `mShown`, in `Use::sTraceReadWrite`: the puffs go over it and the curve
+        /// maps it. The upscaler's output where one runs, the trace's own composite where none
+        /// does, and a picture's own colour inside the interface.
+        const TraceResult& mTrace;
 
-        /// How much of `mShown` the picture is, from its corner: the whole of a frame's, and a
-        /// picture's own size inside an image that may be larger. The curve encodes as much of
-        /// `mTarget` from its corner.
+        /// How much of the shown frame the picture is, from its corner: the whole of a frame's,
+        /// and a picture's own size inside an image that may be larger. The curve encodes as much
+        /// of `mTarget` from its corner.
         VkExtent2D mExtent;
-
-        /// What the trace was told and what its launches bound, which is what the puffs' composite
-        /// reads its block through and the curve reads its channels from.
-        const VisibilityInputs& mInputs;
 
         /// The camera the trace sampled, which the curve and the lines are told.
         const Shaders::VisibilityConstants& mSampled;
 
-        /// The sprite tile list the trace read, `TraceChain::getSpriteTileList`: what the curve
-        /// tests for where the puffs' composite drew nothing. Not `mSampled`'s, whose tables are
-        /// filled on the copy the block is written from.
-        VkDeviceAddress mSpriteTileList = 0;
-
         /// What the curve writes into, at least `mExtent` large.
         Image& mTarget;
 
-        /// The eye adapts off `mShown` at its own rate, or is held at a value, or a picture is
-        /// measured off nothing — `ExposurePass::getPictureExposure` says why that is a buffer of
-        /// its own.
+        /// The eye adapts off the shown frame at its own rate — from nothing where `mReset` says the
+        /// camera has no past — or is held at a value, or a picture is measured off nothing —
+        /// `ExposurePass::getPictureExposure` says why that is a buffer of its own.
         struct Measured
         {
             float mSeconds;
@@ -125,6 +117,11 @@ namespace Rtx
         /// The two counts the eye's launch adds to, `SunGlarePass::getCounts`.
         const Buffer& getGlareCounts() const { return mSunGlare.getCounts(); }
 
+        /// Says the measured exposure and the glare's eased share are worthless, each until the next
+        /// frame that eases it: the share eases on every frame, and the exposure only on a frame
+        /// that measures.
+        void resetHistory() { mExposureStale = mGlareStale = true; }
+
         /// Records everything from the puffs to the target, and leaves `what.mTarget` in
         /// `Use::sComputeWrite`, where the curve left it.
         void record(VkCommandBuffer commands, const Display& what);
@@ -148,5 +145,9 @@ namespace Rtx
 
         /// The debug modes' lines and triangles, over the picture and under the interface.
         LinePass mLines;
+
+        /// Set by `resetHistory` and each spent by the next record that eases its history.
+        bool mExposureStale = false;
+        bool mGlareStale = false;
     };
 }

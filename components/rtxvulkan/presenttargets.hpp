@@ -24,7 +24,7 @@ namespace Rtx
     public:
         /// What the finished picture is encoded into, and so what the GUI pass is compiled against.
         /// Not display-encoded by the hardware, because the tone curve ran already. Here, because
-        /// `growViewTargets` makes an image the same pass draws over.
+        /// `PictureTracer::grow` makes an image the same pass draws over.
         static constexpr VkFormat sFormat = toVulkanFormat(TONE_TARGET_FORMAT);
 
         /// Makes both, black and in `VK_IMAGE_LAYOUT_GENERAL`, because the GUI is drawn over one

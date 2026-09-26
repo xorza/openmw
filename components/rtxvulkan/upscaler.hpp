@@ -92,9 +92,9 @@ namespace Rtx
         /// are composited over is pushed for every launch, before the reconstruction runs.
         virtual const Image& getOutput() const = 0;
 
-        /// Records one reconstruction and hands back the frame it wrote, at the output extent and
-        /// in `Use::sTraceReadWrite`, where the puffs want it. After `resize`.
-        virtual const Image& record(VkCommandBuffer commands, const UpscaleInputs& inputs) = 0;
+        /// Records one reconstruction into `getOutput`, at the output extent and in
+        /// `Use::sTraceReadWrite`, where the puffs want it. After `resize`.
+        virtual void record(VkCommandBuffer commands, const UpscaleInputs& inputs) = 0;
 
     protected:
         Upscaler() = default;

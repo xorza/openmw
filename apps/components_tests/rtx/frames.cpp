@@ -18,7 +18,9 @@
 #include <components/rtx/shaders/visibility.h>
 #include <components/rtx/slot.hpp>
 
+#include <components/rtxvulkan/device.hpp>
 #include <components/rtxvulkan/sceneacceleration.hpp>
+#include <components/rtxvulkan/timeline.hpp>
 
 #include "geometry.hpp"
 #include "harness.hpp"
@@ -520,6 +522,51 @@ namespace Rtx
             mRenderer->finishGuiTraces();
             ASSERT_TRUE(mRenderer->takeGuiCopy(texture, copy));
             EXPECT_EQ(copy[3], 255) << "the picture saw through the fade a later placement wrote into its copy";
+
+            mRenderer->dropGuiTexture(texture);
+            mRenderer->dropViewScene(doll);
+        }
+
+        /// A picture's scene is built on a batch that rides the next submit, as an arrival is:
+        /// opening one submits nothing and so waits for nothing, and opening another in its slot
+        /// buries the first, so a picture of it recorded and not yet carried still comes back
+        /// whole. A drain here idled the device every time the inventory or the race menu opened.
+        TEST_F(RtxFramesTest, aPictureSceneOpensWithoutASubmitAndKeepsAPictureOfTheOneItReplaced)
+        {
+            const SceneSlot doll = mRenderer->addViewScene();
+            SceneDesc scene;
+            const Index wall
+                = scene.addMesh(MeshArrays{ .mPositions = Testing::wallAt(200.0f), .mIndices = Testing::sQuadIndices });
+            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = wall });
+
+            const Timeline& timeline = mRenderer->getDevice().getTimeline();
+            const std::uint64_t opened = timeline.getNext();
+            mRenderer->setScene(doll, scene, {});
+            EXPECT_EQ(timeline.getNext(), opened) << "opening a picture's scene submitted";
+
+            const GuiSlot texture = mRenderer->addGuiTexture(sSize, sSize);
+            std::vector<std::uint8_t> copy(std::size_t{ sSize } * sSize * 4);
+
+            // Over nothing, so a pixel the wall does not cover is the one number that says so.
+            Shaders::VisibilityConstants camera = ahead();
+            camera.mTransparentBackground = 1;
+            mRenderer->traceGuiTexture(texture, camera, GuiTraceOptions{ .mScene = doll, .mReadBack = true });
+
+            // An empty scene in its place, with the picture of the wall still deferred.
+            const std::uint64_t replaced = timeline.getNext();
+            mRenderer->setScene(doll, SceneDesc{}, {});
+            EXPECT_EQ(timeline.getNext(), replaced) << "replacing a picture's scene submitted";
+            EXPECT_FALSE(mRenderer->takeGuiCopy(texture, copy)) << "replacing the scene carried the picture";
+
+            mRenderer->finishGuiTraces();
+            ASSERT_TRUE(mRenderer->takeGuiCopy(texture, copy));
+            EXPECT_EQ(copy[3], 255) << "the picture was traced against the scene that replaced it";
+
+            // And a picture taken now is of the empty scene.
+            mRenderer->traceGuiTexture(texture, camera, GuiTraceOptions{ .mScene = doll, .mReadBack = true });
+            mRenderer->finishGuiTraces();
+            ASSERT_TRUE(mRenderer->takeGuiCopy(texture, copy));
+            EXPECT_EQ(copy[3], 0) << "the replacement was not what the next picture traced";
 
             mRenderer->dropGuiTexture(texture);
             mRenderer->dropViewScene(doll);

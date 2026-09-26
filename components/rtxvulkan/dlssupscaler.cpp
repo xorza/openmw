@@ -58,7 +58,7 @@ namespace Rtx
         });
     }
 
-    const Image& DlssUpscaler::record(const VkCommandBuffer commands, const UpscaleInputs& inputs)
+    void DlssUpscaler::record(const VkCommandBuffer commands, const UpscaleInputs& inputs)
     {
         // `resize` makes the pass and its image together, so nothing here asks whether they are
         // there beyond this.
@@ -69,8 +69,6 @@ namespace Rtx
 
         // What NGX recorded is its own; nothing here knows which stages it used.
         mOutput.transition(commands, Use::sAnyGeneralWrite, Use::sTraceReadWrite);
-
-        return mOutput;
     }
 
     std::unique_ptr<Upscaler> makeUpscaler(const Device& device, const VkInstance instance)

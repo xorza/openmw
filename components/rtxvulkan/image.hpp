@@ -151,6 +151,10 @@ namespace Rtx
         /// rather than to a frame.
         void read(VkImageLayout layout, std::vector<std::uint8_t>& pixels, std::uint32_t level = 0) const;
 
+        /// `read`, widened to one float a channel whatever the format stores — for a test that
+        /// reads what a pass wrote. A format with no decode recorded is `broken`.
+        void readFloats(VkImageLayout layout, std::vector<float>& values) const;
+
         /// What `read` records: one level copied into `into`, a host-readable buffer of at least
         /// `getReadBytes(level)`, ordered for the host, with the image met as `before` and left as
         /// `after`. For a copy that rides a batch rather than a wait of its own.

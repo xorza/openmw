@@ -53,7 +53,8 @@ namespace Rtx
 
         /// Where the trace leaves its channels, all in `VK_IMAGE_LAYOUT_GENERAL` and at least as
         /// large as the camera. Channels and not a picture, because the indirect term has to
-        /// survive to the filter with the albedo still divided out. The chain's own.
+        /// survive to the filter with the albedo still divided out. The chain's own, which
+        /// `TraceChain::record` names.
         const GBuffer* mChannels = nullptr;
 
         /// What the trace sums its census into: the frame's own, or for a picture inside the
@@ -92,7 +93,7 @@ namespace Rtx
         const FogTile* mFog = nullptr;
 
         /// Where the air in front of this camera is integrated, before the trace reads it. Sized to
-        /// the camera and so not the pass's, as `GBuffer` is.
+        /// the camera and so not the pass's, as `GBuffer` is, and named by `TraceChain::record`.
         const FogVolume* mFogVolume = nullptr;
 
         /// The sprite tiles' list to read in place of the slot's, or nought to read the slot's. For
@@ -181,7 +182,7 @@ namespace Rtx
         /// @param historyLost whether the frame before this one is worth reprojecting into. Written
         ///        into the block as a basis of nothing, which every shader here reads as "there is
         ///        no previous frame". The fog volume's answer and not the denoisers'
-        ///        (`VulkanRenderer::mAirStale`).
+        ///        (`TraceChain::resetHistory`).
         void writeFrame(VkCommandBuffer commands, const VisibilityInputs& inputs, const SpriteBin& bin,
             VkDeviceAddress spriteTileList, const Shaders::VisibilityConstants& constants, bool historyLost) const;
 

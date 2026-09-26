@@ -189,6 +189,9 @@ namespace Rtx
         /// records the accumulator where this holds.
         bool filtered() const { return mDenoiser == Denoiser::Wavelet; }
 
+        /// Whether an upscaler reconstructed the frame.
+        bool upscaled() const { return mUpscaling.mMode != Upscale::Off; }
+
         /// The whole of the rule, and the only copy of it.
         ///
         /// @param extents what the frame is traced at and shown at, read only under an upscaler

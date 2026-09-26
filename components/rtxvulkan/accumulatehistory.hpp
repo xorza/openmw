@@ -22,6 +22,10 @@ namespace Rtx
         /// caller has waited for anything still reading the old images.
         void resize(std::uint32_t width, std::uint32_t height);
 
+        /// Says the history is worthless, until the next `turn`: the frame after it starts again
+        /// as the first after a resize does.
+        void reset() { mFresh = true; }
+
         /// What one frame reads and writes: the half of each pair the last frame wrote, the half
         /// this one writes, the blend, and whether there is any history at all.
         struct Turn
@@ -34,7 +38,7 @@ namespace Rtx
             const Image& mMoments;
             const Image& mBlended;
 
-            /// The first frame after a `resize`, whose history nothing has written.
+            /// The first frame after a `resize` or a `reset`, whose history is worthless.
             bool mFresh = false;
         };
 
@@ -72,7 +76,7 @@ namespace Rtx
         std::size_t mCurrent = 0;
 
         /// Set by `resize`, so the first frame after one does not read an image nothing has
-        /// written.
+        /// written, and by `reset`.
         bool mFresh = true;
     };
 }

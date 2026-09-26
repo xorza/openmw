@@ -32,7 +32,7 @@ namespace Rtx
         void resize(VkExtent2D render, VkExtent2D output, const Upscaling& how) override;
         void release() override;
         const Image& getOutput() const override { return mOutput; }
-        const Image& record(VkCommandBuffer commands, const UpscaleInputs& inputs) override;
+        void record(VkCommandBuffer commands, const UpscaleInputs& inputs) override;
 
     private:
         const Device& mDevice;

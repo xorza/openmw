@@ -11,6 +11,7 @@
 #include "atrouspass.hpp"
 #include "barriers.hpp"
 #include "compositepass.hpp"
+#include "formats.hpp"
 #include "gputimer.hpp"
 #include "handles.hpp"
 #include "imageuse.hpp"
@@ -49,6 +50,10 @@ namespace Rtx
         mHistory.resize(mWidth, mHeight);
         if (mFilterScratch.isEmpty() || mFilterScratch.getWidth() != mWidth || mFilterScratch.getHeight() != mHeight)
             mFilterScratch = AtrousPass::makeScratch(mDevice, mWidth, mHeight);
+
+        // Dropped rather than resized, because most runs never make one: sixteen bytes a pixel is
+        // worth it to the reference mode and nothing to a window. The first averaging trace asks.
+        dropSum();
     }
 
     void TraceChain::grow(const std::uint32_t width, const std::uint32_t height, const RadianceWidth radiance)
@@ -87,14 +92,34 @@ namespace Rtx
         return indirect;
     }
 
+    void TraceChain::resetHistory()
+    {
+        mHistory.reset();
+        mAirStale = true;
+    }
+
     VkDeviceAddress TraceChain::getSpriteTileList(const VisibilityInputs& inputs) const
     {
         return inputs.mSpriteList != 0 ? inputs.mSpriteList : mBins.at(inputs.mTraceSlot).getTileListAddress();
     }
 
-    const Image& TraceChain::record(const VkCommandBuffer commands, const TraceRecording& what)
+    TraceResult TraceChain::record(const VkCommandBuffer commands, const TraceRecording& what)
     {
         assert(isBuilt() && "a trace into a chain that has no extent");
+
+        VisibilityInputs inputs = what.mInputs;
+        inputs.mChannels = mChannels.get();
+        inputs.mFogVolume = mFogVolume.get();
+
+        // Made by the first trace that averages, and that trace is the one that fills it: the first
+        // write needs no contents and nothing to wait on, and every trace after reads what the last
+        // left, which the head barrier `CommandPool::begin` recorded orders and makes visible.
+        if (what.mAccumulate > 0 && mSum.isEmpty())
+        {
+            mSum = Image(
+                mDevice, mWidth, mHeight, toVulkanFormat(COMPOSITE_SUM_FORMAT), VK_IMAGE_USAGE_STORAGE_BIT, "sum");
+            mSum.transition(commands, Use::sUndefined, Use::sComputeReadWrite);
+        }
 
         // Both written whole before anything reads them. The last frame may still be reading
         // them, and the head barrier `CommandPool::begin` recorded is what orders this buffer after
@@ -105,10 +130,10 @@ namespace Rtx
         // Before the trace and outside its zone, because the sea is a function of the clock and of
         // nothing the camera does — one synthesis serves every ray. None where there is no sea,
         // which is most interiors, and a fifth of a millisecond of device time in each of them.
-        if (what.mInputs.mSea)
+        if (inputs.mSea)
         {
             openZone(what.mTimer, commands, "waves");
-            what.mInputs.mWaves->record(commands, what.mSampled.mWaterTime);
+            inputs.mWaves->record(commands, what.mSampled.mWaterTime);
             closeZone(what.mTimer, commands);
         }
 
@@ -120,16 +145,15 @@ namespace Rtx
         // table by address, which it has once the table is taken; the shelter launch reads the
         // block and zeroes the drops under a roof in that table; and the shade and the bin read
         // what is left. Every launch after reads the same block.
-        const VisibilityInputs& inputs = what.mInputs;
-        assert(inputs.mChannels == mChannels.get() && "a trace whose inputs name another chain's channels");
-
         SpriteBin& bin = mBins.at(inputs.mTraceSlot);
         const bool bins = inputs.mSpriteList == 0;
-        const SpriteSource sprites = what.mBuffers->describeSprites(inputs.mSlot);
+        const SpriteSource sprites = inputs.mBuffers->describeSprites(inputs.mSlot);
         if (bins)
             bin.take(sprites, what.mAsked.mCamera, commands);
 
-        mPasses.mVisibility.writeFrame(commands, inputs, bin, getSpriteTileList(inputs), what.mSampled, what.mAirLost);
+        mPasses.mVisibility.writeFrame(
+            commands, inputs, bin, getSpriteTileList(inputs), what.mSampled, what.mPastLost || mAirStale);
+        mAirStale = false;
 
         if (bins)
         {
@@ -154,11 +178,10 @@ namespace Rtx
         // nothing filtered it.
         const Image* indirect = &mChannels->get(Channel::Indirect);
         if (what.mFilter)
-            indirect
-                = &recordDenoise(commands, what.mSampled.mCamera, what.mSampled.mFar, what.mHistoryLost, what.mTimer);
+            indirect = &recordDenoise(commands, what.mSampled.mCamera, what.mSampled.mFar, what.mPastLost, what.mTimer);
 
         openZone(what.mTimer, commands, "composite");
-        mPasses.mComposite.record(commands, *mChannels, *indirect, what.mSum, mColour,
+        mPasses.mComposite.record(commands, *mChannels, *indirect, mSum.isEmpty() ? nullptr : &mSum, mColour,
             Shaders::CompositeConstants{
                 .mWidth = what.mSampled.mCamera.mWidth,
                 .mHeight = what.mSampled.mCamera.mHeight,
@@ -170,6 +193,6 @@ namespace Rtx
         // the two — an upscaler, a lens and a curve against a picture's one curve — and covers both.
         mColour.transition(commands, Use::sComputeWrite, Use::sAnyGeneralRead);
 
-        return mColour;
+        return TraceResult{ .mInputs = inputs, .mColour = mColour, .mSpriteTileList = getSpriteTileList(inputs) };
     }
 }

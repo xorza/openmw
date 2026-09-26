@@ -1,24 +1,18 @@
 #include "vulkanrenderer.hpp"
 
 #include <array>
-#include <bit>
 #include <cassert>
 #include <chrono>
-#include <cmath>
-#include <cstddef>
 #include <cstdint>
-#include <cstring>
 #include <memory>
 #include <optional>
 #include <ratio>
 #include <span>
 #include <string>
-#include <utility>
 
 #include <osg/Vec2f>
 #include <vulkan/vulkan_core.h>
 
-#include <components/rtx/contract.hpp>
 #include <components/rtx/framedigest.hpp>
 #include <components/rtx/frameimage.hpp>
 #include <components/rtx/frameoptions.hpp>
@@ -27,9 +21,7 @@
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/runs.hpp>
 #include <components/rtx/scenedesc.hpp>
-#include <components/rtx/shaders/composite.h>
 #include <components/rtx/shaders/digest.h>
-#include <components/rtx/shaders/scene.h>
 #include <components/rtx/shaders/visibility.h>
 #include <components/rtx/slot.hpp>
 #include <components/rtx/texturedata.hpp>
@@ -38,10 +30,7 @@
 #include <components/sdlutil/vsyncmode.hpp>
 
 #include "devicescene.hpp"
-#include "formats.hpp"
 #include "gbuffer.hpp"
-#include "graphicspipeline.hpp"
-#include "graveyard.hpp"
 #include "image.hpp"
 #include "imageuse.hpp"
 #include "memory.hpp"
@@ -62,30 +51,6 @@ namespace Rtx
 {
     namespace
     {
-        /// One half float, as the number it stands for. By bits, where the test harness spells the
-        /// same conversion out by arithmetic, so that each derivation checks the other.
-        float fromHalf(std::uint16_t bits)
-        {
-            const std::uint32_t sign = static_cast<std::uint32_t>(bits & 0x8000u) << 16;
-            const std::uint32_t exponent = (bits >> 10) & 0x1fu;
-            const std::uint32_t mantissa = bits & 0x3ffu;
-
-            if (exponent == 31)
-                return std::bit_cast<float>(sign | 0x7f800000u | (mantissa << 13));
-
-            // A subnormal half is its mantissa times 2^-24, and the float it widens to is normal —
-            // so the shuffle below cannot make it and a multiply is what does.
-            if (exponent == 0)
-            {
-                const float magnitude = static_cast<float>(mantissa) * 0x1p-24f;
-
-                return (bits & 0x8000u) != 0 ? -magnitude : magnitude;
-            }
-
-            // Bias 15 to bias 127, and ten mantissa bits to twenty-three.
-            return std::bit_cast<float>(sign | ((exponent + 112u) << 23) | (mantissa << 13));
-        }
-
         /// The instance a window needs, which is the headless one plus whatever SDL asks for — the
         /// surface among it, which is what tells the device to take a swapchain.
         std::vector<const char*> surfaceExtensionsFor(const RendererOptions& options)
@@ -120,29 +85,20 @@ namespace Rtx
         // taken on, where `readPixels` gives the one a display would show.
         , mFrame(mDevice, describeTracePasses(),
               VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, "colour")
-        , mView(mDevice, describeTracePasses(), VK_IMAGE_USAGE_STORAGE_BIT, "view colour")
         , mDisplay(mDevice, mPass, mTextureLayout.get(), options.mShaderDirectory, PresentTargets::sFormat)
         , mDigest(mDevice, options.mShaderDirectory)
-        , mWaves(mDevice, options.mShaderDirectory)
-        , mRipples(mDevice, options.mShaderDirectory)
-        , mFog(mDevice)
+        , mMedia(mDevice, options.mShaderDirectory)
         , mSkinPass(mDevice, options.mShaderDirectory)
         , mMipChainPass(mDevice, options.mShaderDirectory)
         , mShadingPass(mDevice, options.mShaderDirectory)
         , mSpriteLightPass(mDevice, options.mShaderDirectory)
         , mTexturePasses{ mMipChainPass, mShadingPass, mSpriteLightPass }
         , mGroundPass(mDevice, options.mShaderDirectory, mTextureLayout.get())
-        , mNoSprites(Buffer::hostWritten(
-              mDevice, 2 * sizeof(std::uint32_t), VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, "no sprites"))
-        , mViewCounts(Buffer::deviceLocal(
-              mDevice, sizeof(Shaders::FrameCounts), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "picture counts"))
-        , mGuiPass(mDevice, options.mShaderDirectory, PresentTargets::sFormat)
-        , mGuiTextures(mDevice)
+        , mScenes(mDevice)
+        , mGui(mDevice, options.mShaderDirectory, PresentTargets::sFormat)
+        , mPictures(mDevice, describeTracePasses(), mMedia, mDisplay, mGui.getTextures())
     {
         mDevice.getMemory().limitBudget(options.mMemoryBudget);
-
-        // `SPRITE_LIST_UNBINNED` and a count of nought are both nought.
-        mNoSprites.clear();
 
         // Before the first targets, because what to trace at is its answer and not ours.
         if (mProfile.mUpscaling.mMode != Upscale::Off)
@@ -167,7 +123,7 @@ namespace Rtx
         // What the interface handed over, before the pool holding it is taken apart. A GUI
         // texture write waits for nothing and rides the next submit this pool makes, and there is
         // no next submit here.
-        tearDown("the interface's last writes were not submitted", [&] { mGuiTextures.finish(); });
+        tearDown("the interface's last writes were not submitted", [&] { mGui.getTextures().finish(); });
 
         // Every frame in flight, and the presenter's last blit, before anything they name goes.
         tearDown("the device would not finish before the renderer was taken apart", [&] { mDevice.waitIdle(); });
@@ -187,9 +143,12 @@ namespace Rtx
         mUpscaler = makeUpscaler(mDevice, mInstance.getHandle());
     }
 
-    bool VulkanRenderer::upscaling() const
+    void VulkanRenderer::resetHistory()
     {
-        return mUpscaler != nullptr && mProfile.mUpscaling.mMode != Upscale::Off;
+        mFrame.resetHistory();
+        mDisplay.resetHistory();
+        mUpscalerStale = true;
+        mMedia.resetRipples();
     }
 
     void VulkanRenderer::drain()
@@ -223,14 +182,14 @@ namespace Rtx
 
     void VulkanRenderer::setSea(const SeaState& sea)
     {
-        if (sea == mWaves.getSea())
+        if (sea == mMedia.getSea())
             return;
 
         // A frame in flight may still be synthesising from the spectrum this replaces, and so may
         // a picture recorded and not yet carried: `describe` submits the deferred batches itself,
         // after it has destroyed the amplitudes they read.
         drain();
-        mWaves.describe(sea);
+        mMedia.describeSea(sea);
     }
 
     void VulkanRenderer::createTargets(std::uint32_t width, std::uint32_t height)
@@ -255,19 +214,12 @@ namespace Rtx
         else if (mUpscaler != nullptr)
             mUpscaler->release();
 
-        // Over whatever the frame is by the time the curve maps it, which is the upscaler's
-        // output where one runs and the trace's own extent where none does. The same test the frame
-        // path makes, because a pyramid built at the other extent is a bloom at the wrong scale.
-        const std::uint32_t shownWidth = upscaling() ? width : mFrame.getWidth();
-        const std::uint32_t shownHeight = upscaling() ? height : mFrame.getHeight();
-        mDisplay.resize(shownWidth, shownHeight);
+        // Over the output extent, which is what the frame is by the time the curve maps it: the
+        // upscaler's output where one runs, and the trace itself, at the same size, where none does.
+        mDisplay.resize(width, height);
 
         // A frame of a different size is not one this one can be reprojected against.
         mPreviousCamera = Shaders::VisibilityConstants{};
-
-        // Dropped rather than resized, because most runs never make one: sixteen bytes a pixel is
-        // worth it to the reference mode and nothing to a window. The first averaging frame asks.
-        mSum = Image();
     }
 
     std::string VulkanRenderer::describeDevice() const
@@ -301,76 +253,21 @@ namespace Rtx
         return mInstance.getValidationLog() != nullptr;
     }
 
-    const std::unique_ptr<DeviceScene>& VulkanRenderer::slotAt(const SceneSlot slot) const
-    {
-        if (slot.isWorld())
-            return mWorld;
-
-        assert(slot.getViewIndex() < mViewScenes.size() && "a scene slot nothing was given");
-        return mViewScenes[slot.getViewIndex()];
-    }
-
-    std::unique_ptr<DeviceScene>& VulkanRenderer::slotAt(const SceneSlot slot)
-    {
-        return const_cast<std::unique_ptr<DeviceScene>&>(std::as_const(*this).slotAt(slot));
-    }
-
-    const DeviceScene& VulkanRenderer::sceneAt(const SceneSlot slot) const
-    {
-        const std::unique_ptr<DeviceScene>& held = slotAt(slot);
-        assert(held != nullptr && "a scene slot nothing holds");
-        return *held;
-    }
-
-    DeviceScene& VulkanRenderer::sceneAt(const SceneSlot slot)
-    {
-        return const_cast<DeviceScene&>(std::as_const(*this).sceneAt(slot));
-    }
-
-    VisibilityInputs VulkanRenderer::describeInputs(const DeviceScene& held, const TraceChain& chain,
-        const Shaders::VisibilityConstants& camera, const Image& shown, const Buffer& counts,
-        const FrameSlot traceSlot) const
-    {
-        return VisibilityInputs{
-            .mScene = held.getAcceleration().getTopLevel(),
-            .mBuffers = &held.getBuffers(),
-            .mSlot = held.getSlot(),
-            .mTraceSlot = traceSlot,
-            .mChannels = &chain.getChannels(),
-            .mCounts = &counts,
-            .mIndexBlocks = held.getAcceleration().getIndexBlocks(),
-            .mPoseBlocks = held.getAcceleration().getPoseBlocks(held.getSlot()),
-            .mPreviousPoseBlocks = held.getAcceleration().getPreviousPoseBlocks(held.getSlot()),
-            .mTextures = held.getTextures(),
-            .mTextureTexels = held.getTextureTexels(),
-            .mWaves = &mWaves,
-            .mRipples = &mRipples,
-            .mFog = &mFog,
-            .mFogVolume = &chain.getFogVolume(),
-            .mSpriteList = (camera.mRayMask & Shaders::MASK_PARTICLE) != 0 ? 0 : mNoSprites.addressFor(),
-            .mShown = &shown,
-            .mSunGlare = &mDisplay.getGlareCounts(),
-            .mSea = held.getCounts().mWater > 0 || !std::isinf(camera.mWaterLevel),
-            .mMapped = held.getCounts().mMapped > 0,
-        };
-    }
-
     void VulkanRenderer::setScene(const SceneSlot slot, const SceneDesc& scene, std::span<const TextureData> textures)
     {
-        std::unique_ptr<DeviceScene>& held = slotAt(slot);
-
-        // Nothing may be in flight over what is about to go. A rebuild is a load, and a load
-        // waits: for a picture recorded against the old scene and not yet carried, for the frames
-        // tracing it, and for a placement the frame being recorded may have submitted without a
-        // fence of its own.
-        drain();
-
-        // Torn down before anything is built, so a second scene does not hold two of everything at
-        // once — a cell's structures and textures are most of what this renderer occupies.
-        held.reset();
+        // Buried, so a picture recorded against the old scene and not yet carried keeps it until
+        // the submit that carries the picture has run.
+        mScenes.bury(slot);
 
         if (slot.isWorld())
         {
+            // Nothing may be in flight over what is about to go. A new world is a load, and a load
+            // waits: for the frames tracing the old one, and for a placement the frame being
+            // recorded may have submitted without a fence of its own. The drain frees what was
+            // just buried, so a second world does not hold two of everything at once — a cell's
+            // structures and textures are most of what this renderer occupies.
+            drain();
+
             // The reports of a world that has gone are dropped, and this is the only place they
             // are. A caller counts the frames it drew, so an arrival or a resize keeps its
             // reports and hands them over as it asks; a new world is that count starting again, and
@@ -380,31 +277,37 @@ namespace Rtx
             // A sum over one scene means nothing over the next, so it goes back with the scene
             // rather than being carried empty into one it cannot describe. Neither does a motion
             // vector, which would point at where something stood in a world that is no longer there.
-            mSum = Image();
+            mFrame.dropSum();
             mPreviousCamera = Shaders::VisibilityConstants{};
         }
 
         // What the device has room for is decided below, against what it says now.
         mDevice.getMemory().refreshBudget(mDevice.getTimeline().getNext());
 
-        // One submit for the whole cell, asked of the queue once at the flush below — by hand
-        // rather than left to the destructor, so a submit that fails throws out of here instead
-        // of being logged on the way past.
         Batch setup(mDevice.getPool());
-        held = std::make_unique<DeviceScene>(
-            mDevice, setup, mTextureLayout, mSkinPass, mTexturePasses, mGroundPass, scene, textures);
-        setup.flush();
+        DeviceScene& held = mScenes.hold(slot,
+            std::make_unique<DeviceScene>(
+                mDevice, setup, mTextureLayout, mSkinPass, mTexturePasses, mGroundPass, scene, textures));
 
-        if (slot.isWorld())
+        // A picture's scene rides the next submit, as an arrival does: its placement and its trace
+        // are deferred behind it, and the barrier every upload and build ends in orders them. The
+        // world's is one submit for the whole cell, asked of the queue here — by hand rather than
+        // left to the destructor, so a submit that fails throws out of here instead of being logged
+        // on the way past.
+        if (!slot.isWorld())
         {
-            held->readStats(mStats);
-            keepRipples(scene);
+            setup.defer();
+            return;
         }
+
+        setup.flush();
+        held.readStats(mStats);
+        mMedia.keepRipples(scene);
     }
 
     void VulkanRenderer::extendScene(const SceneSlot slot, const SceneDesc& scene, std::span<const TextureData> arrived)
     {
-        DeviceScene& held = sceneAt(slot);
+        DeviceScene& held = mScenes.at(slot);
 
         // An arrival does not wait for the frames in flight: what arrives is written on the queue,
         // behind whatever a frame in flight still reads of the room it was given, and the writes
@@ -437,26 +340,26 @@ namespace Rtx
 
     SceneHeld VulkanRenderer::describeHeld(const SceneSlot slot) const
     {
-        const std::unique_ptr<DeviceScene>& held = slotAt(slot);
+        const DeviceScene* held = mScenes.find(slot);
         return held != nullptr ? held->describe() : SceneHeld{};
     }
 
     std::span<const Refusal> VulkanRenderer::getRefusals(const SceneSlot slot) const
     {
-        return sceneAt(slot).getRefusals();
+        return mScenes.at(slot).getRefusals();
     }
 
     void VulkanRenderer::dropTextures(const SceneSlot slot, std::span<const Index> textures)
     {
         // Before there is a scene at all, which is one that swept before it was ever handed over.
         // There is nothing holding the images to destroy.
-        if (DeviceScene* const held = slotAt(slot).get(); held != nullptr)
+        if (DeviceScene* const held = mScenes.find(slot); held != nullptr)
             held->dropTextures(textures);
     }
 
     void VulkanRenderer::placeScene(const SceneSlot slot, const SceneDesc& scene)
     {
-        DeviceScene& held = sceneAt(slot);
+        DeviceScene& held = mScenes.at(slot);
 
         // The copy this placement writes is the one the last frame did not trace. The other copy
         // and not a parity of its own, because a frame need not place.
@@ -515,12 +418,7 @@ namespace Rtx
         held.placed(into);
 
         held.readPlacedStats(mStats);
-        keepRipples(scene);
-    }
-
-    void VulkanRenderer::keepRipples(const SceneDesc& scene)
-    {
-        mFrameRipples.assign(scene.ripples().begin(), scene.ripples().end());
+        mMedia.keepRipples(scene);
     }
 
     MemoryReport VulkanRenderer::getMemoryReport() const
@@ -536,7 +434,7 @@ namespace Rtx
             return;
 
         // A handed-over batch is submitted first, exactly as a resize does.
-        mGuiTextures.finish();
+        mGui.getTextures().finish();
         mPresenter->setVerticalSync(mode);
     }
 
@@ -552,7 +450,7 @@ namespace Rtx
 
         // A handed-over batch is submitted first, as a vertical sync change does: the present mode
         // may move with the pacing, and a rebuild frees what a batch may be sitting beside.
-        mGuiTextures.finish();
+        mGui.getTextures().finish();
         mPresenter->setPacing(pacing);
     }
 
@@ -623,7 +521,7 @@ namespace Rtx
             // for a submit. What that costs where no rebuild follows is `Presenter::wantsResize`.
             if (mPresenter->wantsResize(VkExtent2D{ width, height }))
             {
-                mGuiTextures.finish();
+                mGui.getTextures().finish();
                 mPresenter->rebuild(VkExtent2D{ width, height });
             }
 
@@ -645,22 +543,22 @@ namespace Rtx
 
     GuiSlot VulkanRenderer::addGuiTexture(std::uint32_t width, std::uint32_t height)
     {
-        return mGuiTextures.add(width, height);
+        return mGui.getTextures().add(width, height);
     }
 
     std::span<std::uint8_t> VulkanRenderer::lendGuiTexture(const GuiSlot texture, const GuiRegion& region)
     {
-        return mGuiTextures.lend(texture, region);
+        return mGui.getTextures().lend(texture, region);
     }
 
     void VulkanRenderer::sendGuiTexture(const GuiSlot texture)
     {
-        mGuiTextures.send(texture);
+        mGui.getTextures().send(texture);
     }
 
     void VulkanRenderer::dropGuiTexture(const GuiSlot texture)
     {
-        mGuiTextures.drop(texture);
+        mGui.getTextures().drop(texture);
     }
 
     void VulkanRenderer::drawGui(std::span<const GuiVertex> vertices, std::span<const GuiBatch> batches)
@@ -670,55 +568,10 @@ namespace Rtx
         if (vertices.empty() || batches.empty())
             return;
 
-        // The interface drawn two frames ago drew out of this slot, and the vertices carry the
-        // submit that bound them: that passed is what says they may be written over.
-        FrameRecord& gui = mRing.slotOf(mGuiFrame);
-        if (!gui.mGuiVertices.isIdle())
-            gui.mGuiVertices.waitIdle("the interface drawn two frames ago");
-
-        // After the wait, which collected, and before anything is handed over: this frame's submit is the first
-        // that says every draw with a texture given back has finished, and the staging turns on
-        // the same signal.
-        mGuiTextures.startFrame();
-
-        growTo(gui.mGuiVertices, mDevice, BufferKind::HostWritten, vertices.size_bytes(),
-            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, "gui vertices");
-        gui.mGuiVertices.write(vertices);
-
-        // Named by hand, because a vertex buffer is bound by handle and not handed out as an
-        // address or a descriptor.
-        gui.mGuiVertices.nameForNext();
-
-        mGuiDraws.clear();
-        mGuiDraws.reserve(batches.size());
-        for (const GuiBatch& batch : batches)
-        {
-            const VkImageView view = mGuiTextures.getView(batch.mTexture);
-            assert(view != VK_NULL_HANDLE && "a batch names a texture this renderer does not hold");
-
-            // A slot nothing holds would be a null descriptor, which is undefined rather than
-            // blank. The assert above is where a caller finds out; a release build drops the batch.
-            if (view != VK_NULL_HANDLE)
-                mGuiDraws.push_back(GuiDraw{ view, batch.mFirstVertex, batch.mVertexCount,
-                    batch.mBlend == GuiBlend::Additive ? Blend::Additive : Blend::Over });
-        }
-
-        // Its own submit, after the frame's, and not waited for. The GUI is collected once the
-        // world has been drawn and there is nothing to gain by holding the frame open for it; the
-        // queue draws it after the frame, the present blits after both, and the wait is for the
-        // vertices alone.
-        const VkCommandBuffer commands = gui.mGuiCommands;
-        mDevice.getPool().begin(commands);
-        claimTarget().transition(commands, Use::sComputeWrite, Use::sColourAttachment);
-
-        mGuiPass.record(commands, mTargets.current(), gui.mGuiVertices.getHandle(), mGuiDraws);
-
-        // Back where everything else expects it: the presenter blits out of `GENERAL` and so
-        // does a read back.
-        mTargets.current().transition(commands, Use::sColourAttachment, Use::sAnyGeneralRead);
-
-        mDevice.getPool().submit(commands);
-        ++mGuiFrame;
+        // After the frame's submit, and not waited for. The GUI is collected once the world has
+        // been drawn and there is nothing to gain by holding the frame open for it; the queue draws
+        // it after the frame, and the present blits after both.
+        mGui.draw(vertices, batches, claimTarget());
     }
 
     void VulkanRenderer::presentFrame()
@@ -750,7 +603,9 @@ namespace Rtx
 
     Reconstruction VulkanRenderer::renderFrame(const Shaders::VisibilityConstants& camera, const FrameOptions& options)
     {
-        assert(mWorld != nullptr && "renderFrame before setScene");
+        const DeviceScene* const held = mScenes.find(SceneSlot::world());
+        assert(held != nullptr && "renderFrame before setScene");
+        const DeviceScene& world = *held;
         assert(camera.mCamera.mWidth == mFrame.getWidth() && camera.mCamera.mHeight == mFrame.getHeight()
             && "the camera has to be built for the render extent; ask getExtents");
 
@@ -786,7 +641,7 @@ namespace Rtx
         frame.mReconstruction = reconstruction;
 
         Shaders::VisibilityConstants sampled
-            = sampleFrame(camera, options, mProfile, reconstruction, mWorld->getCounts(), &mPreviousCamera);
+            = sampleFrame(camera, options, mProfile, reconstruction, world.getCounts(), &mPreviousCamera);
 
         // The launch the misses are counted against, which is the traced extent and not the shown one.
         frame.mCountedRays = mCounting ? sampled.mCamera.mWidth * sampled.mCamera.mHeight : 0u;
@@ -794,23 +649,16 @@ namespace Rtx
         // The puffs are composited over the reconstruction where something upscales, and over the
         // trace's own composite where nothing does. Named before the trace, because the set that
         // carries it is pushed for every launch.
-        const VisibilityInputs inputs = describeInputs(*mWorld, mFrame, camera,
-            upscaling() ? mUpscaler->getOutput() : mFrame.getColour(), frame.mCounts, mRing.getRecordingSlot());
+        const VisibilityInputs inputs
+            = mMedia.describe(world, camera, reconstruction.upscaled() ? mUpscaler->getOutput() : mFrame.getColour(),
+                frame.mCounts, mDisplay.getGlareCounts(), mRing.getRecordingSlot());
 
-        // Made by the first frame that averages, and that frame is the one that fills it.
-        const bool fresh = options.mAccumulate > 0 && mSum.isEmpty();
-        if (fresh)
-            mSum = Image(mDevice, mFrame.getWidth(), mFrame.getHeight(), toVulkanFormat(COMPOSITE_SUM_FORMAT),
-                VK_IMAGE_USAGE_STORAGE_BIT, "sum");
-
-        // A history is worthless after a jump no motion vector can describe: walking through a
+        // Every history is worthless after a jump no motion vector can describe: walking through a
         // door once left the previous camera intact and a reprojection fetched one room onto
-        // another. Asking is what spends the denoiser's signal, and `historyRead` says whether a
-        // pass did, so a `resetHistory` before an unfiltered frame waits for the frame that can act
-        // on it.
+        // another. What `resetHistory` said is each history's own, spent by the frame that reads
+        // that history, so a reset before an unfiltered frame waits for the frame that filters.
         const bool basisLost = mPreviousCamera.mCamera.mForward.length2() <= 0.0f;
-        const bool airLost = mAirStale || basisLost;
-        const bool historyLost = mDenoiserStale || basisLost;
+        const bool upscalerLost = reconstruction.upscaled() && (basisLost || mUpscalerStale);
 
         GpuTimer& timer = frame.mTimer;
         const VkCommandBuffer commands = frame.mWorld.mCommands;
@@ -824,41 +672,28 @@ namespace Rtx
         // step left it. A frame with no sea leaves the tiles as they were and stands no field.
         if (inputs.mSea)
         {
-            mRipples.record(commands, mRing.getRecordingSlot(), mFrameRipples,
-                osg::Vec2f(camera.mOrigin.x(), camera.mOrigin.y()), options.mSkySeconds, &timer);
-            sampled.mRippleOrigin = mRipples.getOrigin();
-            sampled.mRippleExtent = RipplePass::getExtent();
+            mMedia.stepRipples(commands, mRing.getRecordingSlot(), osg::Vec2f(camera.mOrigin.x(), camera.mOrigin.y()),
+                options.mSkySeconds, &timer);
+            mMedia.placeRipples(sampled);
         }
 
-        // The first write needs no contents and nothing to wait on, and it is the one that takes
-        // the image out of the layout it was made in; every frame after reads what the last left,
-        // which the head barrier `CommandPool::begin` recorded orders and makes visible.
-        if (fresh)
-            mSum.transition(commands, Use::sUndefined, Use::sComputeReadWrite);
-
-        // Ray Reconstruction is itself the denoiser, and handing it a frame the wavelet already
-        // blurred is asking it to recover what was thrown away — which is why `resolve` never
-        // answers with both.
-        const bool filtering = reconstruction.filtered();
-        bool historyRead = filtering;
-
-        const GBuffer& channels = mFrame.getChannels();
         Image& target = claimTarget();
 
-        const Image* shown = &mFrame.record(commands,
+        const TraceResult traced = mFrame.record(commands,
             TraceRecording{
                 .mInputs = inputs,
-                .mBuffers = &mWorld->getBuffers(),
                 .mAsked = camera,
                 .mSampled = sampled,
                 .mTarget = &target,
-                .mSum = mSum.isEmpty() ? nullptr : &mSum,
                 .mAccumulate = options.mAccumulate,
-                .mAirLost = airLost,
-                .mHistoryLost = historyLost,
-                .mFilter = filtering,
+                .mPastLost = basisLost,
+                // Ray Reconstruction is itself the denoiser, and handing it a frame the wavelet
+                // already blurred is asking it to recover what was thrown away — which is why
+                // `resolve` never answers with both.
+                .mFilter = reconstruction.filtered(),
                 .mTimer = &timer,
             });
+        const GBuffer& channels = *traced.mInputs.mChannels;
 
         // Before anything past the trace has a say, and the channels' hand-over is the read this
         // rides on. `FrameDigest` says why the picture is not enough.
@@ -867,24 +702,23 @@ namespace Rtx
             std::array<const Image*, Shaders::DIGEST_IMAGES> digested{};
             for (const Channel channel : sEveryChannel)
                 digested[bindingOf(channel)] = &channels.get(channel);
-            digested[Shaders::DIGEST_COMPOSITE] = shown;
+            digested[Shaders::DIGEST_COMPOSITE] = &traced.mColour;
 
             mDigest.record(commands, digested, frame.mDigestLanes, &timer);
             frame.mDigest = FrameDigest{
                 .mJitterX = sampled.mCamera.mJitter.x(),
                 .mJitterY = sampled.mCamera.mJitter.y(),
                 .mFrameDeltaMs = sinceLastMs,
-                .mReset = historyLost ? 1u : 0u,
+                .mReset = upscalerLost ? 1u : 0u,
             };
         }
 
-        if (upscaling())
+        if (reconstruction.upscaled())
         {
-            historyRead = true;
             timer.open(commands, "upscale");
-            shown = &mUpscaler->record(commands,
+            mUpscaler->record(commands,
                 UpscaleInputs{
-                    .mColour = mFrame.getColour(),
+                    .mColour = traced.mColour,
                     .mDiffuseAlbedo = channels.get(Channel::Albedo),
                     .mSpecularAlbedo = channels.get(Channel::Specular),
                     .mNormalRoughness = channels.get(Channel::Guide),
@@ -893,41 +727,33 @@ namespace Rtx
                     .mReflectionMotion = channels.get(Channel::ReflectionMotion),
                     .mJitter = sampled.mCamera.mJitter,
                     .mFrameDeltaMs = sinceLastMs,
-                    .mReset = historyLost,
+                    .mReset = upscalerLost,
                 });
             timer.close(commands);
+            mUpscalerStale = false;
         }
 
         // The rest of the frame, over the reconstruction where something upscales — which the
         // upscaler left where the puffs want it — and over the trace's own composite where nothing
         // does. The whole of the frame is the picture, which is the output's extent either way.
-        assert(shown == inputs.mShown && "the puffs composited over a frame the set does not name");
-        assert(shown->getWidth() == mTargets.getExtent().width && shown->getHeight() == mTargets.getExtent().height);
-        if (!upscaling())
-            shown->transition(commands, Use::sAnyGeneralRead, Use::sTraceReadWrite);
+        if (!reconstruction.upscaled())
+            traced.mColour.transition(commands, Use::sAnyGeneralRead, Use::sTraceReadWrite);
 
-        // The third thing that reads a lost history, and the only one that reads it on every
-        // frame: the eye has no past to adapt from either.
         const float sinceLastSeconds = 0.001f * sinceLastMs;
         Display::Exposure exposure
-            = Display::Measured{ .mSeconds = sinceLastSeconds, .mReset = historyLost, .mBias = options.mExposureBias };
+            = Display::Measured{ .mSeconds = sinceLastSeconds, .mReset = basisLost, .mBias = options.mExposureBias };
         if (const ExposureRule rule = options.mExposure.value_or(mProfile.mExposure); rule.has_value())
             exposure = Display::Fixed{ *rule };
-        else
-            historyRead = true;
 
         mDisplay.record(commands,
             Display{
-                .mShown = *shown,
+                .mTrace = traced,
                 .mExtent = mTargets.getExtent(),
-                .mInputs = inputs,
                 .mSampled = sampled,
-                .mSpriteTileList = mFrame.getSpriteTileList(inputs),
                 .mTarget = target,
                 .mExposure = exposure,
                 .mBloom = true,
-                .mGlare
-                = Display::Glare{ .mFader = options.mGlare, .mSeconds = sinceLastSeconds, .mReset = historyLost },
+                .mGlare = Display::Glare{ .mFader = options.mGlare, .mSeconds = sinceLastSeconds, .mReset = basisLost },
                 .mDebug = options.mDebug,
                 .mDebugVertices = &frame.mDebugVertices,
                 .mTimer = &timer,
@@ -963,167 +789,46 @@ namespace Rtx
         // where inside a pixel this frame sampled, not where the eye was.
         mPreviousCamera = camera;
 
-        // The air's is spent here and unconditionally, because the trace above always ran. A
-        // frame that filled the volume was told; a frame with no volume to fill has nothing to keep
-        // a stale flag for, and holding it would zero the basis — and so every motion vector — for
-        // as long as the player stayed indoors.
-        mAirStale = false;
-
-        if (historyRead)
-            mDenoiserStale = false;
-
         return reconstruction;
     }
 
     SceneSlot VulkanRenderer::addViewScene()
     {
-        // Empty until `setScene` fills it: a slot is a name, and the scene arrives with the first
-        // description.
-        if (const Index taken = mFreeViewScenes.take(); taken != sNoIndex)
-        {
-            mViewScenes[taken] = nullptr;
-            return SceneSlot::view(taken);
-        }
-
-        mViewScenes.push_back(nullptr);
-        return SceneSlot::view(static_cast<std::uint32_t>(mViewScenes.size() - 1));
+        return mScenes.add();
     }
 
     void VulkanRenderer::dropViewScene(const SceneSlot scene)
     {
-        assert(scene.getViewIndex() < mViewScenes.size() && "a scene nothing handed out");
-        assert(!mFreeViewScenes.isFree(scene.getViewIndex()) && "a scene given back twice");
-
-        // Buried and not drained: a picture of it recorded this frame and not yet carried rides the
-        // next submit, and so does the last placement's refit, so the scene goes once the timeline
-        // has passed that submit and no sooner, which is the graveyard's rule for everything. The
-        // graveyard frees a scene after every structure, because a structure the scene retired
-        // gives its room back to a storage the scene owns. A drain here idled the whole device
-        // every time the inventory closed.
-        mDevice.getGraveyard().bury(std::shared_ptr<void>(std::move(mViewScenes[scene.getViewIndex()])));
-        mFreeViewScenes.free(scene.getViewIndex());
-    }
-
-    void VulkanRenderer::growViewTargets(std::uint32_t width, std::uint32_t height)
-    {
-        if (mView.holds(width, height))
-            return;
-
-        // The one drain a picture still pays, and only the first picture of a new size pays it:
-        // the whole device, because what `grow` replaces is destroyed and not buried, and a
-        // destruction asserts the queue idle.
-        drain();
-
-        mView.grow(width, height, mProfile.mRadianceWidth);
-
-        mViewTarget = Image(mDevice, mView.getWidth(), mView.getHeight(), PresentTargets::sFormat,
-            VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, "view target");
+        // Buried and not drained: a drain here idled the whole device every time the inventory
+        // closed.
+        mScenes.drop(scene);
     }
 
     void VulkanRenderer::traceGuiTexture(
         const GuiSlot texture, const Shaders::VisibilityConstants& camera, const GuiTraceOptions& options)
     {
-        const bool held = mGuiTextures.holds(texture);
+        const bool held = mGui.getTextures().holds(texture);
         assert(held && "a trace into a slot nothing holds");
 
-        // The camera's own extent is how much of the texture the picture fills.
         const VkExtent2D extent{ camera.mCamera.mWidth, camera.mCamera.mHeight };
         if (!held || extent.width == 0 || extent.height == 0)
             return;
 
-        growViewTargets(extent.width, extent.height);
-
-        DeviceScene& traced = sceneAt(options.mScene);
-
-        const VisibilityInputs inputs
-            = describeInputs(traced, mView, camera, mView.getColour(), mViewCounts, FrameSlot{});
-
-        // Nothing reconstructs a picture, so nothing jitters it, and it has no frame before it.
-        Shaders::VisibilityConstants sampled
-            = sampleFrame(camera, FrameOptions{}, mProfile, Reconstruction{}, traced.getCounts(), nullptr);
-
-        // The world's ripple field where the picture is of the world, which is the one place it
-        // could have a wake in it; a subject of its own stands in no sea.
-        if (options.mScene.isWorld())
+        // The one drain a picture still pays, and only the first picture of a new size pays it:
+        // the whole device, because what `grow` replaces is destroyed and not buried, and a
+        // destruction asserts the queue idle.
+        if (!mPictures.holds(extent))
         {
-            sampled.mRippleOrigin = mRipples.getOrigin();
-            sampled.mRippleExtent = RipplePass::getExtent();
+            drain();
+            mPictures.grow(extent, mProfile.mRadianceWidth);
         }
 
-        // Recorded into a batch that rides the next submit, and waited for by nobody here: the
-        // next placement of this scene waits for what its tables say, and what it writes nothing
-        // else reads. Not counted and not timed, because the hit count and the report are the
-        // frame's.
-        Batch trace(mDevice.getPool());
-        {
-            const VkCommandBuffer commands = trace.getCommands();
-
-            // A doll and a map tile are one frame with no frame before them, so every history says
-            // so: the accumulator becomes a pass-through handing on the largest variance there is,
-            // which is what tells the cascade to filter as widely as it can.
-            mView.record(commands,
-                TraceRecording{
-                    .mInputs = inputs,
-                    .mBuffers = &traced.getBuffers(),
-                    .mAsked = camera,
-                    .mSampled = sampled,
-                    .mTarget = &mViewTarget,
-                });
-
-            // The puffs over the picture — a torch's flame in a doll's hand is a sprite — and the
-            // curve, and nothing else: a picture is measured off nothing, mapped with no share and
-            // spread by no lens, because a map tile is a diagram and the same armour must be the
-            // same brightness in two windows.
-            mView.getColour().transition(commands, Use::sAnyGeneralRead, Use::sTraceReadWrite);
-            mDisplay.record(commands,
-                Display{
-                    .mShown = mView.getColour(),
-                    .mExtent = extent,
-                    .mInputs = inputs,
-                    .mSampled = sampled,
-                    .mSpriteTileList = mView.getSpriteTileList(inputs),
-                    .mTarget = mViewTarget,
-                    .mExposure = Display::Picture{},
-                });
-
-            mViewTarget.transition(commands, Use::sComputeWrite, Use::sCopyRead);
-
-            // Borrowed rather than transitioned. Where a GUI texture rests between writes is
-            // `GuiTextures`' to say, and a caller that said it here had to keep a barrier's scope in
-            // step with the commands below — which it did not.
-            mGuiTextures.writeWith(texture, commands, [&](const Image& into, VkImageLayout layout) {
-                assert(extent.width <= into.getWidth() && extent.height <= into.getHeight());
-
-                // Cleared whole and then covered in part, and only where the picture does not
-                // cover it all: what the trace fills is as much of the texture as the widget is
-                // currently wide, and the rest has to be the clear colour rather than what a wider
-                // picture left there the last time this was drawn.
-                // Both are transfer writes to the same image and nothing orders two of those, so
-                // the clear is left as what the copy meets.
-                if (extent.width < into.getWidth() || extent.height < into.getHeight())
-                    into.clear(commands, Use::sTransferWrite,
-                        VkClearColorValue{
-                            .float32 = { options.mClear[0], options.mClear[1], options.mClear[2], options.mClear[3] } },
-                        Use::sCopyWrite);
-
-                assert(layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
-                    && "a texture lent in another layout than a copy takes");
-                mViewTarget.copyTo(commands, into, layout, extent);
-            });
-
-            if (options.mReadBack)
-                mGuiTextures.readBackWith(texture, commands);
-        }
-        trace.defer();
-
-        // The value the batch rides: the next submit this pool makes, whichever that is. The
-        // tables it reads were named the same value as they were handed out above.
-        traced.notePictureRide(traced.getSlot(), mDevice.getTimeline().getNext());
+        mPictures.trace(texture, camera, options, mScenes.at(options.mScene), mProfile);
     }
 
     bool VulkanRenderer::takeGuiCopy(const GuiSlot texture, const std::span<std::uint8_t> into)
     {
-        return mGuiTextures.takeCopy(texture, into);
+        return mGui.getTextures().takeCopy(texture, into);
     }
 
     void VulkanRenderer::finishGuiTraces()
@@ -1136,7 +841,7 @@ namespace Rtx
 
     void VulkanRenderer::readGuiTexture(const GuiSlot texture, std::vector<std::uint8_t>& pixels)
     {
-        mGuiTextures.read(texture, pixels);
+        mGui.getTextures().read(texture, pixels);
     }
 
     void VulkanRenderer::readPixels(std::vector<std::uint8_t>& pixels)
@@ -1156,49 +861,13 @@ namespace Rtx
 
         // One lookup and not a switch of eleven arms. A channel is its binding, and the buffer
         // is indexed by it.
-        readImage(mFrame.getChannels().get(channel), values);
+        mFrame.getChannels().get(channel).readFloats(VK_IMAGE_LAYOUT_GENERAL, values);
     }
 
     void VulkanRenderer::readComposite(std::vector<float>& values)
     {
         assert(mFrame.isBuilt());
-        readImage(mFrame.getColour(), values);
-    }
-
-    void VulkanRenderer::readImage(const Image& image, std::vector<float>& values)
-    {
-        std::vector<std::uint8_t> bytes;
-        image.read(VK_IMAGE_LAYOUT_GENERAL, bytes);
-
-        // Every format the renderer reads back is named, and one that is not is a throw rather
-        // than a `memcpy`, which is how the motion channels came back as pairs of halves the day
-        // they narrowed. Tested on the format, because several macros across three headers name
-        // each of these.
-        switch (image.getFormat())
-        {
-            case VK_FORMAT_R16G16_SFLOAT:
-            case VK_FORMAT_R16G16B16A16_SFLOAT:
-                values.resize(bytes.size() / sizeof(std::uint16_t));
-                for (std::size_t at = 0; at < values.size(); ++at)
-                {
-                    std::uint16_t half = 0;
-                    std::memcpy(&half, bytes.data() + at * sizeof(half), sizeof(half));
-                    values[at] = fromHalf(half);
-                }
-
-                return;
-
-            case VK_FORMAT_R32_SFLOAT:
-            case VK_FORMAT_R32G32_SFLOAT:
-            case VK_FORMAT_R32G32B32A32_SFLOAT:
-                values.resize(bytes.size() / sizeof(float));
-                std::memcpy(values.data(), bytes.data(), bytes.size());
-
-                return;
-
-            default:
-                broken("no float decode is recorded for this image format");
-        }
+        mFrame.getColour().readFloats(VK_IMAGE_LAYOUT_GENERAL, values);
     }
 
     void VulkanRenderer::takeValidationErrors(std::vector<std::string>& errors)
