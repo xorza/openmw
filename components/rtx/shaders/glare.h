@@ -35,7 +35,7 @@ namespace Rtx::Shaders
     /// 0.8. Read off the file, the alpha crosses 0.8 seventeen texels out of sixty-four from the
     /// middle, so the disc is `atan(225 * 17 / 64 / 1000)`: three and a half degrees, where the
     /// sun the trace draws is a quarter of one.
-    const float SUN_GLARE_QUERY_RADIUS = 0.059695f;
+    const float SUN_GLARE_QUERY_RADIUS = atan(225.0f * 17.0f / 64.0f / 1000.0f);
 
     /// How fast the seen share moves toward what the rays found, a second: the query's own
     /// easing, `dt * 10` a frame, which takes a tenth of a second from hidden to seen.

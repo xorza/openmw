@@ -18,8 +18,7 @@ namespace Rtx::Testing
     /// than the picture made of it. `countHits` encodes with this for the same reason.
     inline std::uint8_t encodeSrgb(float linear)
     {
-        const float encoded = linear <= 0.0031308f ? linear * 12.92f : 1.055f * std::pow(linear, 1.0f / 2.4f) - 0.055f;
-        return static_cast<std::uint8_t>(std::lround(std::clamp(encoded, 0.0f, 1.0f) * 255.0f));
+        return static_cast<std::uint8_t>(std::lround(std::clamp(Shaders::encodeSrgb(linear), 0.0f, 1.0f) * 255.0f));
     }
 
     /// The byte `tone.comp` writes for a grey that reaches it at `linear`, exposure applied, under

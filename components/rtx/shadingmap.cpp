@@ -211,8 +211,7 @@ namespace Rtx
 
     float decodeShading(const std::uint16_t stored)
     {
-        const float span = Shaders::SHADING_CEILING - Shaders::SHADING_FLOOR;
-        return Shaders::SHADING_FLOOR + span * (static_cast<float>(stored) / 65535.0f);
+        return Shaders::shadingFactor(static_cast<float>(stored) / 65535.0f);
     }
 
     float paintedLight(std::span<const float> map, float u, float v)

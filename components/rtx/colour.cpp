@@ -2,21 +2,15 @@
 
 #include <algorithm>
 #include <array>
-#include <cmath>
 #include <cstddef>
+#include <cstdint>
+
+#include "shaders/colour.h"
 
 namespace Rtx
 {
     namespace
     {
-        /// sRGB's transfer function itself. Both overloads answer with this one, so what a stored
-        /// byte is worth and what a value that was never a byte is worth cannot come from two
-        /// spellings of the same three constants.
-        float curve(float encoded)
-        {
-            return encoded <= 0.04045f ? encoded / 12.92f : std::pow((encoded + 0.055f) / 1.055f, 2.4f);
-        }
-
         /// The two hundred and fifty-six answers there are, worked out on the first ask so that no
         /// order between translation units can put a reader before it.
         const std::array<float, 256>& ofByte()
@@ -24,7 +18,7 @@ namespace Rtx
             static const std::array<float, 256> sMade = [] {
                 std::array<float, 256> made{};
                 for (std::size_t at = 0; at < made.size(); ++at)
-                    made[at] = curve(static_cast<float>(at) / 255.0f);
+                    made[at] = Shaders::decodeSrgb(static_cast<float>(at) / 255.0f);
 
                 return made;
             }();
@@ -47,15 +41,12 @@ namespace Rtx
                 return ofByte()[byte];
         }
 
-        return curve(encoded);
+        return Shaders::decodeSrgb(encoded);
     }
 
     float toEncoded(float linear)
     {
-        const float value
-            = linear <= 0.0031308f ? linear * 12.92f : 1.055f * std::pow(std::max(linear, 0.0f), 1.0f / 2.4f) - 0.055f;
-
-        return std::clamp(value, 0.0f, 1.0f);
+        return std::clamp(Shaders::encodeSrgb(linear), 0.0f, 1.0f);
     }
 
     float toLinear(std::uint8_t encoded)

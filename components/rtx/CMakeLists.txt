@@ -212,6 +212,7 @@ set(RTX_SHADER_HEADERS
     shaders/spriteshade.h
     shaders/storageformat.h
     shaders/stress.h
+    shaders/tangent.h
     shaders/tone.h
     shaders/visibility.h
     shaders/wave.h

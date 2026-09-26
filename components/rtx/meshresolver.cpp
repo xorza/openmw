@@ -26,6 +26,7 @@
 #include "refusals.hpp"
 #include "result.hpp"
 #include "scenedesc.hpp"
+#include "shaders/skinning.h"
 
 namespace Rtx
 {
@@ -382,7 +383,7 @@ namespace Rtx
                     .mWeight = weight,
                 });
 
-            const std::uint32_t run = (first << Shaders::RUN_COUNT_BITS) | static_cast<std::uint32_t>(weights.size());
+            const std::uint32_t run = Shaders::runWord(first, static_cast<std::uint32_t>(weights.size()));
             for (const unsigned short vertex : group)
             {
                 if (vertex >= vertices)

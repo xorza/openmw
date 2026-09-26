@@ -21,6 +21,7 @@
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/shaders/skinning.h>
+#include <components/rtx/shaders/tangent.h>
 #include <components/rtx/tangent.hpp>
 #include <components/rtxvulkan/barriers.hpp>
 #include <components/rtxvulkan/buffer.hpp>
@@ -38,12 +39,6 @@ namespace Rtx
 {
     namespace
     {
-        /// A run word: `first << RUN_COUNT_BITS | count`.
-        constexpr std::uint32_t run(std::uint32_t first, std::uint32_t count)
-        {
-            return (first << Shaders::RUN_COUNT_BITS) | count;
-        }
-
         /// The element at `vertex` of a block copied back whole.
         template <class T>
         T readAt(const Buffer& copied, std::uint32_t vertex)
@@ -75,13 +70,15 @@ namespace Rtx
             SceneDesc scene;
 
             // One bone over the whole quad, every weight one.
-            const std::array oneRuns{ run(0, 1), run(0, 1), run(0, 1), run(0, 1) };
+            const std::array oneRuns{ Shaders::runWord(0, 1), Shaders::runWord(0, 1), Shaders::runWord(0, 1),
+                Shaders::runWord(0, 1) };
             const std::array oneInfluence{ Shaders::GpuInfluence{ .mBone = 0, .mWeight = 1.0f } };
             const RigSpec oneBone{ .mRuns = oneRuns, .mInfluences = oneInfluence, .mBones = 1 };
 
             // Two bones, and the third vertex a blend of them: a quarter of the first and three
             // quarters of the second.
-            const std::array twoRuns{ run(0, 1), run(0, 1), run(1, 2), run(0, 1) };
+            const std::array twoRuns{ Shaders::runWord(0, 1), Shaders::runWord(0, 1), Shaders::runWord(1, 2),
+                Shaders::runWord(0, 1) };
             const std::array twoInfluences{
                 Shaders::GpuInfluence{ .mBone = 0, .mWeight = 1.0f },
                 Shaders::GpuInfluence{ .mBone = 0, .mWeight = 0.25f },
@@ -276,7 +273,7 @@ namespace Rtx
 
             // Off the axes, below the equator: the device's word is the host's for the same turn of
             // the same stored tangent, `(x, y, z)` to `(-y, x, z)`.
-            const osg::Vec4f stored = unpackTangent(packTangent(alongX[2]));
+            const osg::Vec4f stored = Shaders::unpackTangent(packTangent(alongX[2]));
             EXPECT_EQ(tangentOf(turned, 2), packTangent(osg::Vec4f(-stored.y(), stored.x(), stored.z(), stored.w())));
             EXPECT_EQ(tangentOf(turned, 3), 0u) << "no tangent posed into one";
 
@@ -394,7 +391,8 @@ namespace Rtx
 
             SceneDesc scene;
 
-            const std::array oneRuns{ run(0, 1), run(0, 1), run(0, 1), run(0, 1) };
+            const std::array oneRuns{ Shaders::runWord(0, 1), Shaders::runWord(0, 1), Shaders::runWord(0, 1),
+                Shaders::runWord(0, 1) };
             const std::array oneInfluence{ Shaders::GpuInfluence{ .mBone = 0, .mWeight = 1.0f } };
             const RigSpec oneBone{ .mRuns = oneRuns, .mInfluences = oneInfluence, .mBones = 1 };
 

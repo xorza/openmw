@@ -29,7 +29,25 @@ namespace Rtx::Shaders
     /// under sixty-four thousand and its influences a small multiple of that, which leaves the
     /// twenty-four bits of `first` three orders of magnitude of room.
     const uint RUN_COUNT_BITS = 8u;
-    const uint RUN_COUNT_MASK = 0xFFu;
+    const uint RUN_COUNT_MASK = (1u << RUN_COUNT_BITS) - 1u;
+
+    /// The run word of `count` influences from `first`, and the two halves of one: the one
+    /// statement of the layout, which the resolver writes and the skin pass and the table's check
+    /// read.
+    RTX_SHADER uint runWord(uint first, uint count)
+    {
+        return (first << RUN_COUNT_BITS) | count;
+    }
+
+    RTX_SHADER uint runFirst(uint run)
+    {
+        return run >> RUN_COUNT_BITS;
+    }
+
+    RTX_SHADER uint runCount(uint run)
+    {
+        return run & RUN_COUNT_MASK;
+    }
 
     /// What a reference to a run of `GpuBone`s claims of every address it is constructed from: a
     /// row is forty-eight bytes and its three `vec4` sit on sixteen. A claim larger than the truth

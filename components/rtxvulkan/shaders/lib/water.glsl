@@ -4,6 +4,7 @@
 // Shading a water surface: Fresnel across a reflection and a refraction, and what the column
 // under it takes.
 
+#include "brdf.h"
 #include "camera.h"
 #include "look.h"
 #include "scene.h"
@@ -188,7 +189,7 @@ WaterShading shadeWater(Surface surface, vec3 incident, uvec2 pixel, Cone cone)
     normal = facingRay(normal, plane, incident, WATER_MIN_FACING);
 
     const float cosine = clamp(dot(-incident, normal), 0.0, 1.0);
-    const float fresnel = WATER_F0 + (1.0 - WATER_F0) * pow(1.0 - cosine, 5.0);
+    const float fresnel = fresnelSchlick(WATER_F0, 1.0, schlickWeight(cosine));
 
     // **The wave's normal and not the quad's**, the lobe the lost slopes left as the roughness, and
     // the Fresnel term as the specular albedo — which is what a specular albedo is, and not what a

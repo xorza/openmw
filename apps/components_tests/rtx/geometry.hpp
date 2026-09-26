@@ -163,11 +163,10 @@ namespace Rtx::Testing
     /// comes with the mesh, as every deformer does; `mDeformer` is what a second body on the
     /// same skin names.
     ///
-    /// A run word is `first << RUN_COUNT_BITS | count`, and every vertex here names the one
-    /// influence at nought: a word of one.
+    /// Every vertex here names the one influence at nought.
     inline DeformedMesh addOneBoneBody(SceneDesc& scene, const MeshArrays& arrays)
     {
-        const std::vector<std::uint32_t> runs(arrays.mPositions.size(), 1u);
+        const std::vector<std::uint32_t> runs(arrays.mPositions.size(), Shaders::runWord(0, 1));
         const std::array influences{ Shaders::GpuInfluence{ .mBone = 0, .mWeight = 1.0f } };
         return scene.addMesh(arrays, {}, RigSpec{ .mRuns = runs, .mInfluences = influences, .mBones = 1 });
     }

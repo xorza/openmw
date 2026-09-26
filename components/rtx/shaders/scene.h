@@ -103,9 +103,6 @@ namespace Rtx::Shaders
     /// makes them and says why at length.
     const uint SHADING_EXTENT = 32u;
 
-    /// A whole turn, which is how a wavelength becomes a wavenumber.
-    const float TAU = 6.2831853f;
-
     /// How many world units the game puts in a metre, which is `Constants::UnitsPerMeter`.
     ///
     /// **Here so that a coefficient measured in a laboratory can stay in the units it was measured
@@ -127,6 +124,10 @@ namespace Rtx::Shaders
     /// sides read the same number.
     const float PI = 3.14159265f;
     const float INV_PI = 1.0f / PI;
+
+    /// A whole turn, which is how a wavelength becomes a wavenumber. Twice `PI` to the bit, because
+    /// doubling a float is exact.
+    const float TAU = 2.0f * PI;
 
     /// What an isotropic phase function is worth: one over the solid angle of the whole sphere.
     ///
@@ -551,8 +552,8 @@ namespace Rtx::Shaders
     const uint TANGENT_PRESENT = 0x80000000u;
     const uint TANGENT_FLIPPED = 0x40000000u;
     const uint TANGENT_COORDINATE_BITS = 15u;
-    const uint TANGENT_COORDINATE_MASK = 0x7FFFu;
-    const uint TANGENT_STEPS = 16383u;
+    const uint TANGENT_COORDINATE_MASK = (1u << TANGENT_COORDINATE_BITS) - 1u;
+    const uint TANGENT_STEPS = TANGENT_COORDINATE_MASK / 2u;
 
     struct GpuInstance
     {

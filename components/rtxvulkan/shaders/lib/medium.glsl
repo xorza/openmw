@@ -79,10 +79,8 @@ Crossing crossingOf(uint instanceIndex, uint primitive, vec2 bary, vec3 crossed,
     crossing.mCorner = triangleCorners(meshAt(crossing.mInstance.mMesh), primitive);
     crossing.mBary = bary;
 
-    vec2 uv[3];
-    triangleUvs(crossing.mCorner, uv);
-    const TexturePoint point = texturePoint(
-        uv, crossing.mBary, crossing.mMaterial.mTextureTransform, surfaceConeAt(crossed, direction), coneWidth);
+    const TexturePoint point
+        = candidatePoint(crossing.mCorner, crossing.mMaterial, crossing.mBary, crossed, direction, coneWidth);
 
     // One path: an untextured shell names `TEXTURE_NEUTRAL`, which reads as the grey it stood for.
     crossing.mTexel = sampleDiffuse(crossing.mMaterial.mDiffuse, point);

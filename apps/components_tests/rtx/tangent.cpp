@@ -7,6 +7,7 @@
 #include <osg/Vec3f>
 #include <osg/Vec4f>
 
+#include <components/rtx/shaders/tangent.h>
 #include <components/rtx/tangent.hpp>
 
 namespace Rtx
@@ -36,7 +37,7 @@ namespace Rtx
                 for (const float handedness : { 1.0f, -1.0f })
                 {
                     const osg::Vec4f tangent(axis, handedness);
-                    EXPECT_EQ(unpackTangent(packTangent(tangent)), tangent)
+                    EXPECT_EQ(Shaders::unpackTangent(packTangent(tangent)), tangent)
                         << axis.x() << ' ' << axis.y() << ' ' << axis.z() << ' ' << handedness;
                 }
         }
@@ -48,7 +49,7 @@ namespace Rtx
             EXPECT_EQ(packTangent(osg::Vec4f(0.0f, 0.0f, 0.0f, 1.0f)), 0u);
             EXPECT_EQ(packTangent(osg::Vec4f(0.0f, 0.0f, 0.0f, -1.0f)), 0u);
             EXPECT_EQ(packTangent(osg::Vec4f(std::nanf(""), 0.0f, 0.0f, 1.0f)), 0u);
-            EXPECT_EQ(unpackTangent(0u), osg::Vec4f());
+            EXPECT_EQ(Shaders::unpackTangent(0u), osg::Vec4f());
         }
 
         /// Every direction with whole coordinates from minus three to three, above and below the
@@ -77,7 +78,7 @@ namespace Rtx
                         {
                             const osg::Vec4f tangent(direction, handedness);
                             const std::uint32_t packed = packTangent(tangent);
-                            const osg::Vec4f unpacked = unpackTangent(packed);
+                            const osg::Vec4f unpacked = Shaders::unpackTangent(packed);
 
                             osg::Vec3f unit = direction;
                             unit.normalize();

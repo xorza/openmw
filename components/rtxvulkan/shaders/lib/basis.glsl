@@ -3,11 +3,13 @@
 
 // Directions, with nothing of the frame block in them: a frame built on one axis, for anything that
 // draws about a direction or lays a grid across one; a normal turned to face the ray that found it;
-// and a direction folded onto a square and back.
+// and a direction in one word, on the octahedral map `tangent.h` shares with the host.
 //
 // **Its own file because a pass with no frame block wants it.** `random.glsl` builds every sampled
 // direction on it and reaches the frame for its draws; `spriteshade.comp` lays its grid on it and
 // has no frame at all, and wrote its own copy with a different threshold.
+
+#include "tangent.h"
 
 /// A unit vector square to `axis`, to build a basis on.
 ///
@@ -38,31 +40,6 @@ vec3 facingRay(vec3 normal, vec3 fallback, vec3 incident, float least)
     // solved rather than iterated.
     const float back = (least - facing) / max(dot(-incident, fallback) - facing, 1e-4);
     return normalize(mix(normal, fallback, clamp(back, 0.0, 1.0)));
-}
-
-/// A direction as a point of the square, and back: Cigolle et al.'s octahedral map, which folds
-/// the lower hemisphere out over the upper one's corners so that the whole sphere is one square
-/// with no seam a filter would notice and no pole where precision runs out. `Rtx::packTangent` is
-/// the host's copy.
-///
-/// @param direction of any length but nought, which has no direction and is the caller's to keep
-///        apart.
-vec2 octahedralSquare(vec3 direction)
-{
-    const vec3 folded = direction / (abs(direction.x) + abs(direction.y) + abs(direction.z));
-    const vec2 upper = folded.xy;
-    const vec2 lower = (1.0 - abs(folded.yx)) * vec2(folded.x >= 0.0 ? 1.0 : -1.0, folded.y >= 0.0 ? 1.0 : -1.0);
-
-    return folded.z >= 0.0 ? upper : lower;
-}
-
-vec3 octahedralUnit(vec2 square)
-{
-    vec3 unit = vec3(square, 1.0 - abs(square.x) - abs(square.y));
-    if (unit.z < 0.0)
-        unit.xy = (1.0 - abs(unit.yx)) * vec2(unit.x >= 0.0 ? 1.0 : -1.0, unit.y >= 0.0 ? 1.0 : -1.0);
-
-    return normalize(unit);
 }
 
 /// The octahedral map in one word of two signed halves, which is the payload's use of it. Sixteen

@@ -19,6 +19,10 @@ namespace Rtx::Shaders
     const uint SPRITE_LIGHT_BIND_BAKE = 1;
     const uint SPRITE_LIGHT_BINDINGS = 2;
 
+    /// Lanes along each side of one workgroup, which the kernel declares and the pass divides a
+    /// level's extent by.
+    const uint SPRITE_LIGHT_WORKGROUP = 16u;
+
     /// One level of the bake, which is one dispatch.
     struct SpriteLightConstants
     {

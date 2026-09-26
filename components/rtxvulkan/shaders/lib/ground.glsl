@@ -16,6 +16,7 @@
 
 #include "look.h"
 #include "scene.h"
+#include "shadingmap.h"
 
 #include "texturearray.glsl"
 
@@ -47,7 +48,7 @@ layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_ROWS) read
 /// the values they stand for, because the decode is affine.
 float paintedLight(uint slot, vec2 at)
 {
-    return mix(SHADING_FLOOR, SHADING_CEILING, textureLod(shadingMaps[nonuniformEXT(slot)], at, 0.0).r);
+    return shadingFactor(textureLod(shadingMaps[nonuniformEXT(slot)], at, 0.0).r);
 }
 
 /// A texture's albedo at `at`, read at `lod`, with the light painted into it divided back out by

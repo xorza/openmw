@@ -65,9 +65,7 @@ namespace Rtx
         assert(!runs.empty());
         assert(rig.mBones > 0);
         assert(std::all_of(runs.begin(), runs.end(), [&](std::uint32_t run) {
-            const std::uint32_t first = run >> Shaders::RUN_COUNT_BITS;
-            const std::uint32_t count = run & Shaders::RUN_COUNT_MASK;
-            return first + count <= influences.size();
+            return Shaders::runFirst(run) + Shaders::runCount(run) <= influences.size();
         }) && "a run past the influences it was handed");
         assert(std::all_of(influences.begin(), influences.end(), [&](const Shaders::GpuInfluence& influence) {
             return influence.mBone < rig.mBones;

@@ -743,7 +743,7 @@ namespace Rtx::Shaders
     /// **A climb alone, and a descent is never masked.** An eye that is high enough looks down on
     /// the ring where the loaded cells stop, so the steeper the view the more of the cut it can see
     /// — and reading this either way would take the air off precisely there.
-    const float FOG_EDGE_RISE = 0.4226183f;
+    const float FOG_EDGE_RISE = sin(25.0f * PI / 180.0f);
 
     /// Water's index of refraction, and the reflectance it gives head-on: `((n - 1) / (n + 1))^2`,
     /// 0.02037, which is why water is a window seen from above and a mirror seen along it.

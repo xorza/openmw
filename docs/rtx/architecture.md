@@ -1210,7 +1210,7 @@ the order declarations came in moves a digest.
 | the walk and the sweep                         | `mwrender/rtx/worldmirror.cpp`, `components/rtx/sceneextractor.hpp`, `mirroridentity.hpp` |
 | what the scene is                              | `components/rtx/scenedesc.hpp` and the five table headers                |
 | a replacer's companion maps                    | `components/shader/automaps.hpp`, `components/rtx/specularlayout.hpp`, `textureencoding.hpp` |
-| a vertex's tangent                             | `components/rtx/tangent.hpp`, `components/rtxvulkan/shaders/lib/tangent.glsl`, `skin.comp` |
+| a vertex's tangent                             | `components/rtx/shaders/tangent.h`, `components/rtx/tangent.hpp`, `skin.comp` |
 | the surface model and its specular half        | `components/rtx/shaders/brdf.h`, `specularalbedo.hpp`, `components/rtxvulkan/shaders/lib/gloss.glsl` |
 | how a scene reaches the device                 | `components/rtx/sceneuploader.cpp`, `components/rtx/renderer.hpp`         |
 | the cells past the active grid                 | `components/rtx/cellring.hpp`, `cellsupply.hpp`, `cellreader.hpp`, `cellplacer.hpp` |

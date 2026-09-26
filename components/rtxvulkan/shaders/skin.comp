@@ -19,9 +19,9 @@
 // which is what the structure is refitted from and what a hit reads its shading frame out of.
 
 #include "skinning.h"
+#include "tangent.h"
 
 #include "lib/runs.glsl"
-#include "lib/tangent.glsl"
 
 layout(local_size_x = SKIN_WORKGROUP) in;
 
@@ -37,8 +37,8 @@ void main()
         return;
 
     const uint run = UintRun(skin.mRuns).at[vertex];
-    const uint first = run >> RUN_COUNT_BITS;
-    const uint count = run & RUN_COUNT_MASK;
+    const uint first = runFirst(run);
+    const uint count = runCount(run);
 
     // A vertex no bone moves sums to the zero matrix and lands at the origin, which is where the
     // rasterizer puts it too.

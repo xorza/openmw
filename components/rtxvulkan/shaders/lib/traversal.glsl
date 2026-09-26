@@ -183,6 +183,16 @@ float throughBlocked(uint blocked)
     return exp2(-shareTotal(blocked));
 }
 
+/// Where on its material's texture a candidate was crossed, at the level `coneWidth` resolves: what
+/// the cutout test reads its alpha through and a medium's crossing its texel.
+TexturePoint candidatePoint(
+    uvec3 corners, GpuMaterial material, vec2 bary, vec3 crossed, vec3 direction, float coneWidth)
+{
+    vec2 uv[3];
+    triangleUvs(corners, uv);
+    return texturePoint(uv, bary, material.mTextureTransform, surfaceConeAt(crossed, direction), coneWidth);
+}
+
 /// Whether a candidate hit stops the ray, and what it lets past where it does not.
 ///
 /// **One load of the instance and its material, and not three questions asked in turn.** Whether a
@@ -233,10 +243,8 @@ bool candidateStops(uint instanceIndex, uint primitive, vec2 bary, vec3 crossed,
     if (!walkPast && !hasMask(material))
         return true;
 
-    vec2 uv[3];
-    triangleUvs(triangleCorners(meshAt(instance.mMesh), primitive), uv);
-    const TexturePoint point = texturePoint(
-        uv, bary, material.mTextureTransform, surfaceConeAt(crossed, direction), coneWidth);
+    const TexturePoint point = candidatePoint(
+        triangleCorners(meshAt(instance.mMesh), primitive), material, bary, crossed, direction, coneWidth);
 
     if (walkPast)
     {

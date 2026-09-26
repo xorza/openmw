@@ -26,7 +26,7 @@
 
 #include "lib/pixels.glsl"
 
-layout(local_size_x = 16, local_size_y = 16) in;
+layout(local_size_x = SPRITE_LIGHT_WORKGROUP, local_size_y = SPRITE_LIGHT_WORKGROUP) in;
 
 /// The sprite, every level, fetched by texel: the sampler is whichever the array binds.
 layout(set = SET_PASS, binding = SPRITE_LIGHT_BIND_SOURCE) uniform sampler2D source;

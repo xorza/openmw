@@ -48,6 +48,34 @@ namespace Rtx::Shaders
         return exp2((contrast - 1.0f) * log2(luminance / EXPOSURE_KEY));
     }
 
+    /// The sRGB transfer curve, linear radiance to what a display expects of a byte.
+    ///
+    /// The piecewise form and not the 2.2 approximation. The two differ by several per cent in the
+    /// darks, which is where a bounce puts most of what it has to say.
+    ///
+    /// **Per component, and a ternary rather than a vector select.** GLSL picks a side with `mix`
+    /// over a `bvec3`, which the host has no spelling for, so the one form both read is this.
+    /// Nothing changes by it: a select with a boolean weight picks a side rather than blending
+    /// toward one. The host's `Rtx::toEncoded` is this, clamped.
+    RTX_SHADER float encodeSrgb(float linear)
+    {
+        if (linear <= 0.0031308f)
+            return linear * 12.92f;
+
+        return 1.055f * pow(max(linear, 0.0f), 1.0f / 2.4f) - 0.055f;
+    }
+
+    /// The curve the other way: a stored value back to the linear radiance it stands for, which is
+    /// what a sampler does to a display-encoded texel and what a dispatch reading the bytes through
+    /// a `UNORM` view has to do itself. The host's `Rtx::toLinear` is this, off a table for bytes.
+    RTX_SHADER float decodeSrgb(float encoded)
+    {
+        if (encoded <= 0.04045f)
+            return encoded / 12.92f;
+
+        return pow((encoded + 0.055f) / 1.055f, 2.4f);
+    }
+
 #ifdef RTX_HOST
 }
 #endif
@@ -123,36 +151,9 @@ RTX_SHADER vec3 toneMap(vec3 colour)
     return mix(colour, vec3(brought), toward);
 }
 
-/// The sRGB transfer curve, linear radiance to what a display expects of a byte.
-///
-/// The piecewise form and not the 2.2 approximation. The two differ by several per cent in the
-/// darks, which is where a bounce puts most of what it has to say.
-///
-/// **Per component, and a ternary rather than a vector select.** GLSL picks a side with `mix` over
-/// a `bvec3`, which the host has no spelling for, so the one form both read is this. Nothing
-/// changes by it: a select with a boolean weight picks a side rather than blending toward one.
-RTX_SHADER float encodeSrgb(float linear)
-{
-    if (linear <= 0.0031308)
-        return linear * 12.92;
-
-    return 1.055 * pow(max(linear, 0.0), 1.0 / 2.4) - 0.055;
-}
-
 RTX_SHADER vec3 encodeSrgb(vec3 linear)
 {
     return clamp(vec3(encodeSrgb(linear.x), encodeSrgb(linear.y), encodeSrgb(linear.z)), vec3(0.0), vec3(1.0));
-}
-
-/// The curve the other way: a stored value back to the linear radiance it stands for, which is
-/// what a sampler does to a display-encoded texel and what a dispatch reading the bytes through a
-/// `UNORM` view has to do itself. `Rtx::toLinear` is the host's spelling.
-RTX_SHADER float decodeSrgb(float encoded)
-{
-    if (encoded <= 0.04045)
-        return encoded / 12.92;
-
-    return pow((encoded + 0.055) / 1.055, 2.4);
 }
 
 RTX_SHADER vec3 decodeSrgb(vec3 encoded)

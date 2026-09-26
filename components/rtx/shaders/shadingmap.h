@@ -50,6 +50,17 @@ namespace Rtx::Shaders
         return unit < 0.0f ? 0.0f : (unit > 1.0f ? 1.0f : unit);
     }
 
+    /// The factor a place between the floor and the ceiling stands for: `shadingUnit` undone, which
+    /// the trace applies to a filtered read and `Rtx::decodeShading` to a stored one.
+    ///
+    /// **An explicit `fma`, so both sides round it once and at the same place.** The shader's
+    /// `mix` is pinned to this very form (`Rtx::pinFloatArithmetic`), where the host's obvious
+    /// `floor + span * unit` rounds twice elsewhere; a map decoded two ways reads two lights.
+    RTX_SHADER float shadingFactor(float unit)
+    {
+        return fma(SHADING_CEILING, unit, SHADING_FLOOR * (1.0f - unit));
+    }
+
     /// One cell's sum, as the summing stage leaves it for the map stage: the linear luminance of
     /// every texel that counted, and how many did.
     struct ShadingSum

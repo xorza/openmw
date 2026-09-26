@@ -18,9 +18,6 @@ namespace Rtx
             computeBinding(Shaders::SPRITE_LIGHT_BIND_SOURCE, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER),
             computeBinding(Shaders::SPRITE_LIGHT_BIND_BAKE, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
         };
-
-        /// The shader's own workgroup.
-        constexpr std::uint32_t sWorkgroup = 16;
     }
 
     SpriteLightPass::SpriteLightPass(const Device& device, const std::filesystem::path& shaderDirectory)
@@ -50,8 +47,9 @@ namespace Rtx
                 .mHeight = bake.getHeightAt(level),
             };
 
-            dispatch(commands, mPipeline, writes.get(), constants, groupsFor(constants.mWidth, sWorkgroup),
-                groupsFor(constants.mHeight, sWorkgroup));
+            dispatch(commands, mPipeline, writes.get(), constants,
+                groupsFor(constants.mWidth, Shaders::SPRITE_LIGHT_WORKGROUP),
+                groupsFor(constants.mHeight, Shaders::SPRITE_LIGHT_WORKGROUP));
         }
 
         bake.transition(commands, Use::sComputeWrite, Use::sTextureSample);

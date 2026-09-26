@@ -5,8 +5,8 @@
 // plane the triangle lies in.
 
 #include "scene.h"
+#include "tangent.h"
 #include "bindings.glsl"
-#include "tangent.glsl"
 
 /// Twice the area of a hit triangle, as a vector along its plane's normal.
 ///
