@@ -14,6 +14,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <initializer_list>
 #include <iostream>
 #include <iterator>
 #include <optional>
@@ -30,6 +31,8 @@
 #include <components/debug/debuglog.hpp>
 #include <components/files/conversion.hpp>
 #include <components/platform/process.hpp>
+
+#include "zipreader.hpp"
 
 #if defined(_MSC_VER)
 #include <intrin.h>
@@ -321,11 +324,16 @@ namespace
         return 2;
     }
 
+    std::string contentsOf(const std::filesystem::path& path)
+    {
+        std::ifstream file(path, std::ios::binary);
+        return std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    }
+
     /// The summary stream of a minidump, or nothing where it has none.
     std::optional<std::string> summaryOf(const std::filesystem::path& dump)
     {
-        std::ifstream file(dump, std::ios::binary);
-        const std::string bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+        const std::string bytes = contentsOf(dump);
         const auto word = [&](std::size_t at) {
             std::uint32_t value = 0;
             if (at + 4 <= bytes.size())
@@ -348,15 +356,21 @@ namespace
         return std::nullopt;
     }
 
-    std::vector<std::filesystem::path> dumpsIn(const std::filesystem::path& folder)
+    std::vector<std::filesystem::path> filesIn(
+        const std::filesystem::path& folder, std::initializer_list<const char*> places, std::string_view extension)
     {
-        std::vector<std::filesystem::path> dumps;
-        for (const char* place : { "crashes/pending", "crashes/reports", "crashes/completed" })
+        std::vector<std::filesystem::path> found;
+        for (const char* place : places)
             if (std::filesystem::is_directory(folder / place))
                 for (const auto& entry : std::filesystem::directory_iterator(folder / place))
-                    if (entry.path().extension() == ".dmp")
-                        dumps.push_back(entry.path());
-        return dumps;
+                    if (entry.path().extension() == extension)
+                        found.push_back(entry.path());
+        return found;
+    }
+
+    std::vector<std::filesystem::path> dumpsIn(const std::filesystem::path& folder)
+    {
+        return filesIn(folder, { "crashes/pending", "crashes/reports", "crashes/completed" }, ".dmp");
     }
 
     /// How a mode's process ended, from what `std::system` gives back: its exit code on Windows,
@@ -388,6 +402,38 @@ namespace
                 return false;
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
+    }
+
+    /// Whether the package the monitor wrote once the game was gone holds the log, with the
+    /// summary `headline` begins, and `dump` byte for byte, and nothing else.
+    std::optional<std::string> checkPackage(
+        const std::filesystem::path& folder, const std::filesystem::path& dump, const std::string& headline)
+    {
+        // Written once the game is gone, which the monitor outlives: the line that names the
+        // package follows the package.
+        if (!follows(folder, "Crash package: "))
+            return "no package was written";
+
+        const std::vector<std::filesystem::path> packages = filesIn(folder, { "crashes" }, ".zip");
+        if (packages.size() != 1)
+            return std::to_string(packages.size()) + " packages where one was due";
+
+        std::vector<CrashTests::ZipEntry> entries;
+        if (const std::optional<std::string> why = CrashTests::readZip(packages.front(), entries))
+            return "the package does not read: " + *why;
+        if (entries.size() != 2 || entries[0].mName != "crash-tests.log"
+            || entries[1].mName != Files::pathToUnicodeString(dump.filename()))
+            return "the package does not hold the log and the dump alone";
+        if (entries[0].mContent.find(headline) == std::string::npos)
+            return "the package's log does not carry the summary";
+
+        if (entries[1].mContent != contentsOf(dump))
+            return "the package's dump is not the dump";
+
+        const std::string named = "Crash package: " + Files::pathToUnicodeString(packages.front());
+        if (!follows(folder, named))
+            return "the log does not name the package";
+        return std::nullopt;
     }
 
     /// Whether `mode` left what it must in `folder`, and what it did not where it did not.
@@ -427,6 +473,8 @@ namespace
         {
             if (first != said.end())
                 return "reported what it should not: " + *first;
+            if (!filesIn(folder, { "crashes" }, ".zip").empty())
+                return "packaged a session that reported nothing";
         }
         else
         {
@@ -467,11 +515,12 @@ namespace
 
             if (mode.mHeap)
             {
-                std::ifstream file(dumps.front(), std::ios::binary);
-                const std::string bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-                if (bytes.find(sHeapMarker) == std::string::npos)
+                if (contentsOf(dumps.front()).find(sHeapMarker) == std::string::npos)
                     return "the heap the crashing stack points at is not in the dump";
             }
+
+            if (const std::optional<std::string> wrong = checkPackage(folder, dumps.front(), *first))
+                return wrong;
         }
 
         if (!mode.mFollows.empty() && !follows(folder, mode.mFollows))

@@ -14,6 +14,7 @@ namespace Crash
         constexpr std::string_view sNotes = "--openmw-notes";
         constexpr std::string_view sApplication = "--openmw-application";
         constexpr std::string_view sDialog = "--openmw-dialog";
+        constexpr std::string_view sIssues = "--openmw-issues";
         constexpr std::string_view sDatabase = "--database";
 
         std::string option(std::string_view name, std::string_view value)
@@ -42,6 +43,7 @@ namespace Crash
             option(sNotes, notes),
             option(sApplication, mApplication),
             option(sDialog, mDialog ? "1" : "0"),
+            option(sIssues, mIssues),
         };
     }
 
@@ -70,6 +72,8 @@ namespace Crash
                 read.mApplication = *application;
             else if (const auto dialog = valueOf(argument, sDialog))
                 read.mDialog = *dialog != "0";
+            else if (const auto issues = valueOf(argument, sIssues))
+                read.mIssues = *issues;
             else
             {
                 if (const auto database = valueOf(argument, sDatabase))

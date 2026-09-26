@@ -26,6 +26,7 @@ namespace Crash
 
         std::string mApplication;
         bool mDialog = true;
+        std::string mIssues;
 
         /// Where Crashpad keeps the reports: its own `--database`, which the game does not write
         /// and the monitor reads and leaves for Crashpad.

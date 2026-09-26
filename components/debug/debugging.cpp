@@ -453,6 +453,7 @@ namespace Debug
         {
             Crash::Settings settings;
             settings.mApplication = std::string(appName);
+            settings.mIssues = "https://github.com/xorza/openmw-rtx/issues";
             const char* const reports = std::getenv("OPENMW_CRASH_REPORTS");
             settings.mReportFolder = reports != nullptr ? Files::pathFromUnicodeString(reports)
                                                         : Files::FixedPath<>("openmw").getUserDataPath() / "crashes";

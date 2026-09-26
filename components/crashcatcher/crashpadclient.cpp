@@ -221,6 +221,7 @@ namespace Crash
         monitor.mNotesSize = noteTable().size();
         monitor.mApplication = settings.mApplication;
         monitor.mDialog = settings.mDialog;
+        monitor.mIssues = settings.mIssues;
 
         crashpad::CrashpadInfo* const info = crashpad::CrashpadInfo::GetCrashpadInfo();
         info->set_simple_annotations(&sAnnotations);

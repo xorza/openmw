@@ -402,6 +402,7 @@ add_component_dir (crashcatcher
     crash
     crashmonitorarguments
     crashnote
+    crashpackage
     crashpage
     crashsummary
 )

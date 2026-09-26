@@ -10,9 +10,9 @@
 #include <cstdlib>
 #include <ctime>
 #include <fstream>
+#include <iostream>
 #include <memory>
 #include <mutex>
-#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -21,6 +21,7 @@
 #include <vector>
 
 #include <SDL_messagebox.h>
+#include <SDL_misc.h>
 #include <handler/handler_main.h>
 #include <handler/user_stream_data_source.h>
 #include <minidump/minidump_user_extension_stream_data_source.h>
@@ -36,6 +37,7 @@
 #include <components/files/conversion.hpp>
 
 #include "crashmonitorarguments.hpp"
+#include "crashpackage.hpp"
 #include "crashpage.hpp"
 #include "crashsummary.hpp"
 
@@ -170,24 +172,33 @@ namespace Crash
             /// The watch and the summary both write to the log, and a line each is what it takes.
             std::mutex mLogMutex;
 
-            /// The last crash's dump, which the dialog after the game ends names: written on
-            /// Crashpad's thread, read on the one that ran it. Nothing where the game did not crash.
-            std::mutex mCrashMutex;
-            std::optional<std::string> mCrashDump;
+            /// Every dump of the session, which the package holds, and whether one was a crash: written on
+            /// Crashpad's thread, read on the one that ran it once the game is gone.
+            std::mutex mReportMutex;
+            std::vector<std::filesystem::path> mDumps;
+            bool mCrashed = false;
+
+            /// Whether the player's End ended the game: written by the watch, read once it is joined.
+            bool mEnded = false;
         };
 
-        std::string stamp()
+        std::tm localTime(std::time_t seconds)
         {
-            const auto now = std::chrono::system_clock::now();
-            const std::time_t seconds = std::chrono::system_clock::to_time_t(now);
-            const auto milliseconds
-                = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count() % 1000;
             std::tm local{};
 #if defined(_WIN32)
             localtime_s(&local, &seconds);
 #else
             localtime_r(&seconds, &local);
 #endif
+            return local;
+        }
+
+        std::string stamp()
+        {
+            const auto now = std::chrono::system_clock::now();
+            const std::tm local = localTime(std::chrono::system_clock::to_time_t(now));
+            const auto milliseconds
+                = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count() % 1000;
             char text[32];
             std::snprintf(text, sizeof(text), "[%02d:%02d:%02d.%03d E] ", local.tm_hour, local.tm_min, local.tm_sec,
                 static_cast<int>(milliseconds));
@@ -457,10 +468,10 @@ namespace Crash
                 summarise(facts, lines);
                 appendToLog(mMonitor, lines);
 
-                if (facts.mNotes.mKind == ReportKind::Crash)
                 {
-                    const std::lock_guard lock(mMonitor.mCrashMutex);
-                    mMonitor.mCrashDump = facts.mDump;
+                    const std::lock_guard lock(mMonitor.mReportMutex);
+                    mMonitor.mDumps.push_back(dump);
+                    mMonitor.mCrashed = mMonitor.mCrashed || facts.mNotes.mKind == ReportKind::Crash;
                 }
 
                 std::string text;
@@ -518,6 +529,8 @@ namespace Crash
 
             if (ended || !monitor.mGame.end())
                 appendToLog(monitor, { "Hang: the game ended before End was answered, and nothing was ended" });
+            else
+                monitor.mEnded = true;
         }
 
         /// **The hang watch**, once a second: a frame counter that stops for the limit is a hang,
@@ -568,6 +581,93 @@ namespace Crash
                 if (monitor.mDialog && askToEnd(monitor, static_cast<std::uint32_t>(stalled.count())))
                     endIfStillStalled(monitor, last);
             }
+        }
+
+        /// **The package, said in the log** and on the monitor's errors, which a game started from a
+        /// shell shares. Where it is, and empty where none was written.
+        std::filesystem::path packageSession(Monitor& monitor, std::span<const std::filesystem::path> dumps)
+        {
+            const SessionPackage package = writeSessionPackage(
+                monitor.mDatabase, monitor.mApplication, monitor.getLog(), dumps, localTime(std::time(nullptr)));
+
+            std::vector<std::string> lines;
+            for (const std::filesystem::path& missing : package.mMissing)
+                lines.push_back("Crash package: " + Files::pathToUnicodeString(missing)
+                    + " is not on disk, and the package goes without it");
+            if (!package.mFailure.empty())
+                lines.push_back("Crash package: none, " + package.mFailure);
+            if (!package.mZip.empty())
+            {
+                const std::string named = Files::pathToUnicodeString(package.mZip);
+                lines.push_back("Crash package: " + named);
+                std::cerr << monitor.mApplication << ": the crash report is " << named << '\n';
+            }
+            appendToLog(monitor, lines);
+            return package.mZip;
+        }
+
+        /// **What the player is told once the game crashed or was ended**: `message`, then a button to
+        /// the folder that holds the report and one to where issues are reported. The box comes back
+        /// after either, until the player closes it.
+        void tellPlayer(const Monitor& monitor, const std::string& title, const std::string& message,
+            const std::filesystem::path& folder)
+        {
+            enum Button : int
+            {
+                Close,
+                ShowFolder,
+                OpenIssues,
+            };
+            std::vector<SDL_MessageBoxButtonData> buttons{
+                { 0, ShowFolder, "Open the folder" },
+            };
+            if (!monitor.mIssues.empty())
+                buttons.push_back({ 0, OpenIssues, "Report an issue" });
+            buttons.push_back(
+                { SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT | SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, Close, "Close" });
+
+            const SDL_MessageBoxData box{ SDL_MESSAGEBOX_ERROR | SDL_MESSAGEBOX_BUTTONS_LEFT_TO_RIGHT, nullptr,
+                title.c_str(), message.c_str(), static_cast<int>(buttons.size()), buttons.data(), nullptr };
+            for (;;)
+            {
+                int chosen = Close;
+                if (SDL_ShowMessageBox(&box, &chosen) != 0 || chosen == Close)
+                    return;
+                SDL_OpenURL(chosen == ShowFolder ? folderUrl(folder).c_str() : monitor.mIssues.c_str());
+            }
+        }
+
+        /// The dialog once the game is gone, where it crashed or the player ended it: the package, or
+        /// where it could not be written, the dumps and the log it would have held.
+        void tellPlayerOfReport(const Monitor& monitor, bool crashed, std::span<const std::filesystem::path> dumps,
+            const std::filesystem::path& package)
+        {
+            const std::string title = monitor.mApplication + (crashed ? " has crashed" : " was ended");
+            std::string message = crashed ? monitor.mApplication + " has crashed.\n\n"
+                                          : monitor.mApplication + " stopped responding and was ended.\n\n";
+
+            std::filesystem::path folder;
+            if (!package.empty())
+            {
+                folder = package.parent_path();
+                message += "A report of what happened is saved in one file:\n" + Files::pathToUnicodeString(package)
+                    + "\n\n";
+                message += monitor.mIssues.empty() ? "Sending it helps to fix it."
+                                                   : "Please attach this file to a new issue at\n" + monitor.mIssues;
+            }
+            else
+            {
+                folder = dumps.back().parent_path();
+                message += "A report is saved in\n";
+                for (const std::filesystem::path& dump : dumps)
+                    message += Files::pathToUnicodeString(dump) + "\n";
+                message
+                    += "\nand the log says what happened:\n" + Files::pathToUnicodeString(monitor.getLog()) + "\n\n";
+                message += monitor.mIssues.empty() ? "Sending them helps to fix it."
+                                                   : "Please attach these files to a new issue at\n" + monitor.mIssues;
+            }
+
+            tellPlayer(monitor, title, message, folder);
         }
 
         /// The command line as UTF-8, which is what Crashpad's own entry hands `HandlerMain`: on
@@ -621,20 +721,18 @@ namespace Crash
         monitor.mWatchWake.notify_one();
         watchdog.join();
 
+        std::vector<std::filesystem::path> dumps;
+        bool crashed = false;
+        {
+            const std::lock_guard lock(monitor.mReportMutex);
+            dumps = monitor.mDumps;
+            crashed = monitor.mCrashed;
+        }
+        const std::filesystem::path package = packageSession(monitor, dumps);
+
         // Once the game is gone, so the box does not stand over a window that no longer draws.
-        std::optional<std::string> crashDump;
-        {
-            const std::lock_guard lock(monitor.mCrashMutex);
-            crashDump = monitor.mCrashDump;
-        }
-        if (monitor.mDialog && crashDump)
-        {
-            const std::string message = monitor.mApplication + " has crashed. A report is saved in\n" + *crashDump
-                + "\n\nand the log says what happened:\n" + Files::pathToUnicodeString(monitor.getLog())
-                + "\n\nSending both helps to fix it.";
-            SDL_ShowSimpleMessageBox(
-                SDL_MESSAGEBOX_ERROR, (monitor.mApplication + " has crashed").c_str(), message.c_str(), nullptr);
-        }
+        if (monitor.mDialog && (crashed || monitor.mEnded) && !dumps.empty())
+            tellPlayerOfReport(monitor, crashed, dumps, package);
 
         std::exit(result);
     }

@@ -6,6 +6,7 @@ file(GLOB UNITTEST_SRC_FILES
 
     crashcatcher/crashmonitor.cpp
     crashcatcher/crashnote.cpp
+    crashcatcher/crashpackage.cpp
     crashcatcher/crashsummary.cpp
 
     esm/testfixedstring.cpp

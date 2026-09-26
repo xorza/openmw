@@ -10,8 +10,9 @@
 ///
 /// A monitor process, this same executable started with `--crash-monitor`, reads a crashed,
 /// hung or reporting game from outside: Crashpad writes a minidump of every thread, and the
-/// monitor appends a summary to the game's log and shows a dialog. Nothing but Crashpad's own
-/// signal-safe step runs in the crashed process.
+/// monitor appends a summary to the game's log. Once the game is gone, the monitor zips the log and
+/// the session's dumps into one file and a dialog names it. Nothing but Crashpad's own signal-safe
+/// step runs in the crashed process.
 namespace Crash
 {
     struct Settings
@@ -25,6 +26,9 @@ namespace Crash
 
         /// Whether a crash and a hang put up a dialog. A harness run from a shell does not want one.
         bool mDialog = true;
+
+        /// Where a player reports a crash, which the dialog names and opens. Empty for nowhere.
+        std::string mIssues;
     };
 
     /// Runs the monitor and ends the process, where this process was started as one; returns

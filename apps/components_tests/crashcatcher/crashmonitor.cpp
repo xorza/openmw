@@ -23,6 +23,7 @@ namespace
         written.mNotesSize = 9352;
         written.mApplication = "crash-tests";
         written.mDialog = false;
+        written.mIssues = "https://github.com/xorza/openmw-rtx/issues";
 
         std::vector<std::string> line{ "openmw", "--database=/home/x/crashes" };
         for (const std::string& argument : written.write())
@@ -36,6 +37,7 @@ namespace
         EXPECT_EQ(read.mNotesSize, 9352u);
         EXPECT_EQ(read.mApplication, "crash-tests");
         EXPECT_FALSE(read.mDialog);
+        EXPECT_EQ(read.mIssues, "https://github.com/xorza/openmw-rtx/issues");
         EXPECT_EQ(read.mDatabase, std::filesystem::path("/home/x/crashes"));
 
         const std::vector<std::string> crashpads{ "openmw", "--database=/home/x/crashes", "--initial-client-fd=3" };
