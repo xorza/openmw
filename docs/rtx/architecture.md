@@ -1173,11 +1173,11 @@ between frames, which would be a swapped code computing one of those otherwise. 
 expires the resource caches (`RtxRenderer::setResourceExpiry`): an expiry runs on a loading
 thread, and what it kept was that thread's timing.
 
-| binary             | filter         | holds                                                                       |
-|--------------------|----------------|-----------------------------------------------------------------------------|
-| `components-tests` | `Rtx*`, `Sky*` | the core, the bench, the harness's parsing; runs on any machine              |
-| `rtx-gpu-tests`    |                | what opens a device; fails outright without one                             |
-| `openmw-tests`     | `Rtx*`         | the game side: the renderer, the mirror, the terrain, the frame description  |
+| binary             | filter                   | holds                                                                          |
+|--------------------|--------------------------|--------------------------------------------------------------------------------|
+| `components-tests` | `Rtx*`, `Sky*`, `Crash*` | the core, the bench, the harness's parsing, the crash notes; runs on any machine |
+| `rtx-gpu-tests`    |                          | what opens a device; fails outright without one                                |
+| `openmw-tests`     | `Rtx*`                   | the game side: the renderer, the mirror, the terrain, the frame description     |
 
 `rtx <flavour> test` runs the three. `rtx <flavour> gate` runs everything a change owes.
 Rendering changes are checked without a window: `shot --views=all --map --against=<dir>` says

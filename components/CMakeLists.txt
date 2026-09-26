@@ -398,12 +398,17 @@ add_component_dir (lua_ui
 copy_resource_file("lua_ui/content.lua" "${OPENMW_RESOURCES_ROOT}" "resources/lua_libs/content.lua")
 
 
+add_component_dir (crashcatcher
+    crashnote
+)
+
 if(WIN32)
     add_component_dir (crashcatcher
         windowscrashcatcher
         windowscrashdumppathhelpers
         windowscrashmonitor
         windowscrashshm
+        windowscrashsummary
     )
 elseif(NOT ANDROID)
     add_component_dir (crashcatcher

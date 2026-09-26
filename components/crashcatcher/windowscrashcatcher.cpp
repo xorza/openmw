@@ -1,5 +1,6 @@
 #include "windowscrashcatcher.hpp"
 
+#include <atomic>
 #include <cassert>
 #include <cwchar>
 #include <sstream>
@@ -12,6 +13,7 @@
 #include "windowscrashdumppathhelpers.hpp"
 #include "windowscrashmonitor.hpp"
 #include "windowscrashshm.hpp"
+#include "windowscrashsummary.hpp"
 
 namespace Crash
 {
@@ -99,6 +101,11 @@ namespace Crash
         writePathToShm(mShm->mStartup.mDumpDirectoryPath, dumpPath);
 
         shmUnlock();
+    }
+
+    void CrashCatcher::setLogFile(const std::filesystem::path& logFile)
+    {
+        mLogFile = logFile.native();
     }
 
     void CrashCatcher::updateDumpNames(
@@ -224,6 +231,18 @@ namespace Crash
         if (!sInstance)
             return EXCEPTION_EXECUTE_HANDLER;
 
+        // One crash is handled. A fault inside the handling reaches this filter again on the same
+        // thread, where handling it again would write a second dump over the first, and it ends
+        // the process; a crash on another thread meanwhile waits for the first to end it.
+        static std::atomic<DWORD> handling{ 0 };
+        DWORD first = 0;
+        if (!handling.compare_exchange_strong(first, GetCurrentThreadId()))
+        {
+            if (first == GetCurrentThreadId())
+                _Exit(1);
+            Sleep(INFINITE);
+        }
+
         sInstance->handleVectoredException(info);
 
         _Exit(1);
@@ -249,6 +268,11 @@ namespace Crash
         shmLock();
         CrashSHM::Status monitorStatus = mShm->mMonitorStatus;
         shmUnlock();
+
+        // After the dump and not before, so a summary that faults costs the log a few lines and
+        // not the dump.
+        if (!mLogFile.empty())
+            appendCrashSummary(mLogFile.c_str(), *info);
 
         if (monitorStatus == CrashSHM::Status::DumpedSuccessfully)
         {

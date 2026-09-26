@@ -423,6 +423,9 @@ namespace Debug
         if (Crash::CrashCatcher::instance())
         {
             Crash::CrashCatcher::instance()->updateDumpPath(logDir);
+#ifndef _DEBUG
+            Crash::CrashCatcher::instance()->setLogFile(logDir / logName);
+#endif
         }
 #endif
     }

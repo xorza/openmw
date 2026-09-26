@@ -2,6 +2,7 @@
 #define OPENMW_COMPONENTS_CRASHCATCHER_WINDOWSCRASHCATCHER_HPP
 
 #include <filesystem>
+#include <string>
 
 #include <components/misc/windows.hpp>
 
@@ -39,6 +40,10 @@ namespace Crash
 
         void updateDumpNames(const std::filesystem::path& crashDumpName, const std::filesystem::path& freezeDumpName);
 
+        /// The log a crash appends its summary to, `appendCrashSummary`. None until this is
+        /// called.
+        void setLogFile(const std::filesystem::path& logFile);
+
     private:
         static CrashCatcher* sInstance;
 
@@ -56,6 +61,9 @@ namespace Crash
 
         // triggered when the application wants to wake the monitor process
         HANDLE mSignalMonitorEvent = INVALID_HANDLE_VALUE;
+
+        // held as the system takes it, because a crash has no heap to convert it on
+        std::wstring mLogFile;
 
         void setupIpc();
 

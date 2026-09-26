@@ -297,7 +297,16 @@ namespace Crash
             infos.ThreadId = mShm->mCrashed.mThreadId;
             infos.ExceptionPointers = &exp;
             infos.ClientPointers = FALSE;
-            MINIDUMP_TYPE type = (MINIDUMP_TYPE)(MiniDumpWithDataSegs | MiniDumpWithHandleData);
+            // Beside the stacks and the data segments: 1 KiB around every value on a stack that
+            // points into memory, where the object a crashed frame was working on is, since a dump
+            // of the stacks alone names its address and nothing about it; the whole address
+            // space's map, which says whether a faulting address was ever the process's; and the
+            // threads' times and the modules unloaded before the crash, without which a fault in
+            // unloaded code cannot be read at all. Not the process and thread blocks, which carry
+            // the environment and so whatever a player keeps in it.
+            MINIDUMP_TYPE type
+                = (MINIDUMP_TYPE)(MiniDumpWithDataSegs | MiniDumpWithHandleData | MiniDumpWithIndirectlyReferencedMemory
+                    | MiniDumpWithFullMemoryInfo | MiniDumpWithThreadInfo | MiniDumpWithUnloadedModules);
 
             if (env)
                 type = static_cast<MINIDUMP_TYPE>(type | MiniDumpWithFullMemory);

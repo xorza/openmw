@@ -209,11 +209,7 @@ namespace Rtx
 
         /// A format this still cannot upload fails by name rather than uploading noise, and so does
         /// an image of no size, which no device takes.
-        ///
-        /// Three-channel spellings are refused deliberately: uploading one would need the fourth
-        /// channel written in, which means owning a buffer, and nothing this game ships stores an
-        /// opaque texture without one.
-        TEST(RtxTextureBuilderTest, aFormatWithNoAlphaChannelOrAnImageOfNoSizeIsRefusedAndSaysWhich)
+        TEST(RtxTextureBuilderTest, aFormatItCannotUploadOrAnImageOfNoSizeIsRefusedAndSaysWhich)
         {
             std::vector<Rtx::MipLevel> levels;
             std::vector<std::byte> texels;
@@ -229,6 +225,94 @@ namespace Rtx
             ASSERT_FALSE(unsized.isOk()) << "an image of no size was described";
             EXPECT_EQ(unsized.error(), "it is 0 by 4 texels, which no device holds");
             EXPECT_TRUE(levels.empty()) << "a refusal adds no level";
+        }
+
+        /// A volume is described as its first slice at every level, which is what the rasterizer
+        /// draws of a file bound as a flat texture.
+        ///
+        /// Hand-computed, as OpenSceneGraph's DDS loader lays a volume out: every level is every
+        /// slice of it, and the depth halves with the sides. A 4 by 4 RGBA8 of two slices is 64
+        /// bytes a slice, so its second level begins at 128 and its third at 128 + 2 × 2 × 4 = 144,
+        /// 148 bytes in all. Its first slices are 64, 16 and 4 bytes, gathered to 84 at nought, 64
+        /// and 80. With no chain, the first slice is the first 64 bytes, spanned where they are. The
+        /// same volume in R5G6B5 is 42 bytes of first slices at nought, 64 and 72, widened to 84.
+        TEST(RtxTextureBuilderTest, aVolumeIsDescribedAsItsFirstSliceAtEveryLevel)
+        {
+            const auto makeVolume = [](GLenum pixelFormat, GLenum type, std::size_t texel) {
+                const std::size_t total = (64 + 64 + 16 + 4) / 4 * texel;
+                auto* bytes = new unsigned char[total];
+                for (std::size_t at = 0; at < total; ++at)
+                    bytes[at] = static_cast<unsigned char>(at);
+
+                osg::ref_ptr<osg::Image> image = new osg::Image;
+                image->setFileName("textures/tx_volume.dds");
+                image->setImage(4, 4, 2, GL_RGBA, pixelFormat, type, bytes, osg::Image::USE_NEW_DELETE);
+                image->setMipmapLevels(osg::Image::MipmapDataType{
+                    static_cast<unsigned int>(32 * texel), static_cast<unsigned int>(36 * texel) });
+                return image;
+            };
+
+            const osg::ref_ptr<osg::Image> rgba = makeVolume(GL_RGBA, GL_UNSIGNED_BYTE, 4);
+            ASSERT_EQ(rgba->getTotalSizeInBytesIncludingMipmaps(), 148u) << "the layout this is about";
+
+            std::vector<Rtx::MipLevel> levels;
+            std::vector<std::byte> texels;
+            const Rtx::TextureData gathered = describeImage(*rgba, levels, texels).value();
+            ASSERT_EQ(gathered.mBytes.size(), 84u);
+            ASSERT_EQ(gathered.mLevels.size(), 3u);
+            EXPECT_EQ(gathered.mLevels[1].mOffset, 64u);
+            EXPECT_EQ(gathered.mLevels[2].mOffset, 80u);
+            for (std::size_t at = 0; at < 84; ++at)
+            {
+                const std::size_t source = at < 64 ? at : at < 80 ? 128 + (at - 64) : 144 + (at - 80);
+                EXPECT_EQ(std::to_integer<std::size_t>(gathered.mBytes[at]), source % 256) << "byte " << at;
+            }
+
+            const osg::ref_ptr<osg::Image> flat = makeVolume(GL_RGBA, GL_UNSIGNED_BYTE, 4);
+            flat->setMipmapLevels({});
+            ASSERT_EQ(flat->getTotalSizeInBytesIncludingMipmaps(), 128u) << "both slices, which a stage once read";
+            const Rtx::TextureData spanned = describeImage(*flat, levels, texels).value();
+            EXPECT_EQ(spanned.mBytes.data(), reinterpret_cast<const std::byte*>(flat->data()));
+            EXPECT_EQ(spanned.mBytes.size(), 64u);
+
+            const osg::ref_ptr<osg::Image> sixteen = makeVolume(GL_RGB, GL_UNSIGNED_SHORT_5_6_5, 2);
+            texels.clear();
+            levels.clear();
+            const Rtx::TextureData widened = describeImage(*sixteen, levels, texels).value();
+            ASSERT_EQ(widened.mBytes.size(), 84u);
+            EXPECT_EQ(widened.mLevels[1].mOffset, 64u);
+            EXPECT_EQ(widened.mLevels[2].mOffset, 80u);
+
+            // The second level's first texel is the word at byte 64, `0x4140`: red 8 of 31, green 10
+            // of 63 and blue nought, whose nearest bytes are 66, 40 and nought.
+            const std::span<const std::byte> texel = widened.mBytes.subspan(64, 4);
+            EXPECT_EQ(std::to_integer<std::uint32_t>(texel[0]), 66u);
+            EXPECT_EQ(std::to_integer<std::uint32_t>(texel[1]), 40u);
+            EXPECT_EQ(std::to_integer<std::uint32_t>(texel[2]), 0u);
+            EXPECT_EQ(std::to_integer<std::uint32_t>(texel[3]), 255u);
+
+            // Through a scene, beside a volume in a format with no layout: the reserve holds what
+            // the gathering lays down, and the other volume is refused by name rather than asked
+            // for a layout it has none of.
+            VFS::Manager vfs;
+            Testing::HeldImages images(&vfs, 0);
+            constexpr VFS::Path::NormalizedView rgbaPath("textures/tx_volume.dds");
+            constexpr VFS::Path::NormalizedView alphaPath("textures/tx_alpha_volume.dds");
+            const osg::ref_ptr<osg::Image> alpha = makeVolume(GL_ALPHA, GL_UNSIGNED_BYTE, 1);
+            alpha->setFileName(std::string(alphaPath.value()));
+            images.hold(rgbaPath, rgba);
+            images.hold(alphaPath, alpha);
+
+            Rtx::SceneDesc scene;
+            Testing::addModel(scene, rgbaPath);
+            Testing::addModel(scene, alphaPath);
+
+            SceneTextures described;
+            described.describeAll(scene, images);
+            ASSERT_EQ(described.getRefusals().size(), 1u);
+            EXPECT_EQ(described.getRefusals()[0].mName, alphaPath.value());
+            ASSERT_EQ(described.getDescriptions().size(), 2u);
+            EXPECT_EQ(described.getDescriptions()[0].mBytes.size(), 84u);
         }
 
         /// A header counting levels past the single texel is cut at it, because a device takes no

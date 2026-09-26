@@ -1,4 +1,6 @@
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -20,6 +22,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <components/crashcatcher/crashnote.hpp>
 #include <components/debug/debuglog.hpp>
 #include <components/files/conversion.hpp>
 
@@ -64,6 +67,9 @@ static struct
     int signum;
     pid_t pid;
     std::optional<siginfo_t> siginfo;
+    std::uint64_t thread;
+    Crash::NoteCopy notes[Crash::sNoteThreads];
+    std::size_t noteCount;
 } crash_info;
 
 namespace
@@ -319,6 +325,8 @@ static void crash_catcher(int signum, siginfo_t* siginfo, void* /*context*/)
         crash_info.siginfo = std::nullopt;
     else
         crash_info.siginfo = *siginfo;
+    crash_info.thread = Crash::currentThread();
+    crash_info.noteCount = Crash::readNotes(crash_info.notes);
 
     const pid_t dbgPid = fork();
     /* Fork off to start a crash handler */
@@ -414,6 +422,14 @@ static void crash_catcher(int signum, siginfo_t* siginfo, void* /*context*/)
         sigdesc, crash_info.signum);
     if (crash_info.siginfo.has_value())
         printf("Address: %p\n", crash_info.siginfo->si_addr);
+    printf("Thread: %llu\n", static_cast<unsigned long long>(crash_info.thread));
+    for (std::size_t i = 0; i < crash_info.noteCount && i < Crash::sNoteThreads; ++i)
+    {
+        const Crash::NoteCopy& note = crash_info.notes[i];
+        printf("Note of thread %llu%s: %s%s\n", static_cast<unsigned long long>(note.mThread),
+            note.mThread == crash_info.thread ? ", which crashed" : "", note.mText,
+            note.mWhole ? "" : " (half written)");
+    }
     fputc('\n', stdout);
     fflush(stdout);
 

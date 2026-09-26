@@ -4,9 +4,9 @@
 #   rtx <flavour> build [targets]        configure where the presets changed, then build the harness,
 #                                        the game and the tests where the build has them, or the
 #                                        targets named
-#   rtx <flavour> test [gtest args]      components-tests Rtx* Sky*, rtx-gpu-tests, then openmw-tests
-#                                        Rtx*; `--without-device` leaves the GPU binary out, for a
-#                                        box with no driver that says so
+#   rtx <flavour> test [gtest args]      components-tests Rtx* Sky* Crash*, rtx-gpu-tests, then
+#                                        openmw-tests Rtx*; `--without-device` leaves the GPU binary
+#                                        out, for a box with no driver that says so
 #   rtx <flavour> game [args]            openmw on the quicksave
 #   rtx <flavour> setup <morrowind dir>  write the openmw.cfg a fresh box has none of
 #   rtx <flavour> repeat [--pairs=N] [bench args]
@@ -617,7 +617,7 @@ runTests() {
         esac
     done
 
-    (cd "$build" && ./components-tests --gtest_filter='Rtx*:Sky*' "${args[@]}") || return 1
+    (cd "$build" && ./components-tests --gtest_filter='Rtx*:Sky*:Crash*' "${args[@]}") || return 1
 
     if [ "$withDevice" -eq 1 ]; then
         (cd "$build" && ./rtx-gpu-tests "${args[@]}") || return 1
