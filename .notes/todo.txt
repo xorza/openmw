@@ -4,4 +4,3 @@
 - fsr and other denoisers and upscalers
 - physical brightness
 - audit #ifdefs and platform code
-- add crash notes
