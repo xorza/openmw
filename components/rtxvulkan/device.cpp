@@ -11,6 +11,7 @@
 #include <utility>
 #include <vector>
 
+#include <components/crashcatcher/crashnote.hpp>
 #include <components/debug/debuglog.hpp>
 #include <components/rtx/error.hpp>
 
@@ -88,6 +89,7 @@ namespace Rtx
     Device::Device(const Instance& instance, PhysicalDevice&& physicalDevice, const PipelineCacheSpec& cache)
         : mPhysicalDevice(std::move(physicalDevice))
     {
+        const Crash::NoteScope noted("making the device");
         std::vector<const char*> extensions;
         for (const RequiredExtension& required : getRequiredDeviceExtensions())
             extensions.push_back(required.mName);

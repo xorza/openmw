@@ -121,27 +121,60 @@ namespace Crash
 #endif
     }
 
-    void note(std::string_view what, std::string_view subject)
+    namespace
     {
-        // Claimed on the first note and not before, so a thread that never notes holds no slot, and
-        // asked again while the table is full, so a thread that met it full notes once one ends.
-        thread_local Claim claim;
-        if (claim.mSlot == nullptr)
-            claim.mSlot = claimSlot(currentThread());
-        if (claim.mSlot == nullptr)
+        /// The calling thread's slot, claimed on its first note and not before, so a thread that
+        /// never notes holds none, and asked again while the table is full, so a thread that met it
+        /// full notes once one ends. Null while the table is full.
+        Slot* ownSlot()
+        {
+            thread_local Claim claim;
+            if (claim.mSlot == nullptr)
+                claim.mSlot = claimSlot(currentThread());
+            return claim.mSlot;
+        }
+
+        /// Runs `write` over the slot's text between the two steps of its sequence, and ends the
+        /// text where `write` says.
+        template <class Write>
+        void rewrite(Slot& slot, Write write)
+        {
+            Sequence(slot.mSequence).fetch_add(1, std::memory_order_acq_rel);
+            slot.mText[write(slot.mText)] = '\0';
+            Sequence(slot.mSequence).fetch_add(1, std::memory_order_release);
+        }
+    }
+
+    NoteScope::NoteScope(std::string_view text)
+    {
+        begin(text);
+    }
+
+    void NoteScope::begin(std::string_view text)
+    {
+        Slot* const slot = ownSlot();
+        if (slot == nullptr)
             return;
 
-        Slot& slot = *claim.mSlot;
-        Sequence(slot.mSequence).fetch_add(1, std::memory_order_acq_rel);
-        std::size_t at = append(slot.mText, 0, what);
-        if (!subject.empty())
-        {
-            at = append(slot.mText, at, " \"");
-            at = append(slot.mText, at, subject);
-            at = append(slot.mText, at, "\"");
-        }
-        slot.mText[at] = '\0';
-        Sequence(slot.mSequence).fetch_add(1, std::memory_order_release);
+        mNoted = true;
+        mFoundLength
+            = static_cast<std::size_t>(std::find(slot->mText, slot->mText + sNoteCapacity - 1, '\0') - slot->mText);
+        std::memcpy(mFound, slot->mText, mFoundLength);
+        rewrite(*slot, [&](char(&into)[sNoteCapacity]) {
+            const std::size_t at = mFoundLength == 0 ? 0 : append(into, mFoundLength, " > ");
+            return append(into, at, text);
+        });
+    }
+
+    NoteScope::~NoteScope()
+    {
+        if (!mNoted)
+            return;
+
+        rewrite(*ownSlot(), [&](char(&text)[sNoteCapacity]) {
+            std::memcpy(text, mFound, mFoundLength);
+            return mFoundLength;
+        });
     }
 
     namespace
@@ -217,12 +250,17 @@ namespace Crash
 
         // The process stands still while its table is copied, so a note whose count is odd is one
         // its thread stopped in the middle of.
+        // A note stopped in its middle is kept even where it reads empty: something was being noted.
         const auto take = [&](const Slot& slot) {
+            const bool whole = slot.mSequence % 2 == 0;
+            if (whole && slot.mText[0] == '\0')
+                return;
+
             NoteCopy& note = into.mNotes[into.mCount++];
             note.mThread = slot.mThread;
             std::memcpy(note.mText, slot.mText, sNoteCapacity);
             note.mText[sNoteCapacity - 1] = '\0';
-            note.mWhole = slot.mSequence % 2 == 0;
+            note.mWhole = whole;
         };
 
         if (first != 0)

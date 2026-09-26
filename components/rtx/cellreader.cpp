@@ -14,6 +14,7 @@
 #include <osg/Vec3f>
 #include <osg/ref_ptr>
 
+#include <components/crashcatcher/crashnote.hpp>
 #include <components/misc/resourcehelpers.hpp>
 #include <components/sceneutil/lightcommon.hpp>
 
@@ -81,6 +82,8 @@ namespace Rtx
         if (const auto known = mModelsByPath.find(path.value()); known != mModelsByPath.end())
             return *known;
 
+        // The loader's parse and the walk after it, both over content a mod may have written wrong.
+        const Crash::NoteScope noted("reading the model \"{}\"", path.value());
         const osg::ref_ptr<const osg::Node> node = mContent.getTemplate(path);
         if (node == nullptr)
             return nullptr;

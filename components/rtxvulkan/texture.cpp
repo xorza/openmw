@@ -224,7 +224,7 @@ namespace Rtx
         assert(first < data.mLevels.size() && "a texture begun past the file's last level");
         assert((first == 0 || !data.mCompleteChain) && "a chain completed from a level the file did not begin at");
 
-        Crash::note("staging the texture", data.mName);
+        const Crash::NoteScope noted("staging the texture \"{}\"", data.mName);
 
         const MipLevel& top = data.mLevels[first];
         const auto levels = static_cast<std::uint32_t>(data.mLevels.size()) - first;

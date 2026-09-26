@@ -2,8 +2,10 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <format>
 #include <span>
 #include <string_view>
+#include <utility>
 
 namespace Crash
 {
@@ -50,14 +52,45 @@ namespace Crash
         NoteCopy mNotes[sNoteThreads];
     };
 
-    /// States what the calling thread is doing, for a report to name: `what`, then `subject` in
-    /// quotes where there is one. Each note replaces the thread's last.
+    /// **What the calling thread is doing, for as long as a scope lasts**, for a report to name, on
+    /// the end of what the thread's note already says: `outer > text`. The scope's end puts the note
+    /// back as it found it, so a note never outlives the work it names, and a crash inside nested
+    /// work reads as the path to it. Where the thread holds no slot, it notes nothing.
     ///
     /// **A fixed table, read from outside.** The monitor reads it out of the crashed process, as
-    /// it reads the stacks, so it never depends on the crashed process to hand it over. Writing a
-    /// note allocates nothing, so a loop may state each thing it works on. A thread has its own slot, because workers
-    /// describe textures while the render thread uploads them.
-    void note(std::string_view what, std::string_view subject = {});
+    /// it reads the stacks, so it never depends on the crashed process to hand it over. A scope
+    /// allocates nothing — what it found is kept in the scope, a note's bytes at most — so a loop
+    /// may state each thing it works on. A thread has its own slot, because workers read models
+    /// while the render thread uploads textures.
+    class NoteScope
+    {
+    public:
+        explicit NoteScope(std::string_view text);
+
+        /// The text `std::format` makes of `format` and `arguments`, formatted on the stack and cut
+        /// to what a note holds. A subject goes in quotes: `"reading the model \"{}\""`.
+        template <class... Arguments>
+        requires(sizeof...(Arguments) > 0) explicit NoteScope(
+            std::format_string<Arguments...> format, Arguments&&... arguments)
+        {
+            char text[sNoteCapacity];
+            const auto written
+                = std::format_to_n(text, sNoteCapacity - 1, format, std::forward<Arguments>(arguments)...);
+            begin(std::string_view(text, static_cast<std::size_t>(written.out - text)));
+        }
+
+        ~NoteScope();
+
+        NoteScope(const NoteScope&) = delete;
+        NoteScope& operator=(const NoteScope&) = delete;
+
+    private:
+        void begin(std::string_view text);
+
+        bool mNoted = false;
+        std::size_t mFoundLength = 0;
+        char mFound[sNoteCapacity];
+    };
 
     /// Starts a report of `kind` for `reason`, where no report is in progress, and keeps what the
     /// table said before for `endReport` to put back; false, changing nothing, where one is.
@@ -87,7 +120,8 @@ namespace Crash
     std::span<const std::byte> noteTable();
 
     /// Reads a copy of `noteTable()`'s bytes, taken while no thread of the process that wrote them
-    /// runs, with `first`'s note first. The copy must be the whole table: the monitor is this same
+    /// runs, with `first`'s note first. A thread whose note is empty is doing nothing it noted, and
+    /// is left out. The copy must be the whole table: the monitor is this same
     /// executable and knows its layout.
     void readNotes(std::span<const std::byte> table, std::uint64_t first, NotesRead& into);
 }

@@ -7,6 +7,7 @@
 #include <string_view>
 #include <vector>
 
+#include <components/crashcatcher/crashnote.hpp>
 #include <components/debug/debuglog.hpp>
 #include <components/rtx/error.hpp>
 
@@ -46,6 +47,7 @@ namespace Rtx
 
     Instance::Instance(const ValidationOptions& options, const std::span<const char* const> surfaceExtensions)
     {
+        const Crash::NoteScope noted("making the Vulkan instance");
         checkVk(vkEnumerateInstanceVersion(&mApiVersion), "vkEnumerateInstanceVersion");
         if (mApiVersion < sApiVersion)
             throw Unsupported("the Vulkan loader offers " + versionString(mApiVersion) + ", and this renderer is written "

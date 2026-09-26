@@ -8,6 +8,7 @@
 
 #include <osg/Vec3f>
 
+#include <components/crashcatcher/crashnote.hpp>
 #include <components/rtx/mesh.hpp>
 #include <components/rtx/meshtable.hpp>
 #include <components/rtx/result.hpp>
@@ -71,6 +72,7 @@ namespace Rtx
         const BlockedBuffer& poses, const BlockedBuffer& indices, const std::uint64_t placement,
         std::vector<Refusal>& refused)
     {
+        const Crash::NoteScope noted("building bottom-level structures for {} meshes", meshes.size());
         const DeviceFunctions& functions = mDevice.getFunctions();
         const std::size_t held = scene.meshes().getRows().size();
 

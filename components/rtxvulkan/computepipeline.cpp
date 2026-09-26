@@ -1,5 +1,7 @@
 #include "computepipeline.hpp"
 
+#include <components/crashcatcher/crashnote.hpp>
+
 #include "device.hpp"
 #include "handles.hpp"
 #include "result.hpp"
@@ -14,6 +16,7 @@ namespace Rtx
                 VkPushConstantRange{ .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT, .size = pushConstantBytes }, shared),
             VK_PIPELINE_BIND_POINT_COMPUTE)
     {
+        const Crash::NoteScope noted("compiling the pipeline \"{}\"", name);
         const ShaderModule compiled = loadShaderModule(device, module);
         const Specialization constants(specialization);
 

@@ -7,6 +7,7 @@
 #include <string_view>
 #include <vector>
 
+#include <components/crashcatcher/crashnote.hpp>
 #include <components/debug/debuglog.hpp>
 #include <components/rtx/error.hpp>
 
@@ -135,6 +136,7 @@ namespace Rtx
 
     void Swapchain::create(VkExtent2D extent)
     {
+        const Crash::NoteScope noted("making the swapchain at {}x{}", extent.width, extent.height);
         VkSurfaceCapabilitiesKHR capabilities{};
         checkVk(
             vkGetPhysicalDeviceSurfaceCapabilitiesKHR(mDevice.getPhysicalDevice().getHandle(), mSurface, &capabilities),

@@ -1,5 +1,7 @@
 #include "cellsupply.hpp"
 
+#include <components/crashcatcher/crashnote.hpp>
+
 #include "cellreader.hpp"
 #include "prepared.hpp"
 
@@ -139,6 +141,7 @@ namespace Rtx
             if (newer)
                 return;
 
+            const Crash::NoteScope noted("reading the cell {}, {}", cell.x(), cell.y());
             PreparedCell& made = mReader->read(cell, mReading.mStatics);
 
             mMonitor.hand([&] { mDone.push_back(&made); });

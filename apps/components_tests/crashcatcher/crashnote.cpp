@@ -34,35 +34,36 @@ namespace
     }
 
     /// A note reads back as it was written, subject in quotes, whole, and first where its thread is
-    /// the one named. A note with no subject is its words alone, and a shorter note written over a
-    /// longer one leaves nothing of the longer behind.
+    /// the one named. A note with no subject is its words alone.
     TEST(CrashNoteTest, aNoteReadsBackAsWrittenAndItsThreadsComesFirst)
     {
-        Crash::note("describing the texture", "textures/tx_a_rock.dds");
-        Crash::NotesRead read = readAll();
-        ASSERT_GT(read.mCount, 0u);
-        EXPECT_EQ(std::string_view(read.mNotes[0].mText), "describing the texture \"textures/tx_a_rock.dds\"");
-        EXPECT_EQ(read.mNotes[0].mThread, Crash::currentThread());
-        EXPECT_TRUE(read.mNotes[0].mWhole);
+        {
+            const Crash::NoteScope noted("describing the texture \"{}\"", "textures/tx_a_rock.dds");
+            const Crash::NotesRead read = readAll();
+            ASSERT_GT(read.mCount, 0u);
+            EXPECT_EQ(std::string_view(read.mNotes[0].mText), "describing the texture \"textures/tx_a_rock.dds\"");
+            EXPECT_EQ(read.mNotes[0].mThread, Crash::currentThread());
+            EXPECT_TRUE(read.mNotes[0].mWhole);
+        }
 
-        Crash::note("loading");
-        read = readAll();
+        const Crash::NoteScope noted("loading");
+        const Crash::NotesRead read = readAll();
         ASSERT_GT(read.mCount, 0u);
         EXPECT_EQ(std::string_view(read.mNotes[0].mText), "loading");
     }
 
     /// Two threads' notes stand side by side, each under the system's id of the thread that wrote
-    /// it, and a thread's note goes with the thread.
-    TEST(CrashNoteTest, eachThreadKeepsItsOwnNoteUntilItEnds)
+    /// it.
+    TEST(CrashNoteTest, eachThreadKeepsItsOwnNote)
     {
-        Crash::note("uploading");
+        const Crash::NoteScope uploading("uploading");
 
         std::latch noted(1);
         std::latch read(1);
         std::uint64_t other = 0;
         std::thread worker([&] {
             other = Crash::currentThread();
-            Crash::note("staging the texture", "textures/tx_b.dds");
+            const Crash::NoteScope staging("staging the texture \"{}\"", "textures/tx_b.dds");
             noted.count_down();
             read.wait();
         });
@@ -79,51 +80,98 @@ namespace
 
         read.count_down();
         worker.join();
-        EXPECT_EQ(findThread(readAll(), other), nullptr) << "an ended thread's note outlived it";
     }
 
     /// The table holds one note a thread for as many threads as it has slots, and a thread past
     /// them notes nothing rather than over another's. This thread holds one slot, so of as many
-    /// threads again as there are slots, all but one hold the rest; as they end, the slots come
-    /// back.
+    /// threads again as there are slots, all but one hold the rest. As they end, the slots come
+    /// back: a second crowd fills the table again, which it could not where an ended thread kept
+    /// its slot.
     TEST(CrashNoteTest, aThreadPastTheTableNotesNothingAndEndedThreadsGiveTheirSlotsBack)
     {
-        Crash::note("filling the table");
+        const Crash::NoteScope noted("filling the table");
 
-        std::latch noted(Crash::sNoteThreads);
-        std::latch read(1);
-        std::vector<std::thread> threads;
-        for (std::size_t i = 0; i < Crash::sNoteThreads; ++i)
-            threads.emplace_back([&, i] {
-                Crash::note("thread", std::to_string(i));
-                noted.count_down();
-                read.wait();
-            });
+        for (int crowd = 0; crowd < 2; ++crowd)
+        {
+            std::latch noting(Crash::sNoteThreads);
+            std::latch read(1);
+            std::vector<std::thread> threads;
+            for (std::size_t i = 0; i < Crash::sNoteThreads; ++i)
+                threads.emplace_back([&, i] {
+                    const Crash::NoteScope mine("thread \"{}\"", std::to_string(i));
+                    noting.count_down();
+                    read.wait();
+                });
 
-        noted.wait();
-        const Crash::NotesRead full = readAll();
-        EXPECT_EQ(full.mCount, Crash::sNoteThreads);
-        EXPECT_EQ(std::string_view(full.mNotes[0].mText), "filling the table");
+            noting.wait();
+            const Crash::NotesRead full = readAll();
+            EXPECT_EQ(full.mCount, Crash::sNoteThreads) << "crowd " << crowd;
+            EXPECT_EQ(std::string_view(full.mNotes[0].mText), "filling the table");
 
-        read.count_down();
-        for (std::thread& thread : threads)
-            thread.join();
-
-        const Crash::NotesRead left = readAll();
-        ASSERT_EQ(left.mCount, 1u) << "an ended thread kept its slot";
-        EXPECT_EQ(std::string_view(left.mNotes[0].mText), "filling the table");
+            read.count_down();
+            for (std::thread& thread : threads)
+                thread.join();
+        }
     }
 
     /// A note longer than its slot is cut to it: one word, the two characters opening the quote
     /// and 252 of the subject's 300 make 255, the slot's 256 less its terminator, and the closing
-    /// quote is what goes.
+    /// quote is what goes. A scope over a note of 200 is cut the same way — the 200, " > ", "b"
+    /// and " \"" make 206, and 49 of the subject fill it to 255 — and its end puts back the 200
+    /// exactly.
     TEST(CrashNoteTest, aNoteLongerThanItsSlotIsCutToIt)
     {
-        Crash::note("a", std::string(300, 'x'));
-        const Crash::NotesRead read = readAll();
-        ASSERT_GT(read.mCount, 0u);
-        EXPECT_EQ(std::string_view(read.mNotes[0].mText), "a \"" + std::string(252, 'x'));
-        EXPECT_EQ(Crash::sNoteCapacity, 256u);
+        {
+            const Crash::NoteScope noted("a \"{}\"", std::string(300, 'x'));
+            const Crash::NotesRead read = readAll();
+            ASSERT_GT(read.mCount, 0u);
+            EXPECT_EQ(std::string_view(read.mNotes[0].mText), "a \"" + std::string(252, 'x'));
+            EXPECT_EQ(Crash::sNoteCapacity, 256u);
+        }
+
+        const std::string found(200, 'a');
+        const Crash::NoteScope noted(found);
+        {
+            const Crash::NoteScope deep("b \"{}\"", std::string(100, 'c'));
+            EXPECT_EQ(std::string_view(readAll().mNotes[0].mText), found + " > b \"" + std::string(49, 'c'));
+        }
+        EXPECT_EQ(std::string_view(readAll().mNotes[0].mText), found);
+    }
+
+    /// **A scope adds to the note and puts back what it found**: nested scopes read as the path
+    /// through them, and a scope over an empty note begins it with no separator. A thread whose
+    /// note is empty is doing nothing it noted, and the monitor reads no line for it. A
+    /// formatted scope is its format's text.
+    TEST(CrashNoteTest, aScopeAddsToTheNoteAndPutsBackWhatItFound)
+    {
+        const auto mine = [] {
+            const Crash::NotesRead read = readAll();
+            const Crash::NoteCopy* const note = findThread(read, Crash::currentThread());
+            return note == nullptr ? std::string("(no line)") : std::string(note->mText);
+        };
+
+        EXPECT_EQ(mine(), "(no line)");
+        {
+            const Crash::NoteScope frame("drawing frame 12");
+            EXPECT_EQ(mine(), "drawing frame 12");
+            {
+                const Crash::NoteScope scene("building the scene");
+                EXPECT_EQ(mine(), "drawing frame 12 > building the scene");
+                {
+                    const Crash::NoteScope texture("staging the texture \"{}\"", "textures/tx_a.dds");
+                    EXPECT_EQ(
+                        mine(), "drawing frame 12 > building the scene > staging the texture \"textures/tx_a.dds\"");
+                }
+                EXPECT_EQ(mine(), "drawing frame 12 > building the scene");
+            }
+            EXPECT_EQ(mine(), "drawing frame 12");
+        }
+        EXPECT_EQ(mine(), "(no line)");
+
+        {
+            const Crash::NoteScope formatted("drawing frame {} at {}x{}", 812345, 3840, 2160);
+            EXPECT_EQ(mine(), "drawing frame 812345 at 3840x2160");
+        }
     }
 
     /// **One report at a time, and the one before it back afterwards.** A request that finds a
@@ -163,13 +211,13 @@ namespace
     /// of another size is no table, and reads as nothing noted.
     TEST(CrashNoteTest, aCopyOfTheTableReadsAsTheLiveOneWithTheNamedThreadFirst)
     {
-        Crash::note("drawing");
+        const Crash::NoteScope drawing("drawing");
         std::uint64_t other = 0;
         std::latch noted(1);
         std::latch copied(1);
         std::thread worker([&] {
             other = Crash::currentThread();
-            Crash::note("walking the cell", "Seyda Neen");
+            const Crash::NoteScope walking("walking the cell \"{}\"", "Seyda Neen");
             noted.count_down();
             copied.wait();
         });

@@ -7,6 +7,8 @@
 #include <utility>
 #include <vector>
 
+#include <components/crashcatcher/crashnote.hpp>
+
 #include "cellgrid.hpp"
 #include "extractionstats.hpp"
 #include "prepared.hpp"
@@ -220,6 +222,8 @@ namespace Rtx
 
     void CellRing::adopt(PreparedCell& cell, SceneAdopter& into, ExtractionStats& stats)
     {
+        const Crash::NoteScope noted("adopting the cell {}, {}", cell.mCell.x(), cell.mCell.y());
+
         // A spare comes back through `reuse`, so what it holds is room and nothing else.
         HeldCell held = mSpareCells.take();
         held.mCell = cell.mCell;

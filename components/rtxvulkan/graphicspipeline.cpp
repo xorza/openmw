@@ -4,6 +4,8 @@
 #include <cassert>
 #include <cstdint>
 
+#include <components/crashcatcher/crashnote.hpp>
+
 #include "device.hpp"
 #include "handles.hpp"
 #include "image.hpp"
@@ -18,6 +20,7 @@ namespace Rtx
                        {}),
             VK_PIPELINE_BIND_POINT_GRAPHICS)
     {
+        const Crash::NoteScope noted("compiling the pipeline \"{}\"", options.mName);
         const ShaderModule vertex = loadShaderModule(device, options.mVertexModule);
         const ShaderModule fragment = loadShaderModule(device, options.mFragmentModule);
 

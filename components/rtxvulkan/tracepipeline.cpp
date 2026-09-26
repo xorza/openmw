@@ -6,6 +6,8 @@
 #include <optional>
 #include <vector>
 
+#include <components/crashcatcher/crashnote.hpp>
+
 #include "computepipeline.hpp"
 #include "device.hpp"
 #include "handles.hpp"
@@ -24,6 +26,7 @@ namespace Rtx
             VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR)
         , mDevice(device)
     {
+        const Crash::NoteScope noted("compiling the pipeline \"{}\"", name);
         const bool anyHitWanted = !shaders.mAnyHit.empty();
         const std::size_t hitRecords = shaders.mHit.size() * shaders.mHitRecordsPerShader;
 

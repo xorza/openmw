@@ -10,6 +10,7 @@
 #include <nvsdk_ngx_helpers_dlssd.h>
 #include <nvsdk_ngx_vk.h>
 
+#include <components/crashcatcher/crashnote.hpp>
 #include <components/files/fixedpath.hpp>
 #include <components/rtx/error.hpp>
 
@@ -130,6 +131,7 @@ namespace Rtx
         // NVIDIA's handle on an application, for their own telemetry and driver overrides. A GUID
         // and parsed as one: a readable name comes back from `Init` as `FAIL_InvalidParameter`.
         // This fork's own, and the engine is `CUSTOM` because OpenMW is not one NVIDIA knows.
+        const Crash::NoteScope noted("starting NGX");
         const NVSDK_NGX_Result started = NVSDK_NGX_VULKAN_Init_with_ProjectID("c541dbdf-6e4f-4476-ad27-15d2b4a231f4",
             NVSDK_NGX_ENGINE_TYPE_CUSTOM, "0.52", dataPath(), instance, device.getPhysicalDevice().getHandle(), mDevice,
             vkGetInstanceProcAddr, vkGetDeviceProcAddr, &common, NVSDK_NGX_Version_API);

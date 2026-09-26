@@ -14,6 +14,7 @@
 #include <osg/Matrix>
 #include <osg/Matrixf>
 
+#include <components/crashcatcher/crashnote.hpp>
 #include <components/sceneutil/morphgeometry.hpp>
 #include <components/sceneutil/riggeometry.hpp>
 #include <components/sceneutil/skeleton.hpp>
@@ -219,6 +220,8 @@ namespace Rtx
 
     Result<Index, std::string> MeshResolver::addMesh(const DrawableRead& read, const MeshReading& reading)
     {
+        const Crash::NoteScope noted("adding the mesh \"{}\"", read.mGeometry->getName());
+
         if (const Result<void, std::string> fits = MeshTable::checkFits(reading.mArrays); !fits.isOk())
             return Err{ fits.error() };
 

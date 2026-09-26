@@ -26,6 +26,7 @@
 #include <osg/Texture2D>
 #include <osg/Timer>
 
+#include <components/crashcatcher/crashnote.hpp>
 #include <components/debug/debuglog.hpp>
 #include <components/loadinglistener/loadinglistener.hpp>
 #include <components/misc/frameclock.hpp>
@@ -473,6 +474,7 @@ namespace MWRender
         // From between two frames, which is a loading screen presenting; from the walk, which is
         // a frame with the world hidden; or from the frame's own trace and the run's hook after it.
         mPhase.step(Phase::Gui, Phase::Between, Phase::Walking, Phase::Tracing, Phase::Run);
+        const Crash::NoteScope noted("drawing the interface and presenting");
 
         const std::chrono::steady_clock::time_point began = std::chrono::steady_clock::now();
 
@@ -730,6 +732,10 @@ namespace MWRender
     {
         mPhase.step(Phase::Walking, Phase::Between);
 
+        // **The frame's work under one note, and each step's under its own**, which ends with the
+        // frame: a crash in the game's update after it names no step of a frame already drawn.
+        const Crash::NoteScope noted("drawing frame {}", frame.mWhen.getFrameNumber());
+
         // The game's work is done and the renderer's begins, said before the frame with the world
         // hidden turns back: a present from there is still a frame the driver counts. The click is
         // read here, off the state this frame's input pump left.
@@ -796,16 +802,20 @@ namespace MWRender
 
         // **Where the benchmark's `walk ms` starts**, because that row means the whole mirror: the
         // walk and the sweep behind it.
-        const std::chrono::steady_clock::time_point walked = std::chrono::steady_clock::now();
-        mWalked.mFound = mMirror.mirror(frame, view, when.getFrameNumber());
-        report.mSpend.at(Rtx::Timing::Walk) = Rtx::since(walked, std::chrono::steady_clock::now());
-        report.mSpend.at(Rtx::Timing::Fold) = mWalked.mFound.mFoldMs;
+        {
+            const Crash::NoteScope walking("walking the scene");
 
-        // **The same graph again, and it should add nothing.** Only a run that asked pays for it,
-        // because a second whole-graph walk is the largest cost a frame has.
-        mWalked.mAgain.reset();
-        if (mRun.wantsSecondWalk())
-            mWalked.mAgain = mMirror.mirror(frame, view, when.getFrameNumber());
+            const std::chrono::steady_clock::time_point walked = std::chrono::steady_clock::now();
+            mWalked.mFound = mMirror.mirror(frame, view, when.getFrameNumber());
+            report.mSpend.at(Rtx::Timing::Walk) = Rtx::since(walked, std::chrono::steady_clock::now());
+            report.mSpend.at(Rtx::Timing::Fold) = mWalked.mFound.mFoldMs;
+
+            // **The same graph again, and it should add nothing.** Only a run that asked pays for
+            // it, because a second whole-graph walk is the largest cost a frame has.
+            mWalked.mAgain.reset();
+            if (mRun.wantsSecondWalk())
+                mWalked.mAgain = mMirror.mirror(frame, view, when.getFrameNumber());
+        }
 
         // After the last walk, because a walk clears the frame's lists.
         mMirror.addRipples(mRipples.getImpulses());
@@ -824,13 +834,16 @@ namespace MWRender
             return;
 
         mPhase.step(Phase::Placing, Phase::Walking);
-        finishBehind(report);
+        {
+            const Crash::NoteScope placing("placing the scene");
+            finishBehind(report);
 
-        // The frame behind is collected, so the tile copies it carried are there to paint: what
-        // `TracedOverlay::paintTile` was asked before its picture had come back.
-        mViews.finishOverlays();
+            // The frame behind is collected, so the tile copies it carried are there to paint: what
+            // `TracedOverlay::paintTile` was asked before its picture had come back.
+            mViews.finishOverlays();
 
-        handOver(frame, report);
+            handOver(frame, report);
+        }
 
         // **Before the frame and after the scene**, which is the only moment both are true: a
         // picture inside the interface traces against the copy of the tables this walk has just
@@ -839,9 +852,13 @@ namespace MWRender
         // Above the eye, because a picture inside the interface brought its own: an eye the trace
         // cannot look along is no reason to leave a map tile blank.
         mPhase.step(Phase::Views, Phase::Placing);
-        report.mSpend.at(Rtx::Timing::Views) = drawViews();
+        {
+            const Crash::NoteScope pictures("drawing the pictures inside the interface");
+            report.mSpend.at(Rtx::Timing::Views) = drawViews();
+        }
 
         mPhase.step(Phase::Tracing, Phase::Views);
+        const Crash::NoteScope tracing("tracing");
         const std::optional<Rtx::Shaders::VisibilityConstants> constants = describeTrace(frame, view);
         if (!constants.has_value())
         {

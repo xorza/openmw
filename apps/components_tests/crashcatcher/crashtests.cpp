@@ -202,7 +202,7 @@ namespace
         Debug::setupLogging(folder, "crash-tests");
         Crash::setHangLimit(std::chrono::seconds(2));
         Crash::annotate("mode", mode);
-        Crash::note("running the mode", mode);
+        const Crash::NoteScope noted("running the mode \"{}\"", mode);
 
         const auto livedOn = [] {
             Log(Debug::Info) << "crash-tests lived on";

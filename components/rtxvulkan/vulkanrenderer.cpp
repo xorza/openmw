@@ -13,6 +13,7 @@
 #include <osg/Vec2f>
 #include <vulkan/vulkan_core.h>
 
+#include <components/crashcatcher/crashnote.hpp>
 #include <components/rtx/framedigest.hpp>
 #include <components/rtx/frameimage.hpp>
 #include <components/rtx/frameoptions.hpp>
@@ -256,6 +257,9 @@ namespace Rtx
 
     void VulkanRenderer::setScene(const SceneSlot slot, const SceneDesc& scene, std::span<const TextureData> textures)
     {
+        const Crash::NoteScope noted(
+            "building the scene: {} meshes, {} textures", scene.meshes().getRows().size(), textures.size());
+
         // Buried, so a picture recorded against the old scene and not yet carried keeps it until
         // the submit that carries the picture has run.
         mScenes.bury(slot);
@@ -308,6 +312,8 @@ namespace Rtx
 
     void VulkanRenderer::extendScene(const SceneSlot slot, const SceneDesc& scene, std::span<const TextureData> arrived)
     {
+        const Crash::NoteScope noted("extending the scene: {} textures", arrived.size());
+
         DeviceScene& held = mScenes.at(slot);
 
         // An arrival does not wait for the frames in flight: what arrives is written on the queue,

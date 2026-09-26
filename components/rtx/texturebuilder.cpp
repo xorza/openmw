@@ -205,7 +205,7 @@ namespace Rtx
     {
         // Every reader of an image's bytes on the processor comes through here first, so a crash
         // in one names the file.
-        Crash::note("describing the texture", image.getFileName());
+        const Crash::NoteScope noted("describing the texture \"{}\"", image.getFileName());
 
         if (const Result<void, std::string> uploadable = checkUploadable(image, encoding); !uploadable.isOk())
             return Err{ uploadable.error() };

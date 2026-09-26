@@ -15,6 +15,7 @@
 #include <nvsdk_ngx_params_dlssd.h>
 #include <nvsdk_ngx_vk.h>
 
+#include <components/crashcatcher/crashnote.hpp>
 #include <components/rtx/error.hpp>
 #include <components/rtx/upscale.hpp>
 
@@ -90,6 +91,9 @@ namespace Rtx
         create.InFeatureCreateFlags = sCreateFlags;
         create.InEnableOutputSubrects = false;
 
+        const Crash::NoteScope noted("making the Ray Reconstruction feature at {}x{} to {}x{}", render.width,
+            render.height, output.width, output.height);
+
         // One GPU, so both node masks are the first node.
         const NVSDK_NGX_Result built
             = NGX_VULKAN_CREATE_DLSSD_EXT1(ngx.getDevice(), commands, 1, 1, &mHandle, mParameters, &create);
@@ -113,6 +117,8 @@ namespace Rtx
 
     void DlssPass::record(VkCommandBuffer commands, const UpscaleInputs& inputs, const Image& output) const
     {
+        const Crash::NoteScope noted("recording Ray Reconstruction");
+
         // Held by value across the call: the parameter map keeps the pointers rather than what they
         // point at, so every one of these has to outlive the evaluation. Each is checked against the
         // extent it belongs to as it is made — `resourceOf` says why there rather than here.
