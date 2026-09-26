@@ -188,7 +188,7 @@ if(BUILD_OPENMW)
     target_link_libraries(openmw openmw-lib)
 
 if (OPENMW_RTX)
-    target_link_libraries(openmw-lib openmw-rtx openmw-rtx-vulkan openmw-rtx-bench openmw-rtx-mygui)
+    target_link_libraries(openmw-lib openmw-rtx openmw-rtx-vulkan openmw-rtx-mygui)
 endif()
 
     # Workaround necessary to ensure osgAnimation::MatrixLinearSampler dynamic casts work under Clang

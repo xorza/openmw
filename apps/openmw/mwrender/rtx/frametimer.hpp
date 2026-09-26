@@ -2,11 +2,11 @@
 
 #include <array>
 #include <chrono>
+#include <cstdint>
 #include <optional>
 #include <string_view>
 
 #include <components/rtx/latencyreport.hpp>
-#include <components/rtxbench/frametimes.hpp>
 
 namespace MWRender
 {
@@ -35,8 +35,13 @@ namespace MWRender
         /// What the presents since the last frame came to, and starts the sum again.
         double takePresent();
 
-        /// Adds one frame's whole time to the rate. @return whether a second has run out, which is
-        /// when the title is written again.
+        /// Adds one frame's whole time to the second being counted. @return whether that second has
+        /// run out, which is when the title is written again.
+        ///
+        /// **A second and not a frame**, because a figure that changes sixty times a second cannot be
+        /// read. **The mean beside the worst**, because the mean alone is the figure that hides a
+        /// stutter. A median would need the second's frames kept and sorted, and a sort landing on
+        /// one frame in sixty is the spike a frame path is not allowed to carry.
         bool addFrame(double frameMs);
 
         /// The window title for the second that ran out. Never allocates: the text is written into
@@ -52,7 +57,14 @@ namespace MWRender
         std::chrono::steady_clock::time_point mLeft;
         double mPresentMs = 0.0;
 
-        Rtx::FrameRate mRate;
+        /// The second being counted.
+        double mSummedMs = 0.0;
+        double mWorstMs = 0.0;
+        std::uint32_t mFrames = 0;
+
+        /// The last second that ran out, which the title describes: no frames until one has.
+        double mSecondMeanMs = 0.0;
+        double mSecondWorstMs = 0.0;
 
         /// What the window's title is written from, once a second and never allocated.
         std::array<char, 128> mTitle{};

@@ -19,7 +19,7 @@
 #include <components/rtx/error.hpp>
 #include <components/rtx/renderer.hpp>
 
-namespace Rtx
+namespace RtxTool
 {
     namespace
     {
@@ -91,7 +91,7 @@ namespace Rtx
 
         /// The numbers the frame handed the reconstruction, as one column: what a wrong sign on
         /// the jitter or a reset that never clears would move, and nothing in an image would.
-        DigestWords digestHanded(const FrameDigest& digest)
+        Rtx::DigestWords digestHanded(const Rtx::FrameDigest& digest)
         {
             Digest words;
             words.add(digest.mJitterX);
@@ -109,7 +109,7 @@ namespace Rtx
             Frame{ .mView = std::string(view), .mFrame = frame, .mParts = parts, .mSubmitted = submitted });
     }
 
-    std::optional<FrameHashes::Pictured> FrameHashes::picture(const FrameResult& finished)
+    std::optional<FrameHashes::Pictured> FrameHashes::picture(const Rtx::FrameResult& finished)
     {
         // From the back, because the frame that came back is one of the last few noted.
         const auto row = std::find_if(mFrames.rbegin(), mFrames.rend(),
@@ -123,7 +123,7 @@ namespace Rtx
         digest.add(finished.mPixels);
         row->mHash = digest.getWords();
 
-        for (std::size_t image = 0; image < Shaders::DIGEST_IMAGES; ++image)
+        for (std::size_t image = 0; image < Rtx::Shaders::DIGEST_IMAGES; ++image)
             row->mTraced[image] = finished.mDigest->mImages[image];
         row->mTraced[sReconstructionColumn] = digestHanded(*finished.mDigest);
 
@@ -141,18 +141,18 @@ namespace Rtx
 
     void FrameHashes::write(const std::filesystem::path& file) const
     {
-        contract(countUnpictured() == 0, "frames were noted and never pictured; the ring was not drained");
+        Rtx::contract(countUnpictured() == 0, "frames were noted and never pictured; the ring was not drained");
 
         std::ofstream out(file);
         out << headerLine() << '\n';
 
         for (const Frame& held : mFrames)
         {
-            out << held.mView << ',' << held.mFrame << ',' << sUpscaleNames.name(held.mUpscale) << ','
+            out << held.mView << ',' << held.mFrame << ',' << Rtx::sUpscaleNames.name(held.mUpscale) << ','
                 << spellHash(held.mHash);
-            for (const DigestWords& column : held.mTraced)
+            for (const Rtx::DigestWords& column : held.mTraced)
                 out << ',' << spellHash(column);
-            for (const DigestWords& part : held.mParts)
+            for (const Rtx::DigestWords& part : held.mParts)
                 out << ',' << spellHash(part);
 
             out << '\n';
@@ -161,17 +161,17 @@ namespace Rtx
         // **Thrown and not reported**: a reference that did not get written and a command that
         // still succeeded is the next run comparing against whatever was at that path before.
         if (!out)
-            throw InputError("could not write " + Files::pathToUnicodeString(file));
+            throw Rtx::InputError("could not write " + Files::pathToUnicodeString(file));
     }
 
     FrameHashes FrameHashes::read(const std::filesystem::path& file)
     {
         std::ifstream in(file);
         if (!in)
-            throw InputError("could not read " + Files::pathToUnicodeString(file));
+            throw Rtx::InputError("could not read " + Files::pathToUnicodeString(file));
 
         const auto fail = [&](const std::string& line) {
-            return InputError("cannot read " + Files::pathToUnicodeString(file) + ": " + line);
+            return Rtx::InputError("cannot read " + Files::pathToUnicodeString(file) + ": " + line);
         };
 
         std::string line;
@@ -182,7 +182,7 @@ namespace Rtx
         if (!std::getline(in, line) || line != headerLine())
             throw fail(line);
 
-        const auto readHash = [](const std::string_view field, DigestWords& into) {
+        const auto readHash = [](const std::string_view field, Rtx::DigestWords& into) {
             if (field.size() != 32)
                 return false;
 
@@ -224,7 +224,7 @@ namespace Rtx
             if (std::from_chars(fields[1].data(), fields[1].data() + fields[1].size(), frame.mFrame).ec != std::errc{})
                 throw fail(line);
 
-            const std::optional<Upscale> upscale = sUpscaleNames.named(fields[2]);
+            const std::optional<Rtx::Upscale> upscale = Rtx::sUpscaleNames.named(fields[2]);
             if (!upscale.has_value())
                 throw fail(line);
             frame.mUpscale = *upscale;
@@ -268,8 +268,8 @@ namespace Rtx
                 continue;
             }
 
-            for (const Channel still : { Channel::Depth, Channel::Motion })
-                if (frame.mTraced[bindingOf(still)] != first->mTraced[bindingOf(still)])
+            for (const Rtx::Channel still : { Rtx::Channel::Depth, Rtx::Channel::Motion })
+                if (frame.mTraced[Rtx::bindingOf(still)] != first->mTraced[Rtx::bindingOf(still)])
                     return frame.mFrame;
         }
 
@@ -358,7 +358,7 @@ namespace Rtx
             // one build are allowed to disagree about it.
             if (found->mHash != held.mHash)
             {
-                if (found->mUpscale == Upscale::Off && held.mUpscale == Upscale::Off)
+                if (found->mUpscale == Rtx::Upscale::Off && held.mUpscale == Rtx::Upscale::Off)
                     difference.mDiffering.push_back(held.mFrame);
                 else
                     difference.mReconstructedDiffering.push_back(held.mFrame);

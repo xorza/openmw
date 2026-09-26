@@ -16,7 +16,10 @@
 namespace Rtx
 {
     class SceneDesc;
+}
 
+namespace RtxTool
+{
     /// One thing a scene holds, and one column of a hashes file: a digest each rather than one for
     /// the lot, because a run whose layout differs has to say which table moved. In the order the
     /// tables are laid out.
@@ -69,7 +72,7 @@ namespace Rtx
     /// What a hashes file's header spells for each part, in the order the tables are laid out,
     /// which is the order of the columns: the header is written from this table and a column is
     /// indexed by the enumerator, so the two must agree, and the assertion below says they do.
-    inline constexpr NamedEnum sSceneParts{ std::array{
+    inline constexpr Rtx::NamedEnum sSceneParts{ std::array{
         std::pair{ ScenePart::Positions, std::string_view("positions") },
         std::pair{ ScenePart::Normals, std::string_view("normals") },
         std::pair{ ScenePart::TexCoords, std::string_view("texcoords") },
@@ -128,7 +131,8 @@ namespace Rtx
     public:
         /// Every part's digest of `scene` as it stands, and of `frame`, the constants it is traced
         /// with, or null where nothing is traced.
-        const ScenePartDigests& digest(const SceneDesc& scene, const Shaders::VisibilityConstants* frame = nullptr);
+        const ScenePartDigests& digest(
+            const Rtx::SceneDesc& scene, const Rtx::Shaders::VisibilityConstants* frame = nullptr);
 
         /// How many times the vertex tables were hashed, which is once per change to them. Read
         /// by the tests and by nothing else.
@@ -146,7 +150,7 @@ namespace Rtx
             bool operator==(const Vertices&) const = default;
         };
 
-        void digestVertices(const SceneDesc& scene);
+        void digestVertices(const Rtx::SceneDesc& scene);
 
         void take(ScenePart part, const std::array<std::uint64_t, 2>& words)
         {
@@ -163,14 +167,14 @@ namespace Rtx
     };
 
     /// The one-off form `scene` and `shot` report with: a digester made and used once.
-    ScenePartDigests digestParts(const SceneDesc& scene);
+    ScenePartDigests digestParts(const Rtx::SceneDesc& scene);
 
     /// One number for what a scene is made of, the same for two stagings of one cell. Per
     /// placement and summed, because `SceneUtil::Optimizer` merges sibling shapes in heap order and
     /// the vertex runs and slot numbers follow: each placement is digested from where it stands,
     /// what it wears and the multiset of its triangles, and no order can tell the sum. Blind to
     /// the layout, which is what `digestLayout` stands beside it for. Textures by their paths.
-    std::array<std::uint64_t, 2> digestScene(const SceneDesc& scene);
+    std::array<std::uint64_t, 2> digestScene(const Rtx::SceneDesc& scene);
 
     /// One number for the whole layout, for a caller with one line to print; a report with room
     /// for the columns names them instead.

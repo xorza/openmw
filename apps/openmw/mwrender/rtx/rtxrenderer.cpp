@@ -149,7 +149,7 @@ namespace MWRender
 
         // **A measured run keeps no pipeline cache of its own.** A pipeline out of the blob
         // starts on the compile's first code and is swapped for the driver's second all the same
-        // (`Rtx::DriverCache`), and the object shared between parallel compiles handed one pipeline
+        // (`RtxTool::DriverCache`), and the object shared between parallel compiles handed one pipeline
         // another's code (`PipelineCacheSpec::mDirectory`). The driver's own disk cache stays on,
         // one per set of shaders. The player keeps the fork's cache: a game is not compared with
         // itself, and the seconds it saves at start are the player's.
@@ -835,8 +835,7 @@ namespace MWRender
         // writes the copy of the tables the frame before last traced, so it waits that frame out
         // before it writes — and left to it the stall lands inside `place ms`, which then reads
         // as placement work rather than as a device the CPU is ahead of. One figure, in `wait ms`,
-        // which `Rtx::FrameSamples` carries for the harness and for the game alike so that the two
-        // reports can be read against each other.
+        // which the harness's report carries (`RtxTool::FrameSamples`).
         //
         // **`collectFrame` and not `finishFrame`**: the frame behind stays on the device while this
         // one is placed, which is what keeps the device busy from one trace to the next — 0.9 ms
@@ -981,8 +980,8 @@ namespace MWRender
             mPhase.step(Phase::Run, Phase::Tracing);
             mRun.frame(describeContext(), report);
 
-            // Once a second, which is how often `Rtx::FrameRate` closes a line — and the window is asked
-            // then whether anybody can see it, rather than a copy of that being kept here.
+            // Once a second, which is how often `FrameTimer::addFrame` closes one — and the window is
+            // asked then whether anybody can see it, rather than a copy of that being kept here.
             if (mTimer.addFrame(*since))
                 mWindow.setTitle(mTimer.writeTitle(report.mLatency, mRun.describeTitle()).data());
         }

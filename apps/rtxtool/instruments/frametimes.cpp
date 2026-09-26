@@ -17,39 +17,8 @@
 #include <components/files/conversion.hpp>
 #include <components/platform/fifo.hpp>
 
-namespace Rtx
+namespace RtxTool
 {
-    namespace
-    {
-        /// How much frame time closes a line. A second, so the figure moves as often as a clock's.
-        constexpr double sLineMs = 1000.0;
-    }
-
-    bool FrameRate::add(const double frameMs)
-    {
-        mSummedMs += frameMs;
-        mWorstMs = std::max(mWorstMs, frameMs);
-        ++mFrames;
-
-        if (mSummedMs < sLineMs)
-            return false;
-
-        const double meanMs = mSummedMs / mFrames;
-        const auto [end, length] = std::format_to_n(
-            mText.data(), mText.size(), "{:.0f} fps, {:.1f} ms, worst {:.1f} ms", sLineMs / meanMs, meanMs, mWorstMs);
-
-        // A line is under forty characters at any rate a frame can have, so the buffer is not a
-        // limit anything reaches — but a truncated line is still a line, and not an overrun.
-        assert(static_cast<std::size_t>(length) <= mText.size() && "the frame rate line outgrew its buffer");
-        mLength = std::min(static_cast<std::size_t>(length), mText.size());
-
-        mSummedMs = 0.0;
-        mWorstMs = 0.0;
-        mFrames = 0;
-
-        return true;
-    }
-
     PerfControl::PerfControl(std::filesystem::path fifo)
         : mFifo(std::move(fifo))
     {
@@ -108,14 +77,14 @@ namespace Rtx
         if (!file)
             throw std::runtime_error("could not open " + Files::pathToUnicodeString(path));
 
-        for (const Timing timing : sTimings.values())
-            file << (indexOf(timing) == 0 ? "" : " ") << sTimings.name(timing);
+        for (const Rtx::Timing timing : Rtx::sTimings.values())
+            file << (Rtx::indexOf(timing) == 0 ? "" : " ") << Rtx::sTimings.name(timing);
         file << '\n';
 
         for (std::uint32_t frame = 0; frame < samples.size(); ++frame)
         {
-            for (const Timing timing : sTimings.values())
-                file << (indexOf(timing) == 0 ? "" : " ") << std::format("{:.3f}", samples.at(timing)[frame]);
+            for (const Rtx::Timing timing : Rtx::sTimings.values())
+                file << (Rtx::indexOf(timing) == 0 ? "" : " ") << std::format("{:.3f}", samples.at(timing)[frame]);
             file << '\n';
         }
     }
@@ -137,7 +106,7 @@ namespace Rtx
     }
 }
 
-namespace Rtx
+namespace RtxTool
 {
     void GpuBreakdown::reserve(const std::uint32_t frames)
     {
@@ -158,11 +127,11 @@ namespace Rtx
         mZones.clear();
     }
 
-    void GpuBreakdown::add(std::span<const GpuSpan> spans)
+    void GpuBreakdown::add(std::span<const Rtx::GpuSpan> spans)
     {
         ++mFrames;
 
-        for (const GpuSpan& span : spans)
+        for (const Rtx::GpuSpan& span : spans)
         {
             // The index and not the iterator: adding a row invalidates whatever `find_if` returned,
             // and the row about to be pushed to is the one that name is at.

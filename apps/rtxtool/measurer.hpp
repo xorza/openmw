@@ -8,10 +8,10 @@
 
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/scratch.hpp>
-#include <components/rtxbench/cardwatch.hpp>
-#include <components/rtxbench/frametimes.hpp>
-#include <components/rtxbench/scenedigest.hpp>
 
+#include "instruments/cardwatch.hpp"
+#include "instruments/frametimes.hpp"
+#include "instruments/scenedigest.hpp"
 #include "model/benchrecord.hpp"
 
 namespace MWRender
@@ -119,13 +119,13 @@ namespace RtxTool
             /// crossed. Compared as an address and never read, which is all an identity needs.
             const void* mCell = nullptr;
 
-            Rtx::FrameSamples mSamples;
+            FrameSamples mSamples;
 
             /// The driver's input-to-present figure of every measured frame it timed, in
             /// milliseconds: a window the driver paces has one a frame, a headless run none.
             std::vector<double> mLatencyMs;
 
-            Rtx::GpuBreakdown mGpu;
+            GpuBreakdown mGpu;
             HoldTimes mHold;
 
             /// What the stop comes to, as it is measured: the crossings, the arrivals, the overlap and
@@ -144,15 +144,15 @@ namespace RtxTool
         RunRecord& mRecord;
 
         /// perf's control fifo, held for the whole run so every stop brackets its own frames.
-        Rtx::PerfControl mProfiling;
+        PerfControl mProfiling;
 
         /// The card, watched from the session's start: its clock across each stop's measured
         /// frames, and who held it through every window of the run. Held rather than made per
         /// stop, because what it owns is a thread.
-        Rtx::CardWatch mCardWatch;
+        CardWatch mCardWatch;
 
         /// What a hashed frame's scene columns come from, kept so a frame pays for what moved.
-        Rtx::SceneDigester mDigester;
+        SceneDigester mDigester;
 
         Progress mProgress;
         std::string mFailure;

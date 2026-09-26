@@ -39,12 +39,11 @@ backend ever arrives.
   graphics API, no game headers.
 - `components/rtxvulkan/` — the backend. What is true of an API lives here and nowhere else; the
   two places that stand one up name `VulkanRenderer` and nothing else does.
-- `components/rtxbench/` — the instruments a measured run is taken with: a run's length, the
-  frame times, the card's clock, perf's fifo, the driver's cache, a frame hash, a scene digest and
-  a texture sheet. It knows nothing about a world; what a run visits and what a place came to are
-  the harness's model, `apps/rtxtool/model/`.
 - `components/myguirtx/` — MyGUI's backend.
-- `apps/openmw/mwrender/rtx/` — the game-side owner. `apps/rtxtool/` — the harness.
+- `apps/openmw/mwrender/rtx/` — the game-side owner. `apps/rtxtool/` — the harness: what a run
+  visits and what a place came to in `model/`, and in `instruments/` what a measured run is taken
+  with — the frame times, the card's clock, perf's fifo, the driver's cache, a frame hash, a scene
+  digest and a texture sheet, none of which knows a world.
   `MWRender::Renderer` — the seam, and `GlRenderer` beside upstream's files in `mwrender/`.
 - `docs/rtx/architecture.md` — the whole of the above as a reader meets it: the seam, the
   entities, who owns whom, who calls whom, and the order a frame is computed in.

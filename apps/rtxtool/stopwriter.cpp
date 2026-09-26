@@ -55,10 +55,10 @@
 #include <components/rtx/texturebuilder.hpp>
 #include <components/rtx/texturedata.hpp>
 #include <components/rtx/texturetable.hpp>
-#include <components/rtxbench/contactsheet.hpp>
-#include <components/rtxbench/framehashes.hpp>
 #include <components/vfs/pathutil.hpp>
 
+#include "instruments/contactsheet.hpp"
+#include "instruments/framehashes.hpp"
 #include "model/benchrecord.hpp"
 #include "model/runrecord.hpp"
 
@@ -141,11 +141,11 @@ namespace RtxTool
     }
 
     void StopWriter::writeFrameTimes(
-        const Writing& into, const std::filesystem::path& file, const Rtx::FrameSamples& samples)
+        const Writing& into, const std::filesystem::path& file, const FrameSamples& samples)
     {
         try
         {
-            Rtx::writeFrameTimes(file, samples);
+            RtxTool::writeFrameTimes(file, samples);
             into.mRecord.note(std::format("wrote {} frames to {}\n", samples.size(), Files::pathToUnicodeString(file)));
         }
         catch (const std::exception& failed)
@@ -175,8 +175,8 @@ namespace RtxTool
                 scene.placements().getCounts().mPlaced, stats.mDistantStatics, stats.mGroundCells,
                 scene.meshes().getRows().size(), scene.materials().getRows().size(), scene.textures().getRows().size(),
                 scene.meshes().getTriangleCount(), scene.meshes().getGeometryBytes() / 1024,
-                scene.meshes().getColours().size() * sizeof(osg::Vec3f) / 1024, Rtx::spellHash(Rtx::digestScene(scene)),
-                Rtx::spellHash(Rtx::digestLayout(Rtx::digestParts(scene)))));
+                scene.meshes().getColours().size() * sizeof(osg::Vec3f) / 1024, spellHash(digestScene(scene)),
+                spellHash(digestLayout(digestParts(scene)))));
 
         // The images the standing slots keep, off the table that keeps them.
         const Rtx::FormatCensus& formats = scene.textures().getFormats();
@@ -294,7 +294,7 @@ namespace RtxTool
         described.describeAll(scene);
 
         const float delight = into.mContext.mRenderer.getProfile().mDelight;
-        const Rtx::ContactSheet drawn = Rtx::writeContactSheet(described.getDescriptions(), sheet, delight);
+        const ContactSheet drawn = writeContactSheet(described.getDescriptions(), sheet, delight);
         if (drawn.mCount == 0)
         {
             into.mRecord.note("the world uses no textures\n");
@@ -610,7 +610,7 @@ namespace RtxTool
             case Check::QueueHeld:
             {
                 const auto zone = std::find_if(facts.mZones.begin(), facts.mZones.end(),
-                    [](const Rtx::GpuZone& held) { return held.mName == Rtx::RenderProfile::sHoldZone; });
+                    [](const GpuZone& held) { return held.mName == Rtx::RenderProfile::sHoldZone; });
                 if (zone == facts.mZones.end() || zone->mFrames == 0)
                 {
                     found = "no frame timed the hold";

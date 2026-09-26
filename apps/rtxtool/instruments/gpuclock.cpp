@@ -8,7 +8,7 @@
 #include <string_view>
 #include <utility>
 
-namespace Rtx
+namespace RtxTool
 {
     std::string describeThrottle(std::uint64_t mask)
     {

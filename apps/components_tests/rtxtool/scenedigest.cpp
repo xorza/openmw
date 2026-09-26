@@ -16,6 +16,7 @@
 #include <osg/Vec3f>
 #include <osg/Vec4f>
 
+#include <apps/rtxtool/instruments/scenedigest.hpp>
 #include <components/rtx/deformertable.hpp>
 #include <components/rtx/instancerecord.hpp>
 #include <components/rtx/lightbuilder.hpp>
@@ -25,10 +26,9 @@
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/skinning.h>
 #include <components/rtx/sprite.hpp>
-#include <components/rtxbench/scenedigest.hpp>
 #include <components/vfs/pathutil.hpp>
 
-namespace Rtx
+namespace RtxTool
 {
     namespace
     {
@@ -59,7 +59,7 @@ namespace Rtx
                 indices = { 7, 6, 5, 5, 6, 4 };
             }
 
-            return scene.addMesh(MeshArrays{ .mPositions = positions,
+            return scene.addMesh(Rtx::MeshArrays{ .mPositions = positions,
                                      .mNormals = normals,
                                      .mTexCoords = texCoords,
                                      .mTangents = tangents,
@@ -235,7 +235,7 @@ namespace Rtx
         {
             Rtx::SceneDesc scene;
             const Rtx::Index texture = scene.textures().add(VFS::Path::NormalizedView("textures/puff.dds"));
-            const std::array sprites{ Sprite{ .mPosition = osg::Vec3f(1.0f, 2.0f, 3.0f),
+            const std::array sprites{ Rtx::Sprite{ .mPosition = osg::Vec3f(1.0f, 2.0f, 3.0f),
                 .mRadius = 4.0f,
                 .mColour = osg::Vec3f(1.0f, 1.0f, 1.0f),
                 .mAlpha = 1.0f } };
@@ -270,19 +270,19 @@ namespace Rtx
             Rtx::SceneDesc scene;
 
             const std::array<std::uint32_t, 4> runs{ 1u, 1u, 1u, 1u };
-            const std::array influences{ Shaders::GpuInfluence{ .mBone = 0, .mWeight = weight } };
+            const std::array influences{ Rtx::Shaders::GpuInfluence{ .mBone = 0, .mWeight = weight } };
 
             const std::array positions{ osg::Vec3f(), osg::Vec3f(1.0f, 0.0f, 0.0f), osg::Vec3f(1.0f, 1.0f, 0.0f),
                 osg::Vec3f(0.0f, 1.0f, 0.0f) };
             const std::array<std::uint32_t, 6> indices{ 0, 1, 2, 0, 2, 3 };
             const Rtx::Index quad = scene
-                                        .addMesh(MeshArrays{ .mPositions = positions, .mIndices = indices }, {},
+                                        .addMesh(Rtx::MeshArrays{ .mPositions = positions, .mIndices = indices }, {},
                                             Rtx::RigSpec{ .mRuns = runs, .mInfluences = influences, .mBones = 1 })
                                         .mMesh;
 
-            const std::array bones{ toGpuBone(osg::Matrixf::translate(0.0f, 0.0f, up)) };
-            std::vector<PoseWord> words;
-            packBones(bones, words);
+            const std::array bones{ Rtx::toGpuBone(osg::Matrixf::translate(0.0f, 0.0f, up)) };
+            std::vector<Rtx::PoseWord> words;
+            Rtx::packBones(bones, words);
             // One reach whatever the pose, because the reach is the mesh's own row and so the
             // meshes column's: what this asks is what the words move on their own.
             scene.pose(quad, words, osg::BoundingBoxf(osg::Vec3f(), osg::Vec3f(1.0f, 1.0f, 10.0f)));
@@ -315,7 +315,7 @@ namespace Rtx
         /// hole it left one more.
         TEST(RtxSceneDigestTest, aDigesterHashesTheVertexTablesOnceForEveryChangeToThem)
         {
-            SceneDesc scene;
+            Rtx::SceneDesc scene;
             fillBoxes(scene, false, 0.0f, 0.0f);
 
             SceneDigester digester;
@@ -337,7 +337,7 @@ namespace Rtx
                 first[static_cast<std::size_t>(ScenePart::Instances)]);
 
             // A mesh added is a revision, and the vertex columns move with it.
-            const Index third = addBox(scene, true, 2.0f);
+            const Rtx::Index third = addBox(scene, true, 2.0f);
             const ScenePartDigests grown = digester.digest(scene);
             EXPECT_EQ(digester.getVertexHashes(), 2u);
             EXPECT_NE(grown[static_cast<std::size_t>(ScenePart::Positions)],
@@ -347,8 +347,8 @@ namespace Rtx
             // A release leaves the bytes where they were — a freed run is a hole, and the table
             // keeps its length — so the cache still answers, and answers what a digest from nothing
             // says. The mesh row it emptied moves the meshes column and nothing else.
-            const std::array keepTwo{ Index{ 0 }, Index{ 1 } };
-            const std::array keepMaterials{ Index{ 0 } };
+            const std::array keepTwo{ Rtx::Index{ 0 }, Rtx::Index{ 1 } };
+            const std::array keepMaterials{ Rtx::Index{ 0 } };
             ASSERT_TRUE(scene.release(keepTwo, keepMaterials));
             const ScenePartDigests released = digester.digest(scene);
             EXPECT_EQ(digester.getVertexHashes(), 2u) << "a release wrote no vertex and was hashed for it";

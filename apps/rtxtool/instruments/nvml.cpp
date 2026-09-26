@@ -5,7 +5,7 @@
 #include <cstddef>
 #include <format>
 
-namespace Rtx
+namespace RtxTool
 {
     namespace
     {

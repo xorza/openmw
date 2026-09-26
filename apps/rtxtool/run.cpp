@@ -18,11 +18,11 @@
 #include <components/files/configurationmanager.hpp>
 #include <components/files/conversion.hpp>
 #include <components/rtx/skylight.hpp>
-#include <components/rtxbench/benchspec.hpp>
 #include <components/settings/categories.hpp>
 #include <components/settings/parser.hpp>
 
 #include "model/benchrecord.hpp"
+#include "model/benchspec.hpp"
 #include "model/blockfile.hpp"
 
 namespace RtxTool
@@ -195,7 +195,7 @@ namespace RtxTool
             for (const BlockField& field : block.mFields)
             {
                 if (field.mName == "views")
-                    suite.mViews = Rtx::splitNames(field.mValue);
+                    suite.mViews = splitNames(field.mValue);
                 else if (field.mName == "note")
                     suite.mNote = field.mValue;
                 else if (field.mName == "settled")

@@ -14,9 +14,9 @@
 #include <components/files/conversion.hpp>
 #include <components/rtx/contract.hpp>
 #include <components/rtx/skylight.hpp>
-#include <components/rtxbench/benchspec.hpp>
 
 #include "model/benchrecord.hpp"
+#include "model/benchspec.hpp"
 #include "model/blockfile.hpp"
 
 namespace RtxTool
@@ -93,7 +93,7 @@ namespace RtxTool
 
     std::uint32_t FilmPacing::framesOf(const float seconds) const
     {
-        return std::max(1u, Rtx::BenchSpan{ .mSeconds = seconds }.getFrames(mStep));
+        return std::max(1u, BenchSpan{ .mSeconds = seconds }.getFrames(mStep));
     }
 
     std::uint32_t FilmPlan::getFrames() const
@@ -338,8 +338,8 @@ namespace RtxTool
             stop = first.mStop;
             stop.mName = std::format("take-{}-{}", number + 1, first.mStop.mName);
             stop.mSky.mDay = first.mStop.mSky.mDay.value_or(plan.mPacing.mDay);
-            stop.mSchedule.mSpec.mWarm = Rtx::BenchSpan{ .mSeconds = plan.mPacing.mWarmupSeconds };
-            stop.mSchedule.mSpec.mRun = Rtx::BenchSpan{ .mFrames = take.getFrames() };
+            stop.mSchedule.mSpec.mWarm = BenchSpan{ .mSeconds = plan.mPacing.mWarmupSeconds };
+            stop.mSchedule.mSpec.mRun = BenchSpan{ .mFrames = take.getFrames() };
             stop.mSchedule.mTrack.emplace(take.mTrack);
             stop.mActions.mFilm = Actions::Film{ .mDirectory = frames, .mFirst = take.mFirstFrame };
         }

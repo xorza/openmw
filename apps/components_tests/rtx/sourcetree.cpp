@@ -312,8 +312,8 @@ namespace Rtx
         }
 
         /// The fork's own directories, every file of which the index reads and the rules check.
-        constexpr std::array<std::string_view, 6> sForkDirectories{ "components/rtx", "components/rtxvulkan",
-            "components/rtxbench", "components/myguirtx", "apps/openmw/mwrender/rtx", "apps/rtxtool" };
+        constexpr std::array<std::string_view, 5> sForkDirectories{ "components/rtx", "components/rtxvulkan",
+            "components/myguirtx", "apps/openmw/mwrender/rtx", "apps/rtxtool" };
 
         /// The namespaces a comment's `A::b` is read under as a name the code declares somewhere.
         const std::set<std::string, std::less<>> sForkNamespaces{ "Rtx", "MWRender", "MyGUIRtx", "RtxTool", "Shaders" };

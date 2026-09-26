@@ -8,9 +8,10 @@
 #include <string_view>
 #include <vector>
 
+#include <apps/rtxtool/instruments/framehashes.hpp>
+
 #include "benchrecord.hpp"
 #include "benchrun.hpp"
-#include <components/rtxbench/framehashes.hpp>
 
 namespace RtxTool
 {
@@ -58,8 +59,8 @@ namespace RtxTool
         /// **The run's own record of what it drew.** A hash is one line of the report at the end and
         /// one number per measured frame until then, so it settles here rather than beside the
         /// frames it was taken from.
-        Rtx::FrameHashes& getHashes() { return mHashes; }
-        void readReference(const std::filesystem::path& path) { mReference = Rtx::FrameHashes::read(path); }
+        FrameHashes& getHashes() { return mHashes; }
+        void readReference(const std::filesystem::path& path) { mReference = FrameHashes::read(path); }
 
         const std::string& getReport() const { return mReport; }
 
@@ -92,7 +93,7 @@ namespace RtxTool
         std::uint32_t mChecked = 0;
         std::uint32_t mFailed = 0;
 
-        Rtx::FrameHashes mHashes;
-        Rtx::FrameHashes mReference;
+        FrameHashes mHashes;
+        FrameHashes mReference;
     };
 }

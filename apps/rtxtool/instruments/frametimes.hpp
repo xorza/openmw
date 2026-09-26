@@ -1,7 +1,6 @@
 #pragma once
 
 #include <array>
-#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <span>
@@ -13,36 +12,8 @@
 #include <components/rtx/framespend.hpp>
 #include <components/rtx/renderer.hpp>
 
-namespace Rtx
+namespace RtxTool
 {
-    /// What the last second of frames came to, as one short line for a glance.
-    ///
-    /// **A second and not a frame**, because a figure that changes sixty times a second cannot be
-    /// read. **The mean beside the worst**, because the mean alone is the figure that hides a
-    /// stutter. A median would need the second's frames kept and sorted, and a sort landing on one
-    /// frame in sixty is the spike a frame path is not allowed to carry.
-    ///
-    /// **Nothing here reaches the heap.** The line is formatted into a buffer this owns, so the
-    /// frame that closes a second costs one format and every other costs three adds.
-    class FrameRate
-    {
-    public:
-        /// Takes one frame's wall time. True on the frame that closes a second's worth, at which
-        /// point `getText` describes that second and the next one starts counting from nothing.
-        bool add(double frameMs);
-
-        /// The last closed second: `118 fps, 8.5 ms, worst 12.3 ms`. Empty until one has closed.
-        std::string_view getText() const { return { mText.data(), mLength }; }
-
-    private:
-        double mSummedMs = 0.0;
-        double mWorstMs = 0.0;
-        std::uint32_t mFrames = 0;
-
-        std::array<char, 64> mText{};
-        std::size_t mLength = 0;
-    };
-
     /// perf's control fifo, so a recording holds the frames that were measured and nothing else.
     ///
     /// `perf record --delay=-1 --control=fifo:<path>` starts with its counters off and turns them
@@ -108,16 +79,12 @@ namespace Rtx
     /// a chance for a frame to reach all but one of them, and rows out of step with each other are
     /// rows that cannot be read against each other at all. **One array**, because named members are
     /// an edit apiece wherever a further figure is wanted.
-    ///
-    /// **Shared by the harness and the game**, whose two reports only mean something beside each
-    /// other: a crossing in one is measured against a crossing in the other, and a row one of them
-    /// gathered differently would be a difference read as a finding.
     struct FrameSamples
     {
-        std::array<std::vector<double>, sTimingCount> mRows;
+        std::array<std::vector<double>, Rtx::sTimingCount> mRows;
 
-        std::vector<double>& at(const Timing timing) { return mRows[indexOf(timing)]; }
-        const std::vector<double>& at(const Timing timing) const { return mRows[indexOf(timing)]; }
+        std::vector<double>& at(const Rtx::Timing timing) { return mRows[Rtx::indexOf(timing)]; }
+        const std::vector<double>& at(const Rtx::Timing timing) const { return mRows[Rtx::indexOf(timing)]; }
 
         void reserve(std::uint32_t frames)
         {
@@ -136,14 +103,14 @@ namespace Rtx
         ///
         /// **A loop over the rows and not a line per figure**, so every row is one sample longer
         /// for it: the rows are read across each other, a frame at a time.
-        void add(const FrameSpend& spend)
+        void add(const Rtx::FrameSpend& spend)
         {
-            for (const Timing timing : sTimings.values())
+            for (const Rtx::Timing timing : Rtx::sTimings.values())
                 at(timing).push_back(spend.at(timing));
         }
 
-        bool empty() const { return at(Timing::Frame).empty(); }
-        std::uint32_t size() const { return static_cast<std::uint32_t>(at(Timing::Frame).size()); }
+        bool empty() const { return at(Rtx::Timing::Frame).empty(); }
+        std::uint32_t size() const { return static_cast<std::uint32_t>(at(Rtx::Timing::Frame).size()); }
     };
 
     /// Writes `samples` to `path` as text, a frame a line and a row a column, headed by the rows'
@@ -205,7 +172,7 @@ namespace Rtx
         /// **One call per measured frame, whether or not that frame reported a zone.** The count
         /// it keeps is the denominator every share below is taken over, so a frame handed to the
         /// report and not to this would make each of them larger than the frame it describes.
-        void add(std::span<const GpuSpan> spans);
+        void add(std::span<const Rtx::GpuSpan> spans);
 
         /// Summarises what was gathered, the largest share of a frame first — which is the order
         /// the question "where did the frame go" wants read. Empty where no frame reported a zone.
@@ -264,9 +231,6 @@ namespace Rtx
 
     /// One zone in a report: what it cost the average frame, and — where it did not run in every
     /// frame — what it cost when it did, on how many of them.
-    ///
-    /// **One spelling for both hosts**, because the harness and the game print the same zones and a
-    /// figure read differently between the two reports is a difference read as a finding.
     std::string describeZone(const GpuZone& zone);
 
     /// The device's own account of the frame, shares of a frame only and largest first.

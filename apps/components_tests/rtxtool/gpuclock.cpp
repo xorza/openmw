@@ -2,9 +2,9 @@
 
 #include <gtest/gtest.h>
 
-#include <components/rtxbench/gpuclock.hpp>
+#include <apps/rtxtool/instruments/gpuclock.hpp>
 
-namespace Rtx
+namespace RtxTool
 {
     namespace
     {

@@ -5,7 +5,7 @@
 #include <cmath>
 #include <cstddef>
 
-namespace Rtx
+namespace RtxTool
 {
     std::uint32_t BenchSpan::getFrames(const float step) const
     {

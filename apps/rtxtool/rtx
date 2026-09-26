@@ -707,7 +707,7 @@ runRepeat() {
 # **What each kernel is once its constants are fixed, as one digest per tuple: `rtx <flavour>
 # kernels [--against=<file>]`.** The exact answer to "does this change move a vanilla frame",
 # asked of the shaders and not of a run: two runs are the driver's code, and its code of a module
-# is not a function of the module alone (`Rtx::DriverCache`). A module is specialized to each
+# is not a function of the module alone (`RtxTool::DriverCache`). A module is specialized to each
 # tuple of its boolean constants — a `uint` stays at its default — optimized so the branches
 # its constants decide are gone, stripped of its source and of constants nothing reads, and
 # digested by `openmw-rtx-spirv-digest`, which names every id by what it is and not by its number

@@ -10,7 +10,7 @@
 
 #include "scenedigest.hpp"
 
-namespace Rtx
+namespace RtxTool
 {
     namespace
     {
@@ -21,7 +21,7 @@ namespace Rtx
 
     DriverCache::DriverCache(const std::filesystem::path& shaders)
         : mRoot(shaders.parent_path() / (shaders.filename().string() + "-driver-cache"))
-        , mDirectory(mRoot / spellHash(digestShaders(shaders)))
+        , mDirectory(mRoot / spellHash(Rtx::digestShaders(shaders)))
     {
         std::filesystem::create_directories(mDirectory);
     }

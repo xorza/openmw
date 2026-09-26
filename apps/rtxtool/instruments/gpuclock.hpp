@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <string>
 
-namespace Rtx
+namespace RtxTool
 {
     /// The card's clock over a place's frames. A frame time without its clock is not a number to
     /// compare: under load this card is held near 1.8 GHz against 2.3 GHz cool, and the same build

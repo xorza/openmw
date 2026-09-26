@@ -19,19 +19,22 @@
 namespace Rtx
 {
     struct FrameResult;
+}
 
+namespace RtxTool
+{
     /// Which digested column of a frame moved: every channel of the trace at its binding, the
     /// composite after them, and last the numbers the frame handed the reconstruction.
-    inline constexpr std::size_t sTracedColumns = Shaders::DIGEST_IMAGES + 1;
+    inline constexpr std::size_t sTracedColumns = Rtx::Shaders::DIGEST_IMAGES + 1;
 
-    inline constexpr std::size_t sReconstructionColumn = Shaders::DIGEST_IMAGES;
+    inline constexpr std::size_t sReconstructionColumn = Rtx::Shaders::DIGEST_IMAGES;
 
     constexpr std::string_view tracedName(const std::size_t column)
     {
-        if (column < sChannelCount)
-            return channelName(static_cast<Channel>(column));
+        if (column < Rtx::sChannelCount)
+            return Rtx::channelName(static_cast<Rtx::Channel>(column));
 
-        return column == Shaders::DIGEST_COMPOSITE ? "composite" : "reconstruction";
+        return column == Rtx::Shaders::DIGEST_COMPOSITE ? "composite" : "reconstruction";
     }
 
     /// What a frame of a run computed and what it was handed, hashed, and what a previous run's
@@ -73,7 +76,7 @@ namespace Rtx
         /// digest and what reconstructed it. Nothing for a frame nobody noted, which a warm-up's
         /// is, and the row it landed on otherwise, so a caller keeping the picture itself can
         /// file it under the frame the report will name.
-        std::optional<Pictured> picture(const FrameResult& finished);
+        std::optional<Pictured> picture(const Rtx::FrameResult& finished);
 
         /// How many rows are noted and not yet pictured: what a stop that did not drain its ring
         /// leaves, and what `write` refuses to write.
@@ -147,10 +150,10 @@ namespace Rtx
             std::uint32_t mFrame = 0;
 
             /// What reconstructed the picture, so a comparison knows whose it is.
-            Upscale mUpscale = Upscale::Off;
+            Rtx::Upscale mUpscale = Rtx::Upscale::Off;
 
-            DigestWords mHash{};
-            std::array<DigestWords, sTracedColumns> mTraced{};
+            Rtx::DigestWords mHash{};
+            std::array<Rtx::DigestWords, sTracedColumns> mTraced{};
             ScenePartDigests mParts{};
 
             /// The renderer's own number for the frame, for `picture` alone; not written.

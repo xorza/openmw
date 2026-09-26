@@ -12,6 +12,7 @@
 #include <boost/program_options/value_semantic.hpp>
 #include <boost/program_options/variables_map.hpp>
 
+#include <apps/openmw/mwrender/rtx/rtxrun.hpp>
 #include <components/fallback/validate.hpp>
 #include <components/files/configurationmanager.hpp>
 #include <components/misc/constants.hpp>
@@ -20,7 +21,6 @@
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/surfaceview.hpp>
 #include <components/rtx/upscale.hpp>
-#include <components/rtxbench/benchspec.hpp>
 
 #include "film.hpp"
 #include "run.hpp"
@@ -270,7 +270,7 @@ namespace RtxTool
             std::format("how many seconds of world to run at each place. World and not wall: the world "
                         "steps 1/{} of a second per frame however long the frame took, so the {} seconds "
                         "nobody named are {} frames either way, and two builds render the same frames",
-                Rtx::sStepRate, sSecondsByDefault, Rtx::sStepRate * sSecondsByDefault));
+                MWRender::sStepRate, sSecondsByDefault, MWRender::sStepRate * sSecondsByDefault));
 
         option(otherThan(Verbs::Info | Verbs::View), "warmup", bpo::value<float>()->default_value(sWarmupByDefault),
             "how many seconds of world to draw and throw away before measuring, or after a film's "
@@ -415,7 +415,7 @@ namespace RtxTool
             "fly to it however far)");
         option(Verbs::Film, "plan", bpo::bool_switch(),
             "print the takes and the length of every segment, and why, then stop without drawing");
-        option(Verbs::Film, "fps", bpo::value<float>()->default_value(Rtx::sStepRate),
+        option(Verbs::Film, "fps", bpo::value<float>()->default_value(MWRender::sStepRate),
             "frames a second of film, which is also what the world steps by");
         option(Verbs::Film, "speed", bpo::value<float>()->default_value(pacing.mSpeed),
             std::format("world units a second the camera flies between two keys, {:.0f} metres a second "

@@ -8,8 +8,8 @@
 
 #include <apps/openmw/mwrender/rtx/framereport.hpp>
 #include <components/rtx/renderer.hpp>
-#include <components/rtxbench/frametimes.hpp>
 
+#include "instruments/frametimes.hpp"
 #include "model/benchrecord.hpp"
 #include "model/benchrun.hpp"
 
@@ -36,7 +36,7 @@ namespace RtxTool
     struct StopFacts
     {
         /// Every measured frame's figures, which only the frame series reads.
-        const Rtx::FrameSamples& mSamples;
+        const FrameSamples& mSamples;
 
         /// What the stop's route came to, which only `CrossingsAppend` reads.
         const Crossings& mCrossings;
@@ -49,7 +49,7 @@ namespace RtxTool
 
         /// What the frames' zones came to, what the hold's own clock read, and how long a hold
         /// the run asked for, which only `QueueHeld` reads.
-        std::span<const Rtx::GpuZone> mZones;
+        std::span<const GpuZone> mZones;
         const HoldTimes& mHold;
         double mHoldAskedMs = 0.0;
 
@@ -98,7 +98,7 @@ namespace RtxTool
         void writeCapture(const Writing& into, const std::filesystem::path& file);
 
         /// Every measured frame's figures, a frame a line.
-        void writeFrameTimes(const Writing& into, const std::filesystem::path& file, const Rtx::FrameSamples& samples);
+        void writeFrameTimes(const Writing& into, const std::filesystem::path& file, const FrameSamples& samples);
 
         /// What the renderer was handed, as `scene` reports it.
         void reportScene(const Writing& into);

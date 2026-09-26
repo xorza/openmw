@@ -68,7 +68,6 @@ apps/openmw                      the game: cells, references, physics, scripts, 
 
 Beside the stack:
   components/myguirtx            MyGUI's backend over Rtx::GuiRenderer
-  components/rtxbench            the instruments a measured run is taken with; knows no world
   apps/rtxtool                   the harness: openmw-rtxtool drives a real game headless
 ```
 
@@ -95,9 +94,8 @@ public `OPENMW_RTX` definition, read by `#ifdef OPENMW_RTX` in `mwrender/rendere
 |-----------------------------|------------------------|--------------------------------------------------------------|
 | `openmw-rtx`                | `components/rtx`       | `components`                                                  |
 | `openmw-rtx-vulkan`         | `components/rtxvulkan` | `openmw-rtx`; Vulkan, SDL2, VMA, NGX as `PRIVATE`             |
-| `openmw-rtx-bench`          | `components/rtxbench`  | `openmw-rtx`                                                  |
 | `openmw-rtx-mygui`          | `components/myguirtx`  | `openmw-rtx`, `components`                                    |
-| `openmw-rtxtool-lib`        | `apps/rtxtool`         | the three component libraries, `components`, Boost, SDL2      |
+| `openmw-rtxtool-lib`        | `apps/rtxtool`         | `openmw-rtx`, `openmw-rtx-vulkan`, `components`, Boost, SDL2  |
 | `openmw-rtxtool`            | `apps/rtxtool`         | `openmw-rtxtool-lib`, `openmw-lib`                            |
 | `openmw-rtx-spirv`          | `components/rtxvulkan` | `smhasher`; the SPIR-V headers as `PRIVATE`                   |
 | `openmw-rtx-spirv-pin`      | `components/rtxvulkan` | `openmw-rtx-spirv`                                            |
@@ -1196,14 +1194,16 @@ the sky at every frame, a monotone cubic Hermite spline per channel. The session
 runs the clock forward and holds the sky (`MWWorld::WeatherManager::holdWeather`) on every frame,
 and writes each measured frame as a numbered PNG, which ffmpeg then encodes.
 
-`components/rtxbench` holds the instruments both hosts share, because the game measures
-itself: the run's length, frame times and hashes, the scene digest, the texture sheet, the
-card's clock and who held the card, the driver's cache. It knows nothing about a world. What a
-run visits, what a place came to and how a run is recorded are the harness's own model, in
-`apps/rtxtool/model`; what a run decides before anything is built, `MWRender::RunSetup`, stands
-beside `MWRender::RtxSetup` in `mwrender/rtx/rtxrun.hpp`, which both hosts construct.
+The harness measures with its own instruments, in `apps/rtxtool/instruments`: frame times and
+hashes, the scene digest, the texture sheet, the card's clock and who held the card, the
+driver's cache. They know nothing about a world. What a run visits, what a place came to and how
+a run is recorded are the harness's model, in `apps/rtxtool/model`. The game measures nothing
+beyond its window title (`MWRender::FrameTimer`). What a run decides before anything is built,
+`MWRender::RunSetup`, stands beside `MWRender::RtxSetup` in `mwrender/rtx/rtxrun.hpp`, which both
+hosts construct, and with it the step a measured run takes unless it states one
+(`MWRender::sStepSeconds`).
 
-**The driver's cache of each shader set is its own.** `Rtx::DriverCache` points the driver at a
+**The driver's cache of each shader set is its own.** `RtxTool::DriverCache` points the driver at a
 directory beside the modules, named by their digest, and removes the one before it when a build
 changes them. It does not settle which code the driver runs, and nothing has to: the NVIDIA
 driver builds a launch again from its own profile and swaps it in at a frame of some processes,
@@ -1262,7 +1262,7 @@ the order declarations came in moves a digest.
 | the two hosts                                  | `mwrender/rtx/rtxrun.hpp`, `apps/rtxtool/session.hpp` |
 | the settings a player sees                     | `docs/source/reference/modding/settings/rtx.rst`, `files/settings-default.cfg` |
 | the build                                      | `components/rtx/build.cmake`, `components/rtxvulkan/CMakeLists.txt`, `CMakePresets.json`, `apps/rtxtool/rtx` |
-| the driver's cache of a shader set             | `components/rtxbench/drivercache.hpp`, `components/rtx/shaderdirectory.hpp` |
+| the driver's cache of a shader set             | `apps/rtxtool/instruments/drivercache.hpp`, `components/rtx/shaderdirectory.hpp` |
 | the pinned float arithmetic of every shader    | `components/rtxvulkan/spirvpin.hpp`, `components/rtx/shaders/pinning.h`  |
 | which kernels a change moved                   | `apps/rtxtool/rtx` (`kernels`), `components/rtxvulkan/spirvdigest.hpp`   |
 | the words                                      | `components/rtx/GLOSSARY.md`                                             |

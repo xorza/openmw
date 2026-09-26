@@ -11,6 +11,8 @@
 
 #include <osg/Vec3f>
 
+#include <apps/openmw/mwrender/rtx/rtxrun.hpp>
+
 #include "model/benchrun.hpp"
 #include "model/cameratrack.hpp"
 #include "run.hpp"
@@ -60,7 +62,7 @@ namespace RtxTool
     {
         /// How long one frame of the film stands for: the run's own step (`RunSetup::mStep`), which
         /// every length below is counted in frames by, and `--fps` is one over.
-        float mStep = Rtx::sStepSeconds;
+        float mStep = MWRender::sStepSeconds;
 
         /// World units a second the eye flies at between two keys.
         float mSpeed = 800.0f;
@@ -91,7 +93,7 @@ namespace RtxTool
         /// Which day a take stands on where its first key names none.
         int mDay = 0;
 
-        /// Seconds as a whole count of frames at the step, one at least: `Rtx::BenchSpan`'s count,
+        /// Seconds as a whole count of frames at the step, one at least: `BenchSpan`'s count,
         /// which is what the session turns a warm-up's seconds into.
         std::uint32_t framesOf(float seconds) const;
 

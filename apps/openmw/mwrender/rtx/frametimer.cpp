@@ -1,5 +1,6 @@
 #include "frametimer.hpp"
 
+#include <algorithm>
 #include <cstddef>
 #include <format>
 #include <optional>
@@ -9,6 +10,13 @@
 
 namespace MWRender
 {
+    namespace
+    {
+        /// How much frame time closes a second of the title. A second, so the figure moves as often
+        /// as a clock's.
+        constexpr double sSecondMs = 1000.0;
+    }
+
     std::optional<double> FrameTimer::enter(const std::chrono::steady_clock::time_point now)
     {
         const std::optional<double> since
@@ -29,7 +37,21 @@ namespace MWRender
 
     bool FrameTimer::addFrame(const double frameMs)
     {
-        return mRate.add(frameMs);
+        mSummedMs += frameMs;
+        mWorstMs = std::max(mWorstMs, frameMs);
+        ++mFrames;
+
+        if (mSummedMs < sSecondMs)
+            return false;
+
+        mSecondMeanMs = mSummedMs / mFrames;
+        mSecondWorstMs = mWorstMs;
+
+        mSummedMs = 0.0;
+        mWorstMs = 0.0;
+        mFrames = 0;
+
+        return true;
     }
 
     std::string_view FrameTimer::writeTitle(
@@ -38,7 +60,11 @@ namespace MWRender
         char* out = mTitle.data();
         const auto room = [&] { return static_cast<std::size_t>(mTitle.data() + mTitle.size() - 1 - out); };
 
-        out = std::format_to_n(out, room(), "OpenMW - {}", mRate.getText()).out;
+        out = std::format_to_n(out, room(), "OpenMW").out;
+        if (mSecondMeanMs > 0.0)
+            out = std::format_to_n(out, room(), " - {:.0f} fps, {:.1f} ms, worst {:.1f} ms", sSecondMs / mSecondMeanMs,
+                mSecondMeanMs, mSecondWorstMs)
+                      .out;
 
         // The newest frame's and not the second's, because the second is the rate's: a latency
         // averaged over a second would hide the frame the sleep let slip.

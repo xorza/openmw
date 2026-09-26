@@ -35,8 +35,6 @@
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/shaderdirectory.hpp>
 #include <components/rtx/surfaceview.hpp>
-#include <components/rtxbench/benchspec.hpp>
-#include <components/rtxbench/drivercache.hpp>
 #include <components/rtxvulkan/createrenderer.hpp>
 #include <components/sdlutil/vsyncmode.hpp>
 #include <components/settings/settings.hpp>
@@ -44,8 +42,10 @@
 
 #include "compare.hpp"
 #include "film.hpp"
+#include "instruments/drivercache.hpp"
 #include "model/benchrecord.hpp"
 #include "model/benchrun.hpp"
+#include "model/benchspec.hpp"
 #include "model/blockfile.hpp"
 #include "options.hpp"
 #include "run.hpp"
@@ -355,8 +355,8 @@ namespace RtxTool
         ///        than one is that command's to say.
         void measureFrames(Stop& stop, const bpo::variables_map& variables, const std::uint32_t frames = 1)
         {
-            stop.mSchedule.mSpec.mWarm = Rtx::BenchSpan{ .mSeconds = variables["warmup"].as<float>() };
-            stop.mSchedule.mSpec.mRun = Rtx::BenchSpan{ .mFrames = frames };
+            stop.mSchedule.mSpec.mWarm = BenchSpan{ .mSeconds = variables["warmup"].as<float>() };
+            stop.mSchedule.mSpec.mRun = BenchSpan{ .mFrames = frames };
         }
 
         /// What `policy` does to one place: the route and the track a command does not follow go,
@@ -411,13 +411,13 @@ namespace RtxTool
         ///
         /// **Frames win over seconds where both were named.** `--frames` is what a run that has to
         /// be exactly reproducible asks for, and `--seconds` is what a run being read asks for.
-        Rtx::BenchSpec specFrom(const bpo::variables_map& variables)
+        BenchSpec specFrom(const bpo::variables_map& variables)
         {
-            Rtx::BenchSpec spec;
+            BenchSpec spec;
             spec.mRun = variables["frames"].as<std::uint32_t>() > 0
-                ? Rtx::BenchSpan{ .mFrames = variables["frames"].as<std::uint32_t>() }
-                : Rtx::BenchSpan{ .mSeconds = variables["seconds"].as<float>() };
-            spec.mWarm = Rtx::BenchSpan{ .mSeconds = variables["warmup"].as<float>() };
+                ? BenchSpan{ .mFrames = variables["frames"].as<std::uint32_t>() }
+                : BenchSpan{ .mSeconds = variables["seconds"].as<float>() };
+            spec.mWarm = BenchSpan{ .mSeconds = variables["warmup"].as<float>() };
 
             return spec;
         }
@@ -483,9 +483,8 @@ namespace RtxTool
                 stops.push_back(stageOnePlace(command, framed));
             else
             {
-                stops = stopsFrom(
-                    chooseViews(loadViews(command.mResources / "rtx" / "views.cfg"), Rtx::splitNames(named)), variables,
-                    framed);
+                stops = stopsFrom(chooseViews(loadViews(command.mResources / "rtx" / "views.cfg"), splitNames(named)),
+                    variables, framed);
             }
 
             for (Stop& stop : stops)
@@ -542,7 +541,7 @@ namespace RtxTool
                 run.mSettled = suite->mSettled;
             }
             else
-                wanted = Rtx::splitNames(named);
+                wanted = splitNames(named);
 
             run.mViews = chooseViews(views, wanted);
             if (run.mViews.empty())
@@ -688,8 +687,8 @@ namespace RtxTool
             const SuiteRun run = chooseBenchViews(variables, command.mResources, "default");
             std::vector<Stop> stops = stopsFrom(run.mViews, variables, framed);
 
-            const Rtx::BenchSpec spec = specFrom(variables);
-            const std::vector<std::string> turn = Rtx::splitNames(variables["turn-weather"].as<std::string>());
+            const BenchSpec spec = specFrom(variables);
+            const std::vector<std::string> turn = splitNames(variables["turn-weather"].as<std::string>());
             const bool hashing = !variables["hashes"].as<std::string>().empty()
                 || !variables["against"].as<std::string>().empty() || !variables["pictures"].as<std::string>().empty();
 
@@ -747,8 +746,7 @@ namespace RtxTool
             // **A schedule with no end, because somebody is watching.** `--frames` closes it after
             // that many, which is how the window path gets exercised by something that cannot click.
             const std::uint32_t frames = variables["frames"].as<std::uint32_t>();
-            staged.mSchedule.mSpec.mRun
-                = Rtx::BenchSpan{ .mFrames = frames > 0 ? frames : Rtx::BenchSpan::sUntilClosed };
+            staged.mSchedule.mSpec.mRun = BenchSpan{ .mFrames = frames > 0 ? frames : BenchSpan::sUntilClosed };
             staged.mSchedule.mFreeCamera = true;
 
             std::vector<Stop> stops;
@@ -803,7 +801,7 @@ namespace RtxTool
 
                 // A route runs for as long as the line says, and ends where it arrives.
                 if (stop.mSchedule.mRoute.has_value())
-                    stop.mSchedule.mSpec.mRun = Rtx::BenchSpan{ .mSeconds = variables["seconds"].as<float>() };
+                    stop.mSchedule.mSpec.mRun = BenchSpan{ .mSeconds = variables["seconds"].as<float>() };
 
                 stop.mActions.mWalkTwice = true;
             }
@@ -1031,10 +1029,10 @@ namespace RtxTool
 
             // **Before any verb makes a device, because the driver reads where its cache is once.**
             // A cache of the shaders this run reads and of nothing else, beside them
-            // (`Rtx::DriverCache`).
+            // (`DriverCache`).
             const std::filesystem::path shaders
                 = Rtx::shaderDirectory(resources, variables["shader-source"].as<bool>());
-            const Rtx::DriverCache driverCache(shaders);
+            const DriverCache driverCache(shaders);
             driverCache.applyToDriver();
             driverCache.sweep();
 

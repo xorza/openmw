@@ -5,12 +5,12 @@
 
 #include <gtest/gtest.h>
 
+#include <apps/rtxtool/instruments/contactsheet.hpp>
 #include <components/rtx/texturedata.hpp>
-#include <components/rtxbench/contactsheet.hpp>
 
 #include "../rtx/testtexture.hpp"
 
-namespace Rtx
+namespace RtxTool
 {
     namespace
     {
@@ -22,13 +22,13 @@ namespace Rtx
         /// test format would not: there the file holds the light itself, and the sheet's byte and
         /// the frame's byte are answers to different questions.
         ///
-        /// `Testing::paintTwoTones` says what the texture is: 255 across its middle half under an
+        /// `Rtx::Testing::paintTwoTones` says what the texture is: 255 across its middle half under an
         /// estimate of 1.501, which is 0.66624 in light and encodes to 213 of 255. The pixel test
         /// in the renderer, `aTexturesPaintedLightIsDividedBackOutOfItsAlbedo`, works the same
         /// arithmetic for the same reason.
         TEST(RtxContactSheetTest, theSheetAppliesTheCorrectionTheFrameApplies)
         {
-            const Testing::TestTexture painted = Testing::paintTwoTones(32, 96);
+            const Rtx::Testing::TestTexture painted = Rtx::Testing::paintTwoTones(32, 96);
 
             const auto shownAt = [&](float strength, bool right) {
                 const ContactSheet sheet = drawContactSheet(std::span(&painted.mData, 1), strength);

@@ -6,10 +6,28 @@ set(RTXTOOL_FILES
     compare.hpp
     film.cpp
     film.hpp
+    instruments/cardwatch.cpp
+    instruments/cardwatch.hpp
+    instruments/contactsheet.cpp
+    instruments/contactsheet.hpp
+    instruments/drivercache.cpp
+    instruments/drivercache.hpp
+    instruments/framehashes.cpp
+    instruments/framehashes.hpp
+    instruments/frametimes.cpp
+    instruments/frametimes.hpp
+    instruments/gpuclock.cpp
+    instruments/gpuclock.hpp
+    instruments/nvml.cpp
+    instruments/nvml.hpp
+    instruments/scenedigest.cpp
+    instruments/scenedigest.hpp
     model/benchrecord.cpp
     model/benchrecord.hpp
     model/benchrun.cpp
     model/benchrun.hpp
+    model/benchspec.cpp
+    model/benchspec.hpp
     model/blockfile.cpp
     model/blockfile.hpp
     model/cameratrack.cpp
@@ -54,7 +72,6 @@ target_link_libraries(openmw-rtxtool-lib PUBLIC
     Boost::program_options
     SDL2::SDL2
     openmw-rtx
-    openmw-rtx-bench
     openmw-rtx-vulkan
     components
 )

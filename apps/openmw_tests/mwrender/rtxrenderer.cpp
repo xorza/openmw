@@ -13,11 +13,11 @@
 #include <osg/ref_ptr>
 #include <osgUtil/UpdateVisitor>
 
+#include <apps/openmw/mwrender/rtx/rtxrun.hpp>
 #include <components/resource/imagemanager.hpp>
 #include <components/resource/objectcache.hpp>
 #include <components/resource/resourcesystem.hpp>
 #include <components/resource/scenemanager.hpp>
-#include <components/rtxbench/benchspec.hpp>
 #include <components/testing/util.hpp>
 #include <components/vfs/manager.hpp>
 
@@ -105,7 +105,7 @@ namespace MWRender
             const std::unique_ptr<VFS::Manager> vfs = TestingOpenMW::createTestVFS({});
 
             Resource::ResourceSystem stepped(vfs.get(), sSetting, nullptr);
-            RtxRenderer::setResourceExpiry(stepped, Rtx::sStepSeconds);
+            RtxRenderer::setResourceExpiry(stepped, sStepSeconds);
             EXPECT_EQ(stepped.getSceneManager()->getExpiryDelay(), sForever);
             EXPECT_EQ(stepped.getImageManager()->getExpiryDelay(), sForever);
 

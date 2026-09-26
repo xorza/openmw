@@ -8,12 +8,21 @@
 #include <components/rtx/pacing.hpp>
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/renderer.hpp>
-#include <components/rtxbench/benchspec.hpp>
 
 namespace MWRender
 {
     struct FrameContext;
     struct FrameReport;
+
+    /// How fast a measured run steps the world unless it states otherwise, in frames a second: world
+    /// time and not wall time, so ten seconds is the same six hundred frames on a build that draws
+    /// them in four seconds and on one that takes twenty. Sixty because that is what the frame
+    /// budget is written against. A default a run states (`RunSetup::mStep`), and never read in
+    /// place of the step a run stated.
+    inline constexpr float sStepRate = 60.0f;
+
+    /// How long one of those frames stands for, which is what a measured frame tells the renderer.
+    inline constexpr float sStepSeconds = 1.0f / sStepRate;
 
     /// Everything a run decides once, before anything is built, that the game's renderer reads:
     /// the harness fills one from its command line and a played session from `[RTX]`. One struct
@@ -56,7 +65,7 @@ namespace MWRender
         /// What one frame of world counts for where a run turns seconds into frames — a span, a
         /// flight, a turning sky: the stated step, or where the wall decides, the step a measured
         /// run states by default.
-        float getWorldStep() const { return mStep.value_or(Rtx::sStepSeconds); }
+        float getWorldStep() const { return mStep.value_or(sStepSeconds); }
 
         /// Whether each walk waits for the cell it adopts, or nothing to let the frame clock
         /// decide. Settled is what makes two processes draw one picture; a run timing the

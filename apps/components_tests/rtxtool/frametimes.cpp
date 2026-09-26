@@ -11,62 +11,15 @@
 
 #include <gtest/gtest.h>
 
+#include <apps/rtxtool/instruments/frametimes.hpp>
 #include <components/rtx/framespend.hpp>
 #include <components/rtx/renderer.hpp>
-#include <components/rtxbench/frametimes.hpp>
 #include <components/testing/util.hpp>
 
 #include "../rtx/allocations.hpp"
 
-namespace Rtx
+namespace RtxTool
 {
-    namespace
-    {
-        /// A line closes on the frame that fills a second, describes exactly that second, and the
-        /// next second starts from nothing.
-        TEST(RtxFrameRateTest, aSecondOfFramesClosesOneLineAndTheNextStartsFromNothing)
-        {
-            FrameRate rate;
-            EXPECT_TRUE(rate.getText().empty()) << "nothing has closed";
-
-            // Ninety-nine frames of ten milliseconds are 990 ms, which is short of a second.
-            for (int at = 0; at < 99; ++at)
-                EXPECT_FALSE(rate.add(10.0)) << "frame " << at + 1 << " closed a line early";
-            EXPECT_TRUE(rate.getText().empty()) << "an open second has no line";
-
-            const std::size_t before = Testing::getAllocationCount();
-            const bool closed = rate.add(10.0);
-            const std::size_t spent = Testing::getAllocationCount() - before;
-
-            EXPECT_TRUE(closed) << "the hundredth frame is the second";
-            EXPECT_EQ(spent, 0u) << "closing a line reached the heap " << spent << " times";
-            EXPECT_EQ(rate.getText(), "100 fps, 10.0 ms, worst 10.0 ms");
-
-            // Forty frames alternating 5 and 45 ms sum to 20 x 5 + 20 x 45 = 1000 exactly, with a
-            // mean of 25 — so the worst is the figure the mean hides. The first thirty-nine are
-            // 20 x 5 + 19 x 45 = 955, which is still open.
-            for (int at = 0; at < 39; ++at)
-                EXPECT_FALSE(rate.add(at % 2 == 0 ? 5.0 : 45.0)) << "frame " << at + 1 << " of the second second";
-            EXPECT_EQ(rate.getText(), "100 fps, 10.0 ms, worst 10.0 ms") << "an open second leaves the line alone";
-
-            EXPECT_TRUE(rate.add(45.0));
-            EXPECT_EQ(rate.getText(), "40 fps, 25.0 ms, worst 45.0 ms")
-                << "the first second's worst did not carry over";
-
-            // A rate that does not divide a second: 117 x 8.5 = 994.5 is open and 118 x 8.5 = 1003
-            // closes, at 1000 / 8.5 = 117.6 frames a second rounded to the nearest whole one.
-            for (int at = 0; at < 117; ++at)
-                EXPECT_FALSE(rate.add(8.5));
-            EXPECT_TRUE(rate.add(8.5));
-            EXPECT_EQ(rate.getText(), "118 fps, 8.5 ms, worst 8.5 ms");
-
-            // One frame longer than a second is a second on its own: 1000 / 1500 rounds to one.
-            EXPECT_TRUE(rate.add(1500.0));
-            EXPECT_EQ(rate.getText(), "1 fps, 1500.0 ms, worst 1500.0 ms");
-        }
-    }
-
-    // What a fifo carries is `perffifo.cpp`, built where there is one; these two need none.
     namespace
     {
         TEST(RtxPerfControlTest, aRunThatIsNotBeingProfiledSaysNothingAndOpensNothing)
@@ -102,26 +55,26 @@ namespace Rtx
 
             // Two frames. The first waited 4.5 ms of its 10; the second, with nothing in flight
             // to wait for, waited nought and was held 0.75 ms by the driver before its input.
-            FrameSpend first;
-            first.at(Timing::Frame) = 10.0;
-            first.at(Timing::Wait) = 4.5;
-            first.at(Timing::Finish) = 4.75;
-            first.at(Timing::Trace) = 1.25;
+            Rtx::FrameSpend first;
+            first.at(Rtx::Timing::Frame) = 10.0;
+            first.at(Rtx::Timing::Wait) = 4.5;
+            first.at(Rtx::Timing::Finish) = 4.75;
+            first.at(Rtx::Timing::Trace) = 1.25;
             samples.add(first);
 
-            FrameSpend second;
-            second.at(Timing::Frame) = 8.0;
-            second.at(Timing::Trace) = 1.5;
-            second.at(Timing::Update) = 2.0;
-            second.at(Timing::Sleep) = 0.75;
+            Rtx::FrameSpend second;
+            second.at(Rtx::Timing::Frame) = 8.0;
+            second.at(Rtx::Timing::Trace) = 1.5;
+            second.at(Rtx::Timing::Update) = 2.0;
+            second.at(Rtx::Timing::Sleep) = 0.75;
             samples.add(second);
 
             EXPECT_EQ(samples.size(), 2u);
-            for (const Timing timing : sTimings.values())
-                EXPECT_EQ(samples.at(timing).size(), 2u) << sTimings.name(timing) << " is out of step";
-            EXPECT_DOUBLE_EQ(samples.at(Timing::Wait)[0], 4.5);
-            EXPECT_DOUBLE_EQ(samples.at(Timing::Wait)[1], 0.0);
-            EXPECT_DOUBLE_EQ(samples.at(Timing::Frame)[1], 8.0);
+            for (const Rtx::Timing timing : Rtx::sTimings.values())
+                EXPECT_EQ(samples.at(timing).size(), 2u) << Rtx::sTimings.name(timing) << " is out of step";
+            EXPECT_DOUBLE_EQ(samples.at(Rtx::Timing::Wait)[0], 4.5);
+            EXPECT_DOUBLE_EQ(samples.at(Rtx::Timing::Wait)[1], 0.0);
+            EXPECT_DOUBLE_EQ(samples.at(Rtx::Timing::Frame)[1], 8.0);
 
             const std::filesystem::path file = TestingOpenMW::outputFilePath("frame-times.txt");
             writeFrameTimes(file, samples);
@@ -139,7 +92,7 @@ namespace Rtx
 
             samples.clear();
             EXPECT_TRUE(samples.empty());
-            EXPECT_TRUE(samples.at(Timing::Wait).empty());
+            EXPECT_TRUE(samples.at(Rtx::Timing::Wait).empty());
         }
 
         /// The six figures a run is quoted by, against hand-computed values.
@@ -228,12 +181,12 @@ namespace Rtx
 
             // Ten frames. `trace` runs in all of them at 4 ms, and `blas` in the first two at
             // 20 ms and 10 ms — a pass that costs the run 30 ms and three of them per frame.
-            const GpuSpan trace{ .mName = "trace", .mMs = 4.0 };
+            const Rtx::GpuSpan trace{ .mName = "trace", .mMs = 4.0 };
             for (int frame = 0; frame < 10; ++frame)
             {
-                const GpuSpan blas{ .mName = "blas", .mMs = frame == 0 ? 20.0 : 10.0 };
-                const std::vector<GpuSpan> spans
-                    = frame < 2 ? std::vector<GpuSpan>{ blas, trace } : std::vector<GpuSpan>{ trace };
+                const Rtx::GpuSpan blas{ .mName = "blas", .mMs = frame == 0 ? 20.0 : 10.0 };
+                const std::vector<Rtx::GpuSpan> spans
+                    = frame < 2 ? std::vector<Rtx::GpuSpan>{ blas, trace } : std::vector<Rtx::GpuSpan>{ trace };
 
                 breakdown.add(spans);
             }
@@ -270,11 +223,11 @@ namespace Rtx
             breakdown.clear();
             EXPECT_TRUE(breakdown.empty());
 
-            const std::size_t before = Testing::getAllocationCount();
+            const std::size_t before = Rtx::Testing::getAllocationCount();
             for (int frame = 0; frame < 10; ++frame)
-                breakdown.add(std::span<const GpuSpan>(&trace, 1));
+                breakdown.add(std::span<const Rtx::GpuSpan>(&trace, 1));
             const std::span<const GpuZone> again = breakdown.summariseZones();
-            EXPECT_EQ(Testing::getAllocationCount() - before, 0u) << "a second stop grew a row or the summary";
+            EXPECT_EQ(Rtx::Testing::getAllocationCount() - before, 0u) << "a second stop grew a row or the summary";
 
             ASSERT_EQ(again.size(), 1u) << "a zone the first stop met and this one did not is not quoted";
             EXPECT_EQ(again[0].mName, "trace");
@@ -294,14 +247,14 @@ namespace Rtx
 
             // Two frames. The first builds in two batches of 3 ms and 5 ms, the second in one of
             // 4 ms, and `trace` runs once in each.
-            const std::vector<GpuSpan> batched{
-                GpuSpan{ .mName = "tlas", .mMs = 3.0 },
-                GpuSpan{ .mName = "trace", .mMs = 2.0 },
-                GpuSpan{ .mName = "tlas", .mMs = 5.0 },
+            const std::vector<Rtx::GpuSpan> batched{
+                Rtx::GpuSpan{ .mName = "tlas", .mMs = 3.0 },
+                Rtx::GpuSpan{ .mName = "trace", .mMs = 2.0 },
+                Rtx::GpuSpan{ .mName = "tlas", .mMs = 5.0 },
             };
-            const std::vector<GpuSpan> once{
-                GpuSpan{ .mName = "tlas", .mMs = 4.0 },
-                GpuSpan{ .mName = "trace", .mMs = 2.0 },
+            const std::vector<Rtx::GpuSpan> once{
+                Rtx::GpuSpan{ .mName = "tlas", .mMs = 4.0 },
+                Rtx::GpuSpan{ .mName = "trace", .mMs = 2.0 },
             };
 
             breakdown.add(batched);
@@ -326,8 +279,8 @@ namespace Rtx
         {
             GpuBreakdown breakdown;
 
-            const GpuSpan trace{ .mName = "trace", .mMs = 6.0 };
-            const std::vector<GpuSpan> one{ trace };
+            const Rtx::GpuSpan trace{ .mName = "trace", .mMs = 6.0 };
+            const std::vector<Rtx::GpuSpan> one{ trace };
             breakdown.add(one);
 
             // Three more frames the device wrote no timestamp for, which is what the first frames

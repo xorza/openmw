@@ -112,7 +112,7 @@ source_group(apps\\components-tests FILES ${UNITTEST_SRC_FILES})
 if (OPENMW_RTX)
     include(rtx/sources.cmake)
     openmw_rtx_expect_listed("${CMAKE_CURRENT_SOURCE_DIR}"
-        MATCHING rtx/*.cpp rtx/*.hpp rtxbench/*.cpp rtxbench/*.hpp rtxtool/*.cpp rtxtool/*.hpp
+        MATCHING rtx/*.cpp rtx/*.hpp rtxtool/*.cpp rtxtool/*.hpp
         LISTED ${RTX_TEST_FILES} ${RTX_TEST_SUPPORT} ${RTX_GPU_TEST_FILES} ${RTX_TEST_FILES_FIFO}
                ${RTX_TEST_FILES_UPSTREAM})
     list(APPEND UNITTEST_SRC_FILES ${RTX_TEST_FILES} ${RTX_TEST_SUPPORT} ${RTX_TEST_FILES_UPSTREAM})
@@ -129,7 +129,7 @@ target_link_libraries(components-tests
 if (OPENMW_RTX)
     # Vulkan itself as well, because these tests reach into the backend's own headers, which a host
     # does not: `build.cmake` says where it is found and why.
-    target_link_libraries(components-tests openmw-rtx openmw-rtx-bench
+    target_link_libraries(components-tests openmw-rtx
                           openmw-rtx-vulkan openmw-rtx-mygui openmw-rtxtool-lib openmw-rtx-spirv Vulkan::Vulkan)
 
     # The SPIR-V headers, for the tests that write a module word by word to hand the pinning.
@@ -152,7 +152,7 @@ if (OPENMW_RTX)
         GTest::GTest
         GMock::GMock
         components
-        openmw-rtx openmw-rtx-bench openmw-rtx-vulkan openmw-rtxtool-lib Vulkan::Vulkan
+        openmw-rtx openmw-rtx-vulkan openmw-rtxtool-lib Vulkan::Vulkan
     )
     openmw_rtx_sources(${RTX_GPU_TEST_FILES})
     target_compile_definitions(rtx-gpu-tests

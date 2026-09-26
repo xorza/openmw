@@ -11,13 +11,13 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include <components/rtxbench/frametimes.hpp>
+#include <apps/rtxtool/instruments/frametimes.hpp>
 #include <components/testing/util.hpp>
 
 // What `PerfControl` sends down a fifo, read off the fifo's other end. POSIX's alone, because a
 // fifo is: the tests that need none of one stay in `frametimes.cpp`, and Windows refuses the fifo
 // by name in `fifowin32.cpp`.
-namespace Rtx
+namespace RtxTool
 {
     namespace
     {

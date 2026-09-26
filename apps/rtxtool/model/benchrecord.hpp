@@ -10,6 +10,9 @@
 #include <string>
 #include <vector>
 
+#include <apps/rtxtool/instruments/cardwatch.hpp>
+#include <apps/rtxtool/instruments/frametimes.hpp>
+#include <apps/rtxtool/instruments/gpuclock.hpp>
 #include <components/rtx/frameextents.hpp>
 #include <components/rtx/framespend.hpp>
 #include <components/rtx/guirenderer.hpp>
@@ -17,10 +20,6 @@
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/upscale.hpp>
-
-#include <components/rtxbench/cardwatch.hpp>
-#include <components/rtxbench/frametimes.hpp>
-#include <components/rtxbench/gpuclock.hpp>
 
 namespace RtxTool
 {
@@ -150,29 +149,29 @@ namespace RtxTool
 
         /// The whole per-frame cost and the three shares of it worth telling apart, indexed by
         /// `Timing` — which is where the four are named and where a fifth would be.
-        std::array<Rtx::FrameTimes, Rtx::sTimingCount> mRows;
+        std::array<FrameTimes, Rtx::sTimingCount> mRows;
 
-        const Rtx::FrameTimes& at(const Rtx::Timing timing) const { return mRows[indexOf(timing)]; }
-        Rtx::FrameTimes& at(const Rtx::Timing timing) { return mRows[indexOf(timing)]; }
+        const FrameTimes& at(const Rtx::Timing timing) const { return mRows[indexOf(timing)]; }
+        FrameTimes& at(const Rtx::Timing timing) { return mRows[indexOf(timing)]; }
 
         /// The driver's own input-to-present figure over the measured frames, in milliseconds,
         /// where the driver paced the window — the one latency a player feels, measured by the
         /// only party that sees the whole pipeline. Nothing on a headless run, which is every
         /// measured one, and the JSON says so by leaving the key out.
-        std::optional<Rtx::FrameTimes> mLatency;
+        std::optional<FrameTimes> mLatency;
 
         /// What the device itself says each stretch of the frame cost, most expensive first. Empty
         /// where the device cannot write timestamps.
-        std::vector<Rtx::GpuZone> mGpu;
+        std::vector<GpuZone> mGpu;
 
         /// What the card was clocked at as this place ended. Every GPU figure above is at that
         /// clock, and two runs taken at different ones are not an A/B.
-        Rtx::GpuClock mClock;
+        GpuClock mClock;
 
         /// Who held the card through the place's measured frames. A place another process drew
         /// through carries that process's frames in every row above, and this is the line that
         /// says so.
-        Rtx::CardShare mCard;
+        CardShare mCard;
 
         /// What fraction of primary rays hit something, as a percentage. A place profiled facing a
         /// wall is fast and means nothing, and this is what says so without opening a window.

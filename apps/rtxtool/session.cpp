@@ -13,7 +13,6 @@
 #include <apps/openmw/mwrender/rtx/rtxrenderer.hpp>
 #include <apps/openmw/mwworld/ptr.hpp>
 #include <components/debug/debuglog.hpp>
-#include <components/rtxbench/benchspec.hpp>
 
 namespace RtxTool
 {

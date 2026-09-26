@@ -10,12 +10,12 @@
 
 #include <osg/Vec3f>
 
+#include <apps/openmw/mwrender/rtx/rtxrun.hpp>
 #include <components/rtx/renderer.hpp>
 
 #include "benchrecord.hpp"
+#include "benchspec.hpp"
 #include "cameratrack.hpp"
-#include <apps/openmw/mwrender/rtx/rtxrun.hpp>
-#include <components/rtxbench/benchspec.hpp>
 
 namespace RtxTool
 {
@@ -175,7 +175,7 @@ namespace RtxTool
     struct Schedule
     {
         /// How long it runs and how much of it is thrown away first.
-        Rtx::BenchSpec mSpec;
+        BenchSpec mSpec;
 
         std::optional<Route> mRoute;
 
@@ -207,7 +207,7 @@ namespace RtxTool
         std::filesystem::path mCapture;
 
         /// Where every measured frame's figures are written, a frame a line, or empty for none:
-        /// `Rtx::writeFrameTimes` says what for.
+        /// `writeFrameTimes` says what for.
         std::filesystem::path mFrameTimes;
 
         /// Whether the scene the renderer was handed is reported: what it holds, what it could not
@@ -278,7 +278,7 @@ namespace RtxTool
 
         /// What the renderer is made with: hidden and stepped unless the command says otherwise,
         /// because a run measures or writes a picture unless somebody is watching it.
-        MWRender::RunSetup mSetup{ .mHeadless = true, .mStep = Rtx::sStepSeconds };
+        MWRender::RunSetup mSetup{ .mHeadless = true, .mStep = MWRender::sStepSeconds };
 
         /// Whether the game's HUD is drawn over the picture. Off by default: a picture is of the
         /// world, and the bars and the compass are the played game's.

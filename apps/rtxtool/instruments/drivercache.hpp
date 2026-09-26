@@ -2,7 +2,7 @@
 
 #include <filesystem>
 
-namespace Rtx
+namespace RtxTool
 {
     /// Where the driver keeps its compiled code of one set of shaders: a directory of its own beside
     /// them, and only the current one.

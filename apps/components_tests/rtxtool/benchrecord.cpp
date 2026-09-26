@@ -83,7 +83,7 @@ namespace RtxTool
             // The driver's own latency stands under the rows only where the driver paced the
             // window, and the JSON leaves the key out otherwise.
             EXPECT_EQ(described.find("latency ms"), std::string::npos) << described;
-            place.mLatency = Rtx::FrameTimes{
+            place.mLatency = FrameTimes{
                 .mMean = 12.0, .mMedian = 11.5, .mP95 = 14.0, .mP99 = 15.0, .mBest = 9.0, .mWorst = 20.0
             };
             EXPECT_NE(describePlace(place).find("latency ms"), std::string::npos) << describePlace(place);
@@ -132,7 +132,7 @@ namespace RtxTool
             place.mCell = R"(C:\Vivec)";
             place.mWeather = "Clear";
             place.mCard.mViewed = true;
-            place.mCard.mHolders.push_back(Rtx::CardHolder{ .mName = "tab\there", .mSamples = 1 });
+            place.mCard.mHolders.push_back(CardHolder{ .mName = "tab\there", .mSamples = 1 });
 
             const std::filesystem::path path = TestingOpenMW::outputFilePath("escaped-record.json");
             writeJson(path, BenchHeader{ .mSuite = "a\nb" }, std::span(&place, 1));

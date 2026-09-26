@@ -179,7 +179,7 @@ find_package(Vulkan 1.4.333 REQUIRED)
 # **Two sets, because the driver keys its cache on the bytes it is handed.** Every renderer reads
 # the first, which holds no source: with the source in it, an edited comment was a module the
 # driver had never seen, compiled again, and profiled and replaced again over the next processes
-# (`Rtx::DriverCache`). The second is the same modules with their source, for a profiler that
+# (`RtxTool::DriverCache`). The second is the same modules with their source, for a profiler that
 # shows a shader's lines — the harness's `--shader-source`.
 set(RTX_SPIRV_DIR "${OPENMW_RESOURCES_ROOT}/resources/rtx/shaders")
 set(RTX_SPIRV_SOURCE_DIR "${OPENMW_RESOURCES_ROOT}/resources/rtx/shaders-source")
@@ -189,8 +189,6 @@ set(RTX_SPIRV_SOURCE_DIR "${OPENMW_RESOURCES_ROOT}/resources/rtx/shaders-source"
 set(RTX_SHADER_INCLUDE "${OpenMW_SOURCE_DIR}/components/rtx/shaders")
 
 add_subdirectory (components/rtx)
-add_subdirectory (components/rtxbench)
-
 add_subdirectory (components/rtxvulkan)
 add_subdirectory (components/myguirtx)
 

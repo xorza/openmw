@@ -12,7 +12,7 @@
 #include "gpuclock.hpp"
 #include "nvml.hpp"
 
-namespace Rtx
+namespace RtxTool
 {
     /// One process other than this one that held the card, and in how many of the driver's
     /// samples it did.
@@ -127,7 +127,7 @@ namespace Rtx
         Nvml mNvml;
 
         /// The lock over everything below but the worker.
-        Monitor mMonitor;
+        Rtx::Monitor mMonitor;
 
         GpuClock mClock;
         CardTally mTally;
@@ -138,7 +138,7 @@ namespace Rtx
         std::string mName;
 
         /// Last, for the reason `Worker` gives.
-        Worker mWorker;
+        Rtx::Worker mWorker;
     };
 
     /// The share as one line of the report, without the indent and the line break, so a caller

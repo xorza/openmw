@@ -16,7 +16,7 @@
 #include <components/rtx/texels.hpp>
 #include <components/rtx/texturedata.hpp>
 
-namespace Rtx
+namespace RtxTool
 {
     namespace
     {
@@ -48,7 +48,7 @@ namespace Rtx
         return sGap + index / sColumns * (sThumbnail + sGap);
     }
 
-    ContactSheet drawContactSheet(std::span<const TextureData> textures, float strength)
+    ContactSheet drawContactSheet(std::span<const Rtx::TextureData> textures, float strength)
     {
         if (textures.empty())
             return ContactSheet{};
@@ -68,16 +68,16 @@ namespace Rtx
         ContactSheet drawn{ std::move(sheet), width, height, count };
         for (std::uint32_t index = 0; index < count; ++index)
         {
-            const TextureData& texture = textures[index];
+            const Rtx::TextureData& texture = textures[index];
             const std::uint32_t left = drawn.getLeftOf(index);
             const std::uint32_t top = drawn.getTopOf(index);
 
             // The estimate the device makes as the texture arrives, made here for the sheet: the
             // host's `ShadingMap` is the reference that dispatch is held to, and neutral where the
             // texture is one nothing estimates.
-            const std::optional<ShadingMap> painted = texture.hasNeutralShading() || !(strength > 0.0f)
+            const std::optional<Rtx::ShadingMap> painted = texture.hasNeutralShading() || !(strength > 0.0f)
                 ? std::nullopt
-                : std::optional<ShadingMap>(std::in_place, texture);
+                : std::optional<Rtx::ShadingMap>(std::in_place, texture);
 
             for (std::uint32_t y = 0; y < sThumbnail; ++y)
                 for (std::uint32_t x = 0; x < sThumbnail; ++x)
@@ -123,11 +123,11 @@ namespace Rtx
     }
 
     ContactSheet writeContactSheet(
-        std::span<const TextureData> textures, const std::filesystem::path& out, float strength)
+        std::span<const Rtx::TextureData> textures, const std::filesystem::path& out, float strength)
     {
         ContactSheet sheet = drawContactSheet(textures, strength);
         if (sheet.mCount > 0)
-            writePng(out, sheet.mWidth, sheet.mHeight, sheet.mPixels);
+            Rtx::writePng(out, sheet.mWidth, sheet.mHeight, sheet.mPixels);
 
         return sheet;
     }

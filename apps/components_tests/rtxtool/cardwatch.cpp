@@ -6,11 +6,11 @@
 
 #include <gtest/gtest.h>
 
+#include <apps/rtxtool/instruments/cardwatch.hpp>
+#include <apps/rtxtool/instruments/nvml.hpp>
 #include <components/platform/process.hpp>
-#include <components/rtxbench/cardwatch.hpp>
-#include <components/rtxbench/nvml.hpp>
 
-namespace Rtx
+namespace RtxTool
 {
     namespace
     {

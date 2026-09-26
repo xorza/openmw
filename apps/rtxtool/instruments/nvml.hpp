@@ -9,7 +9,7 @@
 
 #include "gpuclock.hpp"
 
-namespace Rtx
+namespace RtxTool
 {
     /// One of the driver's own samples of a process on the card: which process, the driver's
     /// clock when it was taken, and whether the process had the SMs or the memory busy in it.

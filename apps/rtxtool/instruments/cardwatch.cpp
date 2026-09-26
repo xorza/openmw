@@ -5,7 +5,7 @@
 
 #include <components/platform/process.hpp>
 
-namespace Rtx
+namespace RtxTool
 {
     void CardTally::take(const std::uint32_t pid, const std::string_view name)
     {

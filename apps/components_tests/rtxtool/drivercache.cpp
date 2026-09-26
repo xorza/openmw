@@ -8,12 +8,12 @@
 
 #include <gtest/gtest.h>
 
+#include <apps/rtxtool/instruments/drivercache.hpp>
+#include <apps/rtxtool/instruments/scenedigest.hpp>
 #include <components/rtx/shaderdirectory.hpp>
-#include <components/rtxbench/drivercache.hpp>
-#include <components/rtxbench/scenedigest.hpp>
 #include <components/testing/util.hpp>
 
-namespace Rtx
+namespace RtxTool
 {
     namespace
     {
@@ -41,7 +41,7 @@ namespace Rtx
             const DriverCache cache(shaders);
 
             EXPECT_EQ(cache.getDirectory(),
-                shaders.parent_path() / "shaders-driver-cache" / spellHash(digestShaders(shaders)));
+                shaders.parent_path() / "shaders-driver-cache" / spellHash(Rtx::digestShaders(shaders)));
             EXPECT_TRUE(std::filesystem::is_directory(cache.getDirectory()));
         }
 

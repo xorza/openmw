@@ -33,7 +33,7 @@
 #include <components/rtx/texturetable.hpp>
 #include <components/vfs/pathutil.hpp>
 
-namespace Rtx
+namespace RtxTool
 {
     namespace
     {
@@ -53,20 +53,20 @@ namespace Rtx
             std::array<std::uint64_t, 2> mWords{};
         };
 
-        void addTexture(Digest& digest, const SceneDesc& scene, const Index texture)
+        void addTexture(Digest& digest, const Rtx::SceneDesc& scene, const Rtx::Index texture)
         {
-            digest.add(texture == sNoIndex);
-            if (texture == sNoIndex)
+            digest.add(texture == Rtx::sNoIndex);
+            if (texture == Rtx::sNoIndex)
                 return;
 
-            const TextureRow& row = scene.textures().getRows()[texture];
+            const Rtx::TextureRow& row = scene.textures().getRows()[texture];
             const std::string_view path = row.mPath.value();
             digest.add(std::span<const char>(path.data(), path.size()));
             digest.add(row.mWrap);
 
             // Only where it is not a colour, so a scene of colours digests as it did before a slot had
             // an encoding.
-            if (row.mEncoding != TextureEncoding::Colour)
+            if (row.mEncoding != Rtx::TextureEncoding::Colour)
                 digest.add(row.mEncoding);
         }
 
@@ -84,7 +84,7 @@ namespace Rtx
         /// and a field added to neither would have left the gate quietly.
         /// `sCounters` in `extractionstats.cpp` makes the same argument for the same reason.
         template <class Texture, class Layers, class Value>
-        void forEachMaterialField(const Material& material, Texture texture, Layers layers, Value value)
+        void forEachMaterialField(const Rtx::Material& material, Texture texture, Layers layers, Value value)
         {
             const auto& [kind, diffuse, emissive, environment, environmentColour, dark, darkUnit, normal, specular,
                 parallax, diffuseColour, emissiveColour, opacity, alphaRef, alphaMode, blend, vertexColour, twoSided,
@@ -98,12 +98,12 @@ namespace Rtx
 
             // The companion maps only where there are any, each behind its own tag, so a scene with
             // none digests as it did before a material could have them.
-            if (normal != sNoIndex)
+            if (normal != Rtx::sNoIndex)
             {
                 value(std::uint8_t{ 1 });
                 texture(normal);
             }
-            if (specular != sNoIndex)
+            if (specular != Rtx::sNoIndex)
             {
                 value(std::uint8_t{ 2 });
                 texture(specular);
@@ -133,26 +133,27 @@ namespace Rtx
             value(diffuseMean);
         }
 
-        void addMaterial(Digest& digest, const SceneDesc& scene, const Index index)
+        void addMaterial(Digest& digest, const Rtx::SceneDesc& scene, const Rtx::Index index)
         {
-            digest.add(index == sNoIndex);
-            if (index == sNoIndex)
+            digest.add(index == Rtx::sNoIndex);
+            if (index == Rtx::sNoIndex)
                 return;
 
-            const Material& material = scene.materials().getRows()[index];
+            const Rtx::Material& material = scene.materials().getRows()[index];
             forEachMaterialField(
-                material, [&](const Index slot) { addTexture(digest, scene, slot); },
-                [&](const Run& layers) { digest.add(layers.mCount); }, [&](const auto& field) { digest.add(field); });
+                material, [&](const Rtx::Index slot) { addTexture(digest, scene, slot); },
+                [&](const Rtx::Run& layers) { digest.add(layers.mCount); },
+                [&](const auto& field) { digest.add(field); });
 
             for (const Rtx::MaterialLayer& layer : material.mLayers.in(scene.materials().getLayers()))
             {
                 addTexture(digest, scene, layer.mDiffuse);
                 digest.add(layer.mDiffuseTransform);
                 digest.add(layer.mMaskTransform);
-                digest.add(maskOf(layer).in(scene.materials().getMasks()));
+                digest.add(Rtx::maskOf(layer).in(scene.materials().getMasks()));
 
                 // Only where a layer has them, each behind its tag, as a material's companion maps.
-                if (layer.mNormal != sNoIndex)
+                if (layer.mNormal != Rtx::sNoIndex)
                 {
                     digest.add(std::uint8_t{ 1 });
                     addTexture(digest, scene, layer.mNormal);
@@ -173,7 +174,7 @@ namespace Rtx
         ///
         /// **Whether it brought tangents is the one field left out**, and the meshes column adds it
         /// where it is set: a scene where no mesh has any digests to the words on record.
-        auto fieldsOf(const MeshRange& mesh)
+        auto fieldsOf(const Rtx::MeshRange& mesh)
         {
             const auto& [vertices, indices, secondTexCoords, unitStreams, tangents, shape, deformer, bindOffset,
                 poseOffset, posed, bounds]
@@ -182,14 +183,14 @@ namespace Rtx
                 posed, bounds);
         }
 
-        auto fieldsOf(const MeshInstance& instance)
+        auto fieldsOf(const Rtx::MeshInstance& instance)
         {
             const auto& [transform, mesh, material, opacity, instanceClass, stander] = instance;
             return std::tie(transform, mesh, material, opacity, instanceClass, stander);
         }
 
         /// Field by field, because the kind is a byte and the row carries padding after it.
-        auto fieldsOf(const Deformer& deformer)
+        auto fieldsOf(const Rtx::Deformer& deformer)
         {
             const auto& [kind, runs, influences, offsets, rows] = deformer;
             return std::tie(kind, runs, influences, offsets, rows);
@@ -213,7 +214,7 @@ namespace Rtx
         /// is hashed as the one span it would be laid out flat, so its words are the flat table's;
         /// past one block the spans chain through the seed, which no flat hash can say.
         template <class T>
-        void addBlocks(Digest& digest, const BlockedValues<T>& table)
+        void addBlocks(Digest& digest, const Rtx::BlockedValues<T>& table)
         {
             if (table.size() == 0)
                 digest.add(std::span<const T>());
@@ -221,7 +222,7 @@ namespace Rtx
         }
 
         template <class T>
-        std::array<std::uint64_t, 2> wordsOf(const BlockedValues<T>& table)
+        std::array<std::uint64_t, 2> wordsOf(const Rtx::BlockedValues<T>& table)
         {
             Digest whole;
             addBlocks(whole, table);
@@ -295,7 +296,7 @@ namespace Rtx
 
         /// A shape as the multiset of its triangles, each turned to start at its least corner so
         /// that the winding survives and the corner it happens to be spelt from does not.
-        Unordered digestTriangles(const SceneDesc& scene, const MeshRange& mesh)
+        Unordered digestTriangles(const Rtx::SceneDesc& scene, const Rtx::MeshRange& mesh)
         {
             Unordered triangles;
             const std::span<const std::uint32_t> indices = mesh.mIndices.in(scene.meshes().getIndices());
@@ -322,22 +323,22 @@ namespace Rtx
             return triangles;
         }
 
-        void addMesh(Digest& digest, const SceneDesc& scene, const Index index)
+        void addMesh(Digest& digest, const Rtx::SceneDesc& scene, const Rtx::Index index)
         {
-            const MeshRange& mesh = scene.meshes().getRows()[index];
+            const Rtx::MeshRange& mesh = scene.meshes().getRows()[index];
             digest.add(digestTriangles(scene, mesh).getWords());
             digest.add(scene.deformers().kindOf(mesh));
         }
     }
 
-    std::array<std::uint64_t, 2> digestScene(const SceneDesc& scene)
+    std::array<std::uint64_t, 2> digestScene(const Rtx::SceneDesc& scene)
     {
         Unordered whole;
 
         for (const Rtx::PlacementRow& row : scene.placements().getRows())
         {
             const Rtx::MeshInstance& instance = row.mInstance;
-            if (instance.mMesh == sNoIndex)
+            if (instance.mMesh == Rtx::sNoIndex)
                 continue;
 
             Digest placement;
@@ -365,7 +366,7 @@ namespace Rtx
             plume.add(emitter.mReach);
             plume.add(emitter.isAdditive());
             addTexture(plume, scene, emitter.mTexture);
-            const Rtx::Run run = spritesOf(emitter);
+            const Rtx::Run run = Rtx::spritesOf(emitter);
             for (const Rtx::Sprite& sprite : run.in(scene.sprites()))
             {
                 plume.add(sprite.mPosition);
@@ -384,21 +385,21 @@ namespace Rtx
     /// record pads with are whatever the allocator left, so a table read whole through one of them
     /// would call two identical runs different — once, unrepeatably, and for a reason nothing in
     /// the report could name.
-    static_assert(sizeof(Light) == 40, "Light is read whole and must have no padding");
-    static_assert(sizeof(Sprite) == 56, "Sprite is read whole and must have no padding");
-    static_assert(sizeof(SpriteEmitter) == 40, "SpriteEmitter is read whole and must have no padding");
-    static_assert(sizeof(Shaders::GpuBone) == 48, "GpuBone is read whole and must have no padding");
-    static_assert(sizeof(Shaders::GpuInfluence) == 8, "GpuInfluence is read whole and must have no padding");
+    static_assert(sizeof(Rtx::Light) == 40, "Rtx::Light is read whole and must have no padding");
+    static_assert(sizeof(Rtx::Sprite) == 56, "Rtx::Sprite is read whole and must have no padding");
+    static_assert(sizeof(Rtx::SpriteEmitter) == 40, "Rtx::SpriteEmitter is read whole and must have no padding");
+    static_assert(sizeof(Rtx::Shaders::GpuBone) == 48, "GpuBone is read whole and must have no padding");
+    static_assert(sizeof(Rtx::Shaders::GpuInfluence) == 8, "GpuInfluence is read whole and must have no padding");
 
     /// The same, for the field types the lists above hand over as one value each.
-    static_assert(sizeof(Run) == 8, "Run is read whole and must have no padding");
-    static_assert(sizeof(FoldedShape) == 3, "FoldedShape is read whole and must have no padding");
+    static_assert(sizeof(Rtx::Run) == 8, "Rtx::Run is read whole and must have no padding");
+    static_assert(sizeof(Rtx::FoldedShape) == 3, "Rtx::FoldedShape is read whole and must have no padding");
     static_assert(sizeof(osg::BoundingBoxf) == 24, "a bounding box is read whole and must have no padding");
     static_assert(sizeof(osg::Matrixf) == 64, "a transform is read whole and must have no padding");
 
-    void SceneDigester::digestVertices(const SceneDesc& scene)
+    void SceneDigester::digestVertices(const Rtx::SceneDesc& scene)
     {
-        const MeshTable& meshes = scene.meshes();
+        const Rtx::MeshTable& meshes = scene.meshes();
         const Vertices now{
             .mRevision = meshes.getRevision(),
             .mLengths = { meshes.getPositions().size(), meshes.getNormals().size(), meshes.getTexCoords().size(),
@@ -432,7 +433,8 @@ namespace Rtx
         ++mVertexHashes;
     }
 
-    const ScenePartDigests& SceneDigester::digest(const SceneDesc& scene, const Shaders::VisibilityConstants* frame)
+    const ScenePartDigests& SceneDigester::digest(
+        const Rtx::SceneDesc& scene, const Rtx::Shaders::VisibilityConstants* frame)
     {
         digestVertices(scene);
 
@@ -440,7 +442,7 @@ namespace Rtx
         // occupant left, so it is part of the state a run has to repeat — and a slot order that
         // moved is exactly what `digestScene` sums away.
         Column meshes(mScratch);
-        for (const MeshRange& mesh : scene.meshes().getRows())
+        for (const Rtx::MeshRange& mesh : scene.meshes().getRows())
         {
             meshes.addFields(fieldsOf(mesh));
             if (mesh.mTangents)
@@ -449,22 +451,23 @@ namespace Rtx
         take(ScenePart::Meshes, meshes.take());
 
         Column instances(mScratch);
-        for (const PlacementRow& row : scene.placements().getRows())
+        for (const Rtx::PlacementRow& row : scene.placements().getRows())
             instances.addFields(fieldsOf(row.mInstance));
         take(ScenePart::Instances, instances.take());
 
         Column previous(mScratch);
-        for (const PlacementRow& row : scene.placements().getRows())
+        for (const Rtx::PlacementRow& row : scene.placements().getRows())
             previous.add(row.mPrevious);
         take(ScenePart::Previous, previous.take());
 
         // The slot a texture landed in and the offset a layer run was placed at, because that is
         // what this digest is for: which table a material points into is what a layout is.
         Column materials(mScratch);
-        for (const Material& material : scene.materials().getRows())
+        for (const Rtx::Material& material : scene.materials().getRows())
             forEachMaterialField(
-                material, [&](const Index slot) { materials.add(slot); },
-                [&](const Run& layers) { materials.add(layers); }, [&](const auto& field) { materials.add(field); });
+                material, [&](const Rtx::Index slot) { materials.add(slot); },
+                [&](const Rtx::Run& layers) { materials.add(layers); },
+                [&](const auto& field) { materials.add(field); });
         take(ScenePart::Materials, materials.take());
 
         // **Each row as the 48 bytes it was before it could name a normal map, and the two fields
@@ -472,13 +475,13 @@ namespace Rtx
         // words on record. Bound whole, so a field added and not named here does not compile; the
         // padding is no field.
         Column layers(mScratch);
-        for (const MaterialLayer& layer : scene.materials().getLayers())
+        for (const Rtx::MaterialLayer& layer : scene.materials().getLayers())
         {
             const auto& [diffuse, maskOffset, maskWidth, maskHeight, diffuseTransform, maskTransform, normal, flags,
                 padding]
                 = layer;
             layers.addFields(std::tie(diffuse, maskOffset, maskWidth, maskHeight, diffuseTransform, maskTransform));
-            if (normal != sNoIndex)
+            if (normal != Rtx::sNoIndex)
                 layers.addFields(std::tuple(std::uint8_t{ 1 }, normal));
             if (flags != 0)
                 layers.addFields(std::tuple(std::uint8_t{ 2 }, flags));
@@ -495,7 +498,7 @@ namespace Rtx
         // while the materials naming them move. Each name ends with its length, so two names laid
         // end to end cannot be read as one.
         Column textures(mScratch);
-        for (const TextureRow& row : scene.textures().getRows())
+        for (const Rtx::TextureRow& row : scene.textures().getRows())
         {
             const std::string_view path = row.mPath.value();
             textures.add(std::span<const char>(path.data(), path.size()));
@@ -511,7 +514,7 @@ namespace Rtx
         take(ScenePart::Emitters, wordsOf(scene.emitters()));
 
         Column ripples(mScratch);
-        for (const RippleImpulse& impulse : scene.ripples())
+        for (const Rtx::RippleImpulse& impulse : scene.ripples())
         {
             ripples.add(impulse.mAt);
             ripples.add(impulse.mSize);
@@ -521,7 +524,7 @@ namespace Rtx
         // What poses a mesh that deforms, and the pose itself. The trace reads the posed vertices,
         // which live on the device and nowhere here, so these are what stands for them.
         Column deformers(mScratch);
-        for (const Deformer& deformer : scene.deformers().getDeformers())
+        for (const Rtx::Deformer& deformer : scene.deformers().getDeformers())
             deformers.addFields(fieldsOf(deformer));
         deformers.add(scene.deformers().getRuns());
         deformers.add(scene.deformers().getInfluences());
@@ -532,13 +535,13 @@ namespace Rtx
 
         // Whole, because the block is scalar-packed on every side, which `visibility.h` pins.
         take(ScenePart::Frame,
-            frame != nullptr ? wordsOf(std::span<const Shaders::VisibilityConstants>(frame, 1))
+            frame != nullptr ? wordsOf(std::span<const Rtx::Shaders::VisibilityConstants>(frame, 1))
                              : std::array<std::uint64_t, 2>{});
 
         return mParts;
     }
 
-    ScenePartDigests digestParts(const SceneDesc& scene)
+    ScenePartDigests digestParts(const Rtx::SceneDesc& scene)
     {
         SceneDigester once;
         return once.digest(scene);

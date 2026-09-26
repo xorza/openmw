@@ -10,15 +10,15 @@
 
 #include <gtest/gtest.h>
 
+#include <apps/rtxtool/instruments/framehashes.hpp>
 #include <components/rtx/error.hpp>
 #include <components/rtx/framedigest.hpp>
 #include <components/rtx/frameimage.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/upscale.hpp>
-#include <components/rtxbench/framehashes.hpp>
 #include <components/testing/util.hpp>
 
-namespace Rtx
+namespace RtxTool
 {
     namespace
     {
@@ -43,9 +43,9 @@ namespace Rtx
 
         /// The same for what the frame traced: every channel and the composite apart, and the
         /// numbers handed to the reconstruction fixed unless a test moves one.
-        FrameDigest digestOf(const std::uint64_t seed)
+        Rtx::FrameDigest digestOf(const std::uint64_t seed)
         {
-            FrameDigest digest;
+            Rtx::FrameDigest digest;
             for (std::size_t at = 0; at < digest.mImages.size(); ++at)
                 digest.mImages[at] = hashOf(seed + 1000 + at);
             digest.mJitterX = 0.25f;
@@ -59,12 +59,12 @@ namespace Rtx
         {
             std::uint64_t mFrame = 0;
             std::span<const std::uint8_t> mPixels;
-            FrameDigest mDigest;
-            Upscale mUpscale = Upscale::Off;
+            Rtx::FrameDigest mDigest;
+            Rtx::Upscale mUpscale = Rtx::Upscale::Off;
 
-            FrameResult result() const
+            Rtx::FrameResult result() const
             {
-                FrameResult finished;
+                Rtx::FrameResult finished;
                 finished.mFrame = mFrame;
                 finished.mPixels = mPixels;
                 finished.mDigest = mDigest;
@@ -74,22 +74,22 @@ namespace Rtx
         };
 
         void add(FrameHashes& run, const std::uint32_t frame, const std::span<const std::uint8_t> pixels,
-            const ScenePartDigests& parts, const FrameDigest& digest = digestOf(100),
-            const Upscale upscale = Upscale::Off)
+            const ScenePartDigests& parts, const Rtx::FrameDigest& digest = digestOf(100),
+            const Rtx::Upscale upscale = Rtx::Upscale::Off)
         {
             run.note("somewhere", frame, frame, parts);
             run.picture(Finished{ frame, pixels, digest, upscale }.result());
         }
 
         FrameHashes runOf(const ScenePartDigests& parts, const std::span<const std::uint8_t> pixels,
-            const FrameDigest& digest = digestOf(100), const Upscale upscale = Upscale::Off)
+            const Rtx::FrameDigest& digest = digestOf(100), const Rtx::Upscale upscale = Rtx::Upscale::Off)
         {
             FrameHashes run;
             add(run, 1, pixels, parts, digest, upscale);
             return run;
         }
 
-        FrameHashes plainRun(const Upscale upscale = Upscale::Off)
+        FrameHashes plainRun(const Rtx::Upscale upscale = Rtx::Upscale::Off)
         {
             return runOf(partsOf(100), sPixels, digestOf(100), upscale);
         }
@@ -139,8 +139,9 @@ namespace Rtx
 
         TEST(RtxFrameHashesTest, aPictureThatMovedPastANetworkIsReportedAndNeverAVerdict)
         {
-            const FrameHashes::ViewDifference difference = onlyView(
-                runOf(partsOf(100), sOtherPixels, digestOf(100), Upscale::Quality).against(plainRun(Upscale::Quality)));
+            const FrameHashes::ViewDifference difference
+                = onlyView(runOf(partsOf(100), sOtherPixels, digestOf(100), Rtx::Upscale::Quality)
+                               .against(plainRun(Rtx::Upscale::Quality)));
 
             EXPECT_TRUE(difference.mDiffering.empty()) << "the picture is the network's";
             EXPECT_EQ(difference.mReconstructedDiffering, std::vector<std::uint32_t>{ 1u });
@@ -154,7 +155,7 @@ namespace Rtx
             // And either run past a network is enough: a reference drawn without one and a run
             // drawn with one are two configurations, which is its own finding.
             const FrameHashes::ViewDifference mixed
-                = onlyView(runOf(partsOf(100), sOtherPixels, digestOf(100), Upscale::Quality).against(plainRun()));
+                = onlyView(runOf(partsOf(100), sOtherPixels, digestOf(100), Rtx::Upscale::Quality).against(plainRun()));
             EXPECT_TRUE(mixed.mDiffering.empty());
             EXPECT_EQ(mixed.mReconstructedDiffering, std::vector<std::uint32_t>{ 1u });
             EXPECT_EQ(mixed.mUpscaledDiffering, 1u);
@@ -165,12 +166,12 @@ namespace Rtx
 
         TEST(RtxFrameHashesTest, aTraceThatMovedIsTheVerdictWhateverThePictureDid)
         {
-            FrameDigest moved = digestOf(100);
-            moved.mImages[bindingOf(Channel::Albedo)] = hashOf(4242);
+            Rtx::FrameDigest moved = digestOf(100);
+            moved.mImages[Rtx::bindingOf(Rtx::Channel::Albedo)] = hashOf(4242);
 
             // The same picture, past a network: the trace column alone says the run moved.
-            const FrameHashes::ViewDifference difference
-                = onlyView(runOf(partsOf(100), sPixels, moved, Upscale::Quality).against(plainRun(Upscale::Quality)));
+            const FrameHashes::ViewDifference difference = onlyView(
+                runOf(partsOf(100), sPixels, moved, Rtx::Upscale::Quality).against(plainRun(Rtx::Upscale::Quality)));
 
             EXPECT_EQ(difference.mTraceDiffering, std::vector<std::uint32_t>{ 1u });
             EXPECT_TRUE(difference.mDiffering.empty());
@@ -178,7 +179,7 @@ namespace Rtx
             EXPECT_FALSE(difference.same());
 
             for (std::size_t column = 0; column < sTracedColumns; ++column)
-                EXPECT_EQ(difference.mTracedDiffering[column], column == bindingOf(Channel::Albedo) ? 1u : 0u)
+                EXPECT_EQ(difference.mTracedDiffering[column], column == Rtx::bindingOf(Rtx::Channel::Albedo) ? 1u : 0u)
                     << tracedName(column);
 
             const std::string report = describeDifference(difference);
@@ -193,13 +194,13 @@ namespace Rtx
         /// which stands somewhere else, is never compared with it.
         TEST(RtxFrameHashesTest, aStillWhoseDepthOrMotionMovedNamesTheFirstFrameThatDid)
         {
-            FrameDigest lit = digestOf(100);
-            lit.mImages[bindingOf(Channel::Direct)] = hashOf(4242);
-            lit.mImages[bindingOf(Channel::Indirect)] = hashOf(4243);
-            FrameDigest deeper = lit;
-            deeper.mImages[bindingOf(Channel::Depth)] = hashOf(4244);
-            FrameDigest moving = digestOf(100);
-            moving.mImages[bindingOf(Channel::Motion)] = hashOf(4245);
+            Rtx::FrameDigest lit = digestOf(100);
+            lit.mImages[Rtx::bindingOf(Rtx::Channel::Direct)] = hashOf(4242);
+            lit.mImages[Rtx::bindingOf(Rtx::Channel::Indirect)] = hashOf(4243);
+            Rtx::FrameDigest deeper = lit;
+            deeper.mImages[Rtx::bindingOf(Rtx::Channel::Depth)] = hashOf(4244);
+            Rtx::FrameDigest moving = digestOf(100);
+            moving.mImages[Rtx::bindingOf(Rtx::Channel::Motion)] = hashOf(4245);
 
             FrameHashes steady;
             add(steady, 1, sPixels, partsOf(100));
@@ -229,7 +230,7 @@ namespace Rtx
 
         TEST(RtxFrameHashesTest, whatTheFrameHandedTheReconstructionIsAColumnOfItsOwn)
         {
-            FrameDigest jittered = digestOf(100);
+            Rtx::FrameDigest jittered = digestOf(100);
             jittered.mJitterX = -jittered.mJitterX;
 
             const FrameHashes::ViewDifference difference
@@ -237,11 +238,11 @@ namespace Rtx
 
             EXPECT_EQ(difference.mTraceDiffering, std::vector<std::uint32_t>{ 1u });
             EXPECT_EQ(difference.mTracedDiffering[sReconstructionColumn], 1u);
-            EXPECT_EQ(difference.mTracedDiffering[Shaders::DIGEST_COMPOSITE], 0u) << "the images were the same";
+            EXPECT_EQ(difference.mTracedDiffering[Rtx::Shaders::DIGEST_COMPOSITE], 0u) << "the images were the same";
             EXPECT_NE(describeDifference(difference).find("reconstruction 1"), std::string::npos)
                 << describeDifference(difference);
 
-            FrameDigest reset = digestOf(100);
+            Rtx::FrameDigest reset = digestOf(100);
             reset.mReset = 1;
             EXPECT_EQ(onlyView(runOf(partsOf(100), sPixels, reset).against(plainRun())).mTraceDiffering,
                 std::vector<std::uint32_t>{ 1u })
@@ -253,21 +254,21 @@ namespace Rtx
             const std::filesystem::path file = TestingOpenMW::outputFilePath("hashes-test.csv");
             std::filesystem::remove(file);
 
-            plainRun(Upscale::Quality).write(file);
+            plainRun(Rtx::Upscale::Quality).write(file);
             const FrameHashes read = FrameHashes::read(file);
 
             ASSERT_EQ(read.frameCount(), 1u);
 
-            const FrameHashes::ViewDifference against = onlyView(plainRun(Upscale::Quality).against(read));
+            const FrameHashes::ViewDifference against = onlyView(plainRun(Rtx::Upscale::Quality).against(read));
             EXPECT_TRUE(against.same());
             EXPECT_TRUE(against.mSceneDiffering.empty());
             EXPECT_EQ(against.mUpscaledDiffering, 0u) << "what reconstructed the picture survived the file";
 
             // Every column comes back: a run against the file that moved one is told so.
-            FrameDigest moved = digestOf(100);
-            moved.mImages[Shaders::DIGEST_COMPOSITE] = hashOf(4242);
-            EXPECT_EQ(onlyView(runOf(partsOf(100), sPixels, moved, Upscale::Quality).against(read))
-                          .mTracedDiffering[Shaders::DIGEST_COMPOSITE],
+            Rtx::FrameDigest moved = digestOf(100);
+            moved.mImages[Rtx::Shaders::DIGEST_COMPOSITE] = hashOf(4242);
+            EXPECT_EQ(onlyView(runOf(partsOf(100), sPixels, moved, Rtx::Upscale::Quality).against(read))
+                          .mTracedDiffering[Rtx::Shaders::DIGEST_COMPOSITE],
                 1u);
             EXPECT_EQ(onlyView(plainRun().against(read)).mUpscaledDiffering, 1u);
 
@@ -355,7 +356,7 @@ namespace Rtx
             out << header << '\n' << second << '\n' << first << '\n';
             out.close();
 
-            EXPECT_THROW(FrameHashes::read(file), InputError) << "frame 2 before frame 1 of one view";
+            EXPECT_THROW(FrameHashes::read(file), Rtx::InputError) << "frame 2 before frame 1 of one view";
             std::filesystem::remove(file);
         }
 
@@ -369,7 +370,7 @@ namespace Rtx
                 out << "somewhere,1," << std::string(32, 'a') << ',' << std::string(32, 'b') << '\n';
             }
 
-            EXPECT_THROW(FrameHashes::read(file), InputError);
+            EXPECT_THROW(FrameHashes::read(file), Rtx::InputError);
             std::filesystem::remove(file);
         }
     }

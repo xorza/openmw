@@ -79,22 +79,22 @@ set(RTX_TEST_FILES
     rtx/wavecascade.cpp
     rtx/wavespectrum.cpp
     rtx/worker.cpp
-    rtxbench/benchspec.cpp
-    rtxbench/cardwatch.cpp
-    rtxbench/contactsheet.cpp
-    rtxbench/drivercache.cpp
-    rtxbench/framehashes.cpp
-    rtxbench/frametimes.cpp
-    rtxbench/gpuclock.cpp
-    rtxbench/scenedigest.cpp
     rtxtool/benchrecord.cpp
     rtxtool/benchrun.cpp
+    rtxtool/benchspec.cpp
     rtxtool/blockfile.cpp
     rtxtool/cameratrack.cpp
+    rtxtool/cardwatch.cpp
     rtxtool/compare.cpp
+    rtxtool/contactsheet.cpp
+    rtxtool/drivercache.cpp
     rtxtool/film.cpp
+    rtxtool/framehashes.cpp
+    rtxtool/frametimes.cpp
+    rtxtool/gpuclock.cpp
     rtxtool/options.cpp
     rtxtool/run.cpp
+    rtxtool/scenedigest.cpp
     sky/skyclock.cpp
     sky/sundisc.cpp
     sky/timeofday.cpp
@@ -171,7 +171,7 @@ set(RTX_GPU_TEST_FILES
 
 
 # What is read off a fifo, where the platform has one.
-set(RTX_TEST_FILES_FIFO rtxbench/perffifo.cpp)
+set(RTX_TEST_FILES_FIFO rtxtool/perffifo.cpp)
 if (NOT WIN32)
     list(APPEND RTX_TEST_FILES ${RTX_TEST_FILES_FIFO})
 endif()

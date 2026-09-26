@@ -63,9 +63,9 @@ namespace RtxTool
         if (!request.mAgainst.empty())
         {
             mReport += std::format("\nagainst {}\n", Files::pathToUnicodeString(request.mAgainst));
-            for (const Rtx::FrameHashes::ViewDifference& difference : mHashes.against(mReference))
+            for (const FrameHashes::ViewDifference& difference : mHashes.against(mReference))
             {
-                mReport += std::format("  {:<28} {}\n", difference.mView, Rtx::describeDifference(difference));
+                mReport += std::format("  {:<28} {}\n", difference.mView, describeDifference(difference));
                 if (!difference.same())
                     fail();
             }

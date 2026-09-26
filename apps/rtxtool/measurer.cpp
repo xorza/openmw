@@ -21,12 +21,12 @@
 #include <components/rtx/framespend.hpp>
 #include <components/rtx/skylight.hpp>
 #include <components/rtx/texels.hpp>
-#include <components/rtxbench/benchspec.hpp>
-#include <components/rtxbench/framehashes.hpp>
-#include <components/rtxbench/gpuclock.hpp>
 
 #include "film.hpp"
+#include "instruments/framehashes.hpp"
+#include "instruments/gpuclock.hpp"
 #include "model/benchrun.hpp"
+#include "model/benchspec.hpp"
 #include "model/runrecord.hpp"
 #include "stopwriter.hpp"
 
@@ -52,7 +52,7 @@ namespace RtxTool
 
         // **From here and not from the first frame**, because the window before the first stop
         // is the load, at the card's idle clock, where a desktop that is drawing shows plainest;
-        // `Rtx::CardWatch` says why.
+        // `CardWatch` says why.
         mCardWatch.watch();
     }
 
@@ -87,9 +87,9 @@ namespace RtxTool
             // **What the window before answered is said once, ahead of the first place.** A
             // desktop that was drawing while the run loaded was caught in nearly every sample,
             // and every place's own line then reads against it.
-            const Rtx::CardShare before = mCardWatch.start();
+            const CardShare before = mCardWatch.start();
             if (mRecord.empty() && before.mViewed)
-                mRecord.note(std::format("before the first stop, {}\n", Rtx::describeCard(before)));
+                mRecord.note(std::format("before the first stop, {}\n", describeCard(before)));
 
             mProfiling.enable();
 
@@ -180,7 +180,7 @@ namespace RtxTool
     void Measurer::answered(const Stop& stop, const Rtx::FrameResult& finished, const Rtx::FrameExtents& extents)
     {
         // A frame the warm-up drew: its picture has no row and its figures are nobody's.
-        const Rtx::BenchSpec& spec = stop.mSchedule.mSpec;
+        const BenchSpec& spec = stop.mSchedule.mSpec;
         if (mProgress.mSeen <= spec.getWarmup(mRequest.mSetup.getWorldStep()) || spec.mRun.isUntilClosed()
             || finished.mFrame < mProgress.mFirstMeasured)
             return;
@@ -234,7 +234,7 @@ namespace RtxTool
         if (finished.mPixels.empty())
             return;
 
-        const std::optional<Rtx::FrameHashes::Pictured> row = mRecord.getHashes().picture(finished);
+        const std::optional<FrameHashes::Pictured> row = mRecord.getHashes().picture(finished);
         if (!row.has_value() || mRequest.mPictures.empty())
             return;
 
@@ -251,7 +251,7 @@ namespace RtxTool
 
         mProfiling.disable();
 
-        const Rtx::CardReading card = mCardWatch.stop();
+        const CardReading card = mCardWatch.stop();
         BenchPlace& place = mProgress.mPlace;
         place.mClock = card.mClock;
         place.mCard = card.mShare;
@@ -299,7 +299,7 @@ namespace RtxTool
         }
 
         // Summarised ahead of the writer, whose checks read the zones, and kept for the place.
-        const std::span<const Rtx::GpuZone> zones = mProgress.mGpu.summariseZones();
+        const std::span<const GpuZone> zones = mProgress.mGpu.summariseZones();
 
         writer.write(context, report, stop.mActions,
             StopFacts{
@@ -323,9 +323,9 @@ namespace RtxTool
         place.mFrames = mProgress.mSamples.size();
         place.mWallSeconds = mProgress.mWallMs / 1000.0;
         for (std::size_t at = 0; at < Rtx::sTimingCount; ++at)
-            place.mRows[at] = Rtx::summarise(mProgress.mSamples.mRows[at]);
+            place.mRows[at] = summarise(mProgress.mSamples.mRows[at]);
         if (!mProgress.mLatencyMs.empty())
-            place.mLatency = Rtx::summarise(mProgress.mLatencyMs);
+            place.mLatency = summarise(mProgress.mLatencyMs);
         place.mTravelled = travelled;
         place.mScene = renderer.getSceneStats();
         place.mMemory = renderer.getMemoryReport();

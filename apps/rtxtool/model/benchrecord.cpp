@@ -53,7 +53,7 @@ namespace RtxTool
 
         /// Null where nothing answered, so a record taken on a machine with no driver library says
         /// it carries no clock rather than claiming one of zero.
-        std::string asJson(const Rtx::GpuClock& clock)
+        std::string asJson(const GpuClock& clock)
         {
             if (!clock.mRead)
                 return "null";
@@ -61,13 +61,13 @@ namespace RtxTool
             return std::format(
                 R"({{"lowestMhz": {}, "highestMhz": {}, "memoryMhz": {}, "temperatureC": {}, "throttle": {}}})",
                 clock.mLowestMhz, clock.mHighestMhz, clock.mMemoryMhz, clock.mTemperatureC,
-                asJson(Rtx::describeThrottle(clock.mThrottleMask)));
+                asJson(describeThrottle(clock.mThrottleMask)));
         }
 
         /// Null where nothing looked, for the same reason; and in the record at all because a
         /// record is what a run on another commit is read against, and a run another process
         /// drew through is not the same run.
-        std::string asJson(const Rtx::CardShare& card)
+        std::string asJson(const CardShare& card)
         {
             if (!card.mViewed)
                 return "null";
@@ -144,7 +144,7 @@ namespace RtxTool
                 crossings.mCount, crossings.mRebuilds, crossings.mWorstMs, crossings.mTotalMs);
         }
 
-        std::string asJson(const Rtx::FrameTimes& times)
+        std::string asJson(const FrameTimes& times)
         {
             return std::format(
                 R"({{"median": {:.4f}, "mean": {:.4f}, "p95": {:.4f}, "p99": {:.4f}, "best": {:.4f}, "worst": {:.4f}}})",
@@ -154,7 +154,7 @@ namespace RtxTool
         /// **The counts as well as the times**, because a zone's distribution is over the frames
         /// that ran it: without them a record cannot tell a pass that costs the frame a tenth of a
         /// millisecond from one that costs seven every sixtieth frame.
-        std::string asJson(const Rtx::GpuZone& zone)
+        std::string asJson(const GpuZone& zone)
         {
             return std::format(R"({{"shareMs": {:.4f}, "frames": {}, "ofFrames": {}, "times": {}}})", zone.mShareMs,
                 zone.mFrames, zone.mOfFrames, asJson(zone.mTimes));
@@ -266,27 +266,27 @@ namespace RtxTool
             out += std::format("  {:.2f} frames in flight at a submit, {} at the least\n", place.mOverlap.getMean(),
                 place.mOverlap.mLeast);
 
-        out += Rtx::describeHeadings();
+        out += describeHeadings();
         for (const Rtx::Timing timing : Rtx::sTimings.values())
-            out += Rtx::describeTimes(std::format("{} ms", Rtx::sTimings.name(timing)), place.mRows[indexOf(timing)]);
+            out += describeTimes(std::format("{} ms", Rtx::sTimings.name(timing)), place.mRows[indexOf(timing)]);
 
         // The driver's figure under the host's rows, in the same columns: the one number a player
         // feels, from the only party that sees the whole of the pipeline. Only where the driver
         // paced the window.
         if (place.mLatency.has_value())
-            out += Rtx::describeTimes("latency ms", *place.mLatency);
+            out += describeTimes("latency ms", *place.mLatency);
 
         // **The device's own account of the same frame, one figure each.** Six distributions would
         // be a wall; what this row answers is "which of them is the expensive one", and the row
         // above already says how much the whole frame varies. Each figure is the zone's share of
         // the average frame, so the row sums to the device's part of it and a pass that only runs
         // at a crossing says so beside its own share.
-        out += Rtx::describeZones(place.mGpu);
-        out += Rtx::describeClock(place.mClock);
+        out += describeZones(place.mGpu);
+        out += describeClock(place.mClock);
 
         // Under the clock, because it is the other premise every figure above rests on: a place
         // another process drew through is the desktop's reading and not the renderer's.
-        out += "  " + Rtx::describeCard(place.mCard) + '\n';
+        out += "  " + describeCard(place.mCard) + '\n';
 
         // **Only for a route, because a place that stands still has nothing to say here.** The
         // worst is the one to read: a crossing is a dropped frame, and an average over six hundred
