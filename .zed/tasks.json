@@ -32,6 +32,17 @@
     "reveal": "always",
     "tags": ["rtx-view"]
   },
+  // Nivalis, a Tamriel Rebuilt town the M[FR] profile carries. `--weather` is set over the region
+  // the town stands in, so no region id is named here.
+  {
+    "label": "RTX: Nivalis in snow, M[FR] (release)",
+    "command": "apps/rtxtool/rtx release view --size=2560x1440 --cell=Nivalis --weather=Snow --replace=config --config=\"$HOME/.config/openmw-mfr\"",
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": true,
+    "reveal": "always",
+    "tags": ["rtx-view"]
+  },
   // Vanilla content under the PBR retextures in /home/Games/Morrowind-PBR/mods, which
   // `~/.config/openmw-pbr` stacks in load order over that folder's `Data Files`.
   {
