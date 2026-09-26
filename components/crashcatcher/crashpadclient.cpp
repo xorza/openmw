@@ -154,9 +154,13 @@ namespace Crash
             std::atomic_ref(sPage.get()->mHangEntry)
                 .store(reinterpret_cast<std::uint64_t>(&hangEntry), std::memory_order_release);
 #else
+            // On the thread's own stack and not the alternate one Crashpad sizes for its own fault
+            // handler: a request arrives on a sound stack, and a whole dump taken inside a signal
+            // frame outgrows the alternate one where the processor's saved state makes the frame
+            // large.
             struct sigaction action = {};
             action.sa_handler = onHangSignal;
-            action.sa_flags = SA_ONSTACK | SA_RESTART;
+            action.sa_flags = SA_RESTART;
             sigemptyset(&action.sa_mask);
             sigaction(SIGUSR2, &action, nullptr);
 #endif
