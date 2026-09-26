@@ -216,10 +216,10 @@ namespace Rtx
         // what its loader allocated level by level, `computeImageSizeInBytes`; where the two count
         // a level differently, reading the image by `layout` runs past its buffer or short of its
         // levels. A format read by its pixel format alone did that to every sixteen-bit file — and
-        // a padded row would do it again. Level by level and not by `getTotalSizeInBytes`, which
-        // counts a block format with no chain by bits a texel and so a two-by-two BC3 as four bytes
-        // of the sixteen its loader allocated. The bytes are the kept levels' and no more, so an
-        // upload stages none of what they leave out.
+        // a padded row would do it again. Level by level and not by `getTotalSizeInBytes`, whose
+        // count of a block format with no chain differs between OpenSceneGraph builds: a two-by-two
+        // BC3 is four bytes of its sixteen in one and 32 in another. The bytes are the kept levels'
+        // and no more, so an upload stages none of what they leave out.
         //
         // **A volume is its first slice**, as the rasterizer draws a file bound as a flat texture:
         // each level is read at its own offset for one slice, and every slice counts toward where

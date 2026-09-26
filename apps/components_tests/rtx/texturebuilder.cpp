@@ -426,7 +426,8 @@ namespace Rtx
         /// Three A1R5G5B5 texels a row are six bytes, and packed to four they are eight: the reader
         /// would walk the second row two bytes early. A second level stated at byte 20 of a
         /// two-by-two RGBA8 is four past where the first level ends. And a two-by-two BC3 with no
-        /// chain is its one sixteen-byte block, which `getTotalSizeInBytes` counts as four.
+        /// chain is its one sixteen-byte block, whatever `getTotalSizeInBytes` makes of it: Arch's
+        /// OpenSceneGraph 3.6.5 counts four and vcpkg's counts 32.
         TEST(RtxTextureBuilderTest, aLevelTheFormatAndTheLoaderCountDifferentlyIsRefusedByName)
         {
             std::vector<Rtx::MipLevel> levels;
@@ -459,7 +460,6 @@ namespace Rtx
 
             osg::ref_ptr<osg::Image> block = new osg::Image;
             block->allocateImage(2, 2, 1, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT, GL_UNSIGNED_BYTE);
-            ASSERT_EQ(block->getTotalSizeInBytesIncludingMipmaps(), 4u) << "what the old span staged";
             EXPECT_EQ(describeImage(*block, levels, texels).value().mBytes.size(), 16u);
         }
 
