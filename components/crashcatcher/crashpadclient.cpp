@@ -14,6 +14,7 @@
 #include <client/simple_string_dictionary.h>
 #include <client/simulate_crash.h>
 
+#include <components/files/conversion.hpp>
 #include <components/platform/process.hpp>
 
 #include "crashmonitorarguments.hpp"
@@ -24,6 +25,10 @@
 #include <components/misc/windows.hpp>
 #elif defined(__APPLE__)
 #include <mach-o/dyld.h>
+#endif
+
+#if !defined(_WIN32)
+#include <pthread.h>
 #endif
 
 namespace Crash
@@ -66,12 +71,16 @@ namespace Crash
 #endif
         }
 
-        /// A dump of every thread and a summary, after which the game goes on.
+        /// A dump of every thread and a summary, after which the game goes on. Nothing where a
+        /// report is already being written: that one is already a dump of every thread, and this
+        /// one would write over what it says.
         void reportAndContinue(ReportKind kind, std::string_view reason)
         {
-            setReport(kind, reason);
+            if (!beginReport(kind, reason))
+                return;
+
             CRASHPAD_SIMULATE_CRASH();
-            setReport(ReportKind::Crash, {});
+            endReport();
         }
 
         /// A hang report, asked for by the monitor, which knows how long the game stood still.
@@ -85,7 +94,7 @@ namespace Crash
         /// stands and returns, and the process ends here.
         [[noreturn]] void reportAndEnd(std::string_view reason)
         {
-            setReport(ReportKind::Crash, reason);
+            finalReport(ReportKind::Crash, reason);
             CRASHPAD_SIMULATE_CRASH();
             std::_Exit(3);
         }
@@ -144,8 +153,15 @@ namespace Crash
 #if defined(_WIN32)
             reportAndEnd(reason);
 #else
+            // **The hang request blocked on this thread first**, so it cannot land here between the
+            // report saying what it is and the abort; on another thread it finds the gate taken.
             // Crashpad's own handler takes the abort, as it takes every fatal signal.
-            setReport(ReportKind::Crash, reason);
+            sigset_t hang;
+            sigemptyset(&hang);
+            sigaddset(&hang, SIGUSR2);
+            pthread_sigmask(SIG_BLOCK, &hang, nullptr);
+
+            finalReport(ReportKind::Crash, reason);
             std::abort();
 #endif
         }
@@ -203,7 +219,6 @@ namespace Crash
         monitor.mClient = process;
         monitor.mNotes = reinterpret_cast<std::uint64_t>(noteTable().data());
         monitor.mNotesSize = noteTable().size();
-        monitor.mLog = settings.mLogFile;
         monitor.mApplication = settings.mApplication;
         monitor.mDialog = settings.mDialog;
 
@@ -232,6 +247,14 @@ namespace Crash
         hookEveryEnd();
         sInstalled = true;
         return {};
+    }
+
+    void setLogFile(const std::filesystem::path& log)
+    {
+        if (!sInstalled)
+            return;
+
+        sPage.setLogPath(Files::pathToUnicodeString(log));
     }
 
     void setHangLimit(std::chrono::seconds limit)

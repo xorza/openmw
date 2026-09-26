@@ -223,7 +223,7 @@ itself. There is no viewer, no cull and no draw traversal, because rays go every
 | `sClassMasks`, `rayMaskOf` | `classmasks.hpp` | the one mapping between node masks and instance classes                                |
 
 **Two hosts, one renderer.** A played session and a harness run reach the renderer through
-one record, `RtxSetup`: an `Rtx::RunSetup` (profile, validation, `MirrorKnobs`, headless, a
+one record, `RtxSetup`: an `MWRender::RunSetup` (profile, validation, `MirrorKnobs`, headless, a
 stated step or the wall, settled adoption) and the `RtxRun` the host implements. A played
 session installs none, and `RtxRenderer` makes a `PlayedRun` whose every answer is the played
 one. `RtxRun` answers per frame: which sample to take, how many frames are summed, whether to
@@ -1177,22 +1177,31 @@ memory refused included — throws `Rtx::DeviceError`, which ends the game with 
 
 `openmw-rtxtool <verb>` drives a real game headless: `info`, `scene`, `shot`, `view`, `bench`,
 `check`, `film`. `RtxTool::Session` (`apps/rtxtool/session.hpp`) is both the `OMW::EngineHost` and the
-`MWRender::RtxRun`: it makes the renderer with itself installed, states the frame step, runs
-the schedule in `beforeFrame` (a teleport, an aimed camera, a turned sky, a flown route, a
-followed track), and collects every frame in `frame`. `Rtx::Check`
-(`components/rtxbench/benchrun.hpp`) lists what `check` asserts.
+`MWRender::RtxRun`: it makes the renderer with itself installed, states the frame step, and
+sequences four parts — the `Stager` puts the world where a stop stands (a teleport, the clock
+and the sky, god mode, the walls), the `CameraDriver` moves the camera a frame at a time (a flown
+route, a followed track, a turned sky, the aim), the `StandingNote` keeps where the run stands
+for Home, the title and where it was left, and the `Measurer` counts and measures each frame
+straight into the place it reports. What a command does with a place — freeze it, fly its route,
+follow a track, measure, hash — is one row of `RtxTool::VerbPolicy` (`apps/rtxtool/verbs.hpp`),
+and the views, the suites and a film's keys are three schemas over one ordered reader,
+`RtxTool::BlockFile` (`apps/rtxtool/model/blockfile.hpp`). `RtxTool::Check`
+(`apps/rtxtool/model/benchrun.hpp`) lists what `check` asserts.
 
 **A film is a list of stops.** `view --keys` appends the key it stands at on every Home press, and
 `film --keys` splits the keys into takes (`apps/rtxtool/film.hpp`): a cut where two keys are in
 different spaces or too far apart, a flight otherwise. Each take is one stop, whose
-`Rtx::CameraTrack` (`components/rtxbench/cameratrack.hpp`) gives the eye, the facing, the hour and
+`RtxTool::CameraTrack` (`apps/rtxtool/model/cameratrack.hpp`) gives the eye, the facing, the hour and
 the sky at every frame, a monotone cubic Hermite spline per channel. The session moves the eye,
 runs the clock forward and holds the sky (`MWWorld::WeatherManager::holdWeather`) on every frame,
 and writes each measured frame as a numbered PNG, which ffmpeg then encodes.
 
 `components/rtxbench` holds the instruments both hosts share, because the game measures
-itself: the run's length, what a place came to, frame times and hashes, the scene digest, the
-card's clock and who held the card, the driver's cache. It knows nothing about a world.
+itself: the run's length, frame times and hashes, the scene digest, the texture sheet, the
+card's clock and who held the card, the driver's cache. It knows nothing about a world. What a
+run visits, what a place came to and how a run is recorded are the harness's own model, in
+`apps/rtxtool/model`; what a run decides before anything is built, `MWRender::RunSetup`, stands
+beside `MWRender::RtxSetup` in `mwrender/rtx/rtxrun.hpp`, which both hosts construct.
 
 **The driver's cache of each shader set is its own.** `Rtx::DriverCache` points the driver at a
 directory beside the modules, named by their digest, and removes the one before it when a build
@@ -1250,7 +1259,7 @@ the order declarations came in moves a digest.
 | the GUI textures                               | `components/myguirtx/texture.hpp`, `sharedtexture.hpp`, `paintedmirror.hpp`; `components/rtxvulkan/guitextures.hpp`, `guipass.hpp` |
 | pictures inside the interface                  | `components/rtx/offscreentrace.hpp`, `mwrender/rtx/tracedview.hpp`, `viewqueue.hpp`, `tracedoverlay.hpp` |
 | the settings pages                             | `mwgui/settingswindow.cpp`, `apps/launcher/graphicspage.cpp`, `files/data/mygui/openmw_settings_window.layout` |
-| the two hosts                                  | `mwrender/rtx/rtxrun.hpp`, `components/rtxbench/runsetup.hpp`, `apps/rtxtool/session.hpp` |
+| the two hosts                                  | `mwrender/rtx/rtxrun.hpp`, `apps/rtxtool/session.hpp` |
 | the settings a player sees                     | `docs/source/reference/modding/settings/rtx.rst`, `files/settings-default.cfg` |
 | the build                                      | `components/rtx/build.cmake`, `components/rtxvulkan/CMakeLists.txt`, `CMakePresets.json`, `apps/rtxtool/rtx` |
 | the driver's cache of a shader set             | `components/rtxbench/drivercache.hpp`, `components/rtx/shaderdirectory.hpp` |

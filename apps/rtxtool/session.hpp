@@ -1,35 +1,22 @@
 #pragma once
 
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <string_view>
-#include <vector>
-
-#include <osg/Vec3f>
 
 #include <apps/openmw/engine.hpp>
 #include <apps/openmw/mwrender/rtx/framereport.hpp>
 #include <apps/openmw/mwrender/rtx/rtxrun.hpp>
-#include <components/esm/refid.hpp>
-#include <components/rtx/renderer.hpp>
-#include <components/rtx/scratch.hpp>
-#include <components/rtxbench/benchrecord.hpp>
-#include <components/rtxbench/benchrun.hpp>
-#include <components/rtxbench/cardwatch.hpp>
-#include <components/rtxbench/frametimes.hpp>
-#include <components/rtxbench/gpuclock.hpp>
-#include <components/rtxbench/runrecord.hpp>
-#include <components/rtxbench/scenedigest.hpp>
 
+#include "cameradriver.hpp"
+#include "measurer.hpp"
+#include "model/benchrun.hpp"
+#include "model/runrecord.hpp"
+#include "stager.hpp"
+#include "standingnote.hpp"
 #include "stopwriter.hpp"
-
-namespace MWBase
-{
-    class World;
-}
 
 namespace MWRender
 {
@@ -45,15 +32,18 @@ namespace RtxTool
     /// through the interface it implements, and ends the run through `StateManager::requestQuit`
     /// the way the player's quit key does.
     ///
-    /// **The harness's, and built before the engine.** It is the engine's host — it makes the
-    /// renderer with itself installed as `RtxSetup::mRun`, states the run's step and runs the
-    /// schedule before each frame — and what it came to is read with `describe` once
-    /// `Engine::go` has returned: the run that ends its last stop and the window somebody closes
-    /// both end there, and only the first ever reaches `finish`.
+    /// **The sequence and nothing else.** A stop is staged by the `Stager`, flown by the
+    /// `CameraDriver`, noted by the `StandingNote` and measured by the `Measurer`; this is the
+    /// engine's host that says which of them runs when, and the run's record they all write into.
+    ///
+    /// **The harness's, and built before the engine.** It makes the renderer with itself installed
+    /// as `RtxSetup::mRun`, states the run's step and runs the schedule before each frame — and what
+    /// it came to is read with `describe` once `Engine::go` has returned: the run that ends its last
+    /// stop and the window somebody closes both end there, and only the first ever reaches `finish`.
     class Session final : public MWRender::RtxRun, public OMW::EngineHost
     {
     public:
-        explicit Session(Rtx::SessionRequest request);
+        explicit Session(SessionRequest request);
 
         /// The renderer this tool exists to drive, whatever the user's settings file says, made
         /// with the run: the engine never reads `[RTX] enabled` and never sees the run.
@@ -67,20 +57,17 @@ namespace RtxTool
         bool wantsSecondWalk() const override;
         bool wantsFrameCopy() const override;
 
-        /// Starts the stop that is due, flies a route on, and turns a sky. Does nothing until the
+        /// Starts the stop that is due, or moves the running one a frame on. Does nothing until the
         /// game has a world to stand in.
         void beforeFrame() override;
 
-        /// Reports the frame, and asks the game to quit once the last stop is done.
+        /// Measures the frame, and asks the game to quit once the last stop is done.
         void frame(const MWRender::FrameContext& context, const MWRender::FrameReport& report) override;
 
-        /// The weather and the hour the run stands under, `Thunderstorm, 14:32`, and which weather
-        /// is crossing in where one is, `Clear → Overcast 37%, 14:32` — off the note the last frame
-        /// took; empty until a stop has begun and been noted.
-        std::string_view describeTitle() override;
+        std::string_view describeTitle() override { return mNote.describeTitle(); }
 
         /// What the run came to: the places, the report, the verdict and where the eye was left.
-        Rtx::SessionResult describe() const;
+        SessionResult describe() const;
 
     private:
         /// Whether the game has a world with a player in it. Nothing happens before it does.
@@ -90,182 +77,22 @@ namespace RtxTool
         /// a throw, because a run that cannot go on has still measured whatever it reached.
         void abandon(std::string_view why);
 
-        /// Gives the player every attribute and skill at 255, a Speed of 2000, level 255 and a
-        /// million gold, through the calls the console's `setspeed`, `setlevel` and `additem` make.
-        /// A body walking at Morrowind's pace crosses a cell in a minute.
-        void boostPlayer();
-
-        /// Puts the camera where the player stands, facing the way they face: what a stop that names
-        /// no camera falls back to, and what a free-camera stop starts from.
-        void standWhereThePlayerIs();
-
-        /// Tells the renderer that nothing before this frame describes where it now stands.
-        void forgetHistory();
-
-        /// Puts the world where `mAt` says and starts counting.
+        /// Stages the stop `mAt` names and starts its camera, its note and its count.
         void beginStop();
 
         /// Closes the stop, records it, and moves to the next one — or ends the run. `report` is
         /// the last measured frame's, which is the frame every writer describes.
         void endStop(const MWRender::FrameContext& context, const MWRender::FrameReport& report);
 
-        /// Takes in what the device answered for one frame, under the number of the frame it
-        /// answers for: the figures a frame has only once the device is done with it, and its
-        /// picture. Nothing for a frame the warm-up drew.
-        void answered(const Rtx::FrameResult& finished, const Rtx::FrameExtents& extents);
-
-        /// Hashes a frame's picture into the record, and writes it where the request asked for
-        /// the pictures themselves, at `extents`.
-        void keepPicture(const Rtx::FrameResult& finished, const Rtx::FrameExtents& extents);
-
         /// Writes what the run was asked to write and ends it.
         void finish();
 
-        /// Takes note of where the eye stands, on a frame that still has a world to take it from:
-        /// `OMW::Engine::~Engine` clears the world before the renderer that holds this, so the
-        /// destructor can ask the world nothing.
-        void noteStanding();
+        const Stop& currentStop() const { return mRequest.mStops[mAt]; }
 
-        /// Prints that note, whole, on the frame Home goes down: what a window prints where it
-        /// was left, printed now, so a frame somebody is looking at can be drawn again without
-        /// closing the window on it.
-        void printStandingIfAsked();
+        /// The warm-up of the running stop, in frames of the run's step.
+        std::uint32_t currentWarmup() const;
 
-        /// Flies the player along the current stop's route by one frame's worth.
-        void fly();
-
-        /// Puts the player's body at `eye`, where a route or a track has the camera this frame.
-        static void moveBodyTo(const osg::Vec3f& eye);
-
-        /// Turns the player's collision off, as `tcl` does.
-        static void turnCollisionOff(MWBase::World& world);
-
-        /// Stands the eye, the clock and the sky where the current stop's track is at the frame about
-        /// to be drawn: a film's take. The warm-up stands at the track's first frame.
-        void follow();
-
-        /// Writes a film's frame as the numbered picture it is, where `finished` is one.
-        void writeFilmFrame(const Rtx::FrameResult& finished, const Rtx::FrameExtents& extents);
-
-        /// Moves the sky one frame along the stop's list of weathers.
-        void turnWeather();
-
-        /// Puts the sky under the weather called `name` over the player's region, as `changeweather`
-        /// would, and warns for a name that is none of the ten.
-        static void setWeather(MWBase::World& world, std::string_view name);
-
-        /// Puts the camera where the stop stands this frame, and points it where the stop asked.
-        /// Every frame, because `omw/camera/camera.lua`'s `onActive` forces third person and a
-        /// stop's teleport reactivates the player: aimed once, every view drew its frames from a
-        /// camera 192 units behind the body. `Rtx::Check::CameraStands` says it still holds. A
-        /// standing stop and a heading route are one case, carrying the heading forward from
-        /// `mFlown`; nothing where the stop named no camera or gave it to the player.
-        void aim();
-
-        /// Stands the game's camera at `eye` facing `rotation`, `Rtx::Stand::getRotation`'s angles,
-        /// for as long as nothing else moves it.
-        void aimCamera(const osg::Vec3f& eye, const osg::Vec3f& rotation);
-
-        /// What one stop has come to so far. `restart` rather than an assignment from a default,
-        /// because the samples are reserved once for the longest stop of the run.
-        struct StopProgress
-        {
-            /// Frames traced since the stop began, warm-up included. Traced and not answered for:
-            /// `frame` says why the count is the run's and not the device's.
-            std::uint32_t mSeen = 0;
-
-            /// The backend's number of the first measured frame, so a result that comes back once
-            /// the warm-up is over can say whether the frame it answers for was measured.
-            std::uint64_t mFirstMeasured = 0;
-
-            /// What the measured ones came to outside the distributions: how much of the last one hit
-            /// something, how long they took between them, and what they wrote that was not finite.
-            double mHitPercent = 0.0;
-            double mWallMs = 0.0;
-            Rtx::NotFinite mNotFinite;
-
-            /// The renderer's work of the frame behind, and the meshes it brought, waiting for the
-            /// frame that closes the span they are in: `Session::frame` says which that is.
-            Rtx::FrameSpend mPendingSpend;
-            std::uint32_t mPendingArrived = 0;
-
-            /// Where the eye stood when the stop began, which a route flies from.
-            osg::Vec3f mFrom;
-            osg::Vec3f mFromLook;
-
-            /// Where the route has flown to: the route's own place and not the player's, because
-            /// gravity steps the actor between frames and a step taken from where it landed compounds
-            /// the fall.
-            osg::Vec3f mFlown;
-
-            /// Which way a track faces this frame, as `Rtx::TrackPose::mRotation`.
-            osg::Vec3f mFacing;
-
-            /// The game's clock at a track's first frame, in hours since the game began: what the
-            /// track's hours run on from.
-            double mClockFrom = 0.0;
-
-            /// Which frame of the film each frame in flight is, by the backend's number: a picture
-            /// comes back a frame or two after the frame it was traced as, and is numbered by that.
-            struct FilmFrame
-            {
-                std::uint64_t mFrame = 0;
-                std::uint32_t mNumber = 0;
-            };
-            std::array<FilmFrame, 4> mFilmFrames{};
-            std::size_t mFilmPending = 0;
-
-            /// The cell the last flown frame was drawn in, so a change of it is a boundary crossed.
-            /// Compared as an address and never read, which is all an identity needs.
-            const void* mCell = nullptr;
-
-            /// Whether the route has reached the destination it named. What ends a routed stop:
-            /// the frames past arrival stand where the route ended and measure nothing the route
-            /// was flown for, so `--seconds` is the ceiling a route that never arrives runs to.
-            bool mArrived = false;
-
-            /// Which weather the turn is on, and how far into the transition to the next.
-            std::size_t mTurnedTo = 0;
-            float mTurned = 0.0f;
-
-            Rtx::FrameSamples mSamples;
-
-            /// The driver's input-to-present figure of every measured frame it timed, in
-            /// milliseconds: a window the driver paces has one a frame, a headless run none.
-            std::vector<double> mLatencyMs;
-
-            Rtx::GpuBreakdown mGpu;
-            Rtx::Crossings mCrossings;
-            Rtx::Arrivals mArrivals;
-            Rtx::Overlap mOverlap;
-            Rtx::HoldTimes mHold;
-            Rtx::GpuClock mClock;
-            Rtx::CardShare mCard;
-
-            /// Puts the route where it starts. One call, because two callers set the three and either
-            /// could leave `mFlown` wherever the last stop's route ended.
-            void standAt(const osg::Vec3f& eye, const osg::Vec3f& look)
-            {
-                mFrom = eye;
-                mFromLook = look;
-                mFlown = eye;
-            }
-
-            /// Empties it for the next stop, keeping the room the frame series, the latency series and
-            /// the zones' rows grew — what the longest stop of a run reserves.
-            ///
-            /// **Every field not named is reset by being unnamed**, which is what `beginStop`
-            /// promises of this call: a field added to the struct is reset here whether or not its
-            /// author remembered to. The route's three — `mFrom`, `mFromLook` and `mFlown` — are
-            /// reset with the rest, because every branch of `beginStop` reaches `standAt` after
-            /// this and writes all three.
-            void restart()
-            {
-                Rtx::reuseKeeping(*this, &StopProgress::mSamples, &StopProgress::mLatencyMs, &StopProgress::mGpu);
-            }
-        };
-
-        Rtx::SessionRequest mRequest;
+        SessionRequest mRequest;
 
         /// What the renderer is made with: the request's setup, and this as the run. After the
         /// request, which it refers into.
@@ -274,51 +101,17 @@ namespace RtxTool
         /// Which stop is running, and whether it has been started.
         std::size_t mAt = 0;
         bool mStarted = false;
-
-        /// Where the eye stood and what the sky was on the last frame the run drew, as a stop a
-        /// launcher writes down. Empty until a stop has begun, and the run's rather than the stop's,
-        /// because it answers where the run was left. The weather is assigned per frame into room
-        /// the string already has.
-        std::optional<Rtx::Stop> mStood;
-
-        /// What was crossing into that weather on the same frame, and how far. Beside the note and
-        /// not in it, because a stop names the weather it stands under, and what is arriving is
-        /// the title's alone. Empty while nothing is.
-        std::string_view mArriving;
-        float mCrossed = 0.0f;
-
-        /// The cell `mStood` names, by id: what a frame compares against to spell it only when the
-        /// player crosses into another. An id and not the store, since a load frees every store and
-        /// may build the next where the last one was.
-        ESM::RefId mNotedCell;
-
-        /// Whether Home was down on the last frame, so a press prints once.
-        bool mPrintKeyHeld = false;
-
-        /// What `describeTitle` is written into, once a second and never allocated: room for the
-        /// longest note `writeSkyNote` names.
-        std::array<char, 48> mTitleNote{};
-
-        /// What the run has come to so far: the places, the report and the verdict. Its own type,
-        /// because everything with something to say writes into all of it.
-        Rtx::RunRecord mRecord;
-
         bool mDone = false;
 
-        /// perf's control fifo, held for the whole run so every stop brackets its own frames.
-        Rtx::PerfControl mProfiling;
+        /// What the run has come to so far: the places, the report and the verdict. Its own type,
+        /// because everything with something to say writes into all of it. Before the measurer,
+        /// which writes into it.
+        RunRecord mRecord;
 
-        /// The card, watched from the session's start: its clock across each stop's measured
-        /// frames, and who held it through every window of the run. Held rather than made per
-        /// stop, because what it owns is a thread.
-        Rtx::CardWatch mCardWatch;
-
+        Stager mStager;
+        CameraDriver mCamera;
+        StandingNote mNote;
+        Measurer mMeasurer;
         StopWriter mWriter;
-
-        /// Reserved once for the longest stop of the run, so the run itself does not allocate.
-        StopProgress mProgress;
-
-        /// What a hashed frame's scene columns come from, kept so a frame pays for what moved.
-        Rtx::SceneDigester mDigester;
     };
 }

@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <csignal>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -37,6 +38,7 @@
 #endif
 
 #if !defined(_WIN32)
+#include <pthread.h>
 #include <sys/wait.h>
 #endif
 
@@ -103,6 +105,9 @@ namespace
                 { "short-stall", "", {}, "crash-tests lived on", false },
                 { "no-frames", "", {}, "crash-tests lived on", false },
                 { "hang-off", "", {}, "crash-tests lived on", false },
+                { "recovers-before-end", "Hang: no frame for", {},
+                    "Hang: the game drew again before End was answered" },
+                { "ends-before-end", "Hang: no frame for", {}, "Hang: the game ended before End was answered" },
         };
 #if defined(_WIN32)
         modes.push_back({ "abort", "Crash: abort()", {}, {}, true, crashed });
@@ -111,6 +116,8 @@ namespace
             { "invalid-parameter", "Crash: the C runtime was given an invalid parameter", {}, {}, true, crashed });
 #else
         modes.push_back({ "abort", "Crash: ", aborted, {}, true, crashed });
+        modes.push_back({ "report-under-hang", "Report: crash-tests asked under a hang request", {},
+            "crash-tests lived on", true, ", which asked" });
 #endif
         return modes;
     }
@@ -174,12 +181,21 @@ namespace
         }
     }
 
-    /// **Started the way the game starts**: `setupLogging` opens the log and installs the catcher
-    /// beside it, so what a mode writes afterwards goes through the stream the game writes its log
-    /// with, the one the monitor's summaries have to survive.
+    /// The modes whose monitor is asked whether to end the game, and answers End after this many
+    /// milliseconds: long enough that the game has drawn again, or ended, by then.
+    constexpr std::string_view sEndAfterMs = "2500";
+
+    bool answersEnd(std::string_view mode)
+    {
+        return mode == "recovers-before-end" || mode == "ends-before-end";
+    }
+
+    /// **Started the way the game starts**: `wrapApplication` starts the catcher with its reports in
+    /// `<folder>/crashes`, and `setupLogging` opens the log and hands it over, so what a mode writes
+    /// afterwards goes through the stream the game writes its log with, the one the monitor's
+    /// summaries have to survive.
     int run(std::string_view mode, const std::filesystem::path& folder)
     {
-        Platform::Process::setEnvironment("OPENMW_CRASH_DIALOG", "0");
         std::filesystem::create_directories(folder);
         Debug::setupLogging(folder, "crash-tests");
         Crash::setHangLimit(std::chrono::seconds(2));
@@ -249,6 +265,47 @@ namespace
             stall(std::chrono::milliseconds(3500));
             return livedOn();
         }
+        if (mode == "recovers-before-end")
+        {
+            // Drawing again well before the monitor answers End, and still drawing when it does:
+            // what the player was asked about is over, and the game goes on.
+            stall(std::chrono::milliseconds(3500));
+            for (int i = 0; i < 20; ++i)
+            {
+                Crash::heartbeat();
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+            return livedOn();
+        }
+        if (mode == "ends-before-end")
+        {
+            // Gone without another frame before the monitor answers End: its id is nobody's to end.
+            for (int i = 0; i < 5; ++i)
+            {
+                Crash::heartbeat();
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(3500));
+            return livedOn();
+        }
+#if !defined(_WIN32)
+        if (mode == "report-under-hang")
+        {
+            // **One hang request, at the reporting thread, once its report is being written**: the
+            // request lands between the report saying what it is and its dump, which is where one
+            // wrote over both. The dump takes the monitor tens of milliseconds, so the request
+            // lands inside it.
+            const pthread_t reporter = pthread_self();
+            std::thread asker([reporter] {
+                while (!Crash::isReporting())
+                    std::this_thread::yield();
+                pthread_kill(reporter, SIGUSR2);
+            });
+            Crash::report("crash-tests asked under a hang request");
+            asker.join();
+            return livedOn();
+        }
+#endif
 #if defined(_WIN32)
         if (mode == "pure-call")
         {
@@ -315,6 +372,24 @@ namespace
             return "signal " + std::to_string(WTERMSIG(status));
         return "exit code " + std::to_string(WEXITSTATUS(status));
 #endif
+    }
+
+    /// Whether the log in `folder` says `text`, read again for a few seconds where it does not yet:
+    /// the monitor goes on writing after the game has ended, and a mode may end first.
+    bool follows(const std::filesystem::path& folder, std::string_view text)
+    {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(6);
+        for (;;)
+        {
+            std::ifstream log(folder / "crash-tests.log");
+            for (std::string line; std::getline(log, line);)
+                if (line.find(text) != std::string::npos)
+                    return true;
+
+            if (std::chrono::steady_clock::now() >= deadline)
+                return false;
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
     }
 
     /// Whether `mode` left what it must in `folder`, and what it did not where it did not.
@@ -401,9 +476,7 @@ namespace
             }
         }
 
-        if (!mode.mFollows.empty() && std::none_of(said.begin(), said.end(), [&](const std::string& line) {
-                return line.find(mode.mFollows) != std::string::npos;
-            }))
+        if (!mode.mFollows.empty() && !follows(folder, mode.mFollows))
             return "nothing says \"" + std::string(mode.mFollows) + "\"";
 
         return std::nullopt;
@@ -467,9 +540,21 @@ int main(int argc, char* argv[])
     if (argc == 3 && std::string_view(argv[1]) == "--matrix")
         return matrix(std::filesystem::absolute(argv[0]), std::filesystem::absolute(argv[2]));
     if (argc == 3)
+    {
+        // Before `wrapApplication`, which starts the catcher from them: the reports beside the log,
+        // no box, and for the modes that answer one, End after a while.
+        const std::string_view mode = argv[1];
+        const std::filesystem::path folder = std::filesystem::absolute(argv[2]);
+        Platform::Process::setEnvironment(
+            "OPENMW_CRASH_REPORTS", Files::pathToUnicodeString(folder / "crashes").c_str());
+        Platform::Process::setEnvironment("OPENMW_CRASH_DIALOG", answersEnd(mode) ? "1" : "0");
+        if (answersEnd(mode))
+            Platform::Process::setEnvironment("OPENMW_CRASH_END_AFTER_MS", std::string(sEndAfterMs).c_str());
+
         return Debug::wrapApplication(
             [](int, char* arguments[]) { return run(arguments[1], std::filesystem::absolute(arguments[2])); }, argc,
             argv, "crash-tests");
+    }
 
     std::cerr << "usage: crash-tests <mode> <folder> | --matrix <folder>\n";
     return 2;

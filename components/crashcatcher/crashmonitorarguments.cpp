@@ -12,7 +12,6 @@ namespace Crash
     {
         constexpr std::string_view sClient = "--openmw-client";
         constexpr std::string_view sNotes = "--openmw-notes";
-        constexpr std::string_view sLog = "--openmw-log";
         constexpr std::string_view sApplication = "--openmw-application";
         constexpr std::string_view sDialog = "--openmw-dialog";
         constexpr std::string_view sDatabase = "--database";
@@ -41,7 +40,6 @@ namespace Crash
             std::string(sMonitorSwitch),
             option(sClient, std::to_string(mClient)),
             option(sNotes, notes),
-            option(sLog, Files::pathToUnicodeString(mLog)),
             option(sApplication, mApplication),
             option(sDialog, mDialog ? "1" : "0"),
         };
@@ -68,8 +66,6 @@ namespace Crash
                 if (read.mNotesSize == 0)
                     read.mNotes = 0;
             }
-            else if (const auto log = valueOf(argument, sLog))
-                read.mLog = Files::pathFromUnicodeString(*log);
             else if (const auto application = valueOf(argument, sApplication))
                 read.mApplication = *application;
             else if (const auto dialog = valueOf(argument, sDialog))

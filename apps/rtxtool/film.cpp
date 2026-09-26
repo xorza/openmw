@@ -14,170 +14,54 @@
 #include <components/files/conversion.hpp>
 #include <components/rtx/contract.hpp>
 #include <components/rtx/skylight.hpp>
-#include <components/rtxbench/benchrecord.hpp>
 #include <components/rtxbench/benchspec.hpp>
 
-#include "options.hpp"
+#include "model/benchrecord.hpp"
+#include "model/blockfile.hpp"
 
 namespace RtxTool
 {
-    namespace
+    std::vector<FilmKey> readKeys(std::istream& in, std::string source)
     {
-        /// Reads one keys file, a line at a time, naming the line in whatever it refuses.
-        ///
-        /// **Its own reader and not the settings parser `views.cfg` is read with**, because that
-        /// one keeps a map: two sections of one name are one section there, and a window pressed
-        /// twice at one place writes two keys under one name.
-        class KeyReader
-        {
-        public:
-            explicit KeyReader(std::string_view source)
-                : mSource(source)
-            {
-            }
+        const BlockFile file(in, std::move(source));
 
-            [[noreturn]] void refuse(const std::string& why) const { refuseAt(mLine, why); }
-
-            [[noreturn]] void refuseAt(std::size_t line, const std::string& why) const
-            {
-                throw std::runtime_error(std::format("{}:{}: {}", mSource, line, why));
-            }
-
-            float number(std::string_view field, std::string_view text) const
-            {
-                const std::optional<float> value = parseFloat(text);
-                if (!value.has_value())
-                    refuse(std::format("{} \"{}\" is not a number", field, text));
-                return *value;
-            }
-
-            /// Starts a key at the line being read.
-            FilmKey open(std::string_view name)
-            {
-                mEye = false;
-                mLook = false;
-                return FilmKey{ .mName = std::string(name), .mLine = mLine };
-            }
-
-            void read(std::string_view field, std::string_view value, FilmKey& key)
-            {
-                mEye = mEye || field == "pos";
-                mLook = mLook || field == "look";
-
-                if (field == "cell")
-                    key.mCell = value;
-                else if (field == "pos")
-                    key.mEye = vector(field, value);
-                else if (field == "look")
-                    key.mLook = vector(field, value);
-                else if (field == "note")
-                    key.mNote = value;
-                else if (field == "hour")
-                {
-                    key.mHour = number(field, value);
-                    if (!(key.mHour >= 0.0f) || !(key.mHour < 24.0f))
-                        refuse(std::format("hour \"{}\" is not from 0 up to but not including 24", value));
-                }
-                else if (field == "weather")
-                {
-                    if (!Rtx::weatherIndex(value).has_value())
-                        refuse(std::format("weather \"{}\" is none of the weathers the content files name", value));
-                    key.mWeather = value;
-                }
-                else if (field == "day")
-                {
-                    int day = 0;
-                    const auto [end, error] = std::from_chars(value.data(), value.data() + value.size(), day);
-                    if (error != std::errc() || end != value.data() + value.size() || day < 0)
-                        refuse(std::format("day \"{}\" is not a whole number of days from nought", value));
-                    key.mDay = day;
-                }
-                else if (field == "seconds")
-                {
-                    key.mSeconds = number(field, value);
-                    if (!(*key.mSeconds > 0.0f))
-                        refuse(std::format("seconds \"{}\" is not a length of time", value));
-                }
-                else if (field == "hold")
-                {
-                    key.mHold = number(field, value);
-                    if (!(key.mHold >= 0.0f))
-                        refuse(std::format("hold \"{}\" is not a length of time", value));
-                }
-                else if (field == "cut")
-                {
-                    if (value != "true" && value != "false")
-                        refuse(std::format("cut \"{}\" is not true or false", value));
-                    key.mCut = value == "true";
-                }
-                else
-                    refuse(std::format("a key has no field called \"{}\"", field));
-            }
-
-            /// Refuses `key` unless it states a place a camera can stand at. `pos` and `look` are
-            /// the pair Home always writes, and a key without them has no facing to fly through.
-            void close(const FilmKey& key) const
-            {
-                if (key.mCell.empty())
-                    refuseAt(key.mLine, std::format("key \"{}\" names no cell", key.mName));
-                if (!mEye || !mLook)
-                    refuseAt(key.mLine, std::format("key \"{}\" names no pos and look", key.mName));
-            }
-
-            std::size_t mLine = 0;
-
-        private:
-            osg::Vec3f vector(std::string_view field, std::string_view value) const
-            {
-                const std::optional<osg::Vec3f> point = parseVec3(value);
-                if (!point.has_value())
-                    refuse(std::format("{} \"{}\" is not three numbers separated by commas", field, value));
-                return *point;
-            }
-
-            std::string_view mSource;
-
-            /// Whether the key being read has stated each of the two.
-            bool mEye = false;
-            bool mLook = false;
-        };
-    }
-
-    std::vector<FilmKey> readKeys(std::istream& in, const std::string_view source)
-    {
-        KeyReader reader(source);
         std::vector<FilmKey> keys;
-
-        for (std::string line; std::getline(in, line);)
+        keys.reserve(file.getBlocks().size());
+        for (const Block& block : file.getBlocks())
         {
-            ++reader.mLine;
-            const std::string_view text = trimmed(line);
-            if (text.empty() || text.front() == '#')
-                continue;
-
-            if (text.front() == '[')
+            FilmKey& key = keys.emplace_back(FilmKey{ .mStop = Stop{ .mName = block.mName }, .mLine = block.mLine });
+            for (const BlockField& field : block.mFields)
             {
-                if (text.back() != ']')
-                    reader.refuse("a section's name is not closed by ]");
+                if (file.readPlace(field, key.mStop))
+                    continue;
 
-                if (!keys.empty())
-                    reader.close(keys.back());
-                keys.push_back(reader.open(trimmed(text.substr(1, text.size() - 2))));
-                continue;
+                if (field.mName == "day")
+                    key.mStop.mSky.mDay = file.day(field);
+                else if (field.mName == "seconds")
+                    key.mSeconds = file.positive(field, "a length of time");
+                else if (field.mName == "hold")
+                    key.mHold = file.notNegative(field, "a length of time");
+                else if (field.mName == "cut")
+                    key.mCut = file.boolean(field);
+                else
+                    file.refuseUnknown(field, "key");
             }
 
-            const std::size_t equals = text.find('=');
-            if (equals == std::string_view::npos)
-                reader.refuse(std::format("\"{}\" is neither a [key], a field = value, nor a # comment", text));
-            if (keys.empty())
-                reader.refuse("a field comes before the first [key]");
+            // `pos` and `look` are the pair Home always writes, and a key without them has no
+            // facing to fly through.
+            const Stand& stand = key.mStop.mStand;
+            if (stand.mCell.empty())
+                file.refuse(block.mLine, std::format("key \"{}\" names no cell", block.mName));
+            if (!stand.mEye.has_value() || !stand.mLook.has_value())
+                file.refuse(block.mLine, std::format("key \"{}\" names no pos and look", block.mName));
 
-            reader.read(trimmed(text.substr(0, equals)), trimmed(text.substr(equals + 1)), keys.back());
+            StopSky& sky = key.mStop.mSky;
+            sky.mHour = sky.mHour.value_or(sDefaultHour);
+            sky.mWeather = sky.mWeather.value_or(std::string(sDefaultWeather));
         }
 
         if (keys.empty())
-            throw std::runtime_error(std::format("{} states no keys", source));
-        reader.close(keys.back());
+            throw std::runtime_error(std::format("{} states no keys", file.getSource()));
 
         return keys;
     }
@@ -209,7 +93,7 @@ namespace RtxTool
 
     std::uint32_t FilmPacing::framesOf(const float seconds) const
     {
-        return std::max<std::uint32_t>(1, static_cast<std::uint32_t>(std::lround(seconds * mFramesPerSecond)));
+        return std::max(1u, Rtx::BenchSpan{ .mSeconds = seconds }.getFrames(mStep));
     }
 
     std::uint32_t FilmPlan::getFrames() const
@@ -221,7 +105,7 @@ namespace RtxTool
     {
         osg::Vec3f rotationOf(const FilmKey& key)
         {
-            return Rtx::Stand{ .mEye = key.mEye, .mLook = key.mLook }.getRotation();
+            return key.mStop.mStand.getRotation();
         }
 
         /// Why `key` cuts away from `before`, or nothing where the camera flies from one to the
@@ -231,14 +115,14 @@ namespace RtxTool
             if (key.mCut.has_value())
                 return *key.mCut ? std::optional(FilmCut::Asked) : std::nullopt;
 
-            const bool outside = isExteriorCell(key.mCell);
-            if (isExteriorCell(before.mCell) != outside)
+            const bool outside = isExteriorCell(key.getCell());
+            if (isExteriorCell(before.getCell()) != outside)
                 return outside ? FilmCut::Outdoors : FilmCut::Indoors;
 
-            if (!outside && key.mCell != before.mCell)
+            if (!outside && key.getCell() != before.getCell())
                 return FilmCut::Interior;
 
-            jump = (key.mEye - before.mEye).length();
+            jump = (key.getEye() - before.getEye()).length();
             if (jump > cutDistance)
                 return FilmCut::Distance;
 
@@ -253,12 +137,12 @@ namespace RtxTool
 
             const osg::Vec3f turnFrom = rotationOf(from);
             const osg::Vec3f turnTo = rotationOf(to);
-            const float yaw = std::abs(Rtx::shortestTurn(turnFrom.z(), turnTo.z()));
+            const float yaw = std::abs(shortestTurn(turnFrom.z(), turnTo.z()));
             const float pitch = std::abs(turnTo.x() - turnFrom.x());
 
-            segment.mDistance = (to.mEye - from.mEye).length();
+            segment.mDistance = (to.getEye() - from.getEye()).length();
             segment.mTurnDegrees = osg::RadiansToDegrees(std::max(yaw, pitch));
-            segment.mHours = Rtx::hoursForward(from.mHour, to.mHour);
+            segment.mHours = hoursForward(from.getHour(), to.getHour());
 
             // A pan is paced against the picture it sweeps: one image width in `mPanSeconds`
             // across, one image height up or down.
@@ -269,7 +153,7 @@ namespace RtxTool
                 { segment.mDistance / pacing.mSpeed, FilmPace::Distance },
                 { std::max(yaw / horizontal, pitch / vertical) * pacing.mPanSeconds, FilmPace::Turn },
                 { segment.mHours * pacing.mHourSeconds, FilmPace::Clock },
-                { from.mWeather != to.mWeather ? pacing.mCrossingSeconds : 0.0f, FilmPace::Weather },
+                { from.getWeather() != to.getWeather() ? pacing.mCrossingSeconds : 0.0f, FilmPace::Weather },
             };
 
             float seconds = 0.0f;
@@ -293,13 +177,13 @@ namespace RtxTool
             return segment;
         }
 
-        Rtx::TrackKey trackKey(const FilmKey& key, std::uint32_t frame, bool rests)
+        TrackKey trackKey(const FilmKey& key, std::uint32_t frame, bool rests)
         {
-            return Rtx::TrackKey{ .mFrame = frame,
-                .mEye = key.mEye,
+            return TrackKey{ .mFrame = frame,
+                .mEye = key.getEye(),
                 .mRotation = rotationOf(key),
-                .mHour = key.mHour,
-                .mWeather = *Rtx::weatherIndex(key.mWeather),
+                .mHour = key.getHour(),
+                .mWeather = *Rtx::weatherIndex(key.getWeather()),
                 .mRests = rests };
         }
 
@@ -359,7 +243,7 @@ namespace RtxTool
                 case FilmPace::Clock:
                     return std::format("{:.2f} hours of clock", segment.mHours);
                 case FilmPace::Weather:
-                    return std::format("the sky crossing into {}", to.mWeather);
+                    return std::format("the sky crossing into {}", to.getWeather());
                 case FilmPace::Still:
                     return "nothing changes";
             }
@@ -405,11 +289,11 @@ namespace RtxTool
 
     std::string describePlan(const FilmPlan& plan)
     {
-        const float rate = plan.mPacing.mFramesPerSecond;
-        const auto seconds = [&](std::uint32_t frames) { return static_cast<float>(frames) / rate; };
+        const auto seconds = [&](std::uint32_t frames) { return static_cast<float>(frames) * plan.mPacing.mStep; };
 
-        std::string text = std::format("film: {} keys, {} takes, {} frames, {:.1f} s at {} frames a second\n",
-            plan.mKeys.size(), plan.mTakes.size(), plan.getFrames(), seconds(plan.getFrames()), rate);
+        // `:g`, because the rate is one over the step and reads back as 59.999996 otherwise.
+        std::string text = std::format("film: {} keys, {} takes, {} frames, {:.1f} s at {:g} frames a second\n",
+            plan.mKeys.size(), plan.mTakes.size(), plan.getFrames(), seconds(plan.getFrames()), plan.mPacing.getRate());
 
         for (std::size_t number = 0; number < plan.mTakes.size(); ++number)
         {
@@ -422,16 +306,17 @@ namespace RtxTool
                 text += std::format(", {:.0f} units", take.mJump);
             text += '\n';
 
-            text += std::format("  {:<28} {} {}, {}{}\n", first.mName, first.mCell, Rtx::describeHour(first.mHour),
-                first.mWeather, first.mHold > 0.0f ? std::format(", holds {:.1f} s", first.mHold) : std::string());
+            text += std::format("  {:<28} {} {}, {}{}\n", first.mStop.mName, first.getCell(),
+                describeHour(first.getHour()), first.getWeather(),
+                first.mHold > 0.0f ? std::format(", holds {:.1f} s", first.mHold) : std::string());
 
             for (const FilmSegment& segment : take.mSegments)
             {
                 const FilmKey& key = plan.mKeys[segment.mTo];
 
-                text += std::format("  -> {:<25} {:6.1f} s  {} {}, {}{}  ({})\n", key.mName, seconds(segment.mFrames),
-                    Rtx::describeHour(key.mHour), key.mWeather,
-                    key.mHold > 0.0f ? std::format("holds {:.1f} s, ", key.mHold) : std::string(), key.mCell,
+                text += std::format("  -> {:<25} {:6.1f} s  {} {}, {}{}  ({})\n", key.mStop.mName,
+                    seconds(segment.mFrames), describeHour(key.getHour()), key.getWeather(),
+                    key.mHold > 0.0f ? std::format("holds {:.1f} s, ", key.mHold) : std::string(), key.getCell(),
                     describePace(segment, key, plan.mPacing));
             }
         }
@@ -439,29 +324,24 @@ namespace RtxTool
         return text;
     }
 
-    std::vector<Rtx::Stop> stopsFor(const FilmPlan& plan, const std::filesystem::path& frames)
+    std::vector<Stop> stopsFor(const FilmPlan& plan, const std::filesystem::path& frames)
     {
-        const std::uint32_t warmup
-            = static_cast<std::uint32_t>(std::lround(plan.mPacing.mWarmupSeconds * plan.mPacing.mFramesPerSecond));
 
-        std::vector<Rtx::Stop> stops;
+        std::vector<Stop> stops;
         stops.reserve(plan.mTakes.size());
         for (std::size_t number = 0; number < plan.mTakes.size(); ++number)
         {
             const FilmTake& take = plan.mTakes[number];
             const FilmKey& first = plan.mKeys[take.mFirst];
 
-            Rtx::Stop& stop = stops.emplace_back();
-            stop.mName = std::format("take-{}-{}", number + 1, first.mName);
-            stop.mNote = first.mNote;
-            stop.mStand = Rtx::Stand{ .mCell = first.mCell, .mEye = first.mEye, .mLook = first.mLook };
-            stop.mSky.mHour = first.mHour;
-            stop.mSky.mDay = first.mDay.value_or(plan.mPacing.mDay);
-            stop.mSky.mWeather = first.mWeather;
-            stop.mSchedule.mSpec.mWarm = Rtx::BenchSpan{ .mFrames = warmup };
+            Stop& stop = stops.emplace_back();
+            stop = first.mStop;
+            stop.mName = std::format("take-{}-{}", number + 1, first.mStop.mName);
+            stop.mSky.mDay = first.mStop.mSky.mDay.value_or(plan.mPacing.mDay);
+            stop.mSchedule.mSpec.mWarm = Rtx::BenchSpan{ .mSeconds = plan.mPacing.mWarmupSeconds };
             stop.mSchedule.mSpec.mRun = Rtx::BenchSpan{ .mFrames = take.getFrames() };
             stop.mSchedule.mTrack.emplace(take.mTrack);
-            stop.mActions.mFilm = Rtx::Actions::Film{ .mDirectory = frames, .mFirst = take.mFirstFrame };
+            stop.mActions.mFilm = Actions::Film{ .mDirectory = frames, .mFirst = take.mFirstFrame };
         }
 
         return stops;
@@ -521,7 +401,7 @@ namespace RtxTool
         const std::filesystem::path& frames, const std::filesystem::path& video, const float framesPerSecond)
     {
         const std::string line = std::format(
-            "ffmpeg -hide_banner -loglevel warning -y -framerate {} -i {} -vf \"pad=ceil(iw/2)*2:ceil(ih/2)*2\" "
+            "ffmpeg -hide_banner -loglevel warning -y -framerate {:g} -i {} -vf \"pad=ceil(iw/2)*2:ceil(ih/2)*2\" "
             "-c:v {} -preset slow -crf {} -pix_fmt {} -movflags +faststart {}",
             framesPerSecond, shellWord(frames / std::format("%0{}d{}", sFrameDigits, sFrameExtension)), sVideoCodec,
             sVideoQuality, sVideoPixels, shellWord(video));

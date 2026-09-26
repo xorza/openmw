@@ -13,18 +13,18 @@
 
 #include <osg/Vec3f>
 
+#include <apps/rtxtool/model/benchrecord.hpp>
+#include <apps/rtxtool/model/benchrun.hpp>
 #include <apps/rtxtool/run.hpp>
-#include <components/rtxbench/benchrecord.hpp>
-#include <components/rtxbench/benchrun.hpp>
 #include <components/testing/util.hpp>
 
 namespace RtxTool
 {
     namespace
     {
-        Rtx::Stop makeSpot()
+        RtxTool::Stop makeSpot()
         {
-            return Rtx::Stop{
+            return RtxTool::Stop{
                 .mName = "balmora-mages-guild",
                 .mNote = "a guild interior, dense with clutter",
                 .mStand = { .mCell = "Balmora, Guild of Mages",
@@ -37,7 +37,7 @@ namespace RtxTool
         TEST(RtxViewpointTest, aSpotSaysWhichWayItFaces)
         {
             const auto facing = [](float x, float y, float z) {
-                return Rtx::Stand{ .mEye = osg::Vec3f(), .mLook = osg::Vec3f(x, y, z) };
+                return RtxTool::Stand{ .mEye = osg::Vec3f(), .mLook = osg::Vec3f(x, y, z) };
             };
 
             // Due north, and the one case the swapped `atan2` also gets right.
@@ -65,7 +65,7 @@ namespace RtxTool
                 "Clear\n");
 
             // A quarter past five in the evening, because a decimal hour is not a time anyone reads.
-            Rtx::Stop evening = makeSpot();
+            RtxTool::Stop evening = makeSpot();
             evening.mSky.mHour = 17.25f;
             evening.mSky.mWeather = "Ashstorm";
             EXPECT_NE(describeSpot(evening).find("17:15, Ashstorm"), std::string::npos) << describeSpot(evening);
@@ -80,7 +80,7 @@ namespace RtxTool
                 "# openmw-rtxtool view --cell=\"Balmora, Guild of Mages\" --pos=-283.29843,-671.29584,-580.77014 "
                 "--look=503.60007,-1265.436,-747.46844 --hour=12 --day=0 --weather=Clear\n");
 
-            Rtx::Stop dawn = makeSpot();
+            RtxTool::Stop dawn = makeSpot();
             dawn.mSky.mHour = 6.5f;
             dawn.mSky.mDay = 17;
             dawn.mSky.mWeather = "Thunderstorm";
@@ -100,7 +100,7 @@ namespace RtxTool
         /// to the unit is a different frame when the camera is a hand's width from a wall.
         TEST(RtxViewpointTest, theBlockItPrintsIsTheBlockTheViewFileReads)
         {
-            const Rtx::Stop spot = makeSpot();
+            const RtxTool::Stop spot = makeSpot();
 
             // The whole of what a window prints, because the command line is pasted with the rest
             // and has to read as a comment.
@@ -110,7 +110,7 @@ namespace RtxTool
                 out << describeStanding(spot);
             }
 
-            const std::vector<Rtx::Stop> read = loadViews(file);
+            const std::vector<RtxTool::Stop> read = loadViews(file);
             std::filesystem::remove(file);
 
             ASSERT_EQ(read.size(), 1u);
@@ -129,7 +129,7 @@ namespace RtxTool
 
             // **And anything else writes both**, because the light is most of what the frame is: a
             // block pasted from a window flown at dawn in a storm has to bring both with it.
-            Rtx::Stop dawn = spot;
+            RtxTool::Stop dawn = spot;
             dawn.mSky.mHour = 6.5f;
             dawn.mSky.mWeather = "Thunderstorm";
 
@@ -139,7 +139,7 @@ namespace RtxTool
                 out << describeSpot(dawn) << describeBlock(dawn);
             }
 
-            const std::vector<Rtx::Stop> back = loadViews(second);
+            const std::vector<RtxTool::Stop> back = loadViews(second);
             std::filesystem::remove(second);
 
             ASSERT_EQ(back.size(), 1u);
@@ -157,10 +157,10 @@ namespace RtxTool
         /// where there is nothing to paste over.
         TEST(RtxViewpointTest, aWindowOpenedWithoutAViewStillPrintsOne)
         {
-            Rtx::Stop bare = makeSpot();
+            RtxTool::Stop bare = makeSpot();
             bare.mName.clear();
             bare.mNote.clear();
-            const Rtx::Stop spot = stopFor(bare, std::nullopt, std::nullopt, 0);
+            const RtxTool::Stop spot = stopFor(bare, std::nullopt, std::nullopt, 0);
 
             const std::string block = describeBlock(spot);
             EXPECT_EQ(block.find("[balmora-guild-of-mages]"), 0u) << block;
@@ -172,7 +172,7 @@ namespace RtxTool
                 out << describeSpot(spot) << block;
             }
 
-            const std::vector<Rtx::Stop> read = loadViews(file);
+            const std::vector<RtxTool::Stop> read = loadViews(file);
             std::filesystem::remove(file);
 
             ASSERT_EQ(read.size(), 1u);
@@ -208,7 +208,7 @@ namespace RtxTool
             // The same minute the block spells: 17.2499 is a hair before quarter past, which the
             // block rounds to 17:15 and a clock cut down would have read as 17:14.
             EXPECT_EQ(writeSkyNote(room, { .mWeather = "Ashstorm", .mHour = 17.2499f }), "Ashstorm, 17:15");
-            EXPECT_EQ(Rtx::describeHour(17.2499f), "17:15");
+            EXPECT_EQ(RtxTool::describeHour(17.2499f), "17:15");
 
             // The longest note there is fits the room a session keeps, with room to spare.
             const std::string_view longest = writeSkyNote(
@@ -319,7 +319,7 @@ namespace RtxTool
         /// finds out is the one somebody started and walked away from.
         TEST(RtxBenchSuiteTest, everySuiteNamesViewsThatExist)
         {
-            const std::vector<Rtx::Stop> views = loadViews(resources() / "views.cfg");
+            const std::vector<RtxTool::Stop> views = loadViews(resources() / "views.cfg");
             const std::vector<BenchSuite> suites = loadSuites(resources() / "benches.cfg");
 
             EXPECT_NE(findSuite(suites, "default"), nullptr) << "`bench` with no arguments runs [default]";
@@ -339,7 +339,7 @@ namespace RtxTool
         /// in the temp directory**: `rtx test` runs the suite as concurrent shards and gtest deals
         /// a fixture's tests out to different ones, so a file two tests share by name is a file
         /// one shard removes under the other.
-        std::vector<Rtx::Stop> readViews(std::string_view text)
+        std::vector<RtxTool::Stop> readViews(std::string_view text)
         {
             const std::filesystem::path file = TestingOpenMW::outputFilePath("route-test.cfg");
             {
@@ -363,7 +363,7 @@ namespace RtxTool
         /// which a benchmark reports as a different number rather than as an error.
         TEST(RtxViewsTest, aRouteTakesItsDestinationFromTheViewItNames)
         {
-            const std::vector<Rtx::Stop> read = readViews(R"(
+            const std::vector<RtxTool::Stop> read = readViews(R"(
 [start]
 cell = -3,-2
 pos = 100, 200, 300
@@ -378,7 +378,7 @@ look = 8292, 300, 700
 )");
 
             ASSERT_EQ(read.size(), std::size_t{ 2 });
-            const Rtx::Stop* start = findView(read, "start");
+            const RtxTool::Stop* start = findView(read, "start");
             ASSERT_NE(start, nullptr);
             ASSERT_TRUE(start->mSchedule.mRoute.has_value());
 
@@ -389,7 +389,7 @@ look = 8292, 300, 700
             EXPECT_EQ(start->mSchedule.mRoute->mSpeed, 1500.0f);
 
             // The destination is an ordinary view and goes nowhere itself.
-            const Rtx::Stop* finish = findView(read, "finish");
+            const RtxTool::Stop* finish = findView(read, "finish");
             ASSERT_NE(finish, nullptr);
             EXPECT_FALSE(finish->mSchedule.mRoute.has_value());
         }
@@ -431,7 +431,7 @@ look = 8292, 300, 700
         /// difference the hour made.
         TEST(RtxViewsTest, aPlaceFixesItsConditionsAndTakesItsCameraFromWhatItIsLike)
         {
-            const std::vector<Rtx::Stop> read = readViews(R"(
+            const std::vector<RtxTool::Stop> read = readViews(R"(
 [ship]
 cell = -2,-9
 pos = 100, 200, 300
@@ -455,12 +455,12 @@ hour = 19.25
 
             // A place that fixes nothing keeps both conditions absent, which is what lets a run name
             // them.
-            const Rtx::Stop* noon = findView(read, "ship");
+            const RtxTool::Stop* noon = findView(read, "ship");
             ASSERT_NE(noon, nullptr);
             EXPECT_FALSE(noon->mSky.mHour.has_value());
             EXPECT_FALSE(noon->mSky.mWeather.has_value());
 
-            const Rtx::Stop* dawn = findView(read, "ship-dawn");
+            const RtxTool::Stop* dawn = findView(read, "ship-dawn");
             ASSERT_NE(dawn, nullptr);
             ASSERT_TRUE(dawn->mSky.mHour.has_value());
             EXPECT_EQ(*dawn->mSky.mHour, 6.5f);
@@ -469,7 +469,7 @@ hour = 19.25
             // fixed leaves the hour free, so a place may name either alone.
             EXPECT_FALSE(dawn->mSky.mWeather.has_value());
 
-            const Rtx::Stop* overcast = findView(read, "ship-overcast");
+            const RtxTool::Stop* overcast = findView(read, "ship-overcast");
             ASSERT_NE(overcast, nullptr);
             ASSERT_TRUE(overcast->mSky.mWeather.has_value());
             ASSERT_TRUE(overcast->mStand.mEye.has_value());
@@ -486,7 +486,7 @@ hour = 19.25
 
             // **What a borrower states itself is kept**, so a place may sit somewhere else under
             // the same cell and the same view of it.
-            const Rtx::Stop* mast = findView(read, "ship-dusk-from-the-mast");
+            const RtxTool::Stop* mast = findView(read, "ship-dusk-from-the-mast");
             ASSERT_NE(mast, nullptr);
             ASSERT_TRUE(mast->mStand.mEye.has_value());
             EXPECT_EQ(*mast->mStand.mEye, osg::Vec3f(100.0f, 200.0f, 900.0f)) << "its own position was overwritten";
@@ -550,10 +550,10 @@ hour = 19.25
                 }
                 return std::string("nothing was refused");
             };
-            EXPECT_EQ(refusal("[ship]\ncell = -2,-9\npos = 1,2\n"),
-                "view \"ship\" has pos \"1,2\", which is not three numbers separated by commas");
-            EXPECT_EQ(refusal("[ship]\ncell = -2,-9\nlook =\n"),
-                "view \"ship\" has look \"\", which is not three numbers separated by commas");
+            EXPECT_TRUE(refusal("[ship]\ncell = -2,-9\npos = 1,2\n")
+                            .ends_with(":3: pos \"1,2\" is not three numbers separated by commas"));
+            EXPECT_TRUE(refusal("[ship]\ncell = -2,-9\nlook =\n")
+                            .ends_with(":3: look \"\" is not three numbers separated by commas"));
 
             EXPECT_THROW(readViews("[dawn]\nlike = dawn\n"), std::runtime_error) << "like itself";
 
@@ -568,18 +568,19 @@ hour = 19.25
         /// file's own entry keeps its optionals, because a listing prints only what a view fixes.
         TEST(RtxViewsTest, theConditionOnTheCommandLineBeatsTheOneAPlaceFixes)
         {
-            const Rtx::Stop entry{
+            const RtxTool::Stop entry{
                 .mName = "dawn-deck",
                 .mNote = "a deck at dawn",
                 .mStand = { .mCell = "Vivec, Foreign Quarter",
                     .mEye = osg::Vec3f(1.0f, 2.0f, 3.0f),
                     .mLook = osg::Vec3f(4.0f, 5.0f, 6.0f) },
                 .mSky = { .mHour = 6.5f, .mWeather = std::string("Overcast") },
-                .mSchedule = { .mRoute
-                    = Rtx::Route{ .mTo = osg::Vec3f(7.0f, 8.0f, 9.0f), .mLookTo = osg::Vec3f(), .mSpeed = 400.0f } },
+                .mSchedule = { .mRoute = RtxTool::Route{ .mTo = osg::Vec3f(7.0f, 8.0f, 9.0f),
+                                   .mLookTo = osg::Vec3f(),
+                                   .mSpeed = 400.0f } },
             };
 
-            const Rtx::Stop bare{ .mStand = { .mCell = "-2,-9" } };
+            const RtxTool::Stop bare{ .mStand = { .mCell = "-2,-9" } };
 
             // Neither says anything: noon under a clear sky, which is how a picture of a place is
             // taken.
@@ -603,7 +604,7 @@ hour = 19.25
                 stopFor(entry, std::nullopt, std::nullopt, 0).mSky.mHour);
 
             // Everything that is not a condition is the entry's, unchanged.
-            const Rtx::Stop settled = stopFor(entry, std::nullopt, std::nullopt, 3);
+            const RtxTool::Stop settled = stopFor(entry, std::nullopt, std::nullopt, 3);
             EXPECT_EQ(settled.mName, "dawn-deck");
             EXPECT_EQ(settled.mNote, "a deck at dawn");
             EXPECT_EQ(settled.mStand.mCell, "Vivec, Foreign Quarter");

@@ -13,15 +13,14 @@
 namespace
 {
     /// **What the game writes is what its monitor reads**, whatever Crashpad puts around it: every
-    /// field back as it went, a path with a space and letters outside ASCII included, and nothing
-    /// of the game's left among Crashpad's arguments, which keep their order behind `argv[0]`.
+    /// field back as it went, and nothing of the game's left among Crashpad's arguments, which keep
+    /// their order behind `argv[0]`.
     TEST(CrashMonitorArgumentsTest, whatTheGameWritesIsWhatTheMonitorReads)
     {
         Crash::MonitorArguments written;
         written.mClient = 4242;
         written.mNotes = 0x7ffd12345678;
         written.mNotesSize = 9352;
-        written.mLog = std::filesystem::path(u8"C:/Users/Игрок/My Games/OpenMW/openmw.log");
         written.mApplication = "crash-tests";
         written.mDialog = false;
 
@@ -35,7 +34,6 @@ namespace
         EXPECT_EQ(read.mClient, 4242u);
         EXPECT_EQ(read.mNotes, 0x7ffd12345678u);
         EXPECT_EQ(read.mNotesSize, 9352u);
-        EXPECT_EQ(read.mLog, written.mLog);
         EXPECT_EQ(read.mApplication, "crash-tests");
         EXPECT_FALSE(read.mDialog);
         EXPECT_EQ(read.mDatabase, std::filesystem::path("/home/x/crashes"));
@@ -82,6 +80,16 @@ namespace
 
         std::atomic_ref(monitor.get()->mHangEntry).store(0x1234);
         EXPECT_EQ(std::atomic_ref(game.get()->mHangEntry).load(), 0x1234u);
+
+        // **The log goes over once the game knows it**, which is after the monitor has started:
+        // nothing before, the path whole after, letters outside ASCII and a space included, and a
+        // path past the page's room is not handed over at all rather than cut.
+        EXPECT_EQ(monitor.getLogPath(), "");
+        const std::string log = reinterpret_cast<const char*>(u8"C:/Users/Игрок/My Games/OpenMW/openmw.log");
+        EXPECT_TRUE(game.setLogPath(log));
+        EXPECT_EQ(monitor.getLogPath(), log);
+        EXPECT_FALSE(game.setLogPath(std::string(Crash::sLogPathCapacity + 1, 'x')));
+        EXPECT_EQ(monitor.getLogPath(), log) << "a refused path left the one before";
 
         EXPECT_EQ(Crash::SharedPage::open(id + 2).get(), nullptr);
     }

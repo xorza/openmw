@@ -8,39 +8,74 @@
 #include <format>
 #include <fstream>
 #include <string>
+#include <string_view>
 
 #include <components/rtx/framespend.hpp>
 #include <components/rtx/memoryreport.hpp>
 
-namespace Rtx
+namespace RtxTool
 {
     namespace
     {
+        /// `text` as a JSON string, quotes included: a name comes from a file somebody wrote or from
+        /// the process table, and one with a quote or a backslash in it would end the record there.
+        std::string asJson(std::string_view text)
+        {
+            std::string quoted = "\"";
+            for (const char c : text)
+            {
+                switch (c)
+                {
+                    case '"':
+                        quoted += "\\\"";
+                        break;
+                    case '\\':
+                        quoted += "\\\\";
+                        break;
+                    case '\n':
+                        quoted += "\\n";
+                        break;
+                    case '\t':
+                        quoted += "\\t";
+                        break;
+                    case '\r':
+                        quoted += "\\r";
+                        break;
+                    default:
+                        if (static_cast<unsigned char>(c) < 0x20)
+                            quoted += std::format("\\u{:04x}", static_cast<unsigned>(c));
+                        else
+                            quoted += c;
+                }
+            }
+            return quoted + '"';
+        }
+
         /// Null where nothing answered, so a record taken on a machine with no driver library says
         /// it carries no clock rather than claiming one of zero.
-        std::string asJson(const GpuClock& clock)
+        std::string asJson(const Rtx::GpuClock& clock)
         {
             if (!clock.mRead)
                 return "null";
 
             return std::format(
-                R"({{"lowestMhz": {}, "highestMhz": {}, "memoryMhz": {}, "temperatureC": {}, "throttle": "{}"}})",
+                R"({{"lowestMhz": {}, "highestMhz": {}, "memoryMhz": {}, "temperatureC": {}, "throttle": {}}})",
                 clock.mLowestMhz, clock.mHighestMhz, clock.mMemoryMhz, clock.mTemperatureC,
-                describeThrottle(clock.mThrottleMask));
+                asJson(Rtx::describeThrottle(clock.mThrottleMask)));
         }
 
         /// Null where nothing looked, for the same reason; and in the record at all because a
         /// record is what a run on another commit is read against, and a run another process
         /// drew through is not the same run.
-        std::string asJson(const CardShare& card)
+        std::string asJson(const Rtx::CardShare& card)
         {
             if (!card.mViewed)
                 return "null";
 
             std::string holders = "[";
             for (std::size_t at = 0; at < card.mHolders.size(); ++at)
-                holders += std::format(R"({}{{"name": "{}", "samples": {}}})", at == 0 ? "" : ", ",
-                    card.mHolders[at].mName, card.mHolders[at].mSamples);
+                holders += std::format(R"({}{{"name": {}, "samples": {}}})", at == 0 ? "" : ", ",
+                    asJson(card.mHolders[at].mName), card.mHolders[at].mSamples);
             holders += ']';
 
             return std::format(R"({{"seconds": {:.2f}, "samples": {}, "others": {}, "holders": {}}})", card.mSeconds,
@@ -53,7 +88,7 @@ namespace Rtx
         /// **Every field, because the report beside it chooses and this does not.** A human report
         /// leaves out what nobody reads at a glance; a record exists to be diffed against the same
         /// run on another commit, and a figure it never wrote is one nobody can go back for.
-        std::string asJson(const SceneStats& scene)
+        std::string asJson(const Rtx::SceneStats& scene)
         {
             return std::format(R"({{"instances": {}, "cutoutInstances": {}, )"
                                R"("waterInstances": {}, "mediumInstances": {}, )"
@@ -86,19 +121,19 @@ namespace Rtx
             // The stretches that sum to the frame, and not the frame itself nor a share of one
             // of them: `Timing` says `Wait` is most of `Finish` and `Upload` most of `Place`, so
             // a share beside its whole is one stretch printed twice.
-            constexpr std::array<Timing, 7> sNotStretches{ Timing::Frame, Timing::Wait, Timing::Fold, Timing::Bake,
-                Timing::Textures, Timing::Upload, Timing::Sleep };
-            std::array<Timing, sTimingCount> spends = sTimings.values();
-            const auto end = std::remove_if(spends.begin(), spends.end(), [&](const Timing timing) {
+            constexpr std::array<Rtx::Timing, 7> sNotStretches{ Rtx::Timing::Frame, Rtx::Timing::Wait,
+                Rtx::Timing::Fold, Rtx::Timing::Bake, Rtx::Timing::Textures, Rtx::Timing::Upload, Rtx::Timing::Sleep };
+            std::array<Rtx::Timing, Rtx::sTimingCount> spends = Rtx::sTimings.values();
+            const auto end = std::remove_if(spends.begin(), spends.end(), [&](const Rtx::Timing timing) {
                 return std::find(sNotStretches.begin(), sNotStretches.end(), timing) != sNotStretches.end();
             });
             constexpr std::size_t shown = 3;
             std::partial_sort(spends.begin(), spends.begin() + shown, end,
-                [&](const Timing a, const Timing b) { return frame.mSpend.at(a) > frame.mSpend.at(b); });
+                [&](const Rtx::Timing a, const Rtx::Timing b) { return frame.mSpend.at(a) > frame.mSpend.at(b); });
 
             std::string described;
             for (std::size_t at = 0; at < shown; ++at)
-                described += std::format(" {} {:.1f}", sTimings.name(spends[at]), frame.mSpend.at(spends[at]));
+                described += std::format(" {} {:.1f}", Rtx::sTimings.name(spends[at]), frame.mSpend.at(spends[at]));
 
             return std::format("{:.1f} ms ({} meshes:{})", frame.getFrameMs(), frame.mArrivedMeshes, described);
         }
@@ -109,7 +144,7 @@ namespace Rtx
                 crossings.mCount, crossings.mRebuilds, crossings.mWorstMs, crossings.mTotalMs);
         }
 
-        std::string asJson(const FrameTimes& times)
+        std::string asJson(const Rtx::FrameTimes& times)
         {
             return std::format(
                 R"({{"median": {:.4f}, "mean": {:.4f}, "p95": {:.4f}, "p99": {:.4f}, "best": {:.4f}, "worst": {:.4f}}})",
@@ -119,16 +154,16 @@ namespace Rtx
         /// **The counts as well as the times**, because a zone's distribution is over the frames
         /// that ran it: without them a record cannot tell a pass that costs the frame a tenth of a
         /// millisecond from one that costs seven every sixtieth frame.
-        std::string asJson(const GpuZone& zone)
+        std::string asJson(const Rtx::GpuZone& zone)
         {
             return std::format(R"({{"shareMs": {:.4f}, "frames": {}, "ofFrames": {}, "times": {}}})", zone.mShareMs,
                 zone.mFrames, zone.mOfFrames, asJson(zone.mTimes));
         }
     }
 
-    void Arrivals::add(const std::uint32_t arrivedMeshes, const FrameSpend& spend)
+    void Arrivals::add(const std::uint32_t arrivedMeshes, const Rtx::FrameSpend& spend)
     {
-        const double frameMs = spend.at(Timing::Frame);
+        const double frameMs = spend.at(Rtx::Timing::Frame);
         if (arrivedMeshes > 0)
         {
             ++mFrames;
@@ -169,18 +204,18 @@ namespace Rtx
         /// **Left out rather than printed as nought**, because a pair reading "would compact to 0.0"
         /// is a saving of everything rather than an answer nobody has — and a pair reading "52.5 of
         /// them would compact to 52.5" is a settled cell saying so at length.
-        std::string describeCompaction(const SceneStats& scene)
+        std::string describeCompaction(const Rtx::SceneStats& scene)
         {
             if (scene.mCompactableBytes == 0 || scene.mCompactableNowBytes <= scene.mCompactableBytes)
                 return {};
 
-            return std::format(" ({:.1f} of them would compact to {:.1f})", megabytes(scene.mCompactableNowBytes),
-                megabytes(scene.mCompactableBytes));
+            return std::format(" ({:.1f} of them would compact to {:.1f})", Rtx::megabytes(scene.mCompactableNowBytes),
+                Rtx::megabytes(scene.mCompactableBytes));
         }
 
         /// How many textures stand smaller than their files, and nothing where none does: a place
         /// drawn as its files are says nothing about it.
-        std::string describeReduced(const SceneStats& scene)
+        std::string describeReduced(const Rtx::SceneStats& scene)
         {
             if (scene.mReducedTextureCount == 0)
                 return {};
@@ -211,9 +246,9 @@ namespace Rtx
                 "  cell {} at {} in {}   {} instances ({} cutouts)   {:.1f} MiB structures in "
                 "{:.1f} reserved{}   {} textures, {:.1f} MiB{}\n",
                 place.mCell, describeHour(place.mHour), place.mWeather, place.mScene.mInstances.mPlaced,
-                place.mScene.mInstances.mCutout, megabytes(place.mScene.mStructureLiveBytes),
-                megabytes(place.mScene.mStructureBytes), describeCompaction(place.mScene), place.mScene.mTextureCount,
-                megabytes(place.mScene.mTextureBytes), describeReduced(place.mScene));
+                place.mScene.mInstances.mCutout, Rtx::megabytes(place.mScene.mStructureLiveBytes),
+                Rtx::megabytes(place.mScene.mStructureBytes), describeCompaction(place.mScene),
+                place.mScene.mTextureCount, Rtx::megabytes(place.mScene.mTextureBytes), describeReduced(place.mScene));
 
         // **Two facts and not one line.** A staged place pays one build before its frames and can
         // name what it cost; a run of a real game builds a little at every crossing and has no such
@@ -222,7 +257,7 @@ namespace Rtx
         // **Under the scene's line, because it is the same fact from the device's side.** The line
         // above says what the content came to; this says what the card gave up for it, and the
         // second is the one a card with a small host-visible heap runs out of first.
-        out += describeMemory(place.mMemory);
+        out += Rtx::describeMemory(place.mMemory);
 
         if (place.mHitPercent > 0.0)
             out += std::format("  {:.1f}% of primary rays hit\n", place.mHitPercent);
@@ -231,27 +266,27 @@ namespace Rtx
             out += std::format("  {:.2f} frames in flight at a submit, {} at the least\n", place.mOverlap.getMean(),
                 place.mOverlap.mLeast);
 
-        out += describeHeadings();
-        for (const Timing timing : sTimings.values())
-            out += describeTimes(std::format("{} ms", sTimings.name(timing)), place.mRows[indexOf(timing)]);
+        out += Rtx::describeHeadings();
+        for (const Rtx::Timing timing : Rtx::sTimings.values())
+            out += Rtx::describeTimes(std::format("{} ms", Rtx::sTimings.name(timing)), place.mRows[indexOf(timing)]);
 
         // The driver's figure under the host's rows, in the same columns: the one number a player
         // feels, from the only party that sees the whole of the pipeline. Only where the driver
         // paced the window.
         if (place.mLatency.has_value())
-            out += describeTimes("latency ms", *place.mLatency);
+            out += Rtx::describeTimes("latency ms", *place.mLatency);
 
         // **The device's own account of the same frame, one figure each.** Six distributions would
         // be a wall; what this row answers is "which of them is the expensive one", and the row
         // above already says how much the whole frame varies. Each figure is the zone's share of
         // the average frame, so the row sums to the device's part of it and a pass that only runs
         // at a crossing says so beside its own share.
-        out += describeZones(place.mGpu);
-        out += describeClock(place.mClock);
+        out += Rtx::describeZones(place.mGpu);
+        out += Rtx::describeClock(place.mClock);
 
         // Under the clock, because it is the other premise every figure above rests on: a place
         // another process drew through is the desktop's reading and not the renderer's.
-        out += "  " + describeCard(place.mCard) + '\n';
+        out += "  " + Rtx::describeCard(place.mCard) + '\n';
 
         // **Only for a route, because a place that stands still has nothing to say here.** The
         // worst is the one to read: a crossing is a dropped frame, and an average over six hundred
@@ -270,7 +305,7 @@ namespace Rtx
                 "  {} frames extended the scene with {} meshes — {:.1f} ms worst, {:.1f} mean against "
                 "the {:.1f} median\n",
                 place.mArrivals.mFrames, place.mArrivals.mMeshes, place.mArrivals.mWorstMs, place.mArrivals.getMeanMs(),
-                place.at(Timing::Frame).mMedian);
+                place.at(Rtx::Timing::Frame).mMedian);
         if (place.mArrivals.mWorstCount > 0)
         {
             out += "  worst frames:";
@@ -280,7 +315,7 @@ namespace Rtx
         }
 
         out += std::format("  {} frames in {:.2f} s — {:.1f} fps, {:.1f} at the 1% low\n", place.mFrames,
-            place.mWallSeconds, place.at(Timing::Frame).getRate(), place.at(Timing::Frame).getLowRate());
+            place.mWallSeconds, place.at(Rtx::Timing::Frame).getRate(), place.at(Rtx::Timing::Frame).getLowRate());
 
         return out;
     }
@@ -308,15 +343,16 @@ namespace Rtx
         std::ofstream file(path);
 
         file << "{\n"
-             << std::format(R"(  "suite": "{}",)", header.mSuite) << '\n'
+             << std::format(R"(  "suite": {},)", asJson(header.mSuite)) << '\n'
              << std::format(R"(  "output": [{}, {}],)", header.mExtents.mOutputWidth, header.mExtents.mOutputHeight)
              << '\n'
              << std::format(R"(  "render": [{}, {}],)", header.mExtents.mRenderWidth, header.mExtents.mRenderHeight)
              << '\n'
-             << std::format(R"(  "upscale": "{}",)", sUpscaleNames.name(header.mUpscaling.mMode)) << '\n'
-             << std::format(R"(  "preset": "{}",)", sPresetNames.name(header.mUpscaling.mPreset)) << '\n'
+             << std::format(R"(  "upscale": "{}",)", Rtx::sUpscaleNames.name(header.mUpscaling.mMode)) << '\n'
+             << std::format(R"(  "preset": "{}",)", Rtx::sPresetNames.name(header.mUpscaling.mPreset)) << '\n'
              << std::format(R"(  "noise": "{}", "levelBias": {:.3f}, "reorder": "{}",)",
-                    sNoiseSourceNames.name(header.mNoise), header.mLevelBias, sReorderNames.name(header.mReorder))
+                    Rtx::sNoiseSourceNames.name(header.mNoise), header.mLevelBias,
+                    Rtx::sReorderNames.name(header.mReorder))
              << '\n'
              << std::format(R"(  "frames": {}, "warmup": {}, "validation": {},)", header.mMeasured, header.mWarmup,
                     header.mValidating)
@@ -326,8 +362,8 @@ namespace Rtx
         for (std::size_t at = 0; at < places.size(); ++at)
         {
             const BenchPlace& place = places[at];
-            file << std::format(R"(    {{"view": "{}", "cell": "{}", "hour": {}, "weather": "{}", )", place.mView,
-                place.mCell, place.mHour, place.mWeather)
+            file << std::format(R"(    {{"view": {}, "cell": {}, "hour": {}, "weather": {}, )", asJson(place.mView),
+                asJson(place.mCell), place.mHour, asJson(place.mWeather))
                  << R"("scene": )" << asJson(place.mScene)
                  << std::format(R"(, "frames": {}, "wallSeconds": {:.4f}, "hitPercent": {:.2f}, )", place.mFrames,
                         place.mWallSeconds, place.mHitPercent)
@@ -337,15 +373,15 @@ namespace Rtx
 
             if (place.mLatency.has_value())
                 file << R"("latencyMs": )" << asJson(*place.mLatency) << ", ";
-            for (const Timing timing : sTimings.values())
-                file << std::format(R"("{}Ms": )", sTimings.name(timing)) << asJson(place.mRows[indexOf(timing)])
+            for (const Rtx::Timing timing : Rtx::sTimings.values())
+                file << std::format(R"("{}Ms": )", Rtx::sTimings.name(timing)) << asJson(place.mRows[indexOf(timing)])
                      << ", ";
 
             file << R"("gpuMs": {)";
 
             for (std::size_t zone = 0; zone < place.mGpu.size(); ++zone)
                 file << std::format(
-                    R"({}"{}": {})", zone == 0 ? "" : ", ", place.mGpu[zone].mName, asJson(place.mGpu[zone]));
+                    R"({}{}: {})", zone == 0 ? "" : ", ", asJson(place.mGpu[zone].mName), asJson(place.mGpu[zone]));
 
             file << "}, \"clock\": " << asJson(place.mClock) << ", \"card\": " << asJson(place.mCard) << "}"
                  << (at + 1 < places.size() ? "," : "") << '\n';

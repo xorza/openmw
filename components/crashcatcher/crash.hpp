@@ -19,11 +19,9 @@ namespace Crash
         /// Names the reports: "OpenMW".
         std::string mApplication;
 
-        /// Where Crashpad keeps the reports: `crashes/` in the log folder.
+        /// Where Crashpad keeps the reports: `crashes/` in the user data folder, where
+        /// `OPENMW_CRASH_REPORTS` does not name one.
         std::filesystem::path mReportFolder;
-
-        /// Where the monitor appends each summary: the game's own log.
-        std::filesystem::path mLogFile;
 
         /// Whether a crash and a hang put up a dialog. A harness run from a shell does not want one.
         bool mDialog = true;
@@ -35,8 +33,14 @@ namespace Crash
 
     /// Starts the monitor and hooks every way this process can end in a crash. Nothing where it did,
     /// and why not where it did not: a system Crashpad does not support, or a monitor that would
-    /// not start. Once in a process.
+    /// not start. Once in a process, as early as it can be: a crash before the log is set up is a
+    /// crash all the same.
     std::optional<std::string> install(const Settings& settings);
+
+    /// Where the monitor appends each summary: the game's own log, known once the configuration has
+    /// been read, which is after `install`. Before this, a summary is in its dump alone. Nothing
+    /// where no catcher is installed.
+    void setLogFile(const std::filesystem::path& log);
 
     /// How long without a heartbeat is a hang; nought, as it is until this is called, turns the
     /// check off. The watch begins at the first heartbeat, so a start that draws nothing for a

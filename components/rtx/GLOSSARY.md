@@ -28,7 +28,7 @@ that owns each. Read this once and the headers read as the field's.
 | frame behind, in flight | the previous frame on the device | `FrameRing` |
 | collect, finish | read back a frame's report, wait for it | `Renderer::collectFrame`, `finishFrame` |
 | spend | per-frame timing breakdown | `FrameSpend` |
-| stop | checkpoint of a measured run | `Rtx::Stop`, `RtxTool::StopWriter` |
+| stop | checkpoint of a measured run | `RtxTool::Stop`, `RtxTool::StopWriter` |
 | a picture | render-to-texture view for the interface | `OffscreenTrace`, `TracedView` |
 | a subject | the doll or the race preview in a scene of its own | `SubjectView` |
 | the puffs, sprites | particle billboards | `SpriteBin`, `spriteshade.comp` |

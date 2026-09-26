@@ -1,11 +1,15 @@
+#include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <string>
 
 #include <gtest/gtest.h>
 
+#include <apps/rtxtool/model/benchrecord.hpp>
 #include <components/rtx/framespend.hpp>
-#include <components/rtxbench/benchrecord.hpp>
+#include <components/testing/util.hpp>
 
-namespace Rtx
+namespace RtxTool
 {
     namespace
     {
@@ -29,20 +33,20 @@ namespace Rtx
         TEST(RtxBenchRecordTest, arrivalsCountExtendingFramesAndKeepTheThreeWorst)
         {
             Arrivals arrivals;
-            FrameSpend spend;
-            spend.at(Timing::Place) = 2.0;
-            spend.at(Timing::Upload) = 1.9;
-            spend.at(Timing::Finish) = 1.5;
-            spend.at(Timing::Wait) = 1.4;
-            spend.at(Timing::Walk) = 0.5;
+            Rtx::FrameSpend spend;
+            spend.at(Rtx::Timing::Place) = 2.0;
+            spend.at(Rtx::Timing::Upload) = 1.9;
+            spend.at(Rtx::Timing::Finish) = 1.5;
+            spend.at(Rtx::Timing::Wait) = 1.4;
+            spend.at(Rtx::Timing::Walk) = 0.5;
             // The driver's sleep is the largest figure of the frame and a share of `update`, so it
             // is not among the stretches printed.
-            spend.at(Timing::Update) = 4.0;
-            spend.at(Timing::Sleep) = 3.5;
+            spend.at(Rtx::Timing::Update) = 4.0;
+            spend.at(Rtx::Timing::Sleep) = 3.5;
 
             const auto frameOf = [&](const double frameMs) {
-                FrameSpend frame = spend;
-                frame.at(Timing::Frame) = frameMs;
+                Rtx::FrameSpend frame = spend;
+                frame.at(Rtx::Timing::Frame) = frameMs;
                 return frame;
             };
             arrivals.add(0, frameOf(5.0));
@@ -79,7 +83,7 @@ namespace Rtx
             // The driver's own latency stands under the rows only where the driver paced the
             // window, and the JSON leaves the key out otherwise.
             EXPECT_EQ(described.find("latency ms"), std::string::npos) << described;
-            place.mLatency = FrameTimes{
+            place.mLatency = Rtx::FrameTimes{
                 .mMean = 12.0, .mMedian = 11.5, .mP95 = 14.0, .mP99 = 15.0, .mBest = 9.0, .mWorst = 20.0
             };
             EXPECT_NE(describePlace(place).find("latency ms"), std::string::npos) << describePlace(place);
@@ -116,6 +120,32 @@ namespace Rtx
             place.mScene.mReducedTextureCount = 212;
             EXPECT_NE(describePlace(place).find("737 textures, 0.0 MiB, 212 of them held smaller"), std::string::npos)
                 << describePlace(place);
+        }
+
+        /// A name is written into the record as a JSON string, whatever it holds: a view, a cell,
+        /// a suite and a process holding the card are all somebody else's text, and a quote left
+        /// bare in one ended the record there.
+        TEST(RtxBenchRecordTest, theRecordWritesEveryNameAsAJsonString)
+        {
+            BenchPlace place;
+            place.mView = R"(say "hi")";
+            place.mCell = R"(C:\Vivec)";
+            place.mWeather = "Clear";
+            place.mCard.mViewed = true;
+            place.mCard.mHolders.push_back(Rtx::CardHolder{ .mName = "tab\there", .mSamples = 1 });
+
+            const std::filesystem::path path = TestingOpenMW::outputFilePath("escaped-record.json");
+            writeJson(path, BenchHeader{ .mSuite = "a\nb" }, std::span(&place, 1));
+
+            std::ostringstream read;
+            read << std::ifstream(path).rdbuf();
+            const std::string json = read.str();
+            std::filesystem::remove(path);
+
+            EXPECT_NE(json.find(R"("view": "say \"hi\"")"), std::string::npos) << json;
+            EXPECT_NE(json.find(R"("cell": "C:\\Vivec")"), std::string::npos) << json;
+            EXPECT_NE(json.find(R"("suite": "a\nb")"), std::string::npos) << json;
+            EXPECT_NE(json.find(R"({"name": "tab\there")"), std::string::npos) << json;
         }
     }
 }

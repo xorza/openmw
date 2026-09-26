@@ -8,18 +8,14 @@
 
 #include <apps/openmw/mwrender/rtx/framereport.hpp>
 #include <components/rtx/renderer.hpp>
-#include <components/rtxbench/benchrecord.hpp>
-#include <components/rtxbench/benchrun.hpp>
 #include <components/rtxbench/frametimes.hpp>
+
+#include "model/benchrecord.hpp"
+#include "model/benchrun.hpp"
 
 namespace osg
 {
     class Image;
-}
-
-namespace Rtx
-{
-    class RunRecord;
 }
 
 namespace MWRender
@@ -29,6 +25,8 @@ namespace MWRender
 
 namespace RtxTool
 {
+    class RunRecord;
+
     /// What a stop asked for and what it came to, beside the frame it drew.
     ///
     /// **Named for the reason `FrameContext` is.** Each of these is read by one claim and by nothing
@@ -41,25 +39,25 @@ namespace RtxTool
         const Rtx::FrameSamples& mSamples;
 
         /// What the stop's route came to, which only `CrossingsAppend` reads.
-        const Rtx::Crossings& mCrossings;
+        const Crossings& mCrossings;
 
         /// What the stop asked its camera to be, which only `CameraStands` reads.
-        const Rtx::Stand& mStand;
+        const Stand& mStand;
 
         /// How many frames the ring held at each submit, which only `FramesOverlap` reads.
-        const Rtx::Overlap& mOverlap;
+        const Overlap& mOverlap;
 
         /// What the frames' zones came to, what the hold's own clock read, and how long a hold
         /// the run asked for, which only `QueueHeld` reads.
         std::span<const Rtx::GpuZone> mZones;
-        const Rtx::HoldTimes& mHold;
+        const HoldTimes& mHold;
         double mHoldAskedMs = 0.0;
 
         /// What the measured frames wrote that was not finite, summed, which only `Finite` reads.
         const Rtx::NotFinite& mNotFinite;
     };
 
-    /// Writes what `Rtx::Actions` asks of the place a stop stood at.
+    /// Writes what `Actions` asks of the place a stop stood at.
     ///
     /// **What a stop produces, apart from what drove it there.** A picture, a radiance dump, a
     /// bounce tail, a scene report, a contact sheet, a map tile, a doll, a listing and a set of
@@ -79,8 +77,8 @@ namespace RtxTool
         ///
         /// @param facts what the stop asked for and came to, which only a check or the frame
         /// series reads.
-        void write(const MWRender::FrameContext& context, const MWRender::FrameReport& report,
-            const Rtx::Actions& actions, const StopFacts& facts, Rtx::RunRecord& record);
+        void write(const MWRender::FrameContext& context, const MWRender::FrameReport& report, const Actions& actions,
+            const StopFacts& facts, RunRecord& record);
 
     private:
         /// The frame a writer reads, what put it together, and where it says its answer.
@@ -93,7 +91,7 @@ namespace RtxTool
         {
             const MWRender::FrameContext& mContext;
             const MWRender::FrameReport& mReport;
-            Rtx::RunRecord& mRecord;
+            RunRecord& mRecord;
         };
 
         /// The last measured frame, as a PNG.
@@ -128,12 +126,12 @@ namespace RtxTool
         void writeImage(const Writing& into, const osg::Image& drawn, const std::filesystem::path& file);
 
         /// Asks every check the stop named, and reports each one's answer.
-        void runChecks(const Writing& into, std::span<const Rtx::Check> checks, const StopFacts& facts);
+        void runChecks(const Writing& into, std::span<const Check> checks, const StopFacts& facts);
 
         /// Whether one check holds of what the run was handed and what it drew, with what it found
         /// in `found` either way.
-        static bool checkHolds(const MWRender::FrameContext& context, const MWRender::FrameReport& report,
-            Rtx::Check check, const StopFacts& facts, std::string& found);
+        static bool checkHolds(const MWRender::FrameContext& context, const MWRender::FrameReport& report, Check check,
+            const StopFacts& facts, std::string& found);
 
         /// What a read back lands in, refilled per stop and never freed.
         std::vector<std::uint8_t> mPixels;

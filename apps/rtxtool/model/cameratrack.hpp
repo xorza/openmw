@@ -8,7 +8,7 @@
 
 #include <osg/Vec3f>
 
-namespace Rtx
+namespace RtxTool
 {
     /// One place a camera track passes through, at a frame of its take.
     struct TrackKey

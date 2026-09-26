@@ -18,12 +18,12 @@
 #include <components/files/configurationmanager.hpp>
 #include <components/files/conversion.hpp>
 #include <components/rtx/skylight.hpp>
-#include <components/rtxbench/benchrecord.hpp>
 #include <components/rtxbench/benchspec.hpp>
 #include <components/settings/categories.hpp>
 #include <components/settings/parser.hpp>
 
-#include "options.hpp"
+#include "model/benchrecord.hpp"
+#include "model/blockfile.hpp"
 
 namespace RtxTool
 {
@@ -73,28 +73,28 @@ namespace RtxTool
         return found->second;
     }
 
-    float bearingOf(const Rtx::Stand& stand)
+    float bearingOf(const Stand& stand)
     {
         const float degrees = osg::RadiansToDegrees(stand.getRotation().z());
         return degrees < 0.0f ? degrees + 360.0f : degrees;
     }
 
-    float climbOf(const Rtx::Stand& stand)
+    float climbOf(const Stand& stand)
     {
         return osg::RadiansToDegrees(-stand.getRotation().x());
     }
 
-    std::string describeSpot(const Rtx::Stop& stop)
+    std::string describeSpot(const Stop& stop)
     {
         const osg::Vec3f& eye = *stop.mStand.mEye;
 
         return std::format("# {} at {:.0f}, {:.0f}, {:.0f} — bearing {:.0f}°, climb {:.0f}° — day {}, {}, {}\n",
             stop.mStand.mCell, eye.x(), eye.y(), eye.z(), bearingOf(stop.mStand), climbOf(stop.mStand),
-            stop.mSky.mDay.value_or(0), Rtx::describeHour(stop.mSky.mHour.value_or(sDefaultHour)),
+            stop.mSky.mDay.value_or(0), describeHour(stop.mSky.mHour.value_or(sDefaultHour)),
             stop.mSky.mWeather.value_or(std::string(sDefaultWeather)));
     }
 
-    std::string describeBlock(const Rtx::Stop& stop)
+    std::string describeBlock(const Stop& stop)
     {
         std::string block = std::format("[{}]\n", slugOf(stop.mName));
 
@@ -119,7 +119,7 @@ namespace RtxTool
         return block;
     }
 
-    std::string describeCommand(const Rtx::Stop& stop)
+    std::string describeCommand(const Stop& stop)
     {
         const osg::Vec3f& eye = *stop.mStand.mEye;
         const osg::Vec3f look = stop.mStand.getLook();
@@ -133,12 +133,12 @@ namespace RtxTool
             stop.mSky.mWeather.value_or(std::string(sDefaultWeather)));
     }
 
-    std::string describeKey(const Rtx::Stop& stop)
+    std::string describeKey(const Stop& stop)
     {
         return describeBlock(stop) + std::format("day = {}\n", stop.mSky.mDay.value_or(0));
     }
 
-    std::string describeStanding(const Rtx::Stop& stop)
+    std::string describeStanding(const Stop& stop)
     {
         return describeSpot(stop) + describeBlock(stop) + describeCommand(stop);
     }
@@ -162,8 +162,8 @@ namespace RtxTool
 
     std::string_view writeSkyNote(const std::span<char> room, const SkyNote& note)
     {
-        // `Rtx::describeHour`'s minute, so the title and the block a window prints agree on it.
-        const int minutes = Rtx::minuteOfDay(note.mHour);
+        // `describeHour`'s minute, so the title and the block a window prints agree on it.
+        const int minutes = minuteOfDay(note.mHour);
 
         // Cut down and never rounded up: a hundred means arrived.
         const int percent = static_cast<int>(note.mCrossed * 100.0f);
@@ -179,46 +179,37 @@ namespace RtxTool
 
     std::vector<BenchSuite> loadSuites(const std::filesystem::path& path)
     {
-        Settings::CategorySettingValueMap entries;
-        Settings::SettingsFileParser parser;
-
-        // The same parser `views.cfg` is read with, for the same reason: the shape is a section per
-        // record and a key per field, and that parser already has tests.
-        parser.loadSettingsFile(path, entries);
+        const BlockFile file = BlockFile::load(path);
+        const std::span<const Block> blocks = file.getBlocks();
 
         std::vector<BenchSuite> suites;
-        for (const auto& [key, value] : entries)
+        suites.reserve(blocks.size());
+        for (std::size_t at = 0; at < blocks.size(); ++at)
         {
-            const std::string& section = key.first;
-            const std::string& field = key.second;
+            const Block& block = blocks[at];
+            for (std::size_t before = 0; before < at; ++before)
+                if (blocks[before].mName == block.mName)
+                    file.refuseRepeat(block, blocks[before], "suite");
 
-            if (suites.empty() || suites.back().mName != section)
-                suites.push_back(BenchSuite{ .mName = section });
-
-            BenchSuite& suite = suites.back();
-            if (field == "views")
-                suite.mViews = Rtx::splitNames(value);
-            else if (field == "note")
-                suite.mNote = value;
-            else if (field == "settled")
+            BenchSuite& suite = suites.emplace_back(BenchSuite{ .mName = block.mName });
+            for (const BlockField& field : block.mFields)
             {
-                // The settings' own spelling of a boolean, so a suite file and a settings file
-                // agree; anything else is a field nobody meant.
-                if (value != "true" && value != "false")
-                    throw std::runtime_error(
-                        "suite \"" + section + "\" says settled = " + value + ", not true or false");
-                suite.mSettled = value == "true";
+                if (field.mName == "views")
+                    suite.mViews = Rtx::splitNames(field.mValue);
+                else if (field.mName == "note")
+                    suite.mNote = field.mValue;
+                else if (field.mName == "settled")
+                    suite.mSettled = file.boolean(field);
+                else
+                    file.refuseUnknown(field, "suite");
             }
-            else
-                throw std::runtime_error("suite \"" + section + "\" has no field called \"" + field + "\"");
+
+            if (suite.mViews.empty())
+                file.refuse(block.mLine, std::format("suite \"{}\" names no views", suite.mName));
         }
 
-        for (const BenchSuite& suite : suites)
-            if (suite.mViews.empty())
-                throw std::runtime_error("suite \"" + suite.mName + "\" names no views");
-
         if (suites.empty())
-            throw std::runtime_error(Files::pathToUnicodeString(path) + " defines no suites");
+            throw std::runtime_error(file.getSource() + " defines no suites");
 
         return suites;
     }
@@ -233,62 +224,13 @@ namespace RtxTool
 
     namespace
     {
-        /// A field written as a number, or a throw naming the view, the field and what was written.
-        /// The throw for a field of `view` that says `text` and is `which`: the view, the field and
-        /// what was written, whole.
-        [[noreturn]] void refuseField(
-            const std::string& view, std::string_view field, std::string_view text, std::string_view which)
+        /// A field a view names another view by, `to` or `like` or the `speed` beside a `to`,
+        /// waiting for every view to be read: the view that wrote it, and the field, for its line.
+        struct Pending
         {
-            throw std::runtime_error(std::format("view \"{}\" has {} \"{}\", which {}", view, field, text, which));
-        }
-
-        float parseNumber(const std::string& view, std::string_view field, const std::string& text)
-        {
-            const std::optional<float> value = parseFloat(text);
-            if (!value.has_value())
-                refuseField(view, field, text, "is not a number");
-
-            return *value;
-        }
-
-        osg::Vec3f parsePoint(const std::string& view, std::string_view field, const std::string& text)
-        {
-            const std::optional<osg::Vec3f> point = parseVec3(text);
-            if (!point.has_value())
-                refuseField(view, field, text, "is not three numbers separated by commas");
-
-            return *point;
-        }
-
-        float parseSpeed(const std::string& view, const std::string& text)
-        {
-            const float speed = parseNumber(view, "speed", text);
-            if (!(speed > 0.0f))
-                refuseField(view, "speed", text, "is not a positive number of units a second");
-
-            return speed;
-        }
-
-        float parseHour(const std::string& view, const std::string& text)
-        {
-            const float hour = parseNumber(view, "hour", text);
-            if (!(hour >= 0.0f) || !(hour < 24.0f))
-                refuseField(view, "hour", text, "is not an hour of the day from 0 up to but not including 24");
-
-            return hour;
-        }
-
-        /// One of the ten weathers the content files name, or a throw saying what was written.
-        ///
-        /// **Checked here rather than at the frame**, for the reason a mistyped view id is: a place
-        /// that quietly stood under another sky reports a number against a frame nobody asked for.
-        std::string parseWeather(const std::string& view, const std::string& text)
-        {
-            if (!Rtx::weatherIndex(text).has_value())
-                refuseField(view, "weather", text, "is none of the weathers the content files name");
-
-            return text;
-        }
+            std::size_t mView = 0;
+            const BlockField* mField = nullptr;
+        };
 
         /// Fills each borrower in from the view its `like` names.
         ///
@@ -301,24 +243,27 @@ namespace RtxTool
         /// own place, which leaves no chain to walk and no cycle to detect. A route is left behind
         /// because flying from a place is a different measurement rather than the same place under
         /// another light, and a borrower that wants one writes its own.
-        void resolveLikes(std::vector<Rtx::Stop>& views, const std::vector<std::pair<std::size_t, std::string>>& likes)
+        void resolveLikes(const BlockFile& file, std::vector<Stop>& views, std::span<const Pending> likes)
         {
-            for (const auto& [at, name] : likes)
+            for (const Pending& like : likes)
             {
-                Rtx::Stop& borrower = views[at];
+                Stop& borrower = views[like.mView];
+                const std::string& name = like.mField->mValue;
                 if (borrower.mName == name)
-                    throw std::runtime_error("view \"" + borrower.mName + "\" is like itself");
+                    file.refuse(like.mField->mLine, std::format("view \"{}\" is like itself", name));
 
                 const auto lent = std::find_if(
-                    likes.begin(), likes.end(), [&](const auto& l) { return views[l.first].mName == name; });
+                    likes.begin(), likes.end(), [&](const Pending& l) { return views[l.mView].mName == name; });
                 if (lent != likes.end())
-                    throw std::runtime_error("view \"" + borrower.mName + "\" is like \"" + name
-                        + "\", which is itself like another view; only a view that states its own place may be lent");
+                    file.refuse(like.mField->mLine,
+                        std::format("view \"{}\" is like \"{}\", which is itself like another view; only a view "
+                                    "that states its own place may be lent",
+                            borrower.mName, name));
 
-                const Rtx::Stop* source = findView(views, name);
+                const Stop* source = findView(views, name);
                 if (source == nullptr)
-                    throw std::runtime_error(
-                        "view \"" + borrower.mName + "\" is like \"" + name + "\", which is not a view");
+                    file.refuse(like.mField->mLine,
+                        std::format("view \"{}\" is like \"{}\", which is not a view", borrower.mName, name));
 
                 // Written through the vector while `source` points into it, which the check above
                 // makes safe: the two are different views and nothing here resizes.
@@ -338,37 +283,40 @@ namespace RtxTool
         /// guessing what was meant is how a benchmark measures something other than what was asked
         /// for. The destination must also name its own `pos` and `look`, because a placement derived
         /// from a cell's bounds would need that cell staged to know it.
-        void resolveRoutes(std::vector<Rtx::Stop>& views, const std::vector<std::pair<std::size_t, std::string>>& ends,
-            const std::vector<std::pair<std::size_t, float>>& speeds)
+        void resolveRoutes(const BlockFile& file, std::vector<Stop>& views, std::span<const Pending> ends,
+            std::span<const Pending> speeds)
         {
-            for (const auto& [at, speed] : speeds)
+            const auto pairedWith = [](std::span<const Pending> list, std::size_t view) {
+                return std::find_if(list.begin(), list.end(), [&](const Pending& p) { return p.mView == view; });
+            };
+
+            for (const Pending& speed : speeds)
+                if (pairedWith(ends, speed.mView) == ends.end())
+                    file.refuse(speed.mField->mLine,
+                        std::format("view \"{}\" names a speed but nowhere to go", views[speed.mView].mName));
+
+            for (const Pending& end : ends)
             {
-                const auto paired
-                    = std::find_if(ends.begin(), ends.end(), [&](const auto& e) { return e.first == at; });
-                if (paired == ends.end())
-                    throw std::runtime_error("view \"" + views[at].mName + "\" names a speed but nowhere to go");
-            }
+                const std::string& to = end.mField->mValue;
+                const auto speed = pairedWith(speeds, end.mView);
+                if (speed == speeds.end())
+                    file.refuse(end.mField->mLine,
+                        std::format("view \"{}\" flies to \"{}\" at no speed", views[end.mView].mName, to));
 
-            for (const auto& [at, to] : ends)
-            {
-                const auto paired
-                    = std::find_if(speeds.begin(), speeds.end(), [&](const auto& s) { return s.first == at; });
-                if (paired == speeds.end())
-                    throw std::runtime_error("view \"" + views[at].mName + "\" flies to \"" + to + "\" at no speed");
+                const Stop* arrival = findView(views, to);
+                if (arrival == nullptr)
+                    file.refuse(end.mField->mLine,
+                        std::format("view \"{}\" flies to \"{}\", which is not a view", views[end.mView].mName, to));
 
-                const Rtx::Stop* end = findView(views, to);
-                if (end == nullptr)
-                    throw std::runtime_error(
-                        "view \"" + views[at].mName + "\" flies to \"" + to + "\", which is not a view");
+                if (!arrival->mStand.mEye.has_value() || !arrival->mStand.mLook.has_value())
+                    file.refuse(end.mField->mLine,
+                        std::format("view \"{}\" flies to \"{}\", which names no pos and look of its own to arrive at",
+                            views[end.mView].mName, to));
 
-                if (!end->mStand.mEye.has_value() || !end->mStand.mLook.has_value())
-                    throw std::runtime_error("view \"" + views[at].mName + "\" flies to \"" + to
-                        + "\", which names no pos and look of its own to arrive at");
-
-                views[at].mSchedule.mRoute = Rtx::Route{
-                    .mTo = *end->mStand.mEye,
-                    .mLookTo = *end->mStand.mLook,
-                    .mSpeed = paired->second,
+                views[end.mView].mSchedule.mRoute = Route{
+                    .mTo = *arrival->mStand.mEye,
+                    .mLookTo = *arrival->mStand.mLook,
+                    .mSpeed = file.positive(*speed->mField, "a positive number of units a second"),
                 };
             }
         }
@@ -386,10 +334,10 @@ namespace RtxTool
         }
     }
 
-    Rtx::Stop stopFor(const Rtx::Stop& view, const std::optional<float>& hour,
-        const std::optional<std::string>& weather, const int day)
+    Stop stopFor(
+        const Stop& view, const std::optional<float>& hour, const std::optional<std::string>& weather, const int day)
     {
-        Rtx::Stop stop = view;
+        Stop stop = view;
 
         // **The cell where a view names no id**, because a report row and a hash file are keyed on
         // this and neither can be keyed on nothing.
@@ -403,88 +351,77 @@ namespace RtxTool
         return stop;
     }
 
-    std::vector<Rtx::Stop> loadViews(const std::filesystem::path& path)
+    std::vector<Stop> loadViews(const std::filesystem::path& path)
     {
-        Settings::CategorySettingValueMap entries;
-        Settings::SettingsFileParser parser;
+        const BlockFile file = BlockFile::load(path);
+        const std::span<const Block> blocks = file.getBlocks();
 
-        // Reuses the settings file parser rather than growing a second one: the shape is the same,
-        // a section per view and a key per field, and that parser already has tests.
-        parser.loadSettingsFile(path, entries);
+        // **Collected and resolved afterwards, because a route and a likeness can point forwards.**
+        // `to` and `like` may name a view that has not been read yet, so the pairing waits until
+        // every block is in.
+        std::vector<Pending> ends;
+        std::vector<Pending> speeds;
+        std::vector<Pending> likes;
 
-        // **Collected and resolved afterwards, because a route can point forwards.** The parser
-        // hands sections back in the file's order and `to` may name a view that has not been read
-        // yet, so the pairing waits until every section is in.
-        std::vector<std::pair<std::size_t, std::string>> ends;
-        std::vector<std::pair<std::size_t, float>> speeds;
-        std::vector<std::pair<std::size_t, std::string>> likes;
-
-        std::vector<Rtx::Stop> views;
-        for (const auto& [key, value] : entries)
+        std::vector<Stop> views;
+        views.reserve(blocks.size());
+        for (std::size_t at = 0; at < blocks.size(); ++at)
         {
-            const std::string& section = key.first;
-            const std::string& field = key.second;
+            const Block& block = blocks[at];
+            for (std::size_t before = 0; before < at; ++before)
+                if (blocks[before].mName == block.mName)
+                    file.refuseRepeat(block, blocks[before], "view");
 
-            if (views.empty() || views.back().mName != section)
-                views.push_back(Rtx::Stop{ .mName = section });
+            Stop& view = views.emplace_back(Stop{ .mName = block.mName });
+            for (const BlockField& field : block.mFields)
+            {
+                if (file.readPlace(field, view))
+                    continue;
 
-            Rtx::Stop& view = views.back();
-            if (field == "cell")
-                view.mStand.mCell = value;
-            else if (field == "pos")
-                view.mStand.mEye = parsePoint(section, field, value);
-            else if (field == "look")
-                view.mStand.mLook = parsePoint(section, field, value);
-            else if (field == "note")
-                view.mNote = value;
-            else if (field == "to")
-                ends.emplace_back(views.size() - 1, value);
-            else if (field == "speed")
-                speeds.emplace_back(views.size() - 1, parseSpeed(section, value));
-            else if (field == "hour")
-                view.mSky.mHour = parseHour(section, value);
-            else if (field == "weather")
-                view.mSky.mWeather = parseWeather(section, value);
-            else if (field == "like")
-                likes.emplace_back(views.size() - 1, value);
-            else
-                throw std::runtime_error("view \"" + section + "\" has no field called \"" + field + "\"");
+                if (field.mName == "to")
+                    ends.push_back(Pending{ .mView = at, .mField = &field });
+                else if (field.mName == "speed")
+                    speeds.push_back(Pending{ .mView = at, .mField = &field });
+                else if (field.mName == "like")
+                    likes.push_back(Pending{ .mView = at, .mField = &field });
+                else
+                    file.refuseUnknown(field, "view");
+            }
         }
 
         if (views.empty())
-            throw std::runtime_error(Files::pathToUnicodeString(path) + " defines no views");
+            throw std::runtime_error(file.getSource() + " defines no views");
 
         // Before the cell is demanded and before a route is paired: a borrower takes both from what
         // it is like, and either check run first would reject a view that is about to be complete.
-        resolveLikes(views, likes);
+        resolveLikes(file, views, likes);
 
-        for (const Rtx::Stop& view : views)
-            if (view.mStand.mCell.empty())
-                throw std::runtime_error("view \"" + view.mName + "\" names no cell");
+        for (std::size_t at = 0; at < views.size(); ++at)
+            if (views[at].mStand.mCell.empty())
+                file.refuse(blocks[at].mLine, std::format("view \"{}\" names no cell", views[at].mName));
 
-        resolveRoutes(views, ends, speeds);
+        resolveRoutes(file, views, ends, speeds);
         return views;
     }
 
-    const Rtx::Stop* findView(const std::vector<Rtx::Stop>& views, std::string_view name)
+    const Stop* findView(const std::vector<Stop>& views, std::string_view name)
     {
-        const auto found
-            = std::find_if(views.begin(), views.end(), [&](const Rtx::Stop& v) { return v.mName == name; });
+        const auto found = std::find_if(views.begin(), views.end(), [&](const Stop& v) { return v.mName == name; });
         return found == views.end() ? nullptr : &*found;
     }
 
-    std::vector<Rtx::Stop> chooseViews(const std::vector<Rtx::Stop>& views, const std::vector<std::string>& named)
+    std::vector<Stop> chooseViews(const std::vector<Stop>& views, const std::vector<std::string>& named)
     {
         // **"all" is a name nothing may take, and it means every view.** `bench` reaches this
         // through a suite as well, so the word has to mean the same on either road in.
         if (named.empty() || (named.size() == 1 && named.front() == "all"))
             return views;
 
-        std::vector<Rtx::Stop> chosen;
+        std::vector<Stop> chosen;
         chosen.reserve(named.size());
         for (const std::string& name : named)
         {
-            const Rtx::Stop* view = findView(views, name);
+            const Stop* view = findView(views, name);
             if (view == nullptr)
                 throw std::runtime_error("no view is called \"" + name + "\"; --list-views prints them");
 

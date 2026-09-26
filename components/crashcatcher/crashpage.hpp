@@ -1,10 +1,17 @@
 #pragma once
 
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
+#include <string>
+#include <string_view>
 
 namespace Crash
 {
+    /// How many bytes of the game's log path the page holds, as UTF-8. A longer path is not
+    /// handed over, and the monitor then writes its summaries into the dump alone.
+    inline constexpr std::size_t sLogPathCapacity = 2048;
+
     /// What the game and its monitor share while both run, read and written through
     /// `std::atomic_ref`: plain words, so both sides map the same bytes.
     struct Heartbeat
@@ -18,6 +25,13 @@ namespace Crash
         /// Windows only: the function the monitor starts in the game to have it report a hang,
         /// where a POSIX monitor sends a signal instead.
         alignas(std::atomic_ref<std::uint64_t>::required_alignment) std::uint64_t mHangEntry;
+
+        /// The game's log, which the monitor appends each summary to: nought until the game knows
+        /// where it logs, which is after the catcher has started, and then how many bytes of
+        /// `mLogPath` name it. Stored after the bytes, so a length the monitor reads covers a path
+        /// already written.
+        alignas(std::atomic_ref<std::uint32_t>::required_alignment) std::uint32_t mLogPathLength;
+        char mLogPath[sLogPathCapacity];
     };
 
     // An atomic that locks takes its lock in the process it runs in, which the other side never
@@ -44,6 +58,13 @@ namespace Crash
         ~SharedPage();
 
         Heartbeat* get() const { return mPage; }
+
+        /// Hands the monitor the game's log, `log` in UTF-8, or says it cannot: no page, or a path
+        /// longer than `sLogPathCapacity`. Once, from the thread that sets up the log.
+        bool setLogPath(std::string_view log) const;
+
+        /// The log the game handed over, in UTF-8, or empty where it has handed none yet.
+        std::string getLogPath() const;
 
     private:
         Heartbeat* mPage = nullptr;

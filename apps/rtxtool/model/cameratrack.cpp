@@ -6,7 +6,7 @@
 
 #include <components/rtx/contract.hpp>
 
-namespace Rtx
+namespace RtxTool
 {
     namespace
     {
@@ -35,7 +35,7 @@ namespace Rtx
 
     CameraTrack::CameraTrack(const std::span<const TrackKey> keys)
     {
-        contract(!keys.empty(), "a camera track needs a key");
+        Rtx::contract(!keys.empty(), "a camera track needs a key");
 
         mKnots.reserve(keys.size());
         for (std::size_t at = 0; at < keys.size(); ++at)
@@ -48,7 +48,7 @@ namespace Rtx
             {
                 const TrackKey& before = keys[at - 1];
                 const Knot& last = mKnots.back();
-                contract(key.mFrame > before.mFrame, "a camera track's keys go back in time");
+                Rtx::contract(key.mFrame > before.mFrame, "a camera track's keys go back in time");
 
                 knot.mValue[sYaw]
                     = last.mValue[sYaw] + static_cast<double>(shortestTurn(before.mRotation.z(), key.mRotation.z()));

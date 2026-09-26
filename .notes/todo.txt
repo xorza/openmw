@@ -7,3 +7,4 @@
 - fsr and other denoisers and upscalers
 - balmora house appears on distant terrain
 - physical brightness
+- merge rtxtool and rtxbench

@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cassert>
 #include <cstring>
+#include <thread>
 #include <type_traits>
 
 #if defined(_WIN32)
@@ -16,7 +18,6 @@
 #include <pthread_np.h>
 #else
 #include <functional>
-#include <thread>
 #endif
 
 namespace Crash
@@ -53,6 +54,22 @@ namespace Crash
         static_assert(Sequence::is_always_lock_free);
 
         Table sTable{};
+
+        /// Where a report stands: none, one being written, or the process ending on one.
+        enum Gate : std::uint32_t
+        {
+            Idle,
+            Busy,
+            Ending,
+        };
+
+        std::atomic<std::uint32_t> sGate{ Idle };
+        static_assert(std::atomic<std::uint32_t>::is_always_lock_free);
+
+        /// What the table said before the report in progress, for `endReport` to put back. Touched
+        /// only by whoever holds the gate.
+        std::uint32_t sSavedKind = 0;
+        char sSavedReason[sNoteCapacity] = {};
 
         /// A thread's hold on its slot, given back as the thread ends, so that threads made and
         /// ended by the hundred do not fill the table with the dead.
@@ -127,10 +144,55 @@ namespace Crash
         Sequence(slot.mSequence).fetch_add(1, std::memory_order_release);
     }
 
-    void setReport(ReportKind kind, std::string_view reason)
+    namespace
     {
-        sTable.mReason[append(sTable.mReason, 0, reason)] = '\0';
-        Sequence(sTable.mKind).store(static_cast<std::uint32_t>(kind), std::memory_order_release);
+        void setReport(ReportKind kind, std::string_view reason)
+        {
+            sTable.mReason[append(sTable.mReason, 0, reason)] = '\0';
+            Sequence(sTable.mKind).store(static_cast<std::uint32_t>(kind), std::memory_order_release);
+        }
+    }
+
+    bool beginReport(ReportKind kind, std::string_view reason)
+    {
+        std::uint32_t idle = Idle;
+        if (!sGate.compare_exchange_strong(idle, Busy, std::memory_order_acq_rel))
+            return false;
+
+        sSavedKind = Sequence(sTable.mKind).load(std::memory_order_relaxed);
+        std::memcpy(sSavedReason, sTable.mReason, sNoteCapacity);
+        setReport(kind, reason);
+        return true;
+    }
+
+    void endReport()
+    {
+        std::memcpy(sTable.mReason, sSavedReason, sNoteCapacity);
+        Sequence(sTable.mKind).store(sSavedKind, std::memory_order_release);
+
+        std::uint32_t busy = Busy;
+        [[maybe_unused]] const bool ended = sGate.compare_exchange_strong(busy, Idle, std::memory_order_acq_rel);
+        assert(ended && "a report ended that nothing began");
+    }
+
+    void finalReport(ReportKind kind, std::string_view reason)
+    {
+        // Waited for rather than refused: the report in progress is another thread's and ends by
+        // itself, and this one is the last the process writes.
+        for (std::uint32_t idle = Idle; !sGate.compare_exchange_weak(idle, Ending, std::memory_order_acq_rel);
+             idle = Idle)
+        {
+            if (idle == Ending)
+                return;
+            std::this_thread::yield();
+        }
+
+        setReport(kind, reason);
+    }
+
+    bool isReporting()
+    {
+        return sGate.load(std::memory_order_acquire) != Idle;
     }
 
     std::span<const std::byte> noteTable()

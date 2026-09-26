@@ -6,6 +6,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -124,6 +125,37 @@ namespace
         EXPECT_EQ(Crash::sNoteCapacity, 256u);
     }
 
+    /// **One report at a time, and the one before it back afterwards.** A request that finds a
+    /// report in progress changes nothing — the hang request that landed inside a report's window
+    /// wrote over its kind and its reason — and a report that ends puts back what it found, so
+    /// the next crash reads as a crash with the reason it had, and not as the report before it.
+    TEST(CrashNoteTest, aReportInProgressRefusesAnotherAndPutsBackWhatItFound)
+    {
+        const auto kindAndReason = [] {
+            Crash::NotesRead read;
+            Crash::readNotes(Crash::noteTable(), 0, read);
+            return std::pair{ read.mKind, std::string(read.mReason) };
+        };
+
+        const auto before = kindAndReason();
+        EXPECT_FALSE(Crash::isReporting());
+
+        ASSERT_TRUE(Crash::beginReport(Crash::ReportKind::Report, "asked"));
+        EXPECT_TRUE(Crash::isReporting());
+        EXPECT_EQ(kindAndReason(), std::pair(Crash::ReportKind::Report, std::string("asked")));
+
+        EXPECT_FALSE(Crash::beginReport(Crash::ReportKind::Hang, {})) << "a hang request inside a report";
+        EXPECT_EQ(kindAndReason(), std::pair(Crash::ReportKind::Report, std::string("asked")))
+            << "the refused request wrote over the report in progress";
+
+        Crash::endReport();
+        EXPECT_FALSE(Crash::isReporting());
+        EXPECT_EQ(kindAndReason(), before) << "what the report found was not put back";
+
+        ASSERT_TRUE(Crash::beginReport(Crash::ReportKind::Hang, {})) << "the gate did not open again";
+        Crash::endReport();
+    }
+
     /// **The table as the monitor reads it**: a copy of its bytes, taken from outside, put in the
     /// order a report wants, with the thread it names first and what the next report is and why.
     /// A note whose thread stopped in the middle of writing it reads as half written, and a copy
@@ -142,10 +174,10 @@ namespace
         });
         noted.wait();
 
-        Crash::setReport(Crash::ReportKind::Report, "a contract broken");
+        ASSERT_TRUE(Crash::beginReport(Crash::ReportKind::Report, "a contract broken"));
         const std::span<const std::byte> live = Crash::noteTable();
         const std::vector<std::byte> copy(live.begin(), live.end());
-        Crash::setReport(Crash::ReportKind::Crash, {});
+        Crash::endReport();
         copied.count_down();
         worker.join();
 

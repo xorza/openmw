@@ -15,9 +15,9 @@
 #include <osg/Vec3f>
 
 #include <apps/rtxtool/film.hpp>
+#include <apps/rtxtool/model/benchrun.hpp>
 #include <apps/rtxtool/run.hpp>
 #include <components/rtx/skylight.hpp>
-#include <components/rtxbench/benchrun.hpp>
 #include <components/testing/util.hpp>
 
 namespace RtxTool
@@ -45,7 +45,9 @@ namespace RtxTool
 
         FilmKey keyAt(std::string name, std::string cell, osg::Vec3f eye, osg::Vec3f look = osg::Vec3f(0, 1e4f, 0))
         {
-            return FilmKey{ .mName = std::move(name), .mCell = std::move(cell), .mEye = eye, .mLook = eye + look };
+            return FilmKey{ .mStop = Stop{ .mName = std::move(name),
+                                .mStand = { .mCell = std::move(cell), .mEye = eye, .mLook = eye + look },
+                                .mSky = { .mHour = sDefaultHour, .mWeather = std::string(sDefaultWeather) } } };
         }
 
         /// Ten frames a second, a hundred units a second, and a frame whose horizontal field is
@@ -54,7 +56,7 @@ namespace RtxTool
         FilmPacing pacingForTests()
         {
             FilmPacing pacing;
-            pacing.mFramesPerSecond = 10.0f;
+            pacing.mStep = 0.1f;
             pacing.mSpeed = 100.0f;
             pacing.mAspect = std::sqrt(3.0f);
             return pacing;
@@ -65,33 +67,34 @@ namespace RtxTool
         /// a name. What `view --keys` appends reads back with its day as well.
         TEST(RtxFilmTest, homeOutputPastedIsKeys)
         {
-            Rtx::Stop dawn{ .mName = "balmora",
+            RtxTool::Stop dawn{ .mName = "balmora",
                 .mStand = { .mCell = "-3,-2",
                     .mEye = osg::Vec3f(-18075.145f, -17586.46f, 638.41016f),
                     .mLook = osg::Vec3f(-18625.098f, -16765.438f, 485.20374f) },
                 .mSky = { .mHour = 6.5f, .mDay = 2, .mWeather = "Overcast" } };
-            Rtx::Stop noon = dawn;
+            RtxTool::Stop noon = dawn;
             noon.mSky = { .mHour = 12.0f, .mDay = 0, .mWeather = "Clear" };
 
             const std::vector<FilmKey> keys = read(describeStanding(dawn) + describeStanding(noon) + describeKey(dawn));
             ASSERT_EQ(keys.size(), 3u);
 
-            EXPECT_EQ(keys[0].mName, "balmora");
-            EXPECT_EQ(keys[1].mName, "balmora");
-            EXPECT_EQ(keys[0].mCell, "-3,-2");
-            EXPECT_EQ(keys[0].mEye, *dawn.mStand.mEye);
-            EXPECT_EQ(keys[0].mLook, *dawn.mStand.mLook);
-            EXPECT_EQ(keys[0].mHour, 6.5f);
-            EXPECT_EQ(keys[0].mWeather, "Overcast");
-            EXPECT_FALSE(keys[0].mDay.has_value()) << "the block has no day; the command line beside it is a comment";
+            EXPECT_EQ(keys[0].mStop.mName, "balmora");
+            EXPECT_EQ(keys[1].mStop.mName, "balmora");
+            EXPECT_EQ(keys[0].getCell(), "-3,-2");
+            EXPECT_EQ(keys[0].getEye(), *dawn.mStand.mEye);
+            EXPECT_EQ(keys[0].getLook(), *dawn.mStand.mLook);
+            EXPECT_EQ(keys[0].getHour(), 6.5f);
+            EXPECT_EQ(keys[0].getWeather(), "Overcast");
+            EXPECT_FALSE(keys[0].mStop.mSky.mDay.has_value())
+                << "the block has no day; the command line beside it is a comment";
 
-            EXPECT_EQ(keys[1].mHour, sDefaultHour);
-            EXPECT_EQ(keys[1].mWeather, sDefaultWeather);
+            EXPECT_EQ(keys[1].getHour(), sDefaultHour);
+            EXPECT_EQ(keys[1].getWeather(), sDefaultWeather);
 
-            EXPECT_EQ(keys[2].mEye, *dawn.mStand.mEye);
-            EXPECT_EQ(keys[2].mHour, 6.5f);
-            EXPECT_EQ(keys[2].mDay, 2);
-            EXPECT_EQ(keys[2].mWeather, "Overcast");
+            EXPECT_EQ(keys[2].getEye(), *dawn.mStand.mEye);
+            EXPECT_EQ(keys[2].getHour(), 6.5f);
+            EXPECT_EQ(keys[2].mStop.mSky.mDay, 2);
+            EXPECT_EQ(keys[2].getWeather(), "Overcast");
 
             const std::vector<FilmKey> timed
                 = read("[a]\ncell = 0,0\npos = 1,2,3\nlook = 4,5,6\nseconds = 2.5\nhold = 1\ncut = false\n");
@@ -114,7 +117,7 @@ namespace RtxTool
             EXPECT_EQ(refusal(place + "cut = yes\n"), "tour.keys:5: cut \"yes\" is not true or false");
             EXPECT_EQ(
                 refusal(place + "day = -1\n"), "tour.keys:5: day \"-1\" is not a whole number of days from nought");
-            EXPECT_EQ(refusal("cell = 0,0\n"), "tour.keys:1: a field comes before the first [key]");
+            EXPECT_EQ(refusal("cell = 0,0\n"), "tour.keys:1: a field comes before the first [section]");
             EXPECT_EQ(refusal("# a comment\n\n[a]\ncell = 0,0\npos = 1,2,3\n[b]\n"),
                 "tour.keys:3: key \"a\" names no pos and look");
             EXPECT_EQ(refusal(place + "[b\n"), "tour.keys:5: a section's name is not closed by ]");
@@ -201,11 +204,11 @@ namespace RtxTool
                 keyAt("given", "0,0", osg::Vec3f(5000, 0, 0), up),
                 keyAt("nudged", "0,0", osg::Vec3f(5004, 0, 0), up),
             };
-            keys[3].mHour = 12.0f;
+            keys[3].mStop.mSky.mHour = 12.0f;
             for (std::size_t at = 4; at < keys.size(); ++at)
-                keys[at].mHour = 15.0f;
+                keys[at].mStop.mSky.mHour = 15.0f;
             for (std::size_t at = 5; at < keys.size(); ++at)
-                keys[at].mWeather = "Rain";
+                keys[at].mStop.mSky.mWeather = "Rain";
             keys[7].mSeconds = 2.5f;
 
             const FilmPlan plan = planFilm(keys, pacingForTests());
@@ -232,7 +235,7 @@ namespace RtxTool
 
             // Forty units and three hours: the clock's six seconds beat the flight's 0.4.
             std::vector<FilmKey> both{ keyAt("a", "0,0", spot), keyAt("b", "0,0", osg::Vec3f(40, 0, 0)) };
-            both[1].mHour = 15.0f;
+            both[1].mStop.mSky.mHour = 15.0f;
             EXPECT_EQ(planFilm(both, pacingForTests()).mTakes[0].mSegments[0].mFrames, 60u);
         }
 
@@ -247,13 +250,13 @@ namespace RtxTool
                 keyAt("room", "Vivec, Arena", osg::Vec3f(0, 0, 0)),
             };
             keys[1].mHold = 1.5f;
-            keys[3].mNote = "the arena";
-            keys[3].mDay = 5;
+            keys[3].mStop.mNote = "the arena";
+            keys[3].mStop.mSky.mDay = 5;
 
             const FilmPlan plan = planFilm(keys, pacingForTests());
             ASSERT_EQ(plan.mTakes.size(), 2u);
 
-            const std::vector<Rtx::TrackKey>& track = plan.mTakes[0].mTrack;
+            const std::vector<RtxTool::TrackKey>& track = plan.mTakes[0].mTrack;
             ASSERT_EQ(track.size(), 4u);
             EXPECT_EQ(track[0].mFrame, 0u);
             EXPECT_EQ(track[1].mFrame, 100u);
@@ -264,20 +267,20 @@ namespace RtxTool
             EXPECT_EQ(track[3].mFrame, 215u);
             EXPECT_EQ(plan.mTakes[0].getFrames(), 216u);
 
-            const std::vector<Rtx::TrackKey>& still = plan.mTakes[1].mTrack;
+            const std::vector<RtxTool::TrackKey>& still = plan.mTakes[1].mTrack;
             ASSERT_EQ(still.size(), 2u);
             EXPECT_EQ(still[1].mFrame, 40u) << "the still's four seconds";
             EXPECT_EQ(plan.mTakes[1].mFirstFrame, 216u);
             EXPECT_EQ(plan.getFrames(), 216u + 41u);
 
-            const std::vector<Rtx::Stop> stops = stopsFor(plan, "film/frames");
+            const std::vector<RtxTool::Stop> stops = stopsFor(plan, "film/frames");
             ASSERT_EQ(stops.size(), 2u);
 
-            const Rtx::Stop& room = stops[1];
+            const RtxTool::Stop& room = stops[1];
             EXPECT_EQ(room.mName, "take-2-room");
             EXPECT_EQ(room.mNote, "the arena");
             EXPECT_EQ(room.mStand.mCell, "Vivec, Arena");
-            EXPECT_EQ(room.mStand.mEye, keys[3].mEye);
+            EXPECT_EQ(room.mStand.mEye, keys[3].getEye());
             EXPECT_EQ(room.mSky.mHour, sDefaultHour);
             EXPECT_EQ(room.mSky.mDay, 5);
             EXPECT_EQ(room.mSky.mWeather, sDefaultWeather);
@@ -290,8 +293,8 @@ namespace RtxTool
             EXPECT_EQ(room.mActions.mFilm->mDirectory, std::filesystem::path("film/frames"));
 
             EXPECT_EQ(stops[0].mSky.mDay, 0) << "the command line's day where a key names none";
-            EXPECT_EQ(stops[0].mSchedule.mTrack->pose(100).mEye, keys[1].mEye);
-            EXPECT_EQ(stops[0].mSchedule.mTrack->pose(110).mEye, keys[1].mEye) << "held";
+            EXPECT_EQ(stops[0].mSchedule.mTrack->pose(100).mEye, keys[1].getEye());
+            EXPECT_EQ(stops[0].mSchedule.mTrack->pose(110).mEye, keys[1].getEye()) << "held";
         }
 
         /// The plan a person reads before an hour of rendering.
@@ -302,8 +305,8 @@ namespace RtxTool
                 keyAt("shore", "-2,-9", osg::Vec3f(1000, 0, 0)),
                 keyAt("room", "Vivec, Arena", osg::Vec3f(0, 0, 0)),
             };
-            keys[1].mHour = 18.0f;
-            keys[1].mWeather = "Rain";
+            keys[1].mStop.mSky.mHour = 18.0f;
+            keys[1].mStop.mSky.mWeather = "Rain";
 
             EXPECT_EQ(describePlan(planFilm(keys, pacingForTests())),
                 "film: 3 keys, 2 takes, 162 frames, 16.2 s at 10 frames a second\n"

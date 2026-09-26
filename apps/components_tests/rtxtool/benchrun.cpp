@@ -5,10 +5,10 @@
 #include <osg/Math>
 #include <osg/Vec3f>
 
+#include <apps/rtxtool/model/benchrun.hpp>
 #include <components/rtx/reconstruction.hpp>
-#include <components/rtxbench/benchrun.hpp>
 
-namespace Rtx
+namespace RtxTool
 {
     namespace
     {
@@ -55,7 +55,7 @@ namespace Rtx
             EXPECT_EQ(rotation.y(), 0.0f);
         }
 
-        /// What `RtxTool::Session::standWhereThePlayerIs` rebuilds from a body's rotation is the
+        /// What `CameraDriver::standWhereThePlayerIs` rebuilds from a body's rotation is the
         /// stand that rotated it. The ship again, so the two are checked on the same numbers:
         /// forward is (-4411, 2767, -120) / 5208.4 = (-0.8469, 0.5313, -0.0230).
         TEST(RtxBenchRunTest, aBodysRotationReadsBackAsTheStandThatMadeIt)
@@ -86,8 +86,8 @@ namespace Rtx
 
             Stop still;
             still.mStand.mEye = osg::Vec3f(1.0f, 2.0f, 3.0f);
-            RenderProfile unheld;
-            RenderProfile held = unheld;
+            Rtx::RenderProfile unheld;
+            Rtx::RenderProfile held = unheld;
             held.mStressOverlapMs = 8.0;
 
             EXPECT_TRUE(canAsk(Check::WalkTwice, still, unheld));

@@ -9,7 +9,7 @@
 
 #include <components/rtx/reconstruction.hpp>
 
-namespace Rtx
+namespace RtxTool
 {
     namespace
     {
@@ -22,22 +22,22 @@ namespace Rtx
             /// A claim a stop is not shaped for answers something else, so it is left out rather
             /// than counted as a failure: a crossing count needs a route to cross anything with,
             /// and only the view says whether there is one.
-            bool (*mCanAsk)(const Stop& stop, const RenderProfile& profile);
+            bool (*mCanAsk)(const Stop& stop, const Rtx::RenderProfile& profile);
         };
 
-        constexpr bool always(const Stop&, const RenderProfile&)
+        constexpr bool always(const Stop&, const Rtx::RenderProfile&)
         {
             return true;
         }
 
-        constexpr bool routed(const Stop& stop, const RenderProfile&)
+        constexpr bool routed(const Stop& stop, const Rtx::RenderProfile&)
         {
             return stop.mSchedule.mRoute.has_value();
         }
 
         /// A route arrives at cells, and an arrival that rebuilds the scene, or places it twice in
         /// one frame, drains the ring.
-        constexpr bool unrouted(const Stop& stop, const RenderProfile&)
+        constexpr bool unrouted(const Stop& stop, const Rtx::RenderProfile&)
         {
             return !stop.mSchedule.mRoute.has_value();
         }
@@ -45,13 +45,13 @@ namespace Rtx
         /// **Asked of a stop that stands still.** A route leaves the camera wherever it flew to and
         /// `Stand` names only where it set off from, so the two legitimately differ by the whole
         /// length of the route.
-        constexpr bool standingStill(const Stop& stop, const RenderProfile&)
+        constexpr bool standingStill(const Stop& stop, const Rtx::RenderProfile&)
         {
             return stop.mStand.mEye.has_value() && !stop.mSchedule.mFreeCamera && !stop.mSchedule.mRoute.has_value();
         }
 
         /// A hold a run did not ask for cannot come out short.
-        constexpr bool held(const Stop&, const RenderProfile& profile)
+        constexpr bool held(const Stop&, const Rtx::RenderProfile& profile)
         {
             return profile.mStressOverlapMs > 0.0;
         }
@@ -123,7 +123,7 @@ namespace Rtx
         return sEvery;
     }
 
-    bool canAsk(const Check check, const Stop& stop, const RenderProfile& profile)
+    bool canAsk(const Check check, const Stop& stop, const Rtx::RenderProfile& profile)
     {
         return rowOf(check).mCanAsk(stop, profile);
     }

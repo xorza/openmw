@@ -1,3 +1,4 @@
+#include <array>
 #include <filesystem>
 #include <set>
 #include <string>
@@ -177,20 +178,6 @@ namespace RtxTool
             EXPECT_EQ(lineFor("warmup").find("forty-five"), std::string::npos) << "the settle it described is gone";
         }
 
-        /// A point is three numbers and nothing else, spaces around each allowed; anything else is
-        /// no point, the empty text among it, and the caller says so in its own words.
-        TEST(RtxToolOptionsTest, aPointIsThreeNumbersAndNothingElse)
-        {
-            EXPECT_EQ(parseVec3("1,-2.5,3"), osg::Vec3f(1.0f, -2.5f, 3.0f));
-            EXPECT_EQ(parseVec3(" -8292, -73376 ,320 "), osg::Vec3f(-8292.0f, -73376.0f, 320.0f));
-
-            for (const std::string_view text : { "", "1,2", "1,2,3,", "1,,3", "1,2,3,4", "a,b,c", "1,2,3x", ",," })
-                EXPECT_FALSE(parseVec3(text).has_value()) << '"' << text << '"';
-
-            EXPECT_EQ(trimmed(" \tcell = 0,0\r"), "cell = 0,0");
-            EXPECT_EQ(trimmed("  "), "");
-        }
-
         /// The names the two tables share: an option's owner and the dispatch's row are the same
         /// word for the same command.
         TEST(RtxVerbsTest, everyCommandHasOneNameAndOneBit)
@@ -217,6 +204,29 @@ namespace RtxTool
             EXPECT_EQ(describeVerbs(Verbs::Check | Verbs::Shot | Verbs::Scene), "`scene`, `shot` and `check`")
                 << "in the order --help prints them, whatever order they were written in";
             EXPECT_EQ(describeVerbs(Verbs::None), "");
+        }
+
+        /// What each command does with a place is one row: which freeze the world, which fly a
+        /// route, which follow a track, which measure without the layers and which hash every frame.
+        /// **Every command has one**, so a command added to the names and forgotten here stops at
+        /// the first run rather than running with a row it never had.
+        TEST(RtxVerbsTest, everyCommandHasOneRowOfPolicy)
+        {
+            const auto row = [](Verbs verb) {
+                const VerbPolicy& policy = policyOf(verb);
+                return std::array{ policy.mFreezes, policy.mFliesRoutes, policy.mFollowsTracks, policy.mMeasures,
+                    policy.mHashes };
+            };
+
+            //                                     freezes routes tracks measures hashes
+            EXPECT_EQ(row(Verbs::Info), (std::array{ false, false, false, false, false }));
+            EXPECT_EQ(row(Verbs::Scene), (std::array{ true, false, false, false, false }));
+            EXPECT_EQ(row(Verbs::Shot), (std::array{ true, true, false, false, true }));
+            EXPECT_EQ(row(Verbs::View), (std::array{ false, false, false, false, false }))
+                << "a window takes no route: somebody is flying it";
+            EXPECT_EQ(row(Verbs::Bench), (std::array{ false, true, false, true, false }));
+            EXPECT_EQ(row(Verbs::Check), (std::array{ true, true, false, false, false }));
+            EXPECT_EQ(row(Verbs::Film), (std::array{ false, false, true, true, false }));
         }
     }
 

@@ -24,7 +24,6 @@ namespace Crash
         std::uint64_t mNotes = 0;
         std::size_t mNotesSize = 0;
 
-        std::filesystem::path mLog;
         std::string mApplication;
         bool mDialog = true;
 

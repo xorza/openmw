@@ -88,11 +88,11 @@ namespace MWRender
         /// upscaler tunes itself against how fast a motion vector was travelled, so each reader
         /// times what it is about — a setting that could state a step once made a played game step
         /// by frames, and at two hundred of them a second the world ran three times over.
-        Rtx::RunSetup playedRunSetup()
+        RunSetup playedRunSetup()
         {
             const RtxSettings settings = RtxSettings::derive(RtxSettingValues::fromRegistry());
 
-            return Rtx::RunSetup{
+            return RunSetup{
                 .mProfile = {
                     .mUpscaling = settings.mUpscaling,
                     .mExposure = std::nullopt,
@@ -122,7 +122,7 @@ namespace MWRender
     {
     }
 
-    RtxRenderer::RtxRenderer(const RendererSpec& spec, const RtxSetup* const run, const Rtx::RunSetup& setup)
+    RtxRenderer::RtxRenderer(const RendererSpec& spec, const RtxSetup* const run, const RunSetup& setup)
         : mRun(run != nullptr ? run->mRun : mPlayed)
         , mSettled(setup.mSettled)
         , mWindow(setup.mHeadless)
@@ -278,7 +278,7 @@ namespace MWRender
         // one frame after a tenth of one.
         //
         // **And a run that means to time the streaming path overrides it**, because waiting is
-        // most of what that path then measures. `Rtx::RunSetup::mSettled` says what the
+        // most of what that path then measures. `RunSetup::mSettled` says what the
         // override costs and what it buys.
         mMirror.setSettled(mSettled.value_or(getFrameClock().getStatedStep().has_value()));
 

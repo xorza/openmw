@@ -1,7 +1,6 @@
 #pragma once
 
 #include <filesystem>
-#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -9,7 +8,6 @@
 #include <boost/program_options/options_description.hpp>
 #include <boost/program_options/parsers.hpp>
 #include <boost/program_options/variables_map.hpp>
-#include <osg/Vec3f>
 
 #include <components/rtx/renderer.hpp>
 
@@ -53,19 +51,6 @@ namespace RtxTool
     /// `validationByDefault` is what `--validation` reads when nobody names it — a decision about the
     /// command line, which only the executable has: `sync` outside a Release build, `off` in one.
     ToolOptions makeOptions(Rtx::ValidationLevel validationByDefault);
-
-    /// The number `text` spells, or nothing where it spells anything else — the whole of the text,
-    /// so `speed = 1500u` is a refusal and not a run that flew at 1500. Read under the classic
-    /// locale, because a decimal point read where a comma is the separator flies at one.
-    std::optional<float> parseFloat(std::string_view text);
-
-    /// The point `x,y,z` spells, with spaces around each number, or nothing where the text is
-    /// anything else, empty text included. **It writes no refusal**: the caller knows what was
-    /// being read and where, and quotes the text it was given whole.
-    std::optional<osg::Vec3f> parseVec3(std::string_view text);
-
-    /// `text` without the spaces, tabs and carriage returns around it.
-    std::string_view trimmed(std::string_view text);
 
     /// Where the engine's own state goes when this tool drives it: the settings it saves on its
     /// way out, its log, its key bindings, its Lua storage. Under the cache path, because every

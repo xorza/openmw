@@ -21,7 +21,7 @@
 #                                        against a release's -symbols.zip or the newest in dist/
 #   rtx <flavour> gate                   clang-format 14, build, the release and no-DLSS compiles, test,
 #                                        check, repeat — stops at the first failure
-#   rtx <flavour> <verb> [args]          openmw-rtxtool <verb>, under the flavour's validation
+#   rtx <flavour> <verb> [args]          openmw-rtxtool <verb>, under the build's own layers
 #
 #   flavour   directory          what it is
 #   debug     build-debug        -O2 -g with every assert, the layers on with synchronization
@@ -93,13 +93,10 @@ shift 2
 describeFlavour() {
     flavour="$1"
     build="$root/build-$flavour"
-    validation=sync
     targets=(openmw-rtxtool openmw)
     case "$flavour" in
         debug | nodlss) ;;
-        release)
-            validation=off
-            ;;
+        release) ;;
         asan)
             if onWindows; then
                 echo "rtx: asan is Linux's here — MSVC's sanitizer has not been measured on this tree" >&2
@@ -123,7 +120,6 @@ describeFlavour() {
             export ASAN_OPTIONS="$options${ASAN_OPTIONS:+:$ASAN_OPTIONS}"
             ;;
         package)
-            validation=off
             targets=(all)
             ;;
         *)
@@ -551,16 +547,6 @@ setupGame() {
     echo "wrote $cfg"
 }
 
-# The flavour's layers, unless the line names a level of its own: a typed level wins.
-validationFor() {
-    for arg in "$@"; do
-        case "$arg" in
-            --validation=*) return ;;
-        esac
-    done
-    echo "--validation=$validation"
-}
-
 # **Every source in the working tree, and not every one git tracks.** CI's own script walks
 # `git ls-files`, which names a file a move has deleted and misses one it has created — so a tree
 # with an uncommitted move failed it on the file that was gone and passed it on the file that was
@@ -678,6 +664,12 @@ runRepeat() {
     [ ${#place[@]} -eq 0 ] && place=(--views=one-cell-walk)
     [ ${#length[@]} -eq 0 ] && length=(--seconds=6)
 
+    # The hold `check` runs under, off its one definition, so the second leg is held as far as
+    # `check` holds and the two cannot drift apart.
+    local hold
+    hold="$(sed -n 's/.*inline constexpr double sCheckHoldMs = \([0-9.]*\);.*/\1/p' "$root/apps/rtxtool/run.hpp")"
+    [ -n "$hold" ] || { echo "rtx: apps/rtxtool/run.hpp defines no sCheckHoldMs" >&2; return 1; }
+
     local out
     out="$(mktemp -d)"
     local bench=(./openmw-rtxtool bench "${place[@]}" "${length[@]}" --window=false --upscale=off --filter=false
@@ -690,7 +682,7 @@ runRepeat() {
             tail -20 "$out/$pair-1.log" >&2
             return 1
         }
-        if (cd "$build" && "${bench[@]}" --hold=8 --hashes="$out/$pair-2.csv" --against="$out/$pair.csv" > "$out/$pair-2.log" 2>&1); then
+        if (cd "$build" && "${bench[@]}" --hold="$hold" --hashes="$out/$pair-2.csv" --against="$out/$pair.csv" > "$out/$pair-2.log" 2>&1); then
             echo "pair $pair of $pairs: identical"
         elif grep -q '^against ' "$out/$pair-2.log"; then
             status=1
@@ -1141,7 +1133,7 @@ case "$what" in
         else
             echo "tests: the $flavour build has none — \`rtx debug gate\` runs them"
         fi
-        (cd "$build" && ./openmw-rtxtool check "--validation=$validation")
+        (cd "$build" && ./openmw-rtxtool check)
         runRepeat --pairs=1
         echo "gate: clean"
         ;;
@@ -1152,6 +1144,9 @@ case "$what" in
     *)
         buildTargets openmw-rtxtool
         cd "$build"
-        exec ./openmw-rtxtool "$what" "$@" $(validationFor "$@")
+        # **No `--validation` of the script's own.** Each build's binary already defaults to its
+        # flavour's layers, and a level on the line reads as asked for: `bench` and `film` then ran
+        # under synchronization validation in the debug build, where a measured run takes none.
+        exec ./openmw-rtxtool "$what" "$@"
         ;;
 esac

@@ -6,7 +6,7 @@
 #include <gtest/gtest.h>
 
 #include <components/rtx/texturedata.hpp>
-#include <components/rtxbench/runrecord.hpp>
+#include <components/rtxbench/contactsheet.hpp>
 
 #include "../rtx/testtexture.hpp"
 

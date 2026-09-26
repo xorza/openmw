@@ -13,11 +13,11 @@
 #include <components/rtx/renderer.hpp>
 
 #include "benchrecord.hpp"
-#include "benchspec.hpp"
 #include "cameratrack.hpp"
-#include "runsetup.hpp"
+#include <apps/openmw/mwrender/rtx/rtxrun.hpp>
+#include <components/rtxbench/benchspec.hpp>
 
-namespace Rtx
+namespace RtxTool
 {
     /// One thing a run asserts about what the renderer was handed or what it drew, of the running
     /// game and never of a staged world, which reads its cells and dresses its people by rules of
@@ -100,7 +100,7 @@ namespace Rtx
 
     /// Whether a place staged as `stop` can answer `check` at all, which is a different question
     /// from whether it passes. Beside the name in one table, so a new check says both.
-    bool canAsk(Check check, const Stop& stop, const RenderProfile& profile);
+    bool canAsk(Check check, const Stop& stop, const Rtx::RenderProfile& profile);
 
     /// Where a stop stands: a cell, and where the eye is inside it.
     struct Stand
@@ -117,7 +117,7 @@ namespace Rtx
         std::optional<osg::Vec3f> mLook;
 
         /// The point the eye faces: `mLook`, or due north where it names nothing or the eye itself,
-        /// because a direction of no length aims nothing. One answer, because `RtxTool::Session`
+        /// because a direction of no length aims nothing. One answer, because `CameraDriver`
         /// aims at it and `Check::CameraStands` asserts the camera reached it. Only for a stand that
         /// names an eye.
         osg::Vec3f getLook() const;
@@ -160,16 +160,14 @@ namespace Rtx
     };
 
     /// Where a stop flies to, and how fast. A route is what puts a cell arriving into a
-    /// measurement at all.
+    /// measurement at all. The view file states all three or none, `loadViews`.
     struct Route
     {
-        /// Where the eye ends and what it looks at there; both left out flies forwards. Empty by
-        /// their own initializer, because a designated initializer that skips one reads to GCC as a
-        /// short aggregate.
-        std::optional<osg::Vec3f> mTo = std::nullopt;
-        std::optional<osg::Vec3f> mLookTo = std::nullopt;
+        /// Where the eye ends and what it looks at there.
+        osg::Vec3f mTo;
+        osg::Vec3f mLookTo;
 
-        /// World units a second. A Morrowind exterior cell is 8,192 across.
+        /// World units a second, more than nought. A Morrowind exterior cell is 8,192 across.
         float mSpeed = 0.0f;
     };
 
@@ -177,7 +175,7 @@ namespace Rtx
     struct Schedule
     {
         /// How long it runs and how much of it is thrown away first.
-        BenchSpec mSpec;
+        Rtx::BenchSpec mSpec;
 
         std::optional<Route> mRoute;
 
@@ -280,7 +278,7 @@ namespace Rtx
 
         /// What the renderer is made with: hidden and stepped unless the command says otherwise,
         /// because a run measures or writes a picture unless somebody is watching it.
-        RunSetup mSetup{ .mHeadless = true, .mStep = sStepSeconds };
+        MWRender::RunSetup mSetup{ .mHeadless = true, .mStep = Rtx::sStepSeconds };
 
         /// Whether the game's HUD is drawn over the picture. Off by default: a picture is of the
         /// world, and the bars and the compass are the played game's.

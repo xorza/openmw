@@ -6,6 +6,16 @@ set(RTXTOOL_FILES
     compare.hpp
     film.cpp
     film.hpp
+    model/benchrecord.cpp
+    model/benchrecord.hpp
+    model/benchrun.cpp
+    model/benchrun.hpp
+    model/blockfile.cpp
+    model/blockfile.hpp
+    model/cameratrack.cpp
+    model/cameratrack.hpp
+    model/runrecord.cpp
+    model/runrecord.hpp
     options.cpp
     options.hpp
     run.cpp
@@ -16,9 +26,17 @@ set(RTXTOOL_FILES
 
 # What drives the game once one is hosted: built into the executable alone, for the reason below.
 set(RTXTOOL_HOSTED_FILES
+    cameradriver.cpp
+    cameradriver.hpp
     hosted.cpp
+    measurer.cpp
+    measurer.hpp
     session.cpp
     session.hpp
+    stager.cpp
+    stager.hpp
+    standingnote.cpp
+    standingnote.hpp
     stopwriter.cpp
     stopwriter.hpp
 )
@@ -78,8 +96,8 @@ if (BUILD_OPENMW)
 
     target_link_libraries(openmw-rtxtool openmw-rtxtool-lib openmw-lib)
 
-    # The run reads the clock through `mwworld/datetimemanager.hpp`, which is not warning-free
-    # under the extra checks, so that one takes the errors alone.
-    openmw_rtx_sources(main.cpp ${RTXTOOL_HOSTED_FILES} ERRORS_ONLY session.cpp)
+    # The stager and the camera read the clock through `mwworld/datetimemanager.hpp`, which is not
+    # warning-free under the extra checks, so those two take the errors alone.
+    openmw_rtx_sources(main.cpp ${RTXTOOL_HOSTED_FILES} ERRORS_ONLY stager.cpp cameradriver.cpp)
 endif()
 

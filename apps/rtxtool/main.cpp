@@ -35,18 +35,18 @@
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/shaderdirectory.hpp>
 #include <components/rtx/surfaceview.hpp>
-#include <components/rtxbench/benchrecord.hpp>
-#include <components/rtxbench/benchrun.hpp>
 #include <components/rtxbench/benchspec.hpp>
 #include <components/rtxbench/drivercache.hpp>
 #include <components/rtxvulkan/createrenderer.hpp>
 #include <components/sdlutil/vsyncmode.hpp>
 #include <components/settings/settings.hpp>
 #include <components/settings/values.hpp>
-#include <components/settings/windowmode.hpp>
 
 #include "compare.hpp"
 #include "film.hpp"
+#include "model/benchrecord.hpp"
+#include "model/benchrun.hpp"
+#include "model/blockfile.hpp"
 #include "options.hpp"
 #include "run.hpp"
 #include "verbs.hpp"
@@ -173,15 +173,15 @@ namespace RtxTool
 
         /// Every view a run names, settled: a condition named on the command line is every
         /// place's, and none of them keeps its own.
-        std::vector<Rtx::Stop> stopsFrom(
-            const std::vector<Rtx::Stop>& views, const bpo::variables_map& variables, const Framed& framed)
+        std::vector<Stop> stopsFrom(
+            const std::vector<Stop>& views, const bpo::variables_map& variables, const Framed& framed)
         {
             const std::optional<float> hour = hourGiven(variables);
             const std::optional<std::string> weather = weatherGiven(variables);
 
-            std::vector<Rtx::Stop> stops;
+            std::vector<Stop> stops;
             stops.reserve(views.size());
-            for (const Rtx::Stop& view : views)
+            for (const Stop& view : views)
                 stops.push_back(stopFor(view, hour, weather, framed.mDay));
 
             return stops;
@@ -251,10 +251,17 @@ namespace RtxTool
                 .mObjectPagingMinSize = Settings::terrain().mObjectPagingMinSize,
                 .mSpecularMapLayout = Settings::rtx().mSpecularMapLayout.get(),
             });
-            framed.mLatency = derived.mLatency;
-            framed.mMirror = derived.mMirror;
+            framed.mSetup.mLatency = derived.mLatency;
+            framed.mSetup.mMirror = derived.mMirror;
 
-            Rtx::RenderProfile& profile = framed.mProfile;
+            // **The layers the command's row says, unless the line names some**: `VerbPolicy`.
+            framed.mSetup.mValidation
+                = policyOf(command.mVerb).mMeasures ? validationForMeasuring(variables) : validationFrom(variables);
+            framed.mSetup.mShaderSource = variables["shader-source"].as<bool>();
+            if (variables.count("memory-budget") != 0)
+                framed.mSetup.mMemoryBudget = variables["memory-budget"].as<std::uint64_t>() * 1024 * 1024;
+
+            Rtx::RenderProfile& profile = framed.mSetup.mProfile;
             profile.mUpscaling = derived.mUpscaling;
             profile.mDelight = variables["delight"].as<float>();
             profile.mReconstruction.mFilter = variables["filter"].as<bool>();
@@ -312,8 +319,8 @@ namespace RtxTool
         }
 
         /// The view a run names, or null where it named none and gave a cell instead.
-        const Rtx::Stop* findChosenView(
-            const bpo::variables_map& variables, const std::filesystem::path& resources, std::vector<Rtx::Stop>& views)
+        const Stop* findChosenView(
+            const bpo::variables_map& variables, const std::filesystem::path& resources, std::vector<Stop>& views)
         {
             std::string name = variables["view"].as<std::string>();
             if (name.empty())
@@ -325,12 +332,12 @@ namespace RtxTool
             }
 
             views = loadViews(resources / "rtx" / "views.cfg");
-            const Rtx::Stop* view = findView(views, name);
+            const Stop* view = findView(views, name);
             if (view != nullptr)
                 return view;
 
             std::string known;
-            for (const Rtx::Stop& candidate : views)
+            for (const Stop& candidate : views)
                 known += "\n  " + candidate.mName + "   " + candidate.mNote;
 
             throw std::runtime_error("no view is called \"" + name + "\". These are:" + known);
@@ -340,39 +347,51 @@ namespace RtxTool
         /// from.
         constexpr std::string_view sShotHashes = "hashes.csv";
 
-        /// Holds `stop` still: warmed as the command line asks, then `frames` measured with the
-        /// simulation stopped.
-        ///
-        /// **Frozen is what still means.** The world does not step, so what one frame differs from
-        /// the next by is the renderer and nothing else — which is what a picture, a digest and a
-        /// pixel comparison are each about.
+        /// Runs `stop` for `frames`: warmed as the command line asks, then that many measured. Still
+        /// where the command's row freezes the world (`VerbPolicy::mFreezes`), which `sessionFor`
+        /// applies.
         ///
         /// @param frames how many to measure once the world has arrived. Why a command wants more
         ///        than one is that command's to say.
-        void holdStill(Rtx::Stop& stop, const bpo::variables_map& variables, const std::uint32_t frames = 1)
+        void measureFrames(Stop& stop, const bpo::variables_map& variables, const std::uint32_t frames = 1)
         {
             stop.mSchedule.mSpec.mWarm = Rtx::BenchSpan{ .mSeconds = variables["warmup"].as<float>() };
             stop.mSchedule.mSpec.mRun = Rtx::BenchSpan{ .mFrames = frames };
-            stop.mSchedule.mFrozen = true;
         }
 
-        /// The one place a `SessionRequest` is built: the stops, the setup the line framed, the
-        /// validation the verb chose, and what every run reads off the line besides. A verb that
-        /// wants more — a suite, a file to write, a window — says so on what comes back.
-        Rtx::SessionRequest sessionFor(const Command& command, const Framed& framed, std::vector<Rtx::Stop> stops,
-            const Rtx::ValidationOptions& validation)
+        /// What `policy` does to one place: the route and the track a command does not follow go,
+        /// the clock stops where the row freezes and nothing is flown, and every frame is hashed
+        /// where the row hashes.
+        ///
+        /// **Frozen is what still means.** The world does not step, so what one frame differs from
+        /// the next by is the renderer and nothing else — which is what a picture, a digest and a
+        /// pixel comparison are each about. A route is flown with the clock going, because a camera
+        /// crossing a stopped world measures the streaming and nothing that lives in it.
+        void applyPolicy(const VerbPolicy& policy, Stop& stop)
+        {
+            if (!policy.mFliesRoutes)
+                stop.mSchedule.mRoute.reset();
+            if (!policy.mFollowsTracks)
+                stop.mSchedule.mTrack.reset();
+
+            stop.mSchedule.mFrozen = policy.mFreezes && !stop.mSchedule.mRoute.has_value();
+            stop.mActions.mHash = stop.mActions.mHash || policy.mHashes;
+        }
+
+        /// The one place a `SessionRequest` is built: the stops as the command's row holds them, the
+        /// setup the line framed, and what every run reads off the line besides. A verb that wants
+        /// more — a suite, a file to write — says so on what comes back.
+        SessionRequest sessionFor(const Command& command, const Framed& framed, std::vector<Stop> stops)
         {
             const bpo::variables_map& variables = command.mVariables;
 
-            Rtx::SessionRequest request;
+            const VerbPolicy& policy = policyOf(command.mVerb);
+            for (Stop& stop : stops)
+                applyPolicy(policy, stop);
+
+            SessionRequest request;
             request.mStops = std::move(stops);
-            request.mSetup.mProfile = framed.mProfile;
-            request.mSetup.mMirror = framed.mMirror;
-            request.mSetup.mLatency = framed.mLatency;
-            request.mSetup.mValidation = validation;
-            request.mSetup.mShaderSource = variables["shader-source"].as<bool>();
-            if (variables.count("memory-budget") != 0)
-                request.mSetup.mMemoryBudget = variables["memory-budget"].as<std::uint64_t>() * 1024 * 1024;
+            request.mSetup = framed.mSetup;
             request.mHud = variables["hud"].as<bool>();
             request.mVanity = variables["vanity"].as<bool>();
             request.mRandomSeed = variables["random-seed"].as<unsigned int>();
@@ -382,10 +401,10 @@ namespace RtxTool
 
         /// Runs a list of stops against a real game, which is what every command that writes
         /// pictures or reports does.
-        int runStops(const Command& command, const Framed& framed, std::vector<Rtx::Stop> stops)
+        int runStops(const Command& command, const Framed& framed, std::vector<Stop> stops)
         {
-            return runHosted(command.mVariables, command.mConfig, command.mResources,
-                sessionFor(command, framed, std::move(stops), validationFrom(command.mVariables)));
+            return runHosted(command.mVariables, command.mConfig, command.mResources, framed.mWindow,
+                sessionFor(command, framed, std::move(stops)));
         }
 
         /// How long every stop of a run lasts, from what the command line asked for.
@@ -403,52 +422,22 @@ namespace RtxTool
             return spec;
         }
 
-        /// Everything a hosted run writes into the settings before the engine reads them: the
-        /// window it is presented in.
-        ///
-        /// **These are settings and not a second command line**, because both binaries have to
-        /// reach one engine configured one way. What the *trace* and the *mirror* are configured by
-        /// travels in the `RunSetup` the renderer is made with — `SessionRequest::mSetup` — and
-        /// never through the registry, which is the player's.
-        void applyHostedSettings(const WindowRequest& window)
-        {
-            Settings::video().mResolutionX.set(static_cast<int>(window.mWidth));
-            Settings::video().mResolutionY.set(static_cast<int>(window.mHeight));
-            Settings::video().mWindowMode.set(Settings::WindowMode::Windowed);
-            Settings::video().mVsyncMode.set(window.mVerticalSync);
-            Settings::camera().mFieldOfView.set(window.mFieldOfView);
-
-            // **Physics on the frame's own thread, so a run is the same run twice.** A physics
-            // worker refreshes the AI's line-of-sight cache after each step
-            // (`PhysicsTaskScheduler::refreshLOSCache`) while the AI on the main thread reads it,
-            // and whether a refresh landed before or after a read is the worker's timing: an actor
-            // that saw or did not see its target walks elsewhere from the next frame on. The step
-            // is one physics step a frame either way, so nothing about the simulation changes but
-            // who runs it and when the cache is read.
-            Settings::physics().mAsyncNumThreads.set(0);
-        }
-
         /// The one place a command names on its line, as a stop: a view, a cell, a save, and
         /// whatever the line says over them.
-        ///
-        /// **The frame is written into the settings before the stop is made**, so a picture and the
-        /// sky it was framed for are one answer.
-        Rtx::Stop stageOnePlace(const Command& command, const Framed& framed)
+        Stop stageOnePlace(const Command& command, const Framed& framed)
         {
             const bpo::variables_map& variables = command.mVariables;
 
-            applyHostedSettings(framed.mWindow);
-
             // Holds what the view below points into, for as long as this function needs it.
-            std::vector<Rtx::Stop> views;
-            const Rtx::Stop* found = findChosenView(variables, command.mResources, views);
+            std::vector<Stop> views;
+            const Stop* found = findChosenView(variables, command.mResources, views);
             const std::string cell = variables["cell"].as<std::string>();
 
             // **A save is the place, unless the line names one over it.** The stop then stands
             // where the save left the player, at the save's hour, day and weather, and only what
             // the line names is changed — where `stopFor` would stand it at noon under a clear sky
             // on the first day, which is a view's rule and not a save's.
-            Rtx::Stop staged;
+            Stop staged;
             if (found == nullptr && cell.empty() && startsFromSave(variables))
             {
                 staged.mName = variables["load-savegame"].as<Files::MaybeQuotedPath>().stem().string();
@@ -459,7 +448,7 @@ namespace RtxTool
             }
             else
             {
-                const Rtx::Stop view = found != nullptr ? *found : Rtx::Stop{ .mStand = { .mCell = cell } };
+                const Stop view = found != nullptr ? *found : Stop{ .mStand = { .mCell = cell } };
                 staged = stopFor(view, hourGiven(variables), weatherGiven(variables), framed.mDay);
             }
 
@@ -484,24 +473,23 @@ namespace RtxTool
         ///
         /// @param frames how many to measure at each place once the world has arrived. Why a
         ///        command wants more than one is that command's to say.
-        std::vector<Rtx::Stop> stagePlaces(const Command& command, const Framed& framed, const std::uint32_t frames)
+        std::vector<Stop> stagePlaces(const Command& command, const Framed& framed, const std::uint32_t frames)
         {
             const bpo::variables_map& variables = command.mVariables;
             const std::string named = variables["views"].as<std::string>();
 
-            std::vector<Rtx::Stop> stops;
+            std::vector<Stop> stops;
             if (named.empty())
                 stops.push_back(stageOnePlace(command, framed));
             else
             {
-                applyHostedSettings(framed.mWindow);
                 stops = stopsFrom(
                     chooseViews(loadViews(command.mResources / "rtx" / "views.cfg"), Rtx::splitNames(named)), variables,
                     framed);
             }
 
-            for (Rtx::Stop& stop : stops)
-                holdStill(stop, variables, frames);
+            for (Stop& stop : stops)
+                measureFrames(stop, variables, frames);
 
             return stops;
         }
@@ -510,7 +498,7 @@ namespace RtxTool
         /// says about them.
         struct SuiteRun
         {
-            std::vector<Rtx::Stop> mViews;
+            std::vector<Stop> mViews;
 
             /// Which suite, for the record's own header; empty where `--views` named the places.
             std::string mSuite;
@@ -529,7 +517,7 @@ namespace RtxTool
         SuiteRun chooseBenchViews(const bpo::variables_map& variables, const std::filesystem::path& resources,
             const std::string_view ownSuite)
         {
-            const std::vector<Rtx::Stop> views = loadViews(resources / "rtx" / "views.cfg");
+            const std::vector<Stop> views = loadViews(resources / "rtx" / "views.cfg");
             const std::string named = variables["views"].as<std::string>();
 
             SuiteRun run;
@@ -565,14 +553,14 @@ namespace RtxTool
 
         int runListViews(const std::filesystem::path& resources)
         {
-            for (const Rtx::Stop& view : loadViews(resources / "rtx" / "views.cfg"))
+            for (const Stop& view : loadViews(resources / "rtx" / "views.cfg"))
             {
                 out() << "  " << view.mName << "\n      " << view.mStand.mCell;
 
                 // A place that fixes a condition is a different frame from the same camera at noon
                 // under a clear sky, and this listing is how a view is found.
                 if (view.mSky.mHour.has_value())
-                    out() << " at " << Rtx::describeHour(*view.mSky.mHour);
+                    out() << " at " << describeHour(*view.mSky.mHour);
 
                 if (view.mSky.mWeather.has_value())
                     out() << " in " << *view.mSky.mWeather;
@@ -599,8 +587,8 @@ namespace RtxTool
             const bpo::variables_map& variables = command.mVariables;
             const Framed framed = frameFrom(command);
 
-            std::vector<Rtx::Stop> stops = stagePlaces(command, framed, 1);
-            for (Rtx::Stop& stop : stops)
+            std::vector<Stop> stops = stagePlaces(command, framed, 1);
+            for (Stop& stop : stops)
             {
                 stop.mActions.mFind = variables["find"].as<std::string>();
                 stop.mActions.mDigest = stop.mActions.mFind.empty();
@@ -618,7 +606,7 @@ namespace RtxTool
         /// `NpcAnimation` and the sky is reported by `MWWorld::WeatherManager`, so the picture is
         /// the one the game draws rather than one derived beside it.
         ///
-        /// **Every picture a stop can make, in one run**, because `Rtx::Actions` holds them all and
+        /// **Every picture a stop can make, in one run**, because `Actions` holds them all and
         /// each verb that made one started an engine of its own for it. And every view, under
         /// `--views`, with `--against` saying which pictures a change moved.
         ///
@@ -646,7 +634,7 @@ namespace RtxTool
             const std::uint32_t frames
                 = accumulate > 0 ? accumulate : std::max(variables["repeat"].as<std::uint32_t>(), 1u);
 
-            std::vector<Rtx::Stop> stops = stagePlaces(command, framed, frames);
+            std::vector<Stop> stops = stagePlaces(command, framed, frames);
 
             const std::filesystem::path out
                 = variables["out"].defaulted() ? "shot" : variables["out"].as<std::string>();
@@ -655,10 +643,9 @@ namespace RtxTool
             const std::string doll = variables["doll"].as<std::string>();
             std::vector<std::string> written;
             std::vector<std::string> framePictures;
-            for (Rtx::Stop& stop : stops)
+            for (Stop& stop : stops)
             {
                 stop.mSchedule.mAccumulate = accumulate;
-                stop.mActions.mHash = true;
 
                 const auto file = [&](const std::string_view suffix) {
                     written.push_back(stop.mName + std::string(suffix) + ".png");
@@ -668,19 +655,20 @@ namespace RtxTool
                 stop.mActions.mCapture = file("");
                 framePictures.push_back(written.back());
                 if (!doll.empty())
-                    stop.mActions.mDoll = Rtx::Actions::Doll{ .mWho = doll, .mFile = file("-doll") };
+                    stop.mActions.mDoll = Actions::Doll{ .mWho = doll, .mFile = file("-doll") };
                 if (variables["map"].as<bool>())
                     stop.mActions.mMapTile = file("-map");
                 if (variables["textures"].as<bool>())
                     stop.mActions.mSheet = file("-textures");
             }
 
-            Rtx::SessionRequest request = sessionFor(command, framed, std::move(stops), validationFrom(variables));
+            SessionRequest request = sessionFor(command, framed, std::move(stops));
             request.mHashes = out / sShotHashes;
             if (!against.empty())
                 request.mAgainst = against / sShotHashes;
 
-            if (const int status = runHosted(variables, command.mConfig, command.mResources, std::move(request));
+            if (const int status
+                = runHosted(variables, command.mConfig, command.mResources, framed.mWindow, std::move(request));
                 status != 0)
                 return status;
 
@@ -694,12 +682,11 @@ namespace RtxTool
 
             // A bench draws frames the way a player sees them and sums none of them, so it is
             // measured at the width the game runs at. Every other verb keeps the reference's.
-            framed.mProfile.mRadianceWidth = Rtx::RadianceWidth::Shown;
-
-            applyHostedSettings(framed.mWindow);
+            framed.mSetup.mProfile.mRadianceWidth = Rtx::RadianceWidth::Shown;
+            framed.mSetup.mHeadless = !variables["window"].as<bool>();
 
             const SuiteRun run = chooseBenchViews(variables, command.mResources, "default");
-            std::vector<Rtx::Stop> stops = stopsFrom(run.mViews, variables, framed);
+            std::vector<Stop> stops = stopsFrom(run.mViews, variables, framed);
 
             const Rtx::BenchSpec spec = specFrom(variables);
             const std::vector<std::string> turn = Rtx::splitNames(variables["turn-weather"].as<std::string>());
@@ -710,7 +697,7 @@ namespace RtxTool
             if (!frameTimes.empty())
                 std::filesystem::create_directories(frameTimes);
 
-            for (Rtx::Stop& stop : stops)
+            for (Stop& stop : stops)
             {
                 stop.mSchedule.mSpec = spec;
                 stop.mSky.mTurnThrough = turn;
@@ -719,8 +706,7 @@ namespace RtxTool
                     stop.mActions.mFrameTimes = frameTimes / (stop.mName + ".txt");
             }
 
-            Rtx::SessionRequest request
-                = sessionFor(command, framed, std::move(stops), validationForMeasuring(variables));
+            SessionRequest request = sessionFor(command, framed, std::move(stops));
             request.mSuite = run.mSuite;
             request.mJson = variables["json"].as<std::string>();
             request.mHashes = variables["hashes"].as<std::string>();
@@ -728,9 +714,8 @@ namespace RtxTool
             request.mPictures = variables["pictures"].as<std::string>();
             request.mPerfControl = variables["perf-control"].as<std::string>();
             request.mSetup.mSettled = run.mSettled;
-            request.mSetup.mHeadless = !variables["window"].as<bool>();
 
-            return runHosted(variables, command.mConfig, command.mResources, std::move(request));
+            return runHosted(variables, command.mConfig, command.mResources, framed.mWindow, std::move(request));
         }
 
         /// A window on a place, with the game running behind it.
@@ -749,9 +734,15 @@ namespace RtxTool
             Framed framed = frameFrom(command);
 
             // Watched and never summed, like a bench.
-            framed.mProfile.mRadianceWidth = Rtx::RadianceWidth::Shown;
+            framed.mSetup.mProfile.mRadianceWidth = Rtx::RadianceWidth::Shown;
 
-            Rtx::Stop staged = stageOnePlace(command, framed);
+            // **On the wall, because somebody is watching.** A stepped world runs as fast as the
+            // card draws it, which at two hundred frames a second is three times over; a window
+            // is the played game with the walls off, and the played game follows the wall.
+            framed.mSetup.mHeadless = false;
+            framed.mSetup.mStep = std::nullopt;
+
+            Stop staged = stageOnePlace(command, framed);
 
             // **A schedule with no end, because somebody is watching.** `--frames` closes it after
             // that many, which is how the window path gets exercised by something that cannot click.
@@ -760,20 +751,14 @@ namespace RtxTool
                 = Rtx::BenchSpan{ .mFrames = frames > 0 ? frames : Rtx::BenchSpan::sUntilClosed };
             staged.mSchedule.mFreeCamera = true;
 
-            std::vector<Rtx::Stop> stops;
+            std::vector<Stop> stops;
             stops.push_back(std::move(staged));
 
-            Rtx::SessionRequest request = sessionFor(command, framed, std::move(stops), validationFrom(variables));
+            SessionRequest request = sessionFor(command, framed, std::move(stops));
             request.mQuitAtEnd = frames > 0;
-            request.mSetup.mHeadless = false;
             request.mKeys = variables["keys"].as<std::string>();
 
-            // **On the wall, because somebody is watching.** A stepped world runs as fast as the
-            // card draws it, which at two hundred frames a second is three times over; a window
-            // is the played game with the walls off, and the played game follows the wall.
-            request.mSetup.mStep = std::nullopt;
-
-            return runHosted(variables, command.mConfig, command.mResources, std::move(request), true);
+            return runHosted(variables, command.mConfig, command.mResources, framed.mWindow, std::move(request), true);
         }
 
         /// Every claim the tree makes about what the renderer is handed and what it draws, asked
@@ -788,14 +773,12 @@ namespace RtxTool
             const bpo::variables_map& variables = command.mVariables;
             Framed framed = frameFrom(command);
             if (variables["hold"].defaulted())
-                framed.mProfile.mStressOverlapMs = sCheckHoldMs;
-
-            applyHostedSettings(framed.mWindow);
+                framed.mSetup.mProfile.mStressOverlapMs = sCheckHoldMs;
 
             const SuiteRun run = chooseBenchViews(variables, command.mResources, "check");
-            std::vector<Rtx::Stop> stops = stopsFrom(run.mViews, variables, framed);
+            std::vector<Stop> stops = stopsFrom(run.mViews, variables, framed);
 
-            const std::span<const Rtx::Check> every = Rtx::everyCheck();
+            const std::span<const Check> every = everyCheck();
 
             // **Every picture a stop can write, at the first place, because each leaves through a
             // path the frame's own passes never touch**: the capture adds the read back a picture
@@ -806,31 +789,29 @@ namespace RtxTool
             std::filesystem::create_directories(out);
             stops.front().mActions.mCapture = out / (stops.front().mName + ".png");
             stops.front().mActions.mMapTile = out / (stops.front().mName + "-map.png");
-            stops.front().mActions.mDoll = Rtx::Actions::Doll{ "fargoth", out / (stops.front().mName + "-doll.png") };
+            stops.front().mActions.mDoll = Actions::Doll{ "fargoth", out / (stops.front().mName + "-doll.png") };
 
-            for (Rtx::Stop& stop : stops)
+            for (Stop& stop : stops)
             {
                 // **Two measured frames, because one of the claims is about a pair of them.** A
                 // still camera resolving to a still picture cannot be asked of one frame.
-                holdStill(stop, variables, 2);
+                measureFrames(stop, variables, 2);
 
-                for (const Rtx::Check check : every)
-                    if (Rtx::canAsk(check, stop, framed.mProfile))
+                for (const Check check : every)
+                    if (canAsk(check, stop, framed.mSetup.mProfile))
                         stop.mActions.mChecks.push_back(check);
 
+                // A route runs for as long as the line says, and ends where it arrives.
                 if (stop.mSchedule.mRoute.has_value())
-                {
-                    stop.mSchedule.mFrozen = false;
                     stop.mSchedule.mSpec.mRun = Rtx::BenchSpan{ .mSeconds = variables["seconds"].as<float>() };
-                }
 
                 stop.mActions.mWalkTwice = true;
             }
 
-            Rtx::SessionRequest request = sessionFor(command, framed, std::move(stops), validationFrom(variables));
+            SessionRequest request = sessionFor(command, framed, std::move(stops));
             request.mSuite = run.mSuite;
 
-            return runHosted(variables, command.mConfig, command.mResources, std::move(request));
+            return runHosted(variables, command.mConfig, command.mResources, framed.mWindow, std::move(request));
         }
 
         /// A film of the keys a window wrote: every take drawn headless, its frames numbered through
@@ -850,14 +831,23 @@ namespace RtxTool
             Framed framed = frameFrom(command);
 
             // Watched and never summed, like a bench.
-            framed.mProfile.mRadianceWidth = Rtx::RadianceWidth::Shown;
+            framed.mSetup.mProfile.mRadianceWidth = Rtx::RadianceWidth::Shown;
 
             const std::filesystem::path keys = variables["keys"].as<std::string>();
             if (keys.empty())
                 throw std::runtime_error("a film needs --keys=<file>, the keys `view --keys` appends on Home");
 
+            // **The step is the run's, and the film counts every length in it**: the world moves a
+            // frame of film between two frames, and a take's warm-up is seconds the session turns
+            // into frames at that same step.
+            const float framesPerSecond = variables["fps"].as<float>();
+            if (!(framesPerSecond > 0.0f))
+                throw std::runtime_error(std::format("--fps is {}, which is not more than nought", framesPerSecond));
+            framed.mSetup.mStep = 1.0f / framesPerSecond;
+            framed.mSetup.mSettled = true;
+
             FilmPacing pacing;
-            pacing.mFramesPerSecond = variables["fps"].as<float>();
+            pacing.mStep = *framed.mSetup.mStep;
             pacing.mSpeed = variables["speed"].as<float>();
             pacing.mPanSeconds = variables["pan-seconds"].as<float>();
             pacing.mHourSeconds = variables["hour-seconds"].as<float>();
@@ -869,10 +859,9 @@ namespace RtxTool
             pacing.mAspect = static_cast<float>(framed.mWindow.mWidth) / static_cast<float>(framed.mWindow.mHeight);
             pacing.mDay = framed.mDay;
 
-            for (const auto& [name, value] :
-                { std::pair{ "fps", pacing.mFramesPerSecond }, std::pair{ "speed", pacing.mSpeed },
-                    std::pair{ "pan-seconds", pacing.mPanSeconds }, std::pair{ "hour-seconds", pacing.mHourSeconds },
-                    std::pair{ "crossing", pacing.mCrossingSeconds }, std::pair{ "still", pacing.mStillSeconds } })
+            for (const auto& [name, value] : { std::pair{ "speed", pacing.mSpeed },
+                     std::pair{ "pan-seconds", pacing.mPanSeconds }, std::pair{ "hour-seconds", pacing.mHourSeconds },
+                     std::pair{ "crossing", pacing.mCrossingSeconds }, std::pair{ "still", pacing.mStillSeconds } })
                 if (!(value > 0.0f))
                     throw std::runtime_error(std::format("--{} is {}, which is not more than nought", name, value));
             if (!(pacing.mCutDistance >= 0.0f) || !(pacing.mWarmupSeconds >= 0.0f))
@@ -890,19 +879,13 @@ namespace RtxTool
             if (const std::size_t cleared = clearFrames(frames); cleared > 0)
                 out() << std::format("cleared {} frames of the last film\n", cleared);
 
-            applyHostedSettings(framed.mWindow);
-
-            Rtx::SessionRequest request
-                = sessionFor(command, framed, stopsFor(plan, frames), validationForMeasuring(variables));
-            request.mSetup.mStep = 1.0f / pacing.mFramesPerSecond;
-            request.mSetup.mSettled = true;
-
-            if (const int status = runHosted(variables, command.mConfig, command.mResources, std::move(request));
+            if (const int status = runHosted(variables, command.mConfig, command.mResources, framed.mWindow,
+                    sessionFor(command, framed, stopsFor(plan, frames)));
                 status != 0)
                 return status;
 
             const std::filesystem::path video = directory / (keys.stem().string() + ".mp4");
-            const std::string encode = encodeCommand(frames, video, pacing.mFramesPerSecond);
+            const std::string encode = encodeCommand(frames, video, pacing.getRate());
             if (!variables["encode"].as<bool>())
             {
                 out() << "\nthe frames are in " << Files::pathToUnicodeString(frames) << "; to encode them:\n"

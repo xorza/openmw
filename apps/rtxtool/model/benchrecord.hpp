@@ -18,11 +18,11 @@
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/upscale.hpp>
 
-#include "cardwatch.hpp"
-#include "frametimes.hpp"
-#include "gpuclock.hpp"
+#include <components/rtxbench/cardwatch.hpp>
+#include <components/rtxbench/frametimes.hpp>
+#include <components/rtxbench/gpuclock.hpp>
 
-namespace Rtx
+namespace RtxTool
 {
     /// How many cell boundaries a route crossed, and what the frames that crossed them cost.
     ///
@@ -65,9 +65,9 @@ namespace Rtx
         std::uint32_t mArrivedMeshes = 0;
 
         /// Where the time went, `Timing::Frame` the whole of it.
-        FrameSpend mSpend;
+        Rtx::FrameSpend mSpend;
 
-        double getFrameMs() const { return mSpend.at(Timing::Frame); }
+        double getFrameMs() const { return mSpend.at(Rtx::Timing::Frame); }
     };
 
     /// The frames whose upload extended the scene — a cell handed over, an actor entering with a
@@ -90,7 +90,7 @@ namespace Rtx
         std::array<WorstFrame, sKept> mWorst{};
         std::size_t mWorstCount = 0;
 
-        void add(std::uint32_t arrivedMeshes, const FrameSpend& spend);
+        void add(std::uint32_t arrivedMeshes, const Rtx::FrameSpend& spend);
 
         double getMeanMs() const { return mFrames == 0 ? 0.0 : mSumMs / mFrames; }
     };
@@ -150,29 +150,29 @@ namespace Rtx
 
         /// The whole per-frame cost and the three shares of it worth telling apart, indexed by
         /// `Timing` — which is where the four are named and where a fifth would be.
-        std::array<FrameTimes, sTimingCount> mRows;
+        std::array<Rtx::FrameTimes, Rtx::sTimingCount> mRows;
 
-        const FrameTimes& at(const Timing timing) const { return mRows[indexOf(timing)]; }
-        FrameTimes& at(const Timing timing) { return mRows[indexOf(timing)]; }
+        const Rtx::FrameTimes& at(const Rtx::Timing timing) const { return mRows[indexOf(timing)]; }
+        Rtx::FrameTimes& at(const Rtx::Timing timing) { return mRows[indexOf(timing)]; }
 
         /// The driver's own input-to-present figure over the measured frames, in milliseconds,
         /// where the driver paced the window — the one latency a player feels, measured by the
         /// only party that sees the whole pipeline. Nothing on a headless run, which is every
         /// measured one, and the JSON says so by leaving the key out.
-        std::optional<FrameTimes> mLatency;
+        std::optional<Rtx::FrameTimes> mLatency;
 
         /// What the device itself says each stretch of the frame cost, most expensive first. Empty
         /// where the device cannot write timestamps.
-        std::vector<GpuZone> mGpu;
+        std::vector<Rtx::GpuZone> mGpu;
 
         /// What the card was clocked at as this place ended. Every GPU figure above is at that
         /// clock, and two runs taken at different ones are not an A/B.
-        GpuClock mClock;
+        Rtx::GpuClock mClock;
 
         /// Who held the card through the place's measured frames. A place another process drew
         /// through carries that process's frames in every row above, and this is the line that
         /// says so.
-        CardShare mCard;
+        Rtx::CardShare mCard;
 
         /// What fraction of primary rays hit something, as a percentage. A place profiled facing a
         /// wall is fast and means nothing, and this is what says so without opening a window.
@@ -184,19 +184,19 @@ namespace Rtx
 
         Overlap mOverlap;
 
-        /// How far along its route the camera got, as a fraction. One where it arrived, or where
-        /// the route named no destination, and less where the run ended first — a route flown too
-        /// slowly to finish is measuring a shorter journey than it reads as.
+        /// How far along its route the camera got, as a fraction. One where it arrived or flew no
+        /// route, and less where the run ended first — a route flown too slowly to finish is
+        /// measuring a shorter journey than it reads as.
         double mTravelled = 1.0;
 
-        SceneStats mScene;
+        Rtx::SceneStats mScene;
 
         /// What the device gave up for that scene, per heap.
         ///
         /// **A place and not a run**, because a route arrives at cells the last one did not: what
         /// the allocators reserve is a high-water mark, so the figure belongs to the place the run
         /// had reached when it was taken.
-        MemoryReport mMemory;
+        Rtx::MemoryReport mMemory;
     };
 
     /// What every place of a run stood under, for the record's own header.
@@ -206,19 +206,19 @@ namespace Rtx
         /// where the run is the game measuring itself.
         std::string mSuite;
 
-        FrameExtents mExtents;
+        Rtx::FrameExtents mExtents;
 
         /// What upscaled the run's frames, as `Reconstruction` reports it: the mode and the network,
         /// or `Off` and `Default` where nothing did. **Read off a frame and not off the renderer**,
         /// which answers the mode alone.
-        Upscaling mUpscaling{ .mMode = Upscale::Off, .mPreset = Preset::Default };
+        Rtx::Upscaling mUpscaling{ .mMode = Rtx::Upscale::Off, .mPreset = Rtx::Preset::Default };
 
         /// Where the trace drew from and what its texture levels were offset by, as the frame's
         /// `Reconstruction` resolved them; and whether the launch sorted its threads, which is
         /// the profile's.
-        NoiseSource mNoise = NoiseSource::BlueNoiseTile;
+        Rtx::NoiseSource mNoise = Rtx::NoiseSource::BlueNoiseTile;
         float mLevelBias = 0.0f;
-        Reorder mReorder = Reorder::None;
+        Rtx::Reorder mReorder = Rtx::Reorder::None;
 
         std::uint32_t mMeasured = 0;
         std::uint32_t mWarmup = 0;

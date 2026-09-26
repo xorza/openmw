@@ -11,12 +11,12 @@
 
 #include <boost/program_options/variables_map.hpp>
 
-#include <components/rtx/cellworld.hpp>
-#include <components/rtx/pacing.hpp>
-#include <components/rtx/reconstruction.hpp>
+#include <apps/openmw/mwrender/rtx/rtxrun.hpp>
 #include <components/rtx/upscale.hpp>
-#include <components/rtxbench/benchrun.hpp>
+#include <components/rtxbench/benchspec.hpp>
 #include <components/sdlutil/vsyncmode.hpp>
+
+#include "model/benchrun.hpp"
 
 namespace Files
 {
@@ -27,34 +27,34 @@ namespace RtxTool
 {
     /// Degrees clockwise from north, in `[0, 360)`, of the way a stand faces. North is +Y and east
     /// is +X, so the arguments come the other way round from the usual `atan2`.
-    float bearingOf(const Rtx::Stand& stand);
+    float bearingOf(const Stand& stand);
 
     /// Degrees above the horizon, in `[-90, 90]`, of the way a stand faces.
-    float climbOf(const Rtx::Stand& stand);
+    float climbOf(const Stand& stand);
 
     /// One line for a person: where `stop` stands, in numbers worth reading rather than
     /// round-tripping, as a `#` comment either file format takes. A run that opened a window prints
     /// this and `describeBlock` where the eye was left, so a place found by flying can be pasted.
-    std::string describeSpot(const Rtx::Stop& stop);
+    std::string describeSpot(const Stop& stop);
 
     /// The whole `views.cfg` section for `stop`, ready to paste, under a slug of its name. The whole
     /// section, because a block with no `cell` is one the view file refuses to load; and
     /// shortest-round-trip numbers, because these are read back into the same floats.
-    std::string describeBlock(const Rtx::Stop& stop);
+    std::string describeBlock(const Stop& stop);
 
     /// The same place as one `view` command line, as a `#` comment: the cell, the camera, the hour,
     /// the day and the weather, every one of them named, so a frame somebody saw is a frame the
     /// next run draws again. The day too, which the block has no key for and the moons hang on.
-    std::string describeCommand(const Rtx::Stop& stop);
+    std::string describeCommand(const Stop& stop);
 
     /// The same place as one key of a film: the block, and the day, which a film's key reads and a
     /// view does not. What `view --keys` appends on Home. A condition the block leaves out is the
     /// file's own, which is what a key reads it as.
-    std::string describeKey(const Rtx::Stop& stop);
+    std::string describeKey(const Stop& stop);
 
     /// Where a window stands, whole: the line for a person, the block for the view file and the
     /// command for the next run. What a window prints on the key and again where it was left.
-    std::string describeStanding(const Rtx::Stop& stop);
+    std::string describeStanding(const Stop& stop);
 
     /// A cell spelt as `--cell` takes it: the grid pair out of doors and the name indoors, where the
     /// coordinates a stand holds are the interior's own and the grid pair would put them elsewhere.
@@ -149,13 +149,13 @@ namespace RtxTool
     {
         WindowRequest mWindow;
 
-        /// The three parts of the `RunSetup` the line frames: what the trace is configured by, how
-        /// much world the mirror builds, and how the driver paces the frame. The rest of the setup
-        /// — the validation, the step, whether there is a window — is each verb's to say, on the
-        /// request `sessionFor` builds.
-        Rtx::RenderProfile mProfile{ .mUpscaling = { .mMode = sUpscaleByDefault } };
-        Rtx::MirrorKnobs mMirror;
-        Rtx::LatencyMode mLatency = Rtx::LatencyMode::Off;
+        /// What the renderer is made with, whole: the line's profile, mirror, pacing, layers,
+        /// shaders and budget, hidden and stepped at the harness's own rate until a command says
+        /// otherwise. The request `sessionFor` builds carries it as it is, so a knob `RunSetup`
+        /// gains reaches every command by being read here.
+        MWRender::RunSetup mSetup{
+            .mProfile = { .mUpscaling = { .mMode = sUpscaleByDefault } }, .mHeadless = true, .mStep = Rtx::sStepSeconds
+        };
 
         /// Which day, counted from the one a new game begins on. Only the moons read it.
         int mDay = 0;
@@ -169,13 +169,15 @@ namespace RtxTool
     std::string shippedDefault(
         const Files::ConfigurationManager& config, std::string_view category, std::string_view setting);
 
-    /// Runs `request` against a real game, headless, and gives back a process exit status. The
-    /// game and not a world of this tool's own, because a staged world never pays for the
-    /// whole-graph walk, the sweep or a cell arriving, and stands in a world nobody plays. The
-    /// engine is built exactly as `apps/openmw/main.cpp` builds one, out of `variables`.
-    /// `printLeft` prints where the eye was left as a `views.cfg` block.
+    /// Runs `request` against a real game, presented as `window` asks, and gives back a process exit
+    /// status. The game and not a world of this tool's own, because a staged world never pays for
+    /// the whole-graph walk, the sweep or a cell arriving, and stands in a world nobody plays. The
+    /// engine is built exactly as `apps/openmw/main.cpp` builds one, out of `variables`, after the
+    /// window is written into the settings it reads. `printLeft` prints where the eye was left as a
+    /// `views.cfg` block.
     int runHosted(const boost::program_options::variables_map& variables, Files::ConfigurationManager& config,
-        const std::filesystem::path& resources, Rtx::SessionRequest request, bool printLeft = false);
+        const std::filesystem::path& resources, const WindowRequest& window, SessionRequest request,
+        bool printLeft = false);
 
     /// A list of places to profile, by view id and not by coordinates, so the frame a screenshot
     /// shows and the frame a number was measured on are the same frame.
@@ -188,7 +190,7 @@ namespace RtxTool
         std::vector<std::string> mViews;
 
         /// Whether each hand-over waits for the distant ground it collects, or nothing to let the
-        /// frame clock decide: `Rtx::RunSetup::mSettled`. A suite that times the streaming
+        /// frame clock decide: `MWRender::RunSetup::mSettled`. A suite that times the streaming
         /// path says no, because waiting is most of what that path then measures — and a run
         /// under it may not be compared with a picture.
         std::optional<bool> mSettled;
@@ -211,18 +213,18 @@ namespace RtxTool
     /// frame, so a place measured at dawn says so in `mSky.mHour`; the command line still wins, as
     /// it does for `pos` and `look`. What comes back has both conditions settled, so nothing
     /// downstream asks which won. `day` is only for the moons.
-    Rtx::Stop stopFor(
-        const Rtx::Stop& view, const std::optional<float>& hour, const std::optional<std::string>& weather, int day);
+    Stop stopFor(
+        const Stop& view, const std::optional<float>& hour, const std::optional<std::string>& weather, int day);
 
     /// Reads the view file. Throws when it is missing or malformed, rather than quietly rendering
     /// somewhere else.
-    std::vector<Rtx::Stop> loadViews(const std::filesystem::path& path);
+    std::vector<Stop> loadViews(const std::filesystem::path& path);
 
     /// The view called `name`, or null.
-    const Rtx::Stop* findView(const std::vector<Rtx::Stop>& views, std::string_view name);
+    const Stop* findView(const std::vector<Stop>& views, std::string_view name);
 
     /// The views `named` asks for, in the order it names them; every one where it names none or
     /// "all". Throws naming a view that is not there. One place, because `bench` reaches it through
     /// a suite and `shot` directly, and a run of one has to be reproducible with the other.
-    std::vector<Rtx::Stop> chooseViews(const std::vector<Rtx::Stop>& views, const std::vector<std::string>& named);
+    std::vector<Stop> chooseViews(const std::vector<Stop>& views, const std::vector<std::string>& named);
 }

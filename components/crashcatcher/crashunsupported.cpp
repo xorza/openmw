@@ -11,6 +11,8 @@ namespace Crash
         return "Crashpad does not support this system";
     }
 
+    void setLogFile(const std::filesystem::path&) {}
+
     void setHangLimit(std::chrono::seconds) {}
 
     void heartbeat() {}

@@ -21,7 +21,6 @@
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/shaders/visibility.h>
 #include <components/rtx/stepped.hpp>
-#include <components/rtxbench/runsetup.hpp>
 #include <components/sdlutil/vsyncmode.hpp>
 #include <components/settings/categories.hpp>
 #include <components/vfs/pathutil.hpp>
@@ -220,7 +219,7 @@ namespace MWRender
     private:
         /// Builds everything from the setup, which is spent here. Delegated to, so `mRun` can bind
         /// to `mPlayed` where the host installed none and the setup can be a temporary either way.
-        RtxRenderer(const RendererSpec& spec, const RtxSetup* run, const Rtx::RunSetup& setup);
+        RtxRenderer(const RendererSpec& spec, const RtxSetup* run, const RunSetup& setup);
 
         /// Where a frame stands, asserted at every entry point: the order `renderFrame` takes is
         /// the one order the mirror, the pictures, the backend and the run's hook agree on, and a
@@ -339,7 +338,7 @@ namespace MWRender
         RtxRun& mRun;
 
         /// Whether each walk waits for the cell it adopts, where the run says: the one thing
-        /// `Rtx::RunSetup` states that outlives the construction it is spent in, because what it
+        /// `RunSetup` states that outlives the construction it is spent in, because what it
         /// falls back on is the clock's stated step, which the host hands over after. The step
         /// itself is the clock's (`getFrameClock`), and what a frame reads about how the picture is
         /// made is the backend's `getProfile`, which a setting may move and a record made before the

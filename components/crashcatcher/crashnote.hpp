@@ -59,9 +59,25 @@ namespace Crash
     /// describe textures while the render thread uploads them.
     void note(std::string_view what, std::string_view subject = {});
 
-    /// Says what the next report is and why, just before the code that wants it asks for it.
-    /// Allocates nothing and locks nothing, so a signal handler may call it.
-    void setReport(ReportKind kind, std::string_view reason);
+    /// Starts a report of `kind` for `reason`, where no report is in progress, and keeps what the
+    /// table said before for `endReport` to put back; false, changing nothing, where one is.
+    ///
+    /// **One report at a time.** A hang request that landed between a report's saying what it is
+    /// and its dump wrote over both, and a report the game then did not survive read as a hang, or
+    /// as a crash with no reason. Allocates nothing and locks nothing, so a signal handler may call
+    /// it.
+    bool beginReport(ReportKind kind, std::string_view reason);
+
+    /// Ends the report `beginReport` began, putting back the kind and the reason it found there.
+    void endReport();
+
+    /// Takes the table for a report the process does not outlive, `kind` for `reason`, once any
+    /// report in progress has ended, and refuses every request from then on. A second call keeps
+    /// the first's kind and reason. Not for a signal handler that may have interrupted a report.
+    void finalReport(ReportKind kind, std::string_view reason);
+
+    /// Whether a report is being written, or the process is ending on one.
+    bool isReporting();
 
     /// The system's id of the calling thread: what a crash dump and a debugger number threads by.
     /// Safe inside a signal handler.

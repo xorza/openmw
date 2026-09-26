@@ -49,20 +49,116 @@
 #include <sys/types.h>
 #endif
 
+#if defined(__linux__)
+#include <cerrno>
+#include <sys/syscall.h>
+#include <unistd.h>
+#endif
+
 namespace Crash
 {
     namespace
     {
+        /// The game itself, held from the monitor's start, so a hang request and an End reach the
+        /// process that started the monitor and never one that took its id after it ended: a
+        /// pidfd on Linux and a handle on Windows. macOS acts on the id.
+        class Client
+        {
+        public:
+            explicit Client(std::uint32_t id)
+                : mId(id)
+            {
+#if defined(_WIN32)
+                mHandle = OpenProcess(PROCESS_CREATE_THREAD | PROCESS_QUERY_INFORMATION | PROCESS_VM_OPERATION
+                        | PROCESS_VM_WRITE | PROCESS_VM_READ | PROCESS_TERMINATE | SYNCHRONIZE,
+                    FALSE, static_cast<DWORD>(id));
+#elif defined(__linux__) && defined(SYS_pidfd_open)
+                mDescriptor = static_cast<int>(syscall(SYS_pidfd_open, static_cast<pid_t>(id), 0));
+#endif
+            }
+
+            Client(const Client&) = delete;
+            Client& operator=(const Client&) = delete;
+
+            ~Client()
+            {
+#if defined(_WIN32)
+                if (mHandle != nullptr)
+                    CloseHandle(mHandle);
+#elif defined(__linux__)
+                if (mDescriptor >= 0)
+                    close(mDescriptor);
+#endif
+            }
+
+            /// Has the game write a hang report: a signal on POSIX, and on Windows, which has no
+            /// signal to take it on, a thread of the game's own started at the function it named, as
+            /// a debugger starts one; the game's frames are untouched.
+            void requestHangReport(Heartbeat& page) const
+            {
+#if defined(_WIN32)
+                const auto entry = std::atomic_ref(page.mHangEntry).load();
+                if (mHandle == nullptr || entry == 0)
+                    return;
+
+                if (const HANDLE thread = CreateRemoteThread(
+                        mHandle, nullptr, 0, reinterpret_cast<LPTHREAD_START_ROUTINE>(entry), nullptr, 0, nullptr))
+                    CloseHandle(thread);
+#else
+                (void)page;
+                send(SIGUSR2);
+#endif
+            }
+
+            /// Ends the game, and says whether it was there to be ended.
+            bool end() const
+            {
+#if defined(_WIN32)
+                if (mHandle == nullptr || WaitForSingleObject(mHandle, 0) == WAIT_OBJECT_0)
+                    return false;
+                return TerminateProcess(mHandle, 3) != FALSE;
+#else
+                return send(SIGKILL);
+#endif
+            }
+
+        private:
+#if !defined(_WIN32)
+            bool send(int number) const
+            {
+#if defined(__linux__) && defined(SYS_pidfd_send_signal)
+                // No descriptor is a kernel older than 5.3, where nothing is sent rather than
+                // something sent to whatever process has the id now.
+                return mDescriptor >= 0 && syscall(SYS_pidfd_send_signal, mDescriptor, number, nullptr, 0) == 0;
+#else
+                return kill(static_cast<pid_t>(mId), number) == 0;
+#endif
+            }
+#endif
+
+            [[maybe_unused]] std::uint32_t mId = 0;
+#if defined(_WIN32)
+            HANDLE mHandle = nullptr;
+#elif defined(__linux__)
+            int mDescriptor = -1;
+#endif
+        };
+
         /// What the game told the monitor on its command line, and what the monitor learnt since.
         struct Monitor : MonitorArguments
         {
             explicit Monitor(MonitorArguments arguments)
                 : MonitorArguments(std::move(arguments))
                 , mPage(SharedPage::open(mClient))
+                , mGame(mClient)
             {
             }
 
+            /// The game's log, which it hands over through the page once it knows it; empty before.
+            std::filesystem::path getLog() const { return Files::pathFromUnicodeString(mPage.getLogPath()); }
+
             SharedPage mPage;
+            Client mGame;
 
             /// How long the game stood still when the watch asked for a hang report.
             std::atomic<std::uint32_t> mStalledFor{ 0 };
@@ -104,8 +200,13 @@ namespace Crash
         /// file open, and shares its writing.
         void appendToLog(Monitor& monitor, const std::vector<std::string>& lines)
         {
+            // Before the game has set its log up there is none, and a summary is in its dump alone.
+            const std::filesystem::path path = monitor.getLog();
+            if (path.empty())
+                return;
+
             const std::lock_guard lock(monitor.mLogMutex);
-            std::ofstream log(monitor.mLog, std::ios::app | std::ios::binary);
+            std::ofstream log(path, std::ios::app | std::ios::binary);
             const std::string at = stamp();
             for (const std::string& line : lines)
                 log << at << line << '\n';
@@ -374,51 +475,20 @@ namespace Crash
             Monitor& mMonitor;
         };
 
-        void requestHangReport(const Monitor& monitor)
-        {
-#if defined(_WIN32)
-            // The game has no signal to take the request on, so a thread of its own is started in
-            // it at the function it named, as a debugger starts one; the game's frames are
-            // untouched.
-            const auto entry = std::atomic_ref(monitor.mPage.get()->mHangEntry).load();
-            const HANDLE process = OpenProcess(PROCESS_CREATE_THREAD | PROCESS_QUERY_INFORMATION | PROCESS_VM_OPERATION
-                    | PROCESS_VM_WRITE | PROCESS_VM_READ,
-                FALSE, static_cast<DWORD>(monitor.mClient));
-            if (process == nullptr || entry == 0)
-            {
-                if (process != nullptr)
-                    CloseHandle(process);
-                return;
-            }
-
-            if (const HANDLE thread = CreateRemoteThread(
-                    process, nullptr, 0, reinterpret_cast<LPTHREAD_START_ROUTINE>(entry), nullptr, 0, nullptr))
-                CloseHandle(thread);
-            CloseHandle(process);
-#else
-            kill(static_cast<pid_t>(monitor.mClient), SIGUSR2);
-#endif
-        }
-
-        void endClient(const Monitor& monitor)
-        {
-#if defined(_WIN32)
-            if (const HANDLE process = OpenProcess(PROCESS_TERMINATE, FALSE, static_cast<DWORD>(monitor.mClient)))
-            {
-                TerminateProcess(process, 3);
-                CloseHandle(process);
-            }
-#else
-            kill(static_cast<pid_t>(monitor.mClient), SIGKILL);
-#endif
-        }
-
         /// Whether the player chose to end a game that stands still.
         bool askToEnd(const Monitor& monitor, std::uint32_t seconds)
         {
+            // **A harness's answer, where nobody is at the box**: End, after this many milliseconds,
+            // which is what lets a test end a game that recovered, or ended, while it was asked.
+            if (const char* const after = std::getenv("OPENMW_CRASH_END_AFTER_MS"))
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(std::strtoul(after, nullptr, 10)));
+                return true;
+            }
+
             const std::string message = monitor.mApplication + " has not drawn a frame for " + std::to_string(seconds)
                 + " seconds. A report of what it is doing is being written; the log names it:\n"
-                + Files::pathToUnicodeString(monitor.mLog) + "\n\nWait for it, or end it?";
+                + Files::pathToUnicodeString(monitor.getLog()) + "\n\nWait for it, or end it?";
             const std::array<SDL_MessageBoxButtonData, 2> buttons{ {
                 { SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT | SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, 0, "Wait" },
                 { 0, 1, "End" },
@@ -429,6 +499,27 @@ namespace Crash
 
             int chosen = 0;
             return SDL_ShowMessageBox(&box, &chosen) == 0 && chosen == 1;
+        }
+
+        /// Ends the game where it still stands where it stood when the player was asked: the box
+        /// stands for as long as the player takes over it, and the game may have drawn again, or
+        /// ended, in that time. Says in the log what it did.
+        void endIfStillStalled(Monitor& monitor, std::uint64_t stalledAt)
+        {
+            bool ended = false;
+            {
+                const std::lock_guard lock(monitor.mWatchMutex);
+                ended = monitor.mWatchEnds;
+            }
+
+            if (!ended && std::atomic_ref(monitor.mPage.get()->mFrames).load() != stalledAt)
+            {
+                appendToLog(monitor, { "Hang: the game drew again before End was answered, and goes on" });
+                return;
+            }
+
+            if (ended || !monitor.mGame.end())
+                appendToLog(monitor, { "Hang: the game ended before End was answered, and nothing was ended" });
         }
 
         /// **The hang watch**, once a second: a frame counter that stops for the limit is a hang,
@@ -475,9 +566,9 @@ namespace Crash
 
                 reported = true;
                 monitor.mStalledFor = static_cast<std::uint32_t>(stalled.count());
-                requestHangReport(monitor);
+                monitor.mGame.requestHangReport(*page);
                 if (monitor.mDialog && askToEnd(monitor, static_cast<std::uint32_t>(stalled.count())))
-                    endClient(monitor);
+                    endIfStillStalled(monitor, last);
             }
         }
 
@@ -541,7 +632,7 @@ namespace Crash
         if (monitor.mDialog && crashDump)
         {
             const std::string message = monitor.mApplication + " has crashed. A report is saved in\n" + *crashDump
-                + "\n\nand the log says what happened:\n" + Files::pathToUnicodeString(monitor.mLog)
+                + "\n\nand the log says what happened:\n" + Files::pathToUnicodeString(monitor.getLog())
                 + "\n\nSending both helps to fix it.";
             SDL_ShowSimpleMessageBox(
                 SDL_MESSAGEBOX_ERROR, (monitor.mApplication + " has crashed").c_str(), message.c_str(), nullptr);

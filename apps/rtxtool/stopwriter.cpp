@@ -55,10 +55,12 @@
 #include <components/rtx/texturebuilder.hpp>
 #include <components/rtx/texturedata.hpp>
 #include <components/rtx/texturetable.hpp>
-#include <components/rtxbench/benchrecord.hpp>
+#include <components/rtxbench/contactsheet.hpp>
 #include <components/rtxbench/framehashes.hpp>
-#include <components/rtxbench/runrecord.hpp>
 #include <components/vfs/pathutil.hpp>
+
+#include "model/benchrecord.hpp"
+#include "model/runrecord.hpp"
 
 namespace RtxTool
 {
@@ -85,7 +87,7 @@ namespace RtxTool
     }
 
     void StopWriter::write(const MWRender::FrameContext& context, const MWRender::FrameReport& report,
-        const Rtx::Actions& actions, const StopFacts& facts, Rtx::RunRecord& record)
+        const Actions& actions, const StopFacts& facts, RunRecord& record)
     {
         const Writing into{ context, report, record };
 
@@ -444,9 +446,9 @@ namespace RtxTool
         into.mRecord.note(std::format("{} placements wear a texture matching \"{}\"\n", met, needle));
     }
 
-    void StopWriter::runChecks(const Writing& into, const std::span<const Rtx::Check> checks, const StopFacts& facts)
+    void StopWriter::runChecks(const Writing& into, const std::span<const Check> checks, const StopFacts& facts)
     {
-        for (const Rtx::Check check : checks)
+        for (const Check check : checks)
         {
             std::string found;
             const bool held = checkHolds(into.mContext, into.mReport, check, facts, found);
@@ -457,14 +459,14 @@ namespace RtxTool
     }
 
     bool StopWriter::checkHolds(const MWRender::FrameContext& context, const MWRender::FrameReport& report,
-        const Rtx::Check check, const StopFacts& facts, std::string& found)
+        const Check check, const StopFacts& facts, std::string& found)
     {
         const Rtx::SceneDesc& scene = context.mScene;
         const Rtx::ExtractionStats& stats = report.mWalked.mFound;
 
         switch (check)
         {
-            case Rtx::Check::WalkTwice:
+            case Check::WalkTwice:
             {
                 if (!report.mWalked.mAgain.has_value())
                 {
@@ -480,7 +482,7 @@ namespace RtxTool
                     && again.mRestood == 0;
             }
 
-            case Rtx::Check::SurfacesDescribed:
+            case Check::SurfacesDescribed:
                 // **The emitters are reported and not asserted**: a refused emitter is content the
                 // log names, and every world carries one of the rasterizer's that the traced path
                 // answers for itself.
@@ -488,7 +490,7 @@ namespace RtxTool
                     scene.refusals().count(Rtx::Refused::Emitter));
                 return stats.mUndescribedSurfaces == 0;
 
-            case Rtx::Check::LightsPlaced:
+            case Check::LightsPlaced:
             {
                 const bool indoors = !MWBase::Environment::get().getWorld()->isCellExterior();
                 found = std::format("{} lights casting {}", scene.lights().size(),
@@ -496,7 +498,7 @@ namespace RtxTool
                 return !indoors || !scene.lights().empty();
             }
 
-            case Rtx::Check::GroundReaches:
+            case Check::GroundReaches:
             {
                 // **Asked of an exterior and answered yes by every room**, which has no distant
                 // ground to reach for.
@@ -522,7 +524,7 @@ namespace RtxTool
                 return !outdoors || widest > sActiveGridWidth;
             }
 
-            case Rtx::Check::GroundStands:
+            case Check::GroundStands:
             {
                 // **Every cell of the reach, the active grid's included**: the game builds no ground
                 // for this renderer, so a cell short is a hole the player can walk on. The reach is
@@ -537,7 +539,7 @@ namespace RtxTool
                 return !outdoors || stats.mGroundCells == expected;
             }
 
-            case Rtx::Check::LightsNotDoubled:
+            case Check::LightsNotDoubled:
             {
                 std::vector<osg::Vec3f> where;
                 where.reserve(scene.lights().size());
@@ -555,7 +557,7 @@ namespace RtxTool
                 return doubled == where.end();
             }
 
-            case Rtx::Check::StaticsNotDoubled:
+            case Check::StaticsNotDoubled:
             {
                 // **Asked of the game's registry and not of the walk**, because the walk knows a
                 // placement by its node and the ring knows one by its reference: what the two share
@@ -583,29 +585,29 @@ namespace RtxTool
                 return doubled == 0;
             }
 
-            case Rtx::Check::TexturesReadable:
+            case Check::TexturesReadable:
             {
                 const std::uint32_t refused = scene.refusals().count(Rtx::Refused::Texture);
                 found = std::format("{} of {} textures refused", refused, scene.textures().getRows().size());
                 return refused == 0;
             }
 
-            case Rtx::Check::CrossingsAppend:
+            case Check::CrossingsAppend:
             {
-                const Rtx::Crossings& crossings = facts.mCrossings;
+                const Crossings& crossings = facts.mCrossings;
                 found = std::format("{} crossings, {} of them rebuilds", crossings.mCount, crossings.mRebuilds);
                 return crossings.mCount > 0 && crossings.mRebuilds < crossings.mCount;
             }
 
-            case Rtx::Check::FramesOverlap:
+            case Check::FramesOverlap:
             {
-                const Rtx::Overlap& overlap = facts.mOverlap;
+                const Overlap& overlap = facts.mOverlap;
                 found = std::format(
                     "{:.2f} frames in flight at a submit, {} at the least", overlap.getMean(), overlap.mLeast);
                 return overlap.mFrames > 0 && overlap.mLeast == 2;
             }
 
-            case Rtx::Check::QueueHeld:
+            case Check::QueueHeld:
             {
                 const auto zone = std::find_if(facts.mZones.begin(), facts.mZones.end(),
                     [](const Rtx::GpuZone& held) { return held.mName == Rtx::RenderProfile::sHoldZone; });
@@ -623,7 +625,7 @@ namespace RtxTool
                 // that ran long is a queue held longer, which weakens nothing the hold is for. The
                 // longest reading is printed so a stall can be seen for what it is, and the zone
                 // beside the loop so its excess is known to be the launch and the drain.
-                const Rtx::HoldTimes& hold = facts.mHold;
+                const HoldTimes& hold = facts.mHold;
                 const double zoneShortest = zone->mTimes.mBest;
                 found = std::format(
                     "{:.3f} ms held by the loop at the shortest frame of {:.1f} asked, {:.3f} at the "
@@ -634,7 +636,7 @@ namespace RtxTool
                     && hold.mShortestMs >= facts.mHoldAskedMs && zoneShortest >= facts.mHoldAskedMs;
             }
 
-            case Rtx::Check::Finite:
+            case Check::Finite:
             {
                 const Rtx::NotFinite& wrote = facts.mNotFinite;
                 found = std::format(
@@ -644,12 +646,12 @@ namespace RtxTool
                 return wrote.total() == 0;
             }
 
-            case Rtx::Check::CameraStands:
+            case Check::CameraStands:
             {
                 // **Answered rather than compared, where the stop named no camera.** Measuring the
                 // camera against itself is a yes nothing could fail, which reads in the report
                 // exactly like a camera that held.
-                const Rtx::Stand& stand = facts.mStand;
+                const Stand& stand = facts.mStand;
                 if (!stand.mEye.has_value())
                 {
                     found = "the stop named no camera of its own";

@@ -1,6 +1,11 @@
 #include "crashpage.hpp"
 
+#include <algorithm>
+#include <atomic>
+#include <cstddef>
+#include <cstring>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #if defined(_WIN32)
@@ -103,6 +108,27 @@ namespace Crash
         page.mPage = static_cast<Heartbeat*>(view);
 #endif
         return page;
+    }
+
+    bool SharedPage::setLogPath(const std::string_view log) const
+    {
+        if (mPage == nullptr || log.size() > sLogPathCapacity)
+            return false;
+
+        std::memcpy(mPage->mLogPath, log.data(), log.size());
+        std::atomic_ref(mPage->mLogPathLength).store(static_cast<std::uint32_t>(log.size()), std::memory_order_release);
+        return true;
+    }
+
+    std::string SharedPage::getLogPath() const
+    {
+        if (mPage == nullptr)
+            return {};
+
+        // Clamped, because the length is a word another process wrote.
+        const std::size_t length = std::min<std::size_t>(
+            std::atomic_ref(mPage->mLogPathLength).load(std::memory_order_acquire), sLogPathCapacity);
+        return std::string(mPage->mLogPath, length);
     }
 
     SharedPage::SharedPage(SharedPage&& other) noexcept

@@ -11,29 +11,26 @@
 
 #include <osg/Vec3f>
 
-#include <components/rtxbench/benchrun.hpp>
-#include <components/rtxbench/cameratrack.hpp>
-
+#include "model/benchrun.hpp"
+#include "model/cameratrack.hpp"
 #include "run.hpp"
 
 namespace RtxTool
 {
-    /// One key of a film, as a keys file states it: the block a window prints on Home, and what a
+    /// One key of a film, as a keys file states it: the place a window prints on Home, and what a
     /// film does at it and on the way to it.
     struct FilmKey
     {
-        std::string mName;
-        std::string mNote;
+        /// Where it stands and under what sky: a stop, whose cell, eye and look `readKeys` requires
+        /// and whose hour and weather it settles at the file's own where the block names none, the
+        /// rule `describeBlock` leaves them out by. The day stays unsaid where the block names none.
+        Stop mStop;
 
-        std::string mCell;
-        osg::Vec3f mEye;
-        osg::Vec3f mLook;
-
-        /// The file's own hour and weather where the block names none, which is the rule
-        /// `describeBlock` leaves them out by.
-        float mHour = sDefaultHour;
-        std::string mWeather = std::string(sDefaultWeather);
-        std::optional<int> mDay;
+        const std::string& getCell() const { return mStop.mStand.mCell; }
+        const osg::Vec3f& getEye() const { return *mStop.mStand.mEye; }
+        const osg::Vec3f& getLook() const { return *mStop.mStand.mLook; }
+        float getHour() const { return *mStop.mSky.mHour; }
+        const std::string& getWeather() const { return *mStop.mSky.mWeather; }
 
         /// How long the flight to this key takes, in place of the length its changes derive.
         std::optional<float> mSeconds;
@@ -51,7 +48,7 @@ namespace RtxTool
     /// The keys `in` states, in order. A section name may repeat, since a file is a list of keys
     /// and a window pressed twice in one place names both after it. Throws naming `source` and the
     /// line for anything malformed: a key misread is a film of somewhere else.
-    std::vector<FilmKey> readKeys(std::istream& in, std::string_view source);
+    std::vector<FilmKey> readKeys(std::istream& in, std::string source);
 
     std::vector<FilmKey> loadKeys(const std::filesystem::path& path);
 
@@ -61,7 +58,9 @@ namespace RtxTool
     /// What paces a film: the command line's, each a default `film --help` states.
     struct FilmPacing
     {
-        float mFramesPerSecond = 60.0f;
+        /// How long one frame of the film stands for: the run's own step (`RunSetup::mStep`), which
+        /// every length below is counted in frames by, and `--fps` is one over.
+        float mStep = Rtx::sStepSeconds;
 
         /// World units a second the eye flies at between two keys.
         float mSpeed = 800.0f;
@@ -92,8 +91,12 @@ namespace RtxTool
         /// Which day a take stands on where its first key names none.
         int mDay = 0;
 
-        /// Seconds as a whole count of frames, one at least.
+        /// Seconds as a whole count of frames at the step, one at least: `Rtx::BenchSpan`'s count,
+        /// which is what the session turns a warm-up's seconds into.
         std::uint32_t framesOf(float seconds) const;
+
+        /// Frames a second, which is what a person reads and what the encoder is told.
+        float getRate() const { return 1.0f / mStep; }
     };
 
     /// Which of a segment's changes set its length.
@@ -149,8 +152,8 @@ namespace RtxTool
         /// The segment into each key after the first.
         std::vector<FilmSegment> mSegments;
 
-        /// The keys at their frames, a hold stated as two, for `Rtx::CameraTrack`.
-        std::vector<Rtx::TrackKey> mTrack;
+        /// The keys at their frames, a hold stated as two, for `CameraTrack`.
+        std::vector<TrackKey> mTrack;
 
         /// The number of the take's first frame in the film.
         std::uint32_t mFirstFrame = 0;
@@ -177,7 +180,7 @@ namespace RtxTool
     std::string describePlan(const FilmPlan& plan);
 
     /// One stop per take, writing its frames into `frames` numbered through the whole film.
-    std::vector<Rtx::Stop> stopsFor(const FilmPlan& plan, const std::filesystem::path& frames);
+    std::vector<Stop> stopsFor(const FilmPlan& plan, const std::filesystem::path& frames);
 
     /// What a film's frame `number` is written as in its directory, `000042.png`: six digits, which
     /// is what ffmpeg reads the sequence back by and what `clearFrames` removes.

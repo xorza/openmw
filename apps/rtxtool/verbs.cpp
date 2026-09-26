@@ -6,6 +6,7 @@
 #include <string_view>
 #include <utility>
 
+#include <components/rtx/contract.hpp>
 #include <components/rtx/namedenum.hpp>
 
 namespace RtxTool
@@ -25,6 +26,28 @@ namespace RtxTool
             std::pair{ Verbs::Check, std::string_view("check") },
             std::pair{ Verbs::Film, std::string_view("film") },
         } };
+    }
+
+    const VerbPolicy& policyOf(const Verbs one)
+    {
+        // In the order `sNames` names them. `view` flies nothing and freezes nothing, because
+        // somebody is flying it; `check` and `shot` fly a route unfrozen and stand still elsewhere;
+        // `bench` measures what moves.
+        static constexpr std::array<std::pair<Verbs, VerbPolicy>, 7> sPolicies{ {
+            { Verbs::Info, VerbPolicy{} },
+            { Verbs::Scene, VerbPolicy{ .mFreezes = true } },
+            { Verbs::Shot, VerbPolicy{ .mFreezes = true, .mFliesRoutes = true, .mHashes = true } },
+            { Verbs::View, VerbPolicy{} },
+            { Verbs::Bench, VerbPolicy{ .mFliesRoutes = true, .mMeasures = true } },
+            { Verbs::Check, VerbPolicy{ .mFreezes = true, .mFliesRoutes = true } },
+            { Verbs::Film, VerbPolicy{ .mFollowsTracks = true, .mMeasures = true } },
+        } };
+
+        for (const auto& [verb, policy] : sPolicies)
+            if (verb == one)
+                return policy;
+
+        Rtx::broken("a command with no row in the policy table");
     }
 
     std::string_view verbName(const Verbs one)

@@ -7,9 +7,9 @@
 
 #include <osg/Vec3f>
 
-#include <components/rtxbench/cameratrack.hpp>
+#include <apps/rtxtool/model/cameratrack.hpp>
 
-namespace Rtx
+namespace RtxTool
 {
     namespace
     {

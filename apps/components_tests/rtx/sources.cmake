@@ -79,17 +79,18 @@ set(RTX_TEST_FILES
     rtx/wavecascade.cpp
     rtx/wavespectrum.cpp
     rtx/worker.cpp
-    rtxbench/benchrecord.cpp
-    rtxbench/benchrun.cpp
     rtxbench/benchspec.cpp
-    rtxbench/cameratrack.cpp
     rtxbench/cardwatch.cpp
+    rtxbench/contactsheet.cpp
     rtxbench/drivercache.cpp
     rtxbench/framehashes.cpp
     rtxbench/frametimes.cpp
     rtxbench/gpuclock.cpp
-    rtxbench/runrecord.cpp
     rtxbench/scenedigest.cpp
+    rtxtool/benchrecord.cpp
+    rtxtool/benchrun.cpp
+    rtxtool/blockfile.cpp
+    rtxtool/cameratrack.cpp
     rtxtool/compare.cpp
     rtxtool/film.cpp
     rtxtool/options.cpp

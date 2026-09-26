@@ -4,8 +4,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <format>
-#include <locale>
-#include <sstream>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -169,11 +167,11 @@ namespace RtxTool
 
         option(Verbs::Every, "list-views", bpo::bool_switch(), "print the named viewpoints and quit");
 
-        option(sFramed, "delight", bpo::value<float>()->default_value(byDefault.mProfile.mDelight),
+        option(sFramed, "delight", bpo::value<float>()->default_value(byDefault.mSetup.mProfile.mDelight),
             "how much of the lighting painted into each texture to divide back out, from 0 to 1. "
             "Zero is the A/B that says what it did");
         option(sFramed, "filter",
-            bpo::value<bool>()->default_value(byDefault.mProfile.mReconstruction.mFilter)->implicit_value(true),
+            bpo::value<bool>()->default_value(byDefault.mSetup.mProfile.mReconstruction.mFilter)->implicit_value(true),
             "run the denoiser over the indirect light. Off shows the raw bounce, and is what a "
             "reference is made with");
         option(Verbs::Shot, "doll", bpo::value<std::string>()->default_value(""),
@@ -190,21 +188,21 @@ namespace RtxTool
 
         option(sFramed, "upscale",
             bpo::value<std::string>()->default_value(
-                std::string(Rtx::sUpscaleNames.name(byDefault.mProfile.mUpscaling.mMode))),
+                std::string(Rtx::sUpscaleNames.name(byDefault.mSetup.mProfile.mUpscaling.mMode))),
             std::format("put DLSS Ray Reconstruction between the trace and the picture: {}. --size "
                         "is what comes out, and what gets traced is DLSS's answer for it. It "
-                        "denoises for itself, so --filter stops applying. Quality by default, so a "
-                        "plain run is the renderer with everything switched on without quartering "
-                        "the pixels it traced; --upscale=performance is the 1920x1080 to 3840x2160 "
-                        "the frame budget is written against, and --upscale=off is what an A/B "
-                        "against the unupscaled path needs. A reference cannot be built through a "
-                        "denoiser",
-                Rtx::sUpscaleNames.list())
+                        "denoises for itself, so --filter stops applying. `{}` by default in this "
+                        "build — quality where it has DLSS, so a plain run is the renderer with "
+                        "everything switched on without quartering the pixels it traced; "
+                        "--upscale=performance is the 1920x1080 to 3840x2160 the frame budget is "
+                        "written against, and --upscale=off is what an A/B against the unupscaled "
+                        "path needs. A reference cannot be built through a denoiser",
+                Rtx::sUpscaleNames.list(), Rtx::sUpscaleNames.name(sUpscaleByDefault))
                 .c_str());
 
         option(sFramed, "preset",
             bpo::value<std::string>()->default_value(
-                std::string(Rtx::sPresetNames.name(byDefault.mProfile.mUpscaling.mPreset))),
+                std::string(Rtx::sPresetNames.name(byDefault.mSetup.mProfile.mUpscaling.mPreset))),
             std::format("which Ray Reconstruction network to run: {}. Ray Reconstruction keeps its "
                         "own presets, and they are not super-resolution's -- A through C are retired, d is the "
                         "default transformer model and e is the latest. `default` hands the choice to the "
@@ -417,7 +415,7 @@ namespace RtxTool
             "fly to it however far)");
         option(Verbs::Film, "plan", bpo::bool_switch(),
             "print the takes and the length of every segment, and why, then stop without drawing");
-        option(Verbs::Film, "fps", bpo::value<float>()->default_value(pacing.mFramesPerSecond),
+        option(Verbs::Film, "fps", bpo::value<float>()->default_value(Rtx::sStepRate),
             "frames a second of film, which is also what the world steps by");
         option(Verbs::Film, "speed", bpo::value<float>()->default_value(pacing.mSpeed),
             std::format("world units a second the camera flies between two keys, {:.0f} metres a second "
@@ -470,7 +468,7 @@ namespace RtxTool
             "than towards the integral");
 
         option(sFramed, "jitter",
-            bpo::value<bool>()->default_value(byDefault.mProfile.mReconstruction.mJitter)->implicit_value(true),
+            bpo::value<bool>()->default_value(byDefault.mSetup.mProfile.mReconstruction.mJitter)->implicit_value(true),
             "sample a different point inside each pixel every frame. Only worth anything to "
             "something putting several frames together, and forced on whenever anything upscales");
 
@@ -515,53 +513,6 @@ namespace RtxTool
         Files::ConfigurationManager::addCommonOptions(result.mDescription);
 
         return result;
-    }
-
-    std::optional<float> parseFloat(std::string_view text)
-    {
-        // Not `std::from_chars`: libc++ ships the floating-point overload only from macOS 26. `eof`
-        // is what says the whole field was consumed — the same question `from_chars` answers with
-        // its end pointer.
-        std::istringstream stream{ std::string(text) };
-        stream.imbue(std::locale::classic());
-
-        float value = 0.0f;
-        if (!(stream >> value) || !stream.eof())
-            return std::nullopt;
-
-        return value;
-    }
-
-    std::optional<osg::Vec3f> parseVec3(std::string_view text)
-    {
-        osg::Vec3f result;
-        for (int axis = 0; axis < 3; ++axis)
-        {
-            const bool last = axis == 2;
-            const std::size_t comma = text.find(',');
-            if ((comma == std::string_view::npos) != last)
-                return std::nullopt;
-
-            const std::optional<float> value = parseFloat(trimmed(text.substr(0, comma)));
-            if (!value.has_value())
-                return std::nullopt;
-
-            result[axis] = *value;
-            if (!last)
-                text.remove_prefix(comma + 1);
-        }
-
-        return result;
-    }
-
-    std::string_view trimmed(std::string_view text)
-    {
-        const auto blank = [](char c) { return c == ' ' || c == '\t' || c == '\r'; };
-        while (!text.empty() && blank(text.front()))
-            text.remove_prefix(1);
-        while (!text.empty() && blank(text.back()))
-            text.remove_suffix(1);
-        return text;
     }
 
     namespace
