@@ -2,9 +2,8 @@
 
 #extension GL_GOOGLE_include_directive : require
 
-// **Display-referred, and the only shader here that is.** Everything before this pass works in
-// scene radiance; the GUI's colours and its atlases were authored against a monitor, so they are
-// written out as they are and the tone curve has already run.
+// **Display-referred, and after the tone curve.** The GUI's colours and its atlases were authored
+// against a monitor, so they are written out as they are, over a picture already in display values.
 
 #include "sets.h"
 

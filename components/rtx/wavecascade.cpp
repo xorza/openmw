@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <numbers>
 
 #include "shaders/scene.h"
 #include "wavespectrum.hpp"
@@ -78,7 +79,7 @@ namespace Rtx
             const int half = static_cast<int>(cascade.mGrid) / 2;
 
             cascade.mAmplitudes.assign(count, osg::Vec2f());
-            cascade.mFrequencies.assign(count, 0.0f);
+            cascade.mTurnRates.assign(count, 0.0f);
 
             // What this tile can hold: a wave longer than its width is not periodic in it, and one
             // shorter than two of its texels is not there at all. Both tiles are wide enough and
@@ -129,7 +130,8 @@ namespace Rtx
                     // one tile with the energy split.
                     const std::uint32_t stream = static_cast<std::uint32_t>(index) * 0x51ed270bu;
                     cascade.mAmplitudes[at] = gaussians(stream + static_cast<std::uint32_t>(at)) * scale;
-                    cascade.mFrequencies[at] = frequency;
+                    cascade.mTurnRates[at]
+                        = static_cast<float>(static_cast<double>(frequency) / (2.0 * std::numbers::pi));
 
                     // Twice, because a wavevector and its opposite both carry it and the two draws
                     // are independent — the convention `wavecompose.comp` is written against.

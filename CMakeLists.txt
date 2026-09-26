@@ -43,7 +43,13 @@ option(BUILD_NAVMESHTOOL        "Build navmesh tool" ON)
 option(BUILD_BULLETOBJECTTOOL   "Build Bullet object tool" ON)
 option(BUILD_OPENCS_TESTS       "Build OpenMW Construction Set tests" OFF)
 option(BUILD_OPENMW_TESTS       "Build OpenMW tests" OFF)
-option(OPENMW_RTX               "Build the experimental ray tracing renderer" ON)
+# The ray tracer is Vulkan on NVIDIA hardware, which Windows and Linux have and macOS does not.
+if (WIN32 OR (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ANDROID))
+    set(OPENMW_RTX_DEFAULT ON)
+else()
+    set(OPENMW_RTX_DEFAULT OFF)
+endif()
+option(OPENMW_RTX               "Build the experimental ray tracing renderer" ${OPENMW_RTX_DEFAULT})
 option(OPENMW_RTX_DLSS          "Upscale and denoise with DLSS Ray Reconstruction" ON)
 
 # Crashpad captures a crash out of process on every system it supports. FreeBSD, which it does not
@@ -205,9 +211,9 @@ if ((NOT CMAKE_GENERATOR MATCHES "Visual Studio") OR ("UseMultiToolTask=true" IN
 endif()
 
 if (MSVC)
-    # Every MSVC option below is the C and C++ compiler's, and says so: a directory's options reach
-    # each language in it, and MASM, which Crashpad assembles two files with, reads
-    # `/Zc:__cplusplus` as `/Zs`, a syntax check that writes no object.
+    # Every MSVC option set ahead of `extern` is the C and C++ compiler's, and says so: a directory's
+    # options reach each language in it, and MASM, which Crashpad assembles two files with there,
+    # reads `/Zc:__cplusplus` as `/Zs`, a syntax check that writes no object.
     option(OPENMW_MP_BUILD "Build OpenMW with /MP flag" OFF)
     if (OPENMW_MP_BUILD)
         add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/MP>)
@@ -652,7 +658,7 @@ if (BUILD_OPENCS OR BUILD_OPENCS_TESTS)
 endif()
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC" OR CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
-    add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/W4>)
+    add_compile_options("/W4")
 
     set(WARNINGS_DISABLE
         4100 # Unreferenced formal parameter (-Wunused-parameter)
@@ -662,7 +668,7 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC" OR CMAKE_CXX_COMPILER_FRONTEND_VARIANT
         )
 
     foreach(d ${WARNINGS_DISABLE})
-        add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/wd${d}>)
+        add_compile_options("/wd${d}")
     endforeach(d)
 
     set(WARNINGS_EXTRA
@@ -670,11 +676,11 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC" OR CMAKE_CXX_COMPILER_FRONTEND_VARIANT
         )
 
     foreach(d ${WARNINGS_EXTRA})
-        add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/w1${d}>)
+        add_compile_options("/w1${d}")
     endforeach(d)
 
     if(OPENMW_MSVC_WERROR)
-        add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/WX>)
+        add_compile_options("/WX")
     endif()
 else ()
     add_compile_options("-Wall" "-Wextra" "-Wundef" "-Wextra-semi" "-Wno-unused-parameter" "-pedantic" "-Wno-long-long" "-Wnon-virtual-dtor" "-Wunused" "-Wshadow")

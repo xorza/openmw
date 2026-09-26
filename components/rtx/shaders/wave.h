@@ -26,7 +26,7 @@ namespace Rtx::Shaders
     /// shader's layout and the pass's own layout and writes are numbered by these and by nothing
     /// else, so the two cannot drift apart.
     const uint WAVE_FORM_BIND_AMPLITUDES = 0;
-    const uint WAVE_FORM_BIND_FREQUENCIES = 1;
+    const uint WAVE_FORM_BIND_TURN_RATES = 1;
     const uint WAVE_FORM_BIND_FIELD = 2;
     const uint WAVE_FORM_BINDINGS = 3;
 
@@ -130,8 +130,9 @@ namespace Rtx::Shaders
         /// How wide the tile is in world units, which turns a grid index into a wavevector.
         float mExtent;
 
-        /// How far the sea has run, in seconds. The whole of what a frame changes.
-        float mTime;
+        /// How far the sea has run, in seconds, as two floats whose sum is the host's double —
+        /// `Rtx::splitSeconds`, which `turnsAt` reduces exactly. The whole of what a frame changes.
+        vec2 mTime;
     };
 
     /// What the pass that unpacks the fields is told.

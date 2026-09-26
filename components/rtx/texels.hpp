@@ -52,8 +52,9 @@ namespace Rtx
     MeanTexel meanTexel(const osg::Image& image);
     MeanTexel meanTexel(const osg::Image& image, AlphaScratch& scratch);
 
-    /// Which format `image` arrived in, read as `encoding` — the one place a `GLenum` decides
-    /// anything, so the uploader and the report cannot disagree.
+    /// Which format `image` arrived in, read as `encoding` — the one place a texture's `GLenum`
+    /// decides its format, so the uploader and the report cannot disagree. A blend map is weights
+    /// and not a texture, and `GroundReader` reads its bytes itself.
     TextureFormat readFormat(const osg::Image& image, TextureEncoding encoding = TextureEncoding::Colour);
 
     /// Whether a normal map bound for its height has one: an alpha, which a map of two channels

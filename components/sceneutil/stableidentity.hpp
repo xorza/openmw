@@ -1,5 +1,4 @@
-#ifndef OPENMW_COMPONENTS_SCENEUTIL_STABLEIDENTITY_H
-#define OPENMW_COMPONENTS_SCENEUTIL_STABLEIDENTITY_H
+#pragma once
 
 #include <cassert>
 #include <cstdint>
@@ -63,5 +62,3 @@ namespace SceneUtil
         std::uint64_t mId = 0;
     };
 }
-
-#endif

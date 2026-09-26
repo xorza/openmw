@@ -44,11 +44,6 @@ namespace Rtx
             constexpr float wavenumber = 0.005f;
             EXPECT_NEAR(shallow.getFrequency(wavenumber), 0.955f, 0.002f);
             EXPECT_NEAR(deep.getFrequency(wavenumber), 1.771f, 0.002f);
-
-            // And the inverse is the same relation walked back, which is what turns a wavelength on
-            // a grid into the speed its entry turns at.
-            EXPECT_NEAR(shallow.getWavenumber(shallow.getFrequency(wavenumber)), wavenumber, wavenumber * 1e-4f);
-            EXPECT_NEAR(deep.getWavenumber(deep.getFrequency(wavenumber)), wavenumber, wavenumber * 1e-4f);
         }
 
         /// The density is highest at the wavelength it was asked to peak at.

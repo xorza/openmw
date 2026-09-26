@@ -1,5 +1,4 @@
-#ifndef OPENMW_COMPONENTS_PLATFORM_PROCESS_HPP
-#define OPENMW_COMPONENTS_PLATFORM_PROCESS_HPP
+#pragma once
 
 #include <cstdint>
 
@@ -26,5 +25,3 @@ namespace Platform::Process
     /// tells this one from the rest by.
     std::uint32_t currentId();
 }
-
-#endif // OPENMW_COMPONENTS_PLATFORM_PROCESS_HPP

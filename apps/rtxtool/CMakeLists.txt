@@ -53,11 +53,11 @@ endif()
 # Named viewpoints, and which of them a profiling run visits in what order. Copied here because
 # this is the only thing that reads them, and beside the backend's shaders under resources/rtx so
 # one --resources finds both.
-copy_all_resource_files("${OpenMW_SOURCE_DIR}/files/rtx" "${RTX_RESOURCES_ROOT}" "resources/rtx" "views.cfg;benches.cfg")
+copy_all_resource_files("${OpenMW_SOURCE_DIR}/files/rtx" "${OPENMW_RESOURCES_ROOT}" "resources/rtx" "views.cfg;benches.cfg")
 
 # The keys a watched run answers to, as a data directory of the harness's own: `hosted.cpp` adds it
 # and names the content file wherever there is a window, and the played game names neither.
-copy_all_resource_files("${OpenMW_SOURCE_DIR}/files/rtx/vfs" "${RTX_RESOURCES_ROOT}" "resources/rtx/vfs"
+copy_all_resource_files("${OpenMW_SOURCE_DIR}/files/rtx/vfs" "${OPENMW_RESOURCES_ROOT}" "resources/rtx/vfs"
                         "rtxtool.omwscripts;scripts/rtx/keys.lua;scripts/rtx/sky.lua")
 
 # **The harness links the game, because it drives one.** A run stands in the world the player

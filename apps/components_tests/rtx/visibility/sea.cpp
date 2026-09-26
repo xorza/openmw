@@ -1,4 +1,5 @@
 #include <components/rtx/camera.hpp>
+#include <components/rtx/frameworld.hpp>
 #include <components/rtx/material.hpp>
 #include <components/rtx/mesh.hpp>
 #include <components/rtx/runs.hpp>
@@ -328,7 +329,7 @@ namespace Rtx::Testing
                 Shaders::VisibilityConstants camera = Testing::makeCamera(osg::Vec3f(0.0f, -1.0f, above - depth),
                     osg::Vec3f(0.0f, 0.0f, -depth), 90.0f, size, size, 100000.0f);
                 litThroughWater(camera);
-                camera.mTime = seconds;
+                camera.mWaterTime = splitSeconds(seconds);
 
                 std::vector<std::uint8_t> image;
                 countHits(scene, {}, camera, size, image, { .mSea = sea });
@@ -646,7 +647,7 @@ namespace Rtx::Testing
                 camera.mSkyHorizon = osg::Vec3f(0.5f, 0.5f, 0.5f);
                 camera.mSkyZenith = camera.mSkyHorizon;
                 camera.mWaterLevel = 0.0f;
-                camera.mTime = 3.0f;
+                camera.mWaterTime = splitSeconds(3.0);
                 camera.mSeaHeading = heading;
 
                 const SceneDesc scene = makeOpenWater(20000.0f);
@@ -727,7 +728,7 @@ namespace Rtx::Testing
 
                 camera.mWaterLevel = 0.0f;
                 camera.mRainOnWater = rain;
-                camera.mTime = time;
+                camera.mWaterTime = splitSeconds(time);
 
                 const SceneDesc scene = makeOpenWater(20000.0f);
                 countHits(scene, {}, camera, size, pixels, { .mSea = SeaState{ .mSignificantHeight = 0.0f } });

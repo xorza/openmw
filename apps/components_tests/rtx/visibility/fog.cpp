@@ -1,4 +1,5 @@
 #include <components/rtx/camera.hpp>
+#include <components/rtx/frameworld.hpp>
 #include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/material.hpp>
 #include <components/rtx/mesh.hpp>
@@ -31,6 +32,7 @@
 #include <gtest/gtest.h>
 
 #include <osg/Matrixf>
+#include <osg/Vec2d>
 #include <osg/Vec2f>
 #include <osg/Vec3f>
 #include <osg/Vec4f>
@@ -784,8 +786,9 @@ namespace Rtx::Testing
                 Shaders::VisibilityConstants camera
                     = Testing::makeCamera(eye, eye + osg::Vec3f(0.0f, -10000.0f, 0.0f), 90.0f, size, size, 100000.0f);
                 camera.mFogUniform = 0.0f;
-                camera.mFogDrift = blown;
-                camera.mSkyTime = seconds;
+                const std::array<osg::Vec3f, Shaders::FOG_SCALES> offsets
+                    = fogOffsets(osg::Vec2d(blown), static_cast<double>(seconds));
+                std::copy(offsets.begin(), offsets.end(), camera.mFogOffsets);
 
                 std::vector<float> luminance;
                 airThrough(camera, size, luminance);

@@ -27,13 +27,6 @@ namespace Rtx
         std::uint32_t mEmitterCount = 0;
     };
 
-    /// The sprite tables a trace makes for itself: the sprites shaded against its sun, the depth
-    /// order and the rectangles the passes scratch in, the screen tiles' list the trace reads, and
-    /// the report of how long that list needed to be. **The trace's and not the placement's**,
-    /// because every one of them is a function of a camera and a sun — and the placement copy they
-    /// lived in was read by a frame in flight while the next trace's bin rewrote the sprites in
-    /// place from the host. One per frame in flight in the world's chain, and one for the pictures,
-    /// whose batches are ordered on the queue and touch nothing from the host.
     /// What one bin is of: the sprites, where they are seen from, and what lights them. A record
     /// and not an argument list, because `mOrigin` is a place and `mToSun` a direction and the
     /// two are one type, so a list takes either for the other.
@@ -56,6 +49,13 @@ namespace Rtx
         GpuTimer* mTimer = nullptr;
     };
 
+    /// The sprite tables a trace makes for itself: the sprites shaded against its sun, the depth
+    /// order and the rectangles the passes scratch in, the screen tiles' list the trace reads, and
+    /// the report of how long that list needed to be. **The trace's and not the placement's**,
+    /// because every one of them is a function of a camera and a sun — and the placement copy they
+    /// lived in was read by a frame in flight while the next trace's bin rewrote the sprites in
+    /// place from the host. One per frame in flight in the world's chain, and one for the pictures,
+    /// whose batches are ordered on the queue and touch nothing from the host.
     class SpriteBin
     {
     public:

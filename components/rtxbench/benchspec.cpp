@@ -1,12 +1,13 @@
 #include "benchspec.hpp"
 
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <cstddef>
 
 namespace Rtx
 {
-    std::uint32_t BenchSpan::getFrames() const
+    std::uint32_t BenchSpan::getFrames(const float step) const
     {
         if (mFrames > 0)
             return mFrames;
@@ -16,7 +17,8 @@ namespace Rtx
 
         // At least one, so a span short enough to round to nothing still measures the frame it
         // asked for rather than silently measuring none.
-        return std::max(1u, static_cast<std::uint32_t>(std::lround(mSeconds * sStepRate)));
+        assert(step > 0.0f && "a run whose frames stand for no time");
+        return std::max(1u, static_cast<std::uint32_t>(std::lround(mSeconds / step)));
     }
 
     std::vector<std::string> splitNames(std::string_view text)

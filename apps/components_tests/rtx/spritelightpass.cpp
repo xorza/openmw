@@ -8,7 +8,6 @@
 #include <vulkan/vulkan_core.h>
 
 #include <components/rtx/alphaimage.hpp>
-#include <components/rtx/spritelight.hpp>
 #include <components/rtx/texturedata.hpp>
 #include <components/rtxvulkan/commands.hpp>
 #include <components/rtxvulkan/device.hpp>
@@ -19,6 +18,7 @@
 #include <components/rtxvulkan/texture.hpp>
 
 #include "harness.hpp"
+#include "spritelightbake.hpp"
 #include "testtexture.hpp"
 
 namespace Rtx
@@ -59,7 +59,7 @@ namespace Rtx
 
         /// The device's bake is the host's, texel for texel and level for level, to a byte.
         ///
-        /// `RtxSpriteLightMapTest` says what the host's bake is; this says the device makes the same
+        /// `RtxSpriteLightBakeTest` says what the host's bake is; this says the device makes the same
         /// one, over a sprite of two levels whose alphas are stated outright: a four-by-four with a
         /// dense middle and a two-by-two below it. Every channel of every texel of every level is
         /// compared, within a byte, because `pow` on the device and `std::pow` on the host differ in
@@ -71,7 +71,7 @@ namespace Rtx
             Testing::addAlphaLevel(sprite, 2, 2, { 96, 160, 128, 64 });
 
             const AlphaImage alpha(sprite.mData);
-            const SpriteLightMap host(alpha);
+            const Testing::SpriteLightBake host(alpha);
             ASSERT_EQ(host.describe().mLevels.size(), 2u);
 
             const std::vector<std::vector<std::uint8_t>> device = bakeOf(sprite.mData);

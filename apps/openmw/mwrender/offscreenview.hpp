@@ -1,5 +1,4 @@
-#ifndef GAME_RENDER_OFFSCREENVIEW_H
-#define GAME_RENDER_OFFSCREENVIEW_H
+#pragma once
 
 #include <osg/Matrixf>
 #include <osg/Node>
@@ -116,5 +115,3 @@ namespace MWRender
     };
 
 }
-
-#endif

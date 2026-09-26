@@ -1,3 +1,4 @@
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -8,6 +9,7 @@
 #include <osg/Geometry>
 #include <osg/Group>
 #include <osg/Math>
+#include <osg/Vec2d>
 #include <osg/Vec2f>
 #include <osg/Vec3f>
 #include <osg/ref_ptr>
@@ -231,23 +233,33 @@ namespace Rtx
             // **And the frame is handed the distance blown, never the wind times the clock.** The
             // first reading has no earlier one to measure from, so the fog has gone nowhere yet;
             // one second on, at `FOG_GALE` units a second of wind, it has gone (0.27, 0.36) × 1400.
-            // A second of the water's clock carries no air: the wind blows on the sky's.
+            // A second of the water's clock carries no air: the wind blows on the sky's. What the
+            // frame is handed is that distance and the churn, reduced — `fogOffsets` of both.
+            const auto expectOffsets
+                = [](const Shaders::VisibilityConstants& frame, const osg::Vec2d& carried, double skySeconds) {
+                      const std::array<osg::Vec3f, Shaders::FOG_SCALES> offsets = fogOffsets(carried, skySeconds);
+                      for (std::size_t scale = 0; scale < offsets.size(); ++scale)
+                          EXPECT_EQ(frame.mFogOffsets[scale], offsets[scale]) << "scale " << scale;
+                  };
+
             EXPECT_FLOAT_EQ(constants.mClouds.mBearing.x(), 0.8f);
             EXPECT_FLOAT_EQ(constants.mClouds.mBearing.y(), 0.6f);
-            EXPECT_EQ(constants.mFogDrift, osg::Vec2f());
+            EXPECT_EQ(drift.get(), osg::Vec2d());
+            expectOffsets(constants, osg::Vec2d(), read.mSkySeconds);
 
             WorldReading waterLater = read;
-            waterLater.mSeconds = read.mSeconds + 1.0f;
+            waterLater.mSeconds = read.mSeconds + 1.0;
             Shaders::VisibilityConstants waterMoved{};
             describeWorld(waterLater, drift, waterMoved);
-            EXPECT_EQ(waterMoved.mFogDrift, osg::Vec2f());
+            EXPECT_EQ(drift.get(), osg::Vec2d());
 
             WorldReading later = read;
             later.mSkySeconds = read.mSkySeconds + 1.0;
             Shaders::VisibilityConstants blown{};
             describeWorld(later, drift, blown);
-            EXPECT_FLOAT_EQ(blown.mFogDrift.x(), 378.0f);
-            EXPECT_FLOAT_EQ(blown.mFogDrift.y(), 504.0f);
+            EXPECT_NEAR(drift.get().x(), 378.0, 1e-3);
+            EXPECT_NEAR(drift.get().y(), 504.0, 1e-3);
+            expectOffsets(blown, drift.get(), later.mSkySeconds);
 
             // And the sea runs the same way, as a unit heading.
             EXPECT_FLOAT_EQ(constants.mSeaHeading.x(), 0.6f);
@@ -262,8 +274,9 @@ namespace Rtx
             Shaders::VisibilityConstants becalmed{};
             describeWorld(still, drift, becalmed);
             EXPECT_EQ(becalmed.mSeaHeading, osg::Vec2f(1.0f, 0.0f));
-            EXPECT_FLOAT_EQ(becalmed.mFogDrift.x(), 378.0f);
-            EXPECT_FLOAT_EQ(becalmed.mFogDrift.y(), 504.0f);
+            EXPECT_NEAR(drift.get().x(), 378.0, 1e-3);
+            EXPECT_NEAR(drift.get().y(), 504.0, 1e-3);
+            expectOffsets(becalmed, drift.get(), still.mSkySeconds);
 
             // **The one field that does not pass through, and it is meant not to.** What the shader
             // is told is where the surface actually is, and the surface is placed a hair under its
@@ -271,8 +284,7 @@ namespace Rtx
             // `WATER_TIE_BREAK` says why. The two have to move together or the shader's idea of the
             // water and the water disagree.
             EXPECT_EQ(constants.mWaterLevel, read.mWaterLevel - Shaders::WATER_TIE_BREAK);
-            EXPECT_EQ(constants.mTime, read.mSeconds) << "the game wrote this nowhere either";
-            EXPECT_EQ(constants.mSkyTime, 47.5f) << "the sky's clock, and not the water's";
+            EXPECT_EQ(constants.mWaterTime, splitSeconds(read.mSeconds)) << "the game wrote this nowhere either";
             EXPECT_EQ(constants.mRainOnWater, read.mRainOnWater);
             EXPECT_EQ(constants.mShelterHeight, read.mShelterHeight);
             EXPECT_EQ(constants.mGlareColour, read.mGlareColour);
@@ -383,6 +395,80 @@ namespace Rtx
 
             frame.mGlareStrength = 0.0f;
             EXPECT_EQ(amountAt(0.0f), 0.0f);
+        }
+
+        /// A clock is handed over as two floats whose sum is it, to a nanosecond after a hundred hours.
+        ///
+        /// A hundred hours is 360,000 s, where a float steps by 1/32: the nearest float to
+        /// 360,000.123 is 360,000.125, and the second float carries the -0.002 the first overshot by.
+        /// Nought splits into two noughts, and a clock a float holds whole leaves nothing over.
+        TEST(RtxFrameWorldTest, aClockIsHandedOverAsTwoFloatsWhoseSumIsIt)
+        {
+            EXPECT_EQ(splitSeconds(0.0), osg::Vec2f());
+            EXPECT_EQ(splitSeconds(12.25), osg::Vec2f(12.25f, 0.0f));
+
+            constexpr double hundredHours = 360000.123;
+            const osg::Vec2f split = splitSeconds(hundredHours);
+            EXPECT_EQ(split.x(), 360000.125f);
+            EXPECT_NEAR(static_cast<double>(split.x()) + static_cast<double>(split.y()), hundredHours, 1e-9);
+        }
+
+        /// Each scale of the fog is read from where the churn and the turned drift moved it, as a
+        /// fraction of its own tile, and a hundred hours in that fraction is still exact.
+        ///
+        /// By hand: at one second of the sky and no drift, the coarse tile is `FOG_TILE`, 7200 units,
+        /// and its churn of (11, 7, 0) a second is (11, 7, 0) / 7200 of it. Carried 100 units along +x
+        /// at nought seconds, the middle scale reads from upwind, (-100, 0), which its 3-4-5 turn
+        /// takes to (-80, -60): negative, so the fraction is one less 80 and 60 of its tile,
+        /// 7200 / 2.27. The coarse scale takes the same drift unturned.
+        TEST(RtxFrameWorldTest, theFogIsReadFromWhereTheChurnAndTheDriftMovedItReducedToItsTile)
+        {
+            const std::array<osg::Vec3f, Shaders::FOG_SCALES> churned = fogOffsets(osg::Vec2d(), 1.0);
+            EXPECT_FLOAT_EQ(churned[0].x(), 11.0f / 7200.0f);
+            EXPECT_FLOAT_EQ(churned[0].y(), 7.0f / 7200.0f);
+            EXPECT_EQ(churned[0].z(), 0.0f);
+
+            const float middleTile = Shaders::FOG_TILE / Shaders::FOG_LACUNARITY;
+            const std::array<osg::Vec3f, Shaders::FOG_SCALES> carried = fogOffsets(osg::Vec2d(100.0, 0.0), 0.0);
+            EXPECT_FLOAT_EQ(carried[0].x(), 1.0f - 100.0f / 7200.0f);
+            EXPECT_EQ(carried[0].y(), 0.0f);
+            EXPECT_FLOAT_EQ(carried[1].x(), 1.0f - 80.0f / middleTile);
+            EXPECT_FLOAT_EQ(carried[1].y(), 1.0f - 60.0f / middleTile);
+            EXPECT_EQ(carried[1].z(), 0.0f);
+
+            // **A hundred hours in, against long double.** A float holding the churn's
+            // 19 × 360,000 = 6.8 million units steps by half a unit, and the drift after a storm of
+            // that length is further still; the fraction is what the device is handed instead.
+            constexpr double seconds = 360000.123;
+            const osg::Vec2d drift(123456.75, -98765.5);
+            const std::array<osg::Vec3f, Shaders::FOG_SCALES> far = fogOffsets(drift, seconds);
+
+            const std::array<osg::Vec3f, Shaders::FOG_SCALES> churns{ Shaders::FOG_CHURN_COARSE,
+                Shaders::FOG_CHURN_MIDDLE, Shaders::FOG_CHURN_FINE };
+            const std::array<osg::Vec2f, Shaders::FOG_SCALES> turns{ osg::Vec2f(1.0f, 0.0f), Shaders::FOG_TURN_MIDDLE,
+                Shaders::FOG_TURN_FINE };
+            float tile = Shaders::FOG_TILE;
+            for (std::size_t scale = 0; scale < far.size(); ++scale)
+            {
+                if (scale > 0)
+                    tile /= Shaders::FOG_LACUNARITY;
+
+                const long double c = turns[scale].x();
+                const long double s = turns[scale].y();
+                const long double t = seconds;
+                const std::array<long double, 3> moved{
+                    -c * drift.x() + s * drift.y() + churns[scale].x() * t,
+                    -s * drift.x() - c * drift.y() + churns[scale].y() * t,
+                    churns[scale].z() * t,
+                };
+                for (std::size_t axis = 0; axis < moved.size(); ++axis)
+                {
+                    const long double turned = moved[axis] / tile;
+                    const long double expected = turned - std::floor(turned);
+                    EXPECT_NEAR(far[scale][static_cast<unsigned>(axis)], static_cast<float>(expected), 1e-6f)
+                        << "scale " << scale << ", axis " << axis;
+                }
+            }
         }
 
         /// The camera's half is left exactly as it was found.

@@ -124,7 +124,7 @@ namespace MWRender
 
     RtxRenderer::RtxRenderer(const RendererSpec& spec, const RtxSetup* const run, const Rtx::RunSetup& setup)
         : mRun(run != nullptr ? run->mRun : mPlayed)
-        , mStep(setup.mStep)
+        , mSettled(setup.mSettled)
         , mWindow(setup.mHeadless)
         , mUpdateVisitor(new Rtx::PoseUpdate)
         , mStartTick(osg::Timer::instance()->tick())
@@ -224,22 +224,6 @@ namespace MWRender
         // `osgViewer` that slipped back in. A context that exists is one something is paying for.
         if (SDL_GL_GetCurrentContext() != nullptr)
             throw std::runtime_error("something initialised OpenGL under the ray tracing renderer");
-
-        // **The run's stated step decides whether the ground waits, unless the run says otherwise.** A
-        // composite comes back whenever the baker finishes it, so which frame it lands on is a
-        // thread's answer rather than the schedule's, and a run whose pictures are compared with
-        // another's cannot have that.
-        //
-        // **The step and not what a run does with its frames.** `shot` is what the reference
-        // pictures are made with and it hashes no frame, so a condition asking about hashes would
-        // leave out the run that most needs this: measured on
-        // `balmora`, four processes drew four different frames after half a second of warming and
-        // one frame after a tenth of one.
-        //
-        // **And a run that means to time the streaming path overrides it**, because waiting is
-        // most of what that path then measures. `Rtx::RunSetup::mSettled` says what the
-        // override costs and what it buys.
-        mMirror.setSettled(setup.mSettled.value_or(setup.mStep.has_value()));
     }
 
     // Out of line because the members it destroys are only forward declared in the header.
@@ -280,7 +264,23 @@ namespace MWRender
 
     void RtxRenderer::configureResources(Resource::ResourceSystem& resources)
     {
-        setResourceExpiry(resources, mStep);
+        setResourceExpiry(resources, getFrameClock().getStatedStep());
+
+        // **The clock's stated step decides whether the ground waits, unless the run says otherwise.** A
+        // composite comes back whenever the baker finishes it, so which frame it lands on is a
+        // thread's answer rather than the schedule's, and a run whose pictures are compared with
+        // another's cannot have that.
+        //
+        // **The step and not what a run does with its frames.** `shot` is what the reference
+        // pictures are made with and it hashes no frame, so a condition asking about hashes would
+        // leave out the run that most needs this: measured on
+        // `balmora`, four processes drew four different frames after half a second of warming and
+        // one frame after a tenth of one.
+        //
+        // **And a run that means to time the streaming path overrides it**, because waiting is
+        // most of what that path then measures. `Rtx::RunSetup::mSettled` says what the
+        // override costs and what it buys.
+        mMirror.setSettled(mSettled.value_or(getFrameClock().getStatedStep().has_value()));
 
         Resource::SceneManager& scene = *resources.getSceneManager();
         scene.setShadersEnabled(false);
@@ -938,8 +938,8 @@ namespace MWRender
     void RtxRenderer::trace(const SceneFrame& frame, Rtx::Shaders::VisibilityConstants constants, FrameReport& report,
         const std::optional<double> since)
     {
-        const Rtx::WorldReading read = mSky.read(frame.mSky, frame.mWorld, frame.mPrecipitation,
-            static_cast<float>(frame.mWhen.getSimulationTime()), mMirror.getReach());
+        const Rtx::WorldReading read = mSky.read(
+            frame.mSky, frame.mWorld, frame.mPrecipitation, frame.mWhen.getSimulationTime(), mMirror.getReach());
 
         const float exposureBias = Rtx::describeWorld(read, mFogDrift, constants);
 
@@ -957,9 +957,10 @@ namespace MWRender
         // cost to an address with no caller. `Rtx::Timing::Trace` says what the row is for.
         const std::chrono::steady_clock::time_point tracing = std::chrono::steady_clock::now();
 
-        Rtx::FrameOptions options
-            = Rtx::FrameOptions::forFrame(mRenderer->getProfile(), accumulated, mStep, exposureBias);
+        Rtx::FrameOptions options = Rtx::FrameOptions::forFrame(
+            mRenderer->getProfile(), accumulated, getFrameClock().getStatedStep(), exposureBias);
         options.mReadBack = mRun.wantsFrameCopy();
+        options.mSkySeconds = read.mSkySeconds;
 
         // What the debug modes drew, read off the world root here, after the game's own update
         // has rebuilt them for this frame and before the frame is recorded.

@@ -148,7 +148,6 @@ namespace MWRender
         const osg::Vec4f& getSunLightPosition() const;
         void setSunDirection(const osg::Vec3f& direction);
         void setSunColour(const osg::Vec4f& diffuse, const osg::Vec4f& specular, float sunVis);
-        void setNight(bool isNight) { mNight = isNight; }
 
         void configureAmbient(const MWWorld::Cell& cell);
         void configureFog(const MWWorld::Cell& cell);
@@ -363,7 +362,6 @@ namespace MWRender
         float mFieldOfView;
         float mFirstPersonFieldOfView;
         bool mUpdateProjectionMatrix = false;
-        bool mNight = false;
         osg::Vec2f mProjectionOffset;
         const MWWorld::GroundcoverStore& mGroundCoverStore;
 

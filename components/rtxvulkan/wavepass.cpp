@@ -94,7 +94,7 @@ namespace Rtx
         // Every tile in the layout the trace binds it in, from the first frame: a frame with no
         // water synthesises nothing and binds the tiles anyway, and a descriptor naming an image
         // that was never transitioned is an error whether or not a ray samples it.
-        mDevice.getPool().submitAndWait([&](VkCommandBuffer commands) { record(commands, 0.0f); });
+        mDevice.getPool().submitAndWait([&](VkCommandBuffer commands) { record(commands, osg::Vec2f()); });
     }
 
     void WavePass::describe(const SeaState& sea)
@@ -109,8 +109,8 @@ namespace Rtx
         {
             mTiles[index].mAmplitudes = uploadBuffer(batch, std::span<const osg::Vec2f>(cascades[index].mAmplitudes),
                 VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, tileName("amplitudes", index));
-            mTiles[index].mFrequencies = uploadBuffer(batch, std::span<const float>(cascades[index].mFrequencies),
-                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, tileName("frequencies", index));
+            mTiles[index].mTurnRates = uploadBuffer(batch, std::span<const float>(cascades[index].mTurnRates),
+                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, tileName("turn rates", index));
         }
         batch.flush();
 
@@ -127,7 +127,7 @@ namespace Rtx
                 VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT });
     }
 
-    void WavePass::record(VkCommandBuffer commands, float seconds) const
+    void WavePass::record(VkCommandBuffer commands, const osg::Vec2f& seconds) const
     {
         // **The cascades in step, one barrier a stage for both.** A cascade's stages wait on each
         // other and never on the other cascade's, so each stage is dispatched for every tile before
@@ -155,7 +155,7 @@ namespace Rtx
 
             DescriptorWrites<Shaders::WAVE_FORM_BINDINGS> forms;
             forms.buffer(Shaders::WAVE_FORM_BIND_AMPLITUDES, tile.mAmplitudes.describe());
-            forms.buffer(Shaders::WAVE_FORM_BIND_FREQUENCIES, tile.mFrequencies.describe());
+            forms.buffer(Shaders::WAVE_FORM_BIND_TURN_RATES, tile.mTurnRates.describe());
             forms.buffer(Shaders::WAVE_FORM_BIND_FIELD, tile.mField.describe());
 
             const Shaders::WaveFormConstants shaped{

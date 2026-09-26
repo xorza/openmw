@@ -138,7 +138,7 @@ namespace Rtx
                         continue;
 
                     const float wavenumber = Shaders::TAU / wavelengthAt(cascade, at);
-                    ASSERT_NEAR(cascade.mFrequencies[at], sea.getFrequency(wavenumber), 1e-4f)
+                    ASSERT_NEAR(cascade.mTurnRates[at], sea.getFrequency(wavenumber) / Shaders::TAU, 1e-5f)
                         << "at " << at << " of a tile " << cascade.mExtent << " across";
                 }
         }

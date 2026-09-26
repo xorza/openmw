@@ -90,7 +90,7 @@ namespace MWRender
     }
 
     Rtx::WorldReading SkyReader::read(const SkyState& sky, const WorldState& world, const Precipitation& falling,
-        const float seconds, const float reach) const
+        const double seconds, const float reach) const
     {
         const WeatherResult& weather = sky.mWeather;
 

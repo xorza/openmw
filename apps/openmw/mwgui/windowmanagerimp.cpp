@@ -1438,11 +1438,6 @@ namespace MWGui
         mRenderer.setViewMask(mask);
     }
 
-    uint32_t WindowManager::getCullMask()
-    {
-        return mRenderer.getViewMask();
-    }
-
     void WindowManager::popGuiMode(bool forceExit)
     {
         if (mDragAndDrop && mDragAndDrop->mIsOnDragAndDrop)

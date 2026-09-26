@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <optional>
 #include <span>
+#include <string_view>
 
 #include <osg/FrameStamp>
 #include <osg/Matrix>

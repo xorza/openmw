@@ -1,5 +1,4 @@
-#ifndef OPENMW_COMPONENTS_SETTINGS_CATEGORIES_RTX_H
-#define OPENMW_COMPONENTS_SETTINGS_CATEGORIES_RTX_H
+#pragma once
 
 #include <string>
 
@@ -65,5 +64,3 @@ namespace Settings
         SettingValue<std::string> mSpecularMapLayout{ mIndex, "RTX", "specular map layout" };
     };
 }
-
-#endif

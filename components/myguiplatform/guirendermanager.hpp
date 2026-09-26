@@ -1,5 +1,4 @@
-#ifndef OPENMW_COMPONENTS_MYGUIPLATFORM_GUIRENDERMANAGER_H
-#define OPENMW_COMPONENTS_MYGUIPLATFORM_GUIRENDERMANAGER_H
+#pragma once
 
 #include <memory>
 
@@ -70,5 +69,3 @@ namespace MyGUIPlatform
         return static_cast<GuiRenderManager&>(MyGUI::RenderManager::getInstance()).shareTexture(texture);
     }
 }
-
-#endif

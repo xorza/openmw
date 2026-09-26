@@ -1,5 +1,4 @@
-#ifndef GAME_RENDER_PIXELS_H
-#define GAME_RENDER_PIXELS_H
+#pragma once
 
 #include <cstdint>
 #include <vector>
@@ -43,5 +42,3 @@ namespace MWRender
     /// saved map is its own affair.
     osg::ref_ptr<osg::Image> asRgba(osg::ref_ptr<osg::Image> image);
 }
-
-#endif

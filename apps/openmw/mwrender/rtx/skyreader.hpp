@@ -74,7 +74,7 @@ namespace MWRender
         /// @param seconds the world's clock, which the sea is animated by.
         /// @param reach how far the world is built, in units, which the open air closes over.
         Rtx::WorldReading read(const SkyState& sky, const WorldState& world, const Precipitation& falling,
-            float seconds, float reach) const;
+            double seconds, float reach) const;
 
     private:
         /// The sky's own meshes, as the settings name them.

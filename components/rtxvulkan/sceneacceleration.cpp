@@ -303,9 +303,9 @@ namespace Rtx
     void SceneAcceleration::writeRows(std::span<const InstanceRecord> records, std::span<const Index> changed)
     {
         const std::size_t had = mRowTable.size();
-        mRowTable.resize(records.size());
+        mRowTable.grow(records.size());
 
-        // What the table grew by, written from its record rather than left inactive. `resize`
+        // What the table grew by, written from its record rather than left inactive. `grow`
         // owes every appended row to every copy, so a row nothing writes reaches the device as a
         // gap rather than as whatever was last in that memory. This is what makes them the
         // instances they actually are, and on the first placement it is the whole table.

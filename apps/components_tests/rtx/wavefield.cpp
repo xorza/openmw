@@ -2,6 +2,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <numbers>
 #include <span>
 #include <string>
 #include <utility>
@@ -13,6 +14,7 @@
 #include <osg/Vec3f>
 #include <vulkan/vulkan_core.h>
 
+#include <components/rtx/frameworld.hpp>
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/shaders/wave.h>
 #include <components/rtxvulkan/buffer.hpp>
@@ -89,7 +91,7 @@ namespace Rtx
 
         /// Runs the whole chain — form, transform along both axes, compose — over one spectrum.
         std::vector<Sampled> run(const Device& device, CommandPool& pool, const Passes& passes,
-            std::span<const osg::Vec2f> amplitudes, std::span<const float> frequencies, float time)
+            std::span<const osg::Vec2f> amplitudes, std::span<const float> turnRates, const osg::Vec2f& time)
         {
             const ComputePipeline& forming = passes.mForming;
             const ComputePipeline& line = passes.mLine;
@@ -98,12 +100,12 @@ namespace Rtx
             const Buffer table
                 = Buffer::staging(device, amplitudes.size_bytes(), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "test");
             const Buffer turning
-                = Buffer::staging(device, frequencies.size_bytes(), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "test");
+                = Buffer::staging(device, turnRates.size_bytes(), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "test");
             const Buffer field = Buffer::deviceLocal(
                 device, 3 * sCells * sizeof(osg::Vec2f), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "test");
 
             table.write(amplitudes);
-            turning.write(frequencies);
+            turning.write(turnRates);
 
             constexpr VkImageUsageFlags usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
             const Image surface(device, sCount, sCount, toVulkanFormat(WAVE_TILE_FORMAT), usage, "test-wave-surface");
@@ -226,7 +228,7 @@ namespace Rtx
 
                 // Nought, so the wave stands still and the expectation carries no phase of its own.
                 // What the frequency does is tested where it comes from.
-                const std::vector<Sampled> field = run(device, pool, passes, table, turning, 0.0f);
+                const std::vector<Sampled> field = run(device, pool, passes, table, turning, osg::Vec2f());
                 ASSERT_EQ(field.size(), sCells);
 
                 const float step = Shaders::TAU / sExtent;
@@ -264,6 +266,60 @@ namespace Rtx
                         ASSERT_NEAR(got.mHeightSquared, wave * wave, 5e-3f) << "height squared" << where;
                         ASSERT_NEAR(got.mSlopeSquared, got.mSlope * got.mSlope, 5e-3f) << "slope squared" << where;
                     }
+            }
+        }
+
+        /// A wave a hundred hours into its clock stands where its phase says, to the float's last place.
+        ///
+        /// **What the clock in two halves is for.** The phase is `rate * seconds` in turns, and at
+        /// 360,000 s one float holding the clock steps by 1/32 of a second and one holding the
+        /// product 2.9 × 360,000 = 1,044,000 turns steps by 1/8 of a turn: taken that way the phase
+        /// comes to 0.375 of a turn where it is 0.391, and the height's square below is a tenth
+        /// out. The expected phase is the fraction of the same product in long double.
+        TEST_F(RtxWaveFieldTest, aWaveAHundredHoursInStandsWhereItsPhaseSays)
+        {
+            const Device& device = getDevice();
+            CommandPool& pool = getPool();
+            const Passes passes(device);
+
+            constexpr float amplitude = 0.5f;
+            constexpr float rate = 2.9f;
+            constexpr int middle = static_cast<int>(sCount) / 2;
+            constexpr int alongX = 3;
+
+            std::vector<osg::Vec2f> table(sCells);
+            std::vector<float> turning(sCells, 0.0f);
+            const std::size_t at
+                = static_cast<std::size_t>(middle) * sCount + static_cast<std::size_t>(alongX + middle);
+            table[at] = osg::Vec2f(amplitude, 0.0f);
+
+            // At the partner as well, which the pass turns by its own rate: a sea's dispersion is
+            // the same at `-k` as at `k`.
+            const std::size_t mirror
+                = static_cast<std::size_t>(middle) * sCount + static_cast<std::size_t>(middle - alongX);
+            turning[at] = rate;
+            turning[mirror] = rate;
+
+            const osg::Vec2f clock = splitSeconds(360000.123);
+            const std::vector<Sampled> field = run(device, pool, passes, table, turning, clock);
+            ASSERT_EQ(field.size(), sCells);
+
+            const long double turns = static_cast<long double>(rate)
+                * (static_cast<long double>(clock.x()) + static_cast<long double>(clock.y()));
+            const float phase
+                = static_cast<float>((turns - std::floor(turns)) * 2.0L * std::numbers::pi_v<long double>);
+
+            const float wavenumber = Shaders::TAU / sExtent * static_cast<float>(alongX);
+            const float texel = sExtent / static_cast<float>(sCount);
+            for (std::uint32_t x = 0; x < sCount; ++x)
+            {
+                const float wave = 2.0f * amplitude * std::cos(texel * wavenumber * static_cast<float>(x) + phase);
+                const float derivative
+                    = -2.0f * amplitude * std::sin(texel * wavenumber * static_cast<float>(x) + phase);
+
+                const Sampled& got = field[x];
+                ASSERT_NEAR(got.mHeightSquared, wave * wave, 5e-3f) << "height squared at " << x;
+                ASSERT_NEAR(got.mSlope.x(), wavenumber * derivative, 5e-3f) << "slope at " << x;
             }
         }
     }

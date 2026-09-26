@@ -1,5 +1,4 @@
-#ifndef GAME_RENDER_GROUND_H
-#define GAME_RENDER_GROUND_H
+#pragma once
 
 #include <vector>
 
@@ -84,5 +83,3 @@ namespace MWRender
         Ground() = default;
     };
 }
-
-#endif

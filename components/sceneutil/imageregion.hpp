@@ -1,5 +1,4 @@
-#ifndef OPENMW_COMPONENTS_SCENEUTIL_IMAGEREGION_H
-#define OPENMW_COMPONENTS_SCENEUTIL_IMAGEREGION_H
+#pragma once
 
 #include <algorithm>
 
@@ -35,5 +34,3 @@ namespace SceneUtil
         bool operator==(const ImageRegion&) const = default;
     };
 }
-
-#endif

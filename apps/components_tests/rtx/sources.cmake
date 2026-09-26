@@ -111,6 +111,8 @@ set(RTX_TEST_SUPPORT
     rtx/heldimages.hpp
     rtx/layers.hpp
     rtx/lobeintegrals.hpp
+    rtx/spritelightbake.cpp
+    rtx/spritelightbake.hpp
     rtx/statistics.hpp
     rtx/testcamera.hpp
     rtx/testtexture.hpp

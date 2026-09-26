@@ -402,7 +402,7 @@ LightCandidate airCandidate(vec3 share)
 /// One sky source, weighed for a point that is about to draw between them.
 ///
 /// **Named rather than kept in an array, because a computed index is a spill.** The three were held
-/// in two `float[SKY_SOURCES]` locals and read back at the one the draw picked, and that index is
+/// in two `float[3]` locals and read back at the one the draw picked, and that index is
 /// not one the compiler can fold: the surface stage of `visibilityhit.rchit.spv` carried six
 /// `float[3]` variables in the function storage class, which is what a local array with a computed
 /// index becomes on this hardware. Three named values cost registers instead.

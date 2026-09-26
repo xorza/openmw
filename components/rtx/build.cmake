@@ -3,6 +3,13 @@
 # from the top-level `CMakeLists.txt` under `OPENMW_RTX`, so that file carries the options and one
 # line — before `components`, so its CMakeLists can name the fork's files there.
 
+# Vulkan ray tracing on NVIDIA hardware, which macOS has neither of. Refused by name rather than
+# left to fail at the first Vulkan header, and off there unless asked for.
+if (APPLE)
+    message(FATAL_ERROR "The ray tracer needs Vulkan on NVIDIA hardware, which macOS has not: "
+                        "configure with -DOPENMW_RTX=OFF")
+endif()
+
 # **CMake 3.31, for the presets.** `CMakePresets.json` is where a build of this fork is described —
 # `apps/rtxtool/rtx` configures through it and so does an IDE — and a presets file of that version
 # is the first that can carry a `$comment` beside each decision, which is how everything in this
@@ -166,17 +173,6 @@ endfunction()
 # says so rather than a compile that stops inside `requirements.cpp`.
 find_package(Vulkan 1.4.333 REQUIRED)
 
-# Where the RTX resources land. Not `OPENMW_RESOURCES_ROOT`: the top level only defines that for
-# non-Apple builds, and macOS derives its own — the bundle's `Contents/Resources` — inside
-# `apps/openmw/CMakeLists.txt`, which is configured after these subdirectories. Both roots it
-# would resolve to are known here, so this settles it once instead of depending on the order two
-# subdirectories happen to be added in.
-if (APPLE)
-    set(RTX_RESOURCES_ROOT "${APP_BUNDLE_DIR}/Contents/Resources")
-else()
-    set(RTX_RESOURCES_ROOT "${OpenMW_BINARY_DIR}")
-endif()
-
 # Where the compiled shaders land, beside the other RTX resources: the backend writes them, the
 # game and the harness read them through `resources/`, and the tests are told the path outright.
 #
@@ -185,8 +181,8 @@ endif()
 # driver had never seen, compiled again, and profiled and replaced again over the next processes
 # (`Rtx::DriverCache`). The second is the same modules with their source, for a profiler that
 # shows a shader's lines — the harness's `--shader-source`.
-set(RTX_SPIRV_DIR "${RTX_RESOURCES_ROOT}/resources/rtx/shaders")
-set(RTX_SPIRV_SOURCE_DIR "${RTX_RESOURCES_ROOT}/resources/rtx/shaders-source")
+set(RTX_SPIRV_DIR "${OPENMW_RESOURCES_ROOT}/resources/rtx/shaders")
+set(RTX_SPIRV_SOURCE_DIR "${OPENMW_RESOURCES_ROOT}/resources/rtx/shaders-source")
 
 # Where the structures shared with every shader language live. Both backends compile against
 # them, so the path is settled once rather than in each.

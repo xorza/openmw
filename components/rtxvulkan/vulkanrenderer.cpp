@@ -877,7 +877,7 @@ namespace Rtx
         if (inputs.mSea)
         {
             mRipples.record(commands, mRing.getRecordingSlot(), mFrameRipples,
-                osg::Vec2f(camera.mOrigin.x(), camera.mOrigin.y()), static_cast<double>(camera.mSkyTime), &timer);
+                osg::Vec2f(camera.mOrigin.x(), camera.mOrigin.y()), options.mSkySeconds, &timer);
             sampled.mRippleOrigin = mRipples.getOrigin();
             sampled.mRippleExtent = RipplePass::getExtent();
         }

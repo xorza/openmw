@@ -277,16 +277,10 @@ namespace Rtx::Shaders
         /// the same path as a point above the surface with no branch of its own.
         float mWaterLevel;
 
-        /// How long the water has been moving, in seconds.
-        ///
-        /// Zero is a still sea and a deterministic frame, which is what a test wants; the window
-        /// path passes its own clock.
-        float mTime;
-
-        /// How long the sky has been running, in seconds of its own clock: what the fog churns by.
-        /// Not `mTime`, because the sky's clock is the game's and a sped-up game is a time-lapse of
-        /// the weather, while water sped up the same way is noise. `Sky::skyStep` is the clock.
-        float mSkyTime;
+        /// How long the water has been moving, in seconds, as two floats whose sum is the host's
+        /// double: `Rtx::splitSeconds`, and `turnsAt` is what reads it. Nought is a still sea and a
+        /// deterministic frame, which is what a test wants; the window path passes its own clock.
+        vec2 mWaterTime;
 
         /// How hard it rains on the water, from nought to one.
         ///
@@ -408,19 +402,23 @@ namespace Rtx::Shaders
         /// `Rtx::fogLift` is what derives it, and says why the wind alone could not.
         float mFogLift;
 
-        /// Which way the air is moving and how fast, in the ground plane, as a heading times the
-        /// weather's recorded wind.
+        /// Where each scale of the fog's field is read from, coarsest first: an offset in that
+        /// scale's own texture coordinates, from nought up to one.
         ///
-        /// **Advection, which is not what `FOG_CHURN` is.** The churn drags the scales past each
-        /// other on headings that disagree, which is what makes the shapes form and pull apart —
-        /// air doing that in a dead calm is the whole reason a still fog is not a frozen texture.
-        /// This is the separate thing a wind adds: the entire field carried downwind together, on
-        /// the heading the cloud layer drifts along, because there is one wind over a landscape and
-        /// cloud shadows crossing the ground one way while the air moves another would read as two
-        /// weathers at once. How far it has been carried, in world units, and not the wind: the
-        /// host integrates the wind over the clock (`Rtx::FogDrift`), because a wind times the
-        /// clock jumps whenever the wind changes.
-        vec2 mFogDrift;
+        /// **Two motions in one offset.** The churn (`FOG_CHURN_COARSE` and the two beside it) drags
+        /// the scales past each other on headings that disagree, which is what makes the shapes form
+        /// and pull apart — air doing that in a dead calm is the whole reason a still fog is not a
+        /// frozen texture. The drift is the separate thing a wind adds: the entire field carried
+        /// downwind together, on the heading the cloud layer drifts along, because there is one wind
+        /// over a landscape and cloud shadows crossing the ground one way while the air moves another
+        /// would read as two weathers at once. The drift is how far the air has been carried and not
+        /// the wind, integrated over the clock (`Rtx::FogDrift`), because a wind times the clock jumps
+        /// whenever the wind changes; each scale takes it turned as that scale is turned.
+        ///
+        /// **Reduced on the host, in double, against each scale's tile** (`Rtx::fogOffsets`). Both
+        /// motions grow without bound over a session and the field repeats every tile, so what the
+        /// device is handed never grows, and no float has to hold ten hours of either.
+        vec3 mFogOffsets[FOG_SCALES];
 
         /// How far from the eye the world is built, in units. Zero where nothing is cut off.
         ///
@@ -564,8 +562,8 @@ namespace Rtx::Shaders
 
     // Pinned for the reason `scene.h` gives: the side that writes these bytes and the side that
     // reads them are different compilers.
-    static_assert(offsetof(VisibilityConstants, mTables) == 1168, "GpuTables must land eight-aligned and last");
-    static_assert(sizeof(VisibilityConstants) == 1336, "VisibilityConstants must be scalar-packed on every side");
+    static_assert(offsetof(VisibilityConstants, mTables) == 1200, "GpuTables must land eight-aligned and last");
+    static_assert(sizeof(VisibilityConstants) == 1368, "VisibilityConstants must be scalar-packed on every side");
 #endif
 
 #ifdef RTX_HOST

@@ -396,49 +396,6 @@ Hit committedHit(
     return hit;
 }
 
-/// A traversal run to completion, with whatever it committed read into `hit`.
-///
-/// **A macro for the reason `RTX_RESOLVE` is one, and for one more.** `glslc` refuses a `rayQueryEXT`
-/// as a parameter, so a traversal cannot be handed to a function — and a ray generation shader has to
-/// reach the same query again afterwards to record its hit object out of it, which no
-/// `out hitObjectEXT` could carry back either, because that type may not be a parameter. So the body
-/// is written once here and expanded at the two places that need it.
-///
-/// @param query an uninitialised traversal, which this leaves committed so that a caller may record
-///        a hit object from it.
-/// @param hit a `Hit` this fills in.
-/// @param footprint,spread how wide the ray's cone starts and how fast it opens. See `trace`.
-/// @param draws whether this ray draws the picture — `facingFor`. **A literal at every call.**
-#define RTX_TRAVERSE(query, hit, origin, direction, tmin, footprint, spread, mask, draws)                   \
-    {                                                                                                       \
-        /* No blanket opaque flag: the per-instance bits the build set from each material are what   */      \
-        /* decide whether traversal stops to ask, and forcing opacity here would override them and   */      \
-        /* put every leaf back inside the card it was painted on.                                    */      \
-        rayQueryInitializeEXT(                                                                              \
-            (query), sceneTop, facingFor(draws), (mask), (origin), (tmin), (direction), frame.mReach);      \
-                                                                                                            \
-        /* An lvalue the resolve needs and nothing here reads: a ray that keeps what it passed      */      \
-        /* through cannot commit the surface it passed through, and this one commits.                */      \
-        uint traversedBlocked = 0u;                                                                         \
-        RTX_RESOLVE((query), (direction),                                                                   \
-            (footprint) + (spread) * rayQueryGetIntersectionTEXT((query), false), traversedBlocked, false)  \
-                                                                                                            \
-        if (rayQueryGetIntersectionTypeEXT((query), true) == gl_RayQueryCommittedIntersectionNoneEXT)       \
-            (hit) = noHit();                                                                                \
-        else                                                                                                \
-        {                                                                                                   \
-            vec3 traversedCorners[3];                                                                       \
-            rayQueryGetIntersectionTriangleVertexPositionsEXT((query), true, traversedCorners);             \
-                                                                                                            \
-            const float traversedDistance = rayQueryGetIntersectionTEXT((query), true);                     \
-            (hit) = committedHit(rayQueryGetIntersectionInstanceCustomIndexEXT((query), true),              \
-                rayQueryGetIntersectionPrimitiveIndexEXT((query), true),                                    \
-                rayQueryGetIntersectionBarycentricsEXT((query), true), traversedDistance,                   \
-                (footprint) + (spread) * traversedDistance, traversedCorners,                               \
-                rayQueryGetIntersectionObjectToWorldEXT((query), true));                                    \
-        }                                                                                                   \
-    }
-
 /// How much of a light `reach` away along `towards` reaches `from`.
 ///
 /// No cone here, so the cutout is decided at the finest mip. A shadow ray carries no footprint, and
@@ -999,11 +956,27 @@ Surface resolve(Hit hit, vec3 origin, vec3 direction, bool draws)
 ///        waterline pixel do; a bounce carries light and does not.
 Hit traverse(vec3 origin, vec3 direction, float tmin, float footprint, float spread, uint mask, bool draws)
 {
+    // No blanket opaque flag: the per-instance bits the build set from each material are what decide
+    // whether traversal stops to ask, and forcing opacity here would override them and put every leaf
+    // back inside the card it was painted on.
     rayQueryEXT query;
-    Hit hit;
-    RTX_TRAVERSE(query, hit, origin, direction, tmin, footprint, spread, mask, draws)
+    rayQueryInitializeEXT(query, sceneTop, facingFor(draws), mask, origin, tmin, direction, frame.mReach);
 
-    return hit;
+    // An lvalue the resolve needs and nothing here reads: a ray that keeps what it passed through
+    // cannot commit the surface it passed through, and this one commits.
+    uint blocked = 0u;
+    RTX_RESOLVE(query, direction, footprint + spread * rayQueryGetIntersectionTEXT(query, false), blocked, false)
+
+    if (rayQueryGetIntersectionTypeEXT(query, true) == gl_RayQueryCommittedIntersectionNoneEXT)
+        return noHit();
+
+    vec3 corners[3];
+    rayQueryGetIntersectionTriangleVertexPositionsEXT(query, true, corners);
+
+    const float distance = rayQueryGetIntersectionTEXT(query, true);
+    return committedHit(rayQueryGetIntersectionInstanceCustomIndexEXT(query, true),
+        rayQueryGetIntersectionPrimitiveIndexEXT(query, true), rayQueryGetIntersectionBarycentricsEXT(query, true),
+        distance, footprint + spread * distance, corners, rayQueryGetIntersectionObjectToWorldEXT(query, true));
 }
 
 /// Traverses, and resolves whatever it hit.

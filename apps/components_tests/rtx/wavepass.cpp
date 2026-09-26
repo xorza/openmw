@@ -10,6 +10,7 @@
 
 #include <vulkan/vulkan_core.h>
 
+#include <components/rtx/frameworld.hpp>
 #include <components/rtx/shaders/wave.h>
 #include <components/rtx/wavecascade.hpp>
 #include <components/rtx/wavespectrum.hpp>
@@ -25,9 +26,9 @@ namespace Rtx
     namespace
     {
         /// Runs one synthesis at `seconds` and hands back the pass that holds it.
-        void synthesise(const WavePass& waves, CommandPool& pool, float seconds)
+        void synthesise(const WavePass& waves, CommandPool& pool, double seconds)
         {
-            pool.submitAndWait([&](VkCommandBuffer commands) { waves.record(commands, seconds); });
+            pool.submitAndWait([&](VkCommandBuffer commands) { waves.record(commands, splitSeconds(seconds)); });
         }
 
         struct RtxWavePassTest : Testing::DeviceTest
@@ -47,7 +48,7 @@ namespace Rtx
             CommandPool& pool = getPool();
             const WavePass waves(device, Testing::getShaderDirectory());
 
-            synthesise(waves, pool, 0.0f);
+            synthesise(waves, pool, 0.0);
 
             const SeaState sea;
             const std::array<WaveCascade, Shaders::WAVE_CASCADES> cascades = makeWaveCascades(sea);
@@ -116,7 +117,7 @@ namespace Rtx
             CommandPool& pool = getPool();
             const WavePass waves(device, Testing::getShaderDirectory());
 
-            synthesise(waves, pool, 0.0f);
+            synthesise(waves, pool, 0.0);
 
             // The narrow tile, because the assertion is about the filter and not about the size.
             constexpr std::size_t cascade = Shaders::WAVE_CASCADES - 1;
@@ -197,7 +198,7 @@ namespace Rtx
             CommandPool& pool = getPool();
             const WavePass waves(device, Testing::getShaderDirectory());
 
-            synthesise(waves, pool, 0.0f);
+            synthesise(waves, pool, 0.0);
 
             const WaveCurvature& carried = waves.getMoments();
 
@@ -259,10 +260,10 @@ namespace Rtx
 
             const Image& surface = waves.getSurface(0);
 
-            synthesise(waves, pool, 0.0f);
+            synthesise(waves, pool, 0.0);
             const std::vector<float> before = Testing::readHalves(surface, 0);
 
-            synthesise(waves, pool, 2.0f);
+            synthesise(waves, pool, 2.0);
             const std::vector<float> after = Testing::readHalves(surface, 0);
 
             ASSERT_EQ(before.size(), after.size());
@@ -286,7 +287,7 @@ namespace Rtx
             EXPECT_LT(std::abs(correlation), 0.5f) << "measured " << correlation;
 
             // A run of nought is the same field twice, which is what makes a screenshot repeatable.
-            synthesise(waves, pool, 0.0f);
+            synthesise(waves, pool, 0.0);
             const std::vector<float> again = Testing::readHalves(surface, 0);
             EXPECT_EQ(again, before) << "the same moment is not the same sea";
         }

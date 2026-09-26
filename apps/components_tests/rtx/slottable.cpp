@@ -77,7 +77,7 @@ namespace Rtx
         /// set of the scene's change lists than the other, so its second copy was never told.
         TEST_F(RtxSlotTableTest, aRowWrittenIsOwedByEveryCopyUntilThatCopyIsSynced)
         {
-            mTable.resize(4);
+            mTable.grow(4);
             sync(0);
             sync(1);
             ASSERT_FALSE(mTable.owes(FrameSlot{ 0 }));
@@ -102,7 +102,7 @@ namespace Rtx
         /// and not one. A debt taken from the current frame's list alone loses the older half.
         TEST_F(RtxSlotTableTest, aCopyOwesEveryRowWrittenSinceItWasLastPaid)
         {
-            mTable.resize(8);
+            mTable.grow(8);
             sync(0);
             sync(1);
 
@@ -122,56 +122,15 @@ namespace Rtx
         /// Growing owes the appended rows and nothing else: a row keeps its offset.
         TEST_F(RtxSlotTableTest, growingOwesWhatWasAppendedAndNotWhatWasAlreadyThere)
         {
-            mTable.resize(3);
+            mTable.grow(3);
             sync(0);
             sync(1);
 
-            mTable.resize(6);
+            mTable.grow(6);
 
             EXPECT_EQ(owedBy(0), (std::vector<Index>{ 3, 4, 5 }));
             EXPECT_EQ(owedBy(1), (std::vector<Index>{ 3, 4, 5 }));
             EXPECT_FALSE(mTable.owesEverything(FrameSlot{ 0 })) << "a growth rewrote rows that had not moved";
-        }
-
-        /// Shrinking owes nothing new and forgets what was owed above the new end.
-        ///
-        /// The rows past the end are not read, so nothing has to be said about them — and the table
-        /// is never compacted, so nothing below the end has moved. **What did have to be said is
-        /// what a copy still owed up there**: a debt is what `sync` reads the host rows with, so a
-        /// copy owing row five when the table falls to two rows read past the end of them.
-        TEST_F(RtxSlotTableTest, shrinkingForgetsTheRowsPastTheNewEnd)
-        {
-            mTable.resize(6);
-            sync(0);
-            sync(1);
-
-            mTable.resize(2);
-
-            EXPECT_FALSE(mTable.owes(FrameSlot{ 0 })) << "a shrink owed a row nothing wrote";
-            EXPECT_FALSE(mTable.owes(FrameSlot{ 1 }));
-            EXPECT_EQ(mTable.size(), 2u);
-
-            mTable.resize(6);
-            sync(0);
-            sync(1);
-
-            mTable.write(1).mValue = 11;
-            mTable.write(5).mValue = 55;
-            mTable.resize(2);
-
-            EXPECT_EQ(owedBy(0), (std::vector<Index>{ 1 })) << "a row above the new end is still owed";
-            EXPECT_EQ(owedBy(1), (std::vector<Index>{ 1 }));
-
-            // The rows the regrowth appends, and the one below the end that was owed before it.
-            mTable.resize(6);
-            EXPECT_EQ(owedBy(0), (std::vector<Index>{ 1, 2, 3, 4, 5 }));
-            EXPECT_EQ(mTable.getRows()[1].mValue, 11u) << "a row below the new end lost its value";
-            EXPECT_EQ(mTable.getRows()[5].mValue, 0u) << "a row the regrowth appended kept what it held";
-
-            sync(0);
-            sync(1);
-            EXPECT_FALSE(mTable.owes(FrameSlot{ 0 }));
-            EXPECT_FALSE(mTable.owes(FrameSlot{ 1 }));
         }
 
         /// A copy that has never been written owes the whole table, and paying it clears that.
@@ -180,7 +139,7 @@ namespace Rtx
             EXPECT_TRUE(mTable.owesEverything(FrameSlot{ 0 }));
             EXPECT_TRUE(mTable.owesEverything(FrameSlot{ 1 }));
 
-            mTable.resize(5);
+            mTable.grow(5);
             mTable.write(0).mValue = 1;
 
             EXPECT_TRUE(mTable.owesEverything(FrameSlot{ 0 })) << "a row named where the whole table is owed";
@@ -194,7 +153,7 @@ namespace Rtx
         /// once and a copy paid later reads the value as it then stands rather than as it was.
         TEST_F(RtxSlotTableTest, theRowsAreTheOneAnswerEveryCopyIsWrittenFrom)
         {
-            mTable.resize(2);
+            mTable.grow(2);
             sync(0);
             sync(1);
 
@@ -216,7 +175,7 @@ namespace Rtx
         /// a few hundred frames ends at `VK_ERROR_OUT_OF_DEVICE_MEMORY`.
         TEST_F(RtxSlotTableTest, syncingWithoutGrowingLeavesTheBufferWhereItIs)
         {
-            mTable.resize(64);
+            mTable.grow(64);
             sync(0);
 
             const VkDeviceSize settled = mTable.getCopyBytes(FrameSlot{ 0 });
@@ -235,14 +194,14 @@ namespace Rtx
         /// A table that keeps growing is made again a logarithmic number of times, not once a row.
         TEST_F(RtxSlotTableTest, aTableThatKeepsGrowingDoublesRatherThanFollowingEachRow)
         {
-            mTable.resize(1);
+            mTable.grow(1);
             sync(0);
 
             VkDeviceSize remade = 0;
             VkDeviceSize was = mTable.getCopyBytes(FrameSlot{ 0 });
             for (std::size_t rows = 2; rows <= 512; ++rows)
             {
-                mTable.resize(rows);
+                mTable.grow(rows);
                 sync(0);
                 if (mTable.getCopyBytes(FrameSlot{ 0 }) != was)
                 {
@@ -349,7 +308,7 @@ namespace Rtx
         /// so the wait cannot return before the hold opens and lasts at least the hold's length.
         TEST_F(RtxSlotTableTest, syncingWaitsForTheSubmitThatTookTheCopysAddress)
         {
-            mTable.resize(1);
+            mTable.grow(1);
             mTable.write(0).mValue = 1;
             sync(0);
 

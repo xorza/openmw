@@ -2,10 +2,10 @@
 # desk uses.
 #
 # **Upstream's workflows run beside this one, as the host engine's check.** They have no Vulkan
-# SDK and no NGX, and macOS can have neither, so each of their three configures carries the one
-# line the fork adds to them, `-D OPENMW_RTX=OFF`: push.yml for Ubuntu, windows.yml, and
-# CI/before_script.macos.sh. What they prove is what this workflow cannot: that the tree still
-# builds without the ray tracer, and upstream's own suites on three systems. On master and pull
+# SDK and no NGX, so the two configures on systems the ray tracer builds on carry the one line the
+# fork adds to them, `-D OPENMW_RTX=OFF`: push.yml for Ubuntu, and windows.yml. macOS can have
+# neither, and the option is off there by default. What they prove is what this workflow cannot:
+# that the tree still builds without the ray tracer, and upstream's own suites on three systems. On master and pull
 # requests, which is the second line the fork adds: three runners for three quarters of an hour
 # say nothing a branch needs. Nothing here is switched off in the repository's settings, because
 # a fresh fork does not carry a setting.
@@ -16,10 +16,11 @@
 # build, the tests and the no-DLSS compile read as one. A leg that fails does not stop the other:
 # what the two say together is what a change did.
 #
-# No hosted runner has a GPU, so every RTX test that needs a device skips at vkCreateInstance
-# and the test step's skip count says so. What this proves is that both binaries compile on both
-# compilers, the format check holds and the device-free tests pass; the gate stays on a box with
-# a card.
+# No hosted runner has a GPU, so the test step names `--without-device`: the RTX tests of
+# `components-tests` and `openmw-tests` run with the crash matrix, and `rtx-gpu-tests`, which
+# refuses to start without a device, is left out. What this proves is that every binary compiles
+# on both compilers, the format check holds and the device-free tests pass; the gate stays on a
+# box with a card.
 #
 # **A release is a tag, and the same two legs.** A push of a tag `rtx-v*` runs everything above
 # and then, on each leg, the `package` flavour and the archive a player takes: an AppImage on

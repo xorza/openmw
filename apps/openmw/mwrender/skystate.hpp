@@ -1,5 +1,4 @@
-#ifndef GAME_RENDER_SKYSTATE_H
-#define GAME_RENDER_SKYSTATE_H
+#pragma once
 
 #include <osg/Vec3f>
 
@@ -50,5 +49,3 @@ namespace MWRender
         osg::Vec3f mStormParticleDirection;
     };
 }
-
-#endif

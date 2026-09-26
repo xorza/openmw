@@ -1,11 +1,14 @@
 #include "frameworld.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cmath>
 #include <cstddef>
 
 #include <osg/Matrixf>
+#include <osg/Vec2d>
+#include <osg/Vec3d>
 
 #include "fogbuilder.hpp"
 #include "sceneextractor.hpp"
@@ -76,10 +79,54 @@ namespace Rtx
         if (mLastSeconds.has_value())
         {
             assert(seconds >= *mLastSeconds && "the clock the air is carried by ran backwards");
-            mCarried += heading * (wind * Shaders::FOG_GALE * static_cast<float>(seconds - *mLastSeconds));
+            mCarried
+                += osg::Vec2d(heading) * (static_cast<double>(wind * Shaders::FOG_GALE) * (seconds - *mLastSeconds));
         }
 
         mLastSeconds = seconds;
+    }
+
+    osg::Vec2f splitSeconds(const double seconds)
+    {
+        const float high = static_cast<float>(seconds);
+        return osg::Vec2f(high, static_cast<float>(seconds - static_cast<double>(high)));
+    }
+
+    std::array<osg::Vec3f, Shaders::FOG_SCALES> fogOffsets(const osg::Vec2d& carried, const double skySeconds)
+    {
+        // The shader's own turns, and its tiles stepped as `fogShape` steps them.
+        const std::array<osg::Vec3f, Shaders::FOG_SCALES> churns{ Shaders::FOG_CHURN_COARSE, Shaders::FOG_CHURN_MIDDLE,
+            Shaders::FOG_CHURN_FINE };
+        const std::array<osg::Vec2f, Shaders::FOG_SCALES> turns{ osg::Vec2f(1.0f, 0.0f), Shaders::FOG_TURN_MIDDLE,
+            Shaders::FOG_TURN_FINE };
+
+        std::array<osg::Vec3f, Shaders::FOG_SCALES> offsets{};
+        float tile = Shaders::FOG_TILE;
+        for (std::size_t scale = 0; scale < offsets.size(); ++scale)
+        {
+            if (scale > 0)
+                tile /= Shaders::FOG_LACUNARITY;
+
+            // **The air is read from upwind, so the drift goes in with its sign turned.** A bank
+            // sits at a fixed coordinate in the field, so sampling from further upwind as the clock
+            // runs is what carries it past, and adding would walk the whole field into the wind.
+            // Turned as the scale's read is turned, because the shader turns the position the drift
+            // was taken off.
+            const double c = turns[scale].x();
+            const double s = turns[scale].y();
+            const osg::Vec2d upwind = -carried;
+            const osg::Vec3d churn(churns[scale]);
+            const osg::Vec3d moved(c * upwind.x() - s * upwind.y() + churn.x() * skySeconds,
+                s * upwind.x() + c * upwind.y() + churn.y() * skySeconds, churn.z() * skySeconds);
+
+            const auto fraction = [&](const double along) {
+                const double tiles = along / static_cast<double>(tile);
+                return static_cast<float>(tiles - std::floor(tiles));
+            };
+            offsets[scale] = osg::Vec3f(fraction(moved.x()), fraction(moved.y()), fraction(moved.z()));
+        }
+
+        return offsets;
     }
 
     float describeWorld(const WorldReading& reading, FogDrift& drift, Shaders::VisibilityConstants& constants)
@@ -163,7 +210,8 @@ namespace Rtx
         // and not multiplied by the clock — `FogDrift` says what the product cost.
         const osg::Vec2f heading(constants.mClouds.mBearing.y(), constants.mClouds.mBearing.x());
         drift.advance(heading, air.mWind, reading.mSkySeconds);
-        constants.mFogDrift = drift.get();
+        const std::array<osg::Vec3f, Shaders::FOG_SCALES> offsets = fogOffsets(drift.get(), reading.mSkySeconds);
+        std::copy(offsets.begin(), offsets.end(), constants.mFogOffsets);
 
         // The sea runs the way the deck does, and as its tiles were drawn where nothing blows.
         constants.mSeaHeading = heading.length2() > 0.0f ? heading / heading.length() : osg::Vec2f(1.0f, 0.0f);
@@ -173,8 +221,7 @@ namespace Rtx
         // The same hair the water's own placement is dropped by, so that what the shader calls the
         // water level and where the surface actually is stay one number.
         constants.mWaterLevel = reading.mWaterLevel - Shaders::WATER_TIE_BREAK;
-        constants.mTime = reading.mSeconds;
-        constants.mSkyTime = static_cast<float>(reading.mSkySeconds);
+        constants.mWaterTime = splitSeconds(reading.mSeconds);
         constants.mRainOnWater = reading.mRainOnWater;
         constants.mShelterHeight = reading.mShelterHeight;
 

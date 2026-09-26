@@ -1,5 +1,4 @@
-#ifndef OPENMW_COMPONENTS_SKY_SUNDISC_H
-#define OPENMW_COMPONENTS_SKY_SUNDISC_H
+#pragma once
 
 #include <osg/Vec3f>
 
@@ -26,5 +25,3 @@ namespace Sky
     /// by two renderers off one direction, and the disc has to be where the shadows say it is.
     osg::Vec3f sunDiscPosition(const osg::Vec3f& direction);
 }
-
-#endif

@@ -18,6 +18,7 @@
 #include "bindings.glsl"
 #include "footprint.glsl"
 #include "random.glsl"
+#include "turns.glsl"
 
 /// How far refraction deflects a ray, per unit of surface slope.
 ///
@@ -71,7 +72,7 @@ vec2 rainSlope(vec2 at, float footprint, out float lost)
 
             // Where this impact is in its own life, which each cell keeps its own phase of so the
             // whole surface does not ring at once.
-            const float age = fract(frame.mTime / RAIN_RING_LIFE + offset) * RAIN_RING_LIFE;
+            const float age = fract(turnsAt(1.0 / RAIN_RING_LIFE, frame.mWaterTime) + offset) * RAIN_RING_LIFE;
 
             const vec2 away = at - fell;
             const float distance = length(away);

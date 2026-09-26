@@ -108,9 +108,8 @@ namespace Rtx
         /// again. `Device::settleLost` is the one caller.
         void dropDeferred();
 
-        /// The device's alone, because the graveyard gives a finished command buffer back to the
-        /// device's pool: a second pool's buffer would land in the first's spare list and outlive
-        /// the pool it was allocated from.
+        /// The device's alone, because the device's waits are what collect it: a second pool's
+        /// retired buffers would wait for a collect that never came.
         friend class Device;
         explicit CommandPool(const Device& device);
 

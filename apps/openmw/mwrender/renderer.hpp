@@ -1,5 +1,4 @@
-#ifndef GAME_RENDER_RENDERER_H
-#define GAME_RENDER_RENDERER_H
+#pragma once
 
 #include <chrono>
 #include <cstdint>
@@ -460,5 +459,3 @@ namespace MWRender
     void applyWindowHints();
 
 }
-
-#endif

@@ -121,11 +121,6 @@ namespace Rtx
         /// Drops what `remove` took, in one pass over the list rather than one per slot.
         void compact();
 
-        /// Takes out every slot at or past `count`, and holds room for exactly that many — `grow`'s
-        /// counterpart, for a table that shrank, so the assert in `add` stops accepting a slot that
-        /// names a row that is gone.
-        void shrinkTo(std::size_t count);
-
         /// Whether `slot` is in the set. Answers while a `remove` is outstanding, where `getSlots`
         /// will not: the flags are exact from the moment a slot is taken out.
         bool has(Index slot) const { return slot < mFlags.size() && mFlags[slot] != 0; }

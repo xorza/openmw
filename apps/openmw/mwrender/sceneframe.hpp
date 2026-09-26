@@ -1,5 +1,4 @@
-#ifndef GAME_RENDER_SCENEFRAME_H
-#define GAME_RENDER_SCENEFRAME_H
+#pragma once
 
 #include <optional>
 
@@ -229,5 +228,3 @@ namespace MWRender
         bool mPaused = false;
     };
 }
-
-#endif

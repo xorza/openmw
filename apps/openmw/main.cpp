@@ -20,12 +20,12 @@
 #if defined(_WIN32)
 #include <components/misc/windows.hpp>
 // makes __argc and __argv available on windows
-#include <chrono>
 #include <cstdlib>
 
 extern "C" __declspec(dllexport) DWORD AmdPowerXpressRequestHighPerformance = 0x00000001;
 #endif
 
+#include <chrono>
 #include <filesystem>
 
 #if (defined(__APPLE__) || defined(__linux) || defined(__unix) || defined(__posix))

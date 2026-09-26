@@ -15,8 +15,8 @@ namespace osg
 namespace Rtx
 {
     /// A texture's alpha channel, decoded to a byte a texel, at every level the file carried —
-    /// what a cutout is, apart from what it looks like, decoded once because `SpriteLightMap` walks
-    /// every texel of every level. Alpha is linear in every format, so a byte means what it says.
+    /// what a cutout is, apart from what it looks like, decoded once because a reader walks every
+    /// texel it asks for. Alpha is linear in every format, so a byte means what it says.
     /// The whole chain, because a sprite is sampled at whatever level the ray's cone can resolve.
     class AlphaImage
     {
@@ -45,8 +45,8 @@ namespace Rtx
         bool isEmpty() const { return mShape.isEmpty(); }
 
         /// Alpha at a texel of a level, both of which must be inside the image. Defined here
-        /// because `SpriteLightMap` asks it for every texel of every level, and a call across a
-        /// translation unit for a vector index is most of what that walk costs.
+        /// because a reader asks it for every texel of a level, and a call across a translation
+        /// unit for a vector index is most of what that walk costs.
         std::uint8_t at(std::uint32_t level, std::uint32_t x, std::uint32_t y) const
         {
             return mValues[mShape.offsetOf(level, x, y, 1)];

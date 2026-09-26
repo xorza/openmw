@@ -1,5 +1,4 @@
-#ifndef OPENMW_COMPONENTS_SCENEUTIL_OFFSCREENFRAMING_H
-#define OPENMW_COMPONENTS_SCENEUTIL_OFFSCREENFRAMING_H
+#pragma once
 
 #include <variant>
 
@@ -45,5 +44,3 @@ namespace SceneUtil
         float mFar = 10000.f;
     };
 }
-
-#endif

@@ -51,9 +51,11 @@ namespace Rtx
         /// storing half of it and mirroring would give a real surface that could not move.
         std::vector<osg::Vec2f> mAmplitudes;
 
-        /// Radians a second, one per entry, in the same order. `omega(k)` off the sea's own
+        /// Turns a second, one per entry, in the same order: `omega(k) / TAU` off the sea's own
         /// dispersion relation, so a shallow shelf slows its long waves here as it does everywhere.
-        std::vector<float> mFrequencies;
+        /// In turns, because a phase in turns is what `turnsAt` reduces exactly, and one in radians
+        /// is a product no reduction can take back.
+        std::vector<float> mTurnRates;
     };
 
     /// The tiles a sea state comes to, scaled together rather than each to itself, because the

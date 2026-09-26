@@ -336,12 +336,13 @@ namespace MWRender
         /// picture through two differently answered renderers.
         RtxRun& mRun;
 
-        /// How long every frame stands for, or nothing to time each one off the wall — the one
-        /// thing `Rtx::RunSetup` states that outlives the construction it is spent in. The window,
-        /// the backend and the mirror are what the rest of it became, and what a frame reads about
-        /// how the picture is made is the backend's `getProfile`, which a setting may move and a
-        /// record made before the backend may not.
-        std::optional<float> mStep;
+        /// Whether each walk waits for the cell it adopts, where the run says: the one thing
+        /// `Rtx::RunSetup` states that outlives the construction it is spent in, because what it
+        /// falls back on is the clock's stated step, which the host hands over after. The step
+        /// itself is the clock's (`getFrameClock`), and what a frame reads about how the picture is
+        /// made is the backend's `getProfile`, which a setting may move and a record made before the
+        /// backend may not.
+        std::optional<bool> mSettled;
 
         /// Before the backend, whose surface is on it: the members below die first.
         RtxWindow mWindow;

@@ -1,5 +1,4 @@
-#ifndef GAME_RENDER_GLOFFSCREENVIEW_H
-#define GAME_RENDER_GLOFFSCREENVIEW_H
+#pragma once
 
 #include <memory>
 
@@ -132,5 +131,3 @@ namespace MWRender
         LocalMapRenderToTexture& mTile;
     };
 }
-
-#endif

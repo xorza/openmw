@@ -326,10 +326,9 @@ namespace Rtx::Testing
                 Shaders::VisibilityConstants sampled = camera;
                 if (shot.mFrames > 0)
                     sampled.mFrame = shot.mFirstFrame + frame;
-                sampled.mSkyTime = camera.mSkyTime + static_cast<float>(frame) * shot.mSkyStep;
-
                 mRenderer->renderFrame(sampled,
                     FrameOptions{ .mAccumulate = shot.mFrames > 0 && shot.mAverage ? frame + 1 : 0,
+                        .mSkySeconds = static_cast<double>(frame) * static_cast<double>(shot.mSkyStep),
                         .mReconstruction = { .mFilter = shot.mFilter,
                             .mJitter = shot.mJitter,
                             .mNoise = shot.mNoise,

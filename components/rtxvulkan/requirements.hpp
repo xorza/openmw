@@ -144,6 +144,11 @@ namespace Rtx
         DeviceOption mOption;
         std::span<const char* const> mExtensions;
         std::span<const char* const> mNeeds;
+
+        /// Whether this build reads the option at all. One it does not is never taken: an
+        /// extension enabled for nothing, and for checkpoints a fault report that says the queue
+        /// passed none where none was set.
+        bool mRead = true;
     };
 
     /// Every option, in the order of `DeviceOption`. Reported by `openmw-rtxtool info`, so it is

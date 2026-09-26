@@ -14,7 +14,7 @@
 #include <components/rtx/texturedata.hpp>
 #include <components/vfs/pathutil.hpp>
 
-#include "allocations.hpp"
+#include "spritelightbake.hpp"
 #include "testtexture.hpp"
 
 namespace Rtx
@@ -41,14 +41,14 @@ namespace Rtx
         ///
         /// **And the same numbers stand a column up**, which is what pins which channel is which axis:
         /// a bake that swapped `u` and `v` would put the row's shadows into the column's channels.
-        TEST(RtxSpriteLightMapTest, aTexelIsShadowedByWhatLiesBetweenItAndTheEdgeTheLightIsOn)
+        TEST(RtxSpriteLightBakeTest, aTexelIsShadowedByWhatLiesBetweenItAndTheEdgeTheLightIsOn)
         {
             constexpr std::array<std::uint8_t, 4> fromHigh{ 180, 214, 255, 255 };
             constexpr std::array<std::uint8_t, 4> fromLow{ 255, 255, 214, 180 };
 
             const Testing::TestTexture row = alphaSheet(4, 1, { 0, 128, 128, 0 });
             const AlphaImage rowAlpha(row.mData);
-            const SpriteLightMap acrossRow(rowAlpha);
+            const Testing::SpriteLightBake acrossRow(rowAlpha);
             ASSERT_FALSE(acrossRow.isEmpty());
 
             for (std::uint32_t x = 0; x < 4; ++x)
@@ -61,7 +61,7 @@ namespace Rtx
 
             const Testing::TestTexture column = alphaSheet(1, 4, { 0, 128, 128, 0 });
             const AlphaImage columnAlpha(column.mData);
-            const SpriteLightMap downColumn(columnAlpha);
+            const Testing::SpriteLightBake downColumn(columnAlpha);
 
             for (std::uint32_t y = 0; y < 4; ++y)
             {
@@ -76,11 +76,11 @@ namespace Rtx
         ///
         /// `(1 - 1)^(1/4)` is nought whatever the power, so everything past an opaque texel from the
         /// light's side is dark, and the texel itself and everything before it are untouched.
-        TEST(RtxSpriteLightMapTest, anOpaqueTexelStopsTheLightForEverythingBeyondIt)
+        TEST(RtxSpriteLightBakeTest, anOpaqueTexelStopsTheLightForEverythingBeyondIt)
         {
             const Testing::TestTexture row = alphaSheet(4, 1, { 0, 255, 0, 0 });
             const AlphaImage alpha(row.mData);
-            const SpriteLightMap map(alpha);
+            const Testing::SpriteLightBake map(alpha);
 
             constexpr std::array<std::uint8_t, 4> fromHigh{ 0, 255, 255, 255 };
             constexpr std::array<std::uint8_t, 4> fromLow{ 255, 255, 0, 0 };
@@ -98,14 +98,14 @@ namespace Rtx
         /// level the texel at `(0, 0)` sees the 128 at `(1, 0)` from `+u` — `0.49804^(1/2) = 0.70572`,
         /// byte 180 — and from `+v` sees the blank at `(0, 1)`; the bottom level has nothing to cross
         /// in any direction. The second level starts sixteen bytes in, after the first's four texels.
-        TEST(RtxSpriteLightMapTest, levelsAreBakedApartAndDescribedBackToBack)
+        TEST(RtxSpriteLightBakeTest, levelsAreBakedApartAndDescribedBackToBack)
         {
             Testing::TestTexture sheet = alphaSheet(2, 2, { 0, 128, 0, 0 });
             Testing::addAlphaLevel(sheet, 1, 1, { 32 });
 
             const AlphaImage alpha(sheet.mData);
             ASSERT_EQ(alpha.getLevelCount(), 2u);
-            const SpriteLightMap map(alpha);
+            const Testing::SpriteLightBake map(alpha);
 
             const TextureData described = map.describe();
             EXPECT_EQ(described.mFormat, TextureFormat::Rgba8Unorm);
@@ -131,34 +131,6 @@ namespace Rtx
         }
 
         /// A bake's key names its source and nothing else's key does.
-        /// A map baked again is the sprite it was handed and nothing of the one before, and it
-        /// costs the heap nothing to say so.
-        ///
-        /// **What lets `SceneTextures` keep a pool of these.** A crossing bakes every emitter's
-        /// sheet in one arrival; a map that carried the last sprite's levels through would light one
-        /// plume by another's shape, and one that gave its room back would go to the heap twice a
-        /// sprite on the frame the cell lands.
-        TEST(RtxSpriteLightMapTest, aMapBakedAgainIsTheNewSpriteAndKeepsTheRoomOfTheLast)
-        {
-            const Testing::TestTexture sheet = alphaSheet(2, 2, { 0, 128, 128, 0 });
-            const AlphaImage alpha(sheet.mData);
-
-            SpriteLightMap map;
-            map.build(alpha);
-            ASSERT_FALSE(map.isEmpty()) << "the sprite this one has to stop carrying";
-            ASSERT_EQ(map.describe().mLevels.size(), std::size_t{ 1 });
-
-            map.build(AlphaImage{});
-            EXPECT_TRUE(map.isEmpty()) << "the last sprite's levels came through";
-
-            const std::size_t before = Testing::getAllocationCount();
-            map.build(alpha);
-            const std::size_t spent = Testing::getAllocationCount() - before;
-
-            EXPECT_EQ(spent, 0u) << "a rebake reached the heap " << spent << " times";
-            EXPECT_FALSE(map.isEmpty());
-        }
-
         TEST(RtxSpriteLightMapTest, theKeyNamesTheSourceAndOtherBakesAreNotMistakenForOne)
         {
             const VFS::Path::NormalizedView source("textures/tx_smoke.dds");

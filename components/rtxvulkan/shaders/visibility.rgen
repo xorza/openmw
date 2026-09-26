@@ -95,7 +95,7 @@ MediumAhead mediumAhead(uvec2 pixel, vec3 origin, vec3 direction, float air, flo
 /// Traces one ray and runs the shader the hit names.
 ///
 /// **A macro because a `hitObjectEXT` may not cross a function boundary**, which is the same
-/// restriction `RTX_TRAVERSE` is written around for `rayQueryEXT`.
+/// restriction `RTX_RESOLVE` is written around for `rayQueryEXT`.
 ///
 /// **Two payloads, because the two calls invoke different shaders.** Traversal reaches the any-hit
 /// shader, which tests a cutout and reads nothing; the execute reaches a closest-hit or the miss

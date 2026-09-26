@@ -57,23 +57,17 @@ namespace Rtx
             return mRows[at];
         }
 
-        /// Makes the table `rows` long, value-initialising anything appended. What is appended is
-        /// owed and what was already there is not; what is dropped is forgotten, or a copy still
-        /// owing a row past the new end would send `sync` indexing past `mRows`.
-        void resize(std::size_t rows)
+        /// Makes the table `rows` long, value-initialising what is appended. What is appended is
+        /// owed and what was already there is not. Never shorter: every table of these is sized
+        /// by scene rows, which are recycled and never taken away, or by a constant.
+        void grow(std::size_t rows)
         {
             const std::size_t had = mRows.size();
+            assert(rows >= had && "a table shrank, and a copy owing a row past the new end would read past it");
             if (rows == had)
                 return;
 
             mRows.resize(rows);
-            if (rows < had)
-            {
-                for (RowDebt& owed : mOwed.live())
-                    owed.shrinkTo(rows);
-
-                return;
-            }
 
             mAppended.clear();
             mAppended.reserve(rows - had);
@@ -159,7 +153,7 @@ namespace Rtx
         PerSlot<Buffer> mCopies;
         PerSlot<RowDebt> mOwed;
 
-        /// Cleared and refilled by `resize`, never freed: the rows one growth appended.
+        /// Cleared and refilled by `grow`, never freed: the rows one growth appended.
         std::vector<Index> mAppended;
     };
 

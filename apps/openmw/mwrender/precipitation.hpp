@@ -1,5 +1,4 @@
-#ifndef GAME_RENDER_PRECIPITATION_H
-#define GAME_RENDER_PRECIPITATION_H
+#pragma once
 
 #include <string>
 #include <vector>
@@ -134,5 +133,3 @@ namespace MWRender
         osg::Vec3f mOcclusionRange;
     };
 }
-
-#endif

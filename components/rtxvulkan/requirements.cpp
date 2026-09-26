@@ -60,6 +60,13 @@ namespace Rtx
         constexpr std::array sCheckpoints{ VK_NV_DEVICE_DIAGNOSTIC_CHECKPOINTS_EXTENSION_NAME };
         constexpr std::array sPacing{ VK_KHR_PRESENT_ID_EXTENSION_NAME, VK_NV_LOW_LATENCY_2_EXTENSION_NAME };
 
+        /// Whether this build sets checkpoints, which it does where it names things.
+#ifdef OPENMW_RTX_DEBUG_NAMES
+        constexpr bool sSetsCheckpoints = true;
+#else
+        constexpr bool sSetsCheckpoints = false;
+#endif
+
         /// What the registry says a swapchain's extensions rest on beside core 1.4: the swapchain
         /// itself, which a device takes only where its instance has a surface, and for a present
         /// fence the instance's half of swapchain maintenance as well.
@@ -86,7 +93,7 @@ namespace Rtx
             // A marker the queue remembers passing, so a device loss names the last zone each
             // stage reached rather than an address: `GpuTimer::open` sets one per zone in a build
             // that names things, and `Device::describeFault` reads them back.
-            OptionalExtensions{ DeviceOption::Checkpoints, sCheckpoints, {} },
+            OptionalExtensions{ DeviceOption::Checkpoints, sCheckpoints, {}, sSetsCheckpoints },
             // The driver's frame pacing — Reflex — and the number each present carries so the
             // driver can tell one frame's markers from the next's. Both or neither: the pacing
             // needs the present id, and the id alone is a number nothing reads. `LatencyPacer` is

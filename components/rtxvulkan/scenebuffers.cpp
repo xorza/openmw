@@ -244,7 +244,7 @@ namespace Rtx
         // the sentinel was and the sentinel where nothing was — two rows to reason about separately,
         // or every row written on a path only a cell arrival takes. A material is sixty-eight bytes.
         const bool moved = mMaterialTable.size() != materials.size() + 1;
-        mMaterialTable.resize(materials.size() + 1);
+        mMaterialTable.grow(materials.size() + 1);
 
         if (moved)
         {
@@ -318,7 +318,7 @@ namespace Rtx
         const std::span<const PlacementRow> placements = scene.placements().getRows();
 
         const std::size_t had = mInstanceTable.size();
-        mInstanceTable.resize(records.size());
+        mInstanceTable.grow(records.size());
 
         const auto placeRow = [&](const std::size_t at) {
             const InstanceRecord& record = records[at];

@@ -1,5 +1,4 @@
-#ifndef OPENMW_COMPONENTS_SKY_TIMEOFDAY_H
-#define OPENMW_COMPONENTS_SKY_TIMEOFDAY_H
+#pragma once
 
 #include <map>
 #include <string>
@@ -98,5 +97,3 @@ namespace Sky
         T mSunriseValue, mDayValue, mSunsetValue, mNightValue;
     };
 }
-
-#endif

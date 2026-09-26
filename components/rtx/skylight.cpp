@@ -223,8 +223,8 @@ namespace Rtx
         const osg::Vec3f haze = decodeColour(room.mFog);
         const osg::Vec3f fill = decodeColour(SceneUtil::colourFromRGB(room.mAmbient) + osg::Vec4f(nightEye, 0.0f));
 
-        // The record's sunlight, kept whole and put where light with no direction belongs — the same
-        // move `makeSkylight` makes on the night's sun, for the same reason and by the same factor.
+        // The record's sunlight, kept whole and put where light with no direction belongs, by the
+        // factor `makeSkylight` spreads a dusk's sun with: a room has no sky to take a direction from.
         const osg::Vec3f spread = decodeColour(room.mSunlight) * (Shaders::DAYLIGHT * Shaders::INV_FOUR_PI);
 
         return Daylight{

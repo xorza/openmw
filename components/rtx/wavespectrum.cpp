@@ -55,24 +55,6 @@ namespace Rtx
         return std::sqrt(Shaders::WATER_GRAVITY * wavenumber * std::tanh(wavenumber * mDepth));
     }
 
-    float SeaState::getWavenumber(float frequency) const
-    {
-        const float target = frequency * frequency;
-        float wavenumber = target / Shaders::WATER_GRAVITY;
-
-        for (int step = 0; step < 12; ++step)
-        {
-            const float depth = wavenumber * mDepth;
-            const float tanh = std::tanh(depth);
-            const float value = Shaders::WATER_GRAVITY * wavenumber * tanh - target;
-            const float slope
-                = Shaders::WATER_GRAVITY * tanh + Shaders::WATER_GRAVITY * wavenumber * mDepth * (1.0f - tanh * tanh);
-            wavenumber -= value / slope;
-        }
-
-        return std::max(wavenumber, 1.0e-6f);
-    }
-
     float SeaState::getEnergy(float frequency) const
     {
         return tmaDensity(frequency, getPeak(), mDepth);

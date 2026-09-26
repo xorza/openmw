@@ -1,5 +1,4 @@
-#ifndef GAME_RENDER_GLMAPOVERLAY_H
-#define GAME_RENDER_GLMAPOVERLAY_H
+#pragma once
 
 #include <map>
 #include <memory>
@@ -121,5 +120,3 @@ namespace MWRender
         std::unique_ptr<MyGUIPlatform::OSGTexture> mGuiTexture;
     };
 }
-
-#endif

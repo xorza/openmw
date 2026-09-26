@@ -1,5 +1,4 @@
-#ifndef GAME_RENDER_GLWORLD_H
-#define GAME_RENDER_GLWORLD_H
+#pragma once
 
 #include <map>
 #include <memory>
@@ -143,5 +142,3 @@ namespace MWRender
         Applied mApplied;
     };
 }
-
-#endif

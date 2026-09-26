@@ -436,7 +436,7 @@ namespace Rtx
         // names. Owed to every copy and every set from the start, the way an arrival is: written by
         // the `sync` before the first placement that binds them.
         mTexels.open(device, sFrameSlots, VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, "texture texels");
-        mTexels.resize(Shaders::TEXTURE_SLOTS);
+        mTexels.grow(Shaders::TEXTURE_SLOTS);
         mTexels.write(Shaders::TEXTURE_NEUTRAL) = 1;
         for (SlotSet& owed : mOwed.live())
             owed.addMakingRoom(Shaders::TEXTURE_NEUTRAL);

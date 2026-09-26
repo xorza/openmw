@@ -1,5 +1,7 @@
 #include "meantexels.hpp"
 
+#include <utility>
+
 #include <osg/Image>
 
 namespace Rtx

@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <filesystem>
 
+#include <osg/Vec2f>
 #include <vulkan/vulkan_core.h>
 
 #include <components/rtx/shaders/wave.h>
@@ -41,10 +42,11 @@ namespace Rtx
         /// What the amplitudes were last drawn for.
         const SeaState& getSea() const { return mSea; }
 
-        /// Turns the phases to `seconds` and rebuilds every texture and every level from them,
-        /// leaving each in `VK_IMAGE_LAYOUT_GENERAL` ordered against a sampled read. A cell with no
-        /// water never samples them, so it need not synthesise them.
-        void record(VkCommandBuffer commands, float seconds) const;
+        /// Turns the phases to `seconds`, split as `Rtx::splitSeconds` splits the water's clock, and
+        /// rebuilds every texture and every level from them, leaving each in
+        /// `VK_IMAGE_LAYOUT_GENERAL` ordered against a sampled read. A cell with no water never
+        /// samples them, so it need not synthesise them.
+        void record(VkCommandBuffer commands, const osg::Vec2f& seconds) const;
 
         /// Linear, mipmapped and wrapping — a tile lays the same water down every `getExtent` units,
         /// and a tap that clamped would smear the last texel of one across the whole sea.
@@ -80,7 +82,7 @@ namespace Rtx
             /// — a frame reads every one of them, and three megabytes fetched across the bus each
             /// time is what a host-visible table would cost.
             Buffer mAmplitudes;
-            Buffer mFrequencies;
+            Buffer mTurnRates;
 
             /// The three packed spectra laid end to end, transformed in place.
             Buffer mField;

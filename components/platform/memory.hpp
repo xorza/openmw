@@ -1,5 +1,4 @@
-#ifndef OPENMW_COMPONENTS_PLATFORM_MEMORY_HPP
-#define OPENMW_COMPONENTS_PLATFORM_MEMORY_HPP
+#pragma once
 
 #include <cstddef>
 
@@ -13,5 +12,3 @@ namespace Platform::Memory
     void* allocateAligned(std::size_t size, std::size_t alignment) noexcept;
     void freeAligned(void* memory) noexcept;
 }
-
-#endif // OPENMW_COMPONENTS_PLATFORM_MEMORY_HPP

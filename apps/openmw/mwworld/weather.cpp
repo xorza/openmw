@@ -837,7 +837,6 @@ namespace MWWorld
             // Hardcoded constant from Morrowind
             const osg::Vec3f sunDir(-400.f * orbit, 75.f, -100.f);
             mRendering.setSunDirection(sunDir);
-            mRendering.setNight(isNight);
             mSky.mSunDirection = sunDir;
             mSky.mNight = isNight;
         }

@@ -1,5 +1,4 @@
-#ifndef GAME_RENDER_MAPOVERLAY_H
-#define GAME_RENDER_MAPOVERLAY_H
+#pragma once
 
 #include <memory>
 
@@ -72,5 +71,3 @@ namespace MWRender
         MapOverlay() = default;
     };
 }
-
-#endif

@@ -1,5 +1,4 @@
-#ifndef OPENMW_COMPONENTS_SKY_MOONSTATE_H
-#define OPENMW_COMPONENTS_SKY_MOONSTATE_H
+#pragma once
 
 namespace Sky
 {
@@ -68,5 +67,3 @@ namespace Sky
 
     using MoonPhase = MoonState::Phase;
 }
-
-#endif

@@ -15,12 +15,9 @@
 // sizes, workgroups, traversal masks, enumerations, and the biases and guards that keep the
 // arithmetic honest. Those stayed where they are, beside the code that has to agree with them.
 //
-// **Three dials stayed behind, and each says why where it stands.** `FOG_CHURN` and `FOG_TURN` in
-// `fog.glsl` are one entry per scale of the fog's fractal, written in GLSL's own array syntax that
-// the host cannot read — and this file is shared verbatim with C++ so that a test can compute
-// against what the shader used. `WATER_CAUSTIC_MAX` in `scene.h` clips the brightest filament, and
-// the polynomial beneath it is fitted against that clip: the two are one statement, and separating
-// them would leave a dial whose fit lives somewhere else.
+// **One dial stayed behind, and says why where it stands.** `WATER_CAUSTIC_MAX` in `scene.h` clips
+// the brightest filament, and the polynomial beneath it is fitted against that clip: the two are one
+// statement, and separating them would leave a dial whose fit lives somewhere else.
 //
 // The order is the order the light travels in reverse, from the eye outward: what the frame is
 // exposed and graded through, then the sky that lights it, the surfaces it lands on, the bounce off
@@ -605,6 +602,31 @@ namespace Rtx::Shaders
 
     /// The step between them. Not two, so the tiles never realign and repeat.
     const float FOG_LACUNARITY = 2.27f;
+
+    /// The heading and speed each scale drifts on, coarsest first, in world units a second of the
+    /// sky's clock.
+    ///
+    /// **The differing speeds are what stops it reading as a texture.** One field scrolling rigidly
+    /// past is a pattern in motion; three shearing against each other at their own rates make the
+    /// shapes themselves form and pull apart, which is what fog actually does. The second and the
+    /// third carry a little vertical drift, so banks rise and settle rather than only sliding. Three
+    /// names and not an array, because this file is read by the host as well, which reduces them
+    /// against the clock (`Rtx::fogOffsets`).
+    const vec3 FOG_CHURN_COARSE = vec3(11.0f, 7.0f, 0.0f);
+    const vec3 FOG_CHURN_MIDDLE = vec3(-6.0f, 14.0f, 2.5f);
+    const vec3 FOG_CHURN_FINE = vec3(19.0f, -4.0f, -1.5f);
+
+    /// How far each finer scale's read is turned about the vertical, as the cosine and the sine of
+    /// the turn; the coarsest is read unturned.
+    ///
+    /// **So that no two scales share a lattice.** A lattice noise has directions in it — its own
+    /// axes, which is where its features line up — and three scales of one volume read on one frame
+    /// stack those directions rather than averaging them out. Turned against each other, what one
+    /// scale draws along an axis the next draws across it. The angles are the two smallest
+    /// Pythagorean triangles, so neither is near a quarter turn of the other: 3-4-5 is thirty-seven
+    /// degrees and 5-12-13 is sixty-seven.
+    const vec2 FOG_TURN_MIDDLE = vec2(0.8f, 0.6f);
+    const vec2 FOG_TURN_FINE = vec2(0.3846154f, 0.9230769f);
 
     /// The coarsest level of that chain a march is allowed to read.
     ///

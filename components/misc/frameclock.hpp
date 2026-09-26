@@ -1,5 +1,4 @@
-#ifndef OPENMW_COMPONENTS_MISC_FRAMECLOCK_H
-#define OPENMW_COMPONENTS_MISC_FRAMECLOCK_H
+#pragma once
 
 #include <chrono>
 #include <optional>
@@ -59,5 +58,3 @@ namespace Misc
         double mNow = 0.0;
     };
 }
-
-#endif

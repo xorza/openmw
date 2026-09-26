@@ -76,10 +76,11 @@ namespace Rtx
 
     /// The sky's light out of what a weather says: the one place a sun is built. Morrowind never
     /// switches its sunlight off — `Sun_Night_Color` is `59, 97, 176` — and traced, a night sun
-    /// casts hard shadows swinging across the ground. So the night's sun goes into the ambient and
-    /// the sun keeps only what is over the horizon; the two are complements, so the total is
-    /// continuous through dusk. The ambient's share is `E / 4pi`: a directional source delivers a
-    /// quarter of its irradiance averaged over every orientation.
+    /// casts hard shadows swinging across the ground. So the sun keeps only what is over the
+    /// horizon, and dusk alone lends the ambient a share of it, `2 s (1 - s)` of the sun's share
+    /// `s`: nothing at noon and nothing at night, whose sun is the original engine's stand-in for
+    /// the moons this renderer traces. The ambient's share is `E / 4pi`: a directional source
+    /// delivers a quarter of its irradiance averaged over every orientation.
     Skylight makeSkylight(const SkyReading& sky);
 
     /// What to hold a measured exposure back by for a sky delivering this much light: one where

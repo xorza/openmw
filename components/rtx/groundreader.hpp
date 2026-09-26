@@ -31,7 +31,8 @@ namespace Rtx
         GroundReader(Terrain::Storage& storage, ContentSource& content, ESM::RefId worldspace);
 
         /// Reads the ground of `cell` into `into`, which has been through `reuse`. A layer whose
-        /// texture cannot be opened is left out, as the walk left one out of a chunk's stack.
+        /// texture cannot be opened keeps its place and its path, for the texture table to stand
+        /// in and refuse: left out, the ground under it would show another layer with nothing said.
         void read(const osg::Vec2i& cell, PreparedGround& into);
 
         /// Cell texture coordinates to a layer's diffuse texture, which tiles `tileCount` times

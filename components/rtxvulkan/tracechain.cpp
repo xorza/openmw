@@ -108,7 +108,7 @@ namespace Rtx
         if (what.mInputs.mSea)
         {
             openZone(what.mTimer, commands, "waves");
-            what.mInputs.mWaves->record(commands, what.mSampled.mTime);
+            what.mInputs.mWaves->record(commands, what.mSampled.mWaterTime);
             closeZone(what.mTimer, commands);
         }
 

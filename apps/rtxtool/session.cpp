@@ -70,13 +70,6 @@ namespace RtxTool
 {
     namespace
     {
-        /// How often a run that turns its sky asks for the next weather, in frames of world: off
-        /// the frame index rather than the clock, so the same frame stands under the same sky on
-        /// every machine. The crossing itself takes the same `sTurnSeconds`, which `setTurnCrossings`
-        /// gave the world's `Transition_Delta` before there was a world; `MWWorld::WeatherManager`
-        /// runs it and this does not touch it.
-        constexpr float sTurnFrames = sTurnSeconds * Rtx::sStepRate;
-
         /// How far ahead the `look` a run reports points.
         ///
         /// **A landmark's distance rather than a nose's.** The renderer wants a direction; a person
@@ -113,7 +106,7 @@ namespace RtxTool
         std::uint32_t longest = 0;
         for (const Rtx::Stop& stop : mRequest.mStops)
             if (!stop.mSchedule.mSpec.mRun.isUntilClosed())
-                longest = std::max(longest, stop.mSchedule.mSpec.getMeasured());
+                longest = std::max(longest, stop.mSchedule.mSpec.getMeasured(mRequest.mSetup.getWorldStep()));
 
         mProgress.mSamples.reserve(longest);
         mProgress.mLatencyMs.reserve(longest);
@@ -463,11 +456,12 @@ namespace RtxTool
         mStarted = true;
 
         Log(Debug::Info) << "Ray tracing session: stop " << (mAt + 1) << " of " << mRequest.mStops.size() << ", "
-                         << (stop.mName.empty() ? "unnamed" : stop.mName) << " — " << stop.mSchedule.mSpec.getWarmup()
-                         << " frames warming up then "
+                         << (stop.mName.empty() ? "unnamed" : stop.mName) << " — "
+                         << stop.mSchedule.mSpec.getWarmup(mRequest.mSetup.getWorldStep()) << " frames warming up then "
                          << (stop.mSchedule.mSpec.mRun.isUntilClosed()
                                     ? std::string("a window until it is closed")
-                                    : std::to_string(stop.mSchedule.mSpec.getMeasured()) + " measured");
+                                    : std::to_string(stop.mSchedule.mSpec.getMeasured(mRequest.mSetup.getWorldStep()))
+                                        + " measured");
     }
 
     void Session::fly()
@@ -507,7 +501,7 @@ namespace RtxTool
         // **Off the frame index and not the clock**, for the reason the world is stepped that way:
         // a camera advanced by how long the last frame took crosses its boundaries somewhere else
         // on every machine, and where they fall is the whole measurement.
-        float step = route.mSpeed * Rtx::sStepSeconds;
+        float step = route.mSpeed * mRequest.mSetup.getWorldStep();
         if (route.mTo.has_value())
             step = std::min(step, left);
 
@@ -541,7 +535,7 @@ namespace RtxTool
     void Session::follow()
     {
         const Rtx::Stop& stop = mRequest.mStops[mAt];
-        const std::uint32_t warmup = stop.mSchedule.mSpec.getWarmup();
+        const std::uint32_t warmup = stop.mSchedule.mSpec.getWarmup(mRequest.mSetup.getWorldStep());
 
         // The frame about to be drawn is the take's `mSeen - warmup`th, counted from nought, since
         // `frame` counts it before it measures it.
@@ -591,7 +585,12 @@ namespace RtxTool
         if (through.size() < 2)
             return;
 
-        mProgress.mTurned += 1.0f / sTurnFrames;
+        // **How often a run that turns its sky asks for the next weather, by frames of world**: off
+        // the frame index rather than the clock, so the same frame stands under the same sky on
+        // every machine. The crossing itself takes the same `sTurnSeconds`, which
+        // `setTurnCrossings` gave the world's `Transition_Delta` before there was a world;
+        // `MWWorld::WeatherManager` runs it and this does not touch it.
+        mProgress.mTurned += mRequest.mSetup.getWorldStep() / sTurnSeconds;
         if (mProgress.mTurned < 1.0f)
             return;
 
@@ -615,7 +614,7 @@ namespace RtxTool
             return 0;
 
         const Rtx::Stop& stop = mRequest.mStops[mAt];
-        const std::uint32_t warmup = stop.mSchedule.mSpec.getWarmup();
+        const std::uint32_t warmup = stop.mSchedule.mSpec.getWarmup(mRequest.mSetup.getWorldStep());
         if (stop.mSchedule.mAccumulate == 0 || mProgress.mSeen < warmup)
             return 0;
 
@@ -671,7 +670,7 @@ namespace RtxTool
         // and leave the first crossing outside the numbers.
         if (mRequest.mStops[mAt].mSchedule.mTrack.has_value())
             follow();
-        else if (mProgress.mSeen >= mRequest.mStops[mAt].mSchedule.mSpec.getWarmup())
+        else if (mProgress.mSeen >= mRequest.mStops[mAt].mSchedule.mSpec.getWarmup(mRequest.mSetup.getWorldStep()))
         {
             fly();
             turnWeather();
@@ -734,8 +733,8 @@ namespace RtxTool
             return;
 
         const Rtx::Stop& stop = mRequest.mStops[mAt];
-        const std::uint32_t warmup = stop.mSchedule.mSpec.getWarmup();
-        const std::uint32_t measured = stop.mSchedule.mSpec.getMeasured();
+        const std::uint32_t warmup = stop.mSchedule.mSpec.getWarmup(mRequest.mSetup.getWorldStep());
+        const std::uint32_t measured = stop.mSchedule.mSpec.getMeasured(mRequest.mSetup.getWorldStep());
 
         if (mProgress.mSeen == warmup)
         {
@@ -839,7 +838,7 @@ namespace RtxTool
     void Session::answered(const Rtx::FrameResult& finished, const Rtx::FrameExtents& extents)
     {
         // A frame the warm-up drew: its picture has no row and its figures are nobody's.
-        if (mProgress.mSeen <= mRequest.mStops[mAt].mSchedule.mSpec.getWarmup()
+        if (mProgress.mSeen <= mRequest.mStops[mAt].mSchedule.mSpec.getWarmup(mRequest.mSetup.getWorldStep())
             || finished.mFrame < mProgress.mFirstMeasured)
             return;
 
@@ -950,8 +949,8 @@ namespace RtxTool
             header.mLevelBias = report.mReconstruction.mLevelBias;
             header.mReorder = renderer.getProfile().mReorder;
             header.mValidating = renderer.isValidating();
-            header.mMeasured = stop.mSchedule.mSpec.getMeasured();
-            header.mWarmup = stop.mSchedule.mSpec.getWarmup();
+            header.mMeasured = stop.mSchedule.mSpec.getMeasured(mRequest.mSetup.getWorldStep());
+            header.mWarmup = stop.mSchedule.mSpec.getWarmup(mRequest.mSetup.getWorldStep());
         }
 
         // Summarised ahead of the writer, whose checks read the zones, and kept for the place.

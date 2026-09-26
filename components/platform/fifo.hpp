@@ -1,5 +1,4 @@
-#ifndef OPENMW_COMPONENTS_PLATFORM_FIFO_HPP
-#define OPENMW_COMPONENTS_PLATFORM_FIFO_HPP
+#pragma once
 
 #include <cstddef>
 #include <filesystem>
@@ -23,5 +22,3 @@ namespace Platform::Fifo
     /// not be sent.
     void write(File::Handle handle, const void* data, std::size_t size);
 }
-
-#endif // OPENMW_COMPONENTS_PLATFORM_FIFO_HPP

@@ -27,25 +27,11 @@
 #include "underwater.glsl"
 #include "variants.glsl"
 
-/// The heading and speed each scale drifts on.
-///
-/// **The differing speeds are what stops it reading as a texture.** One field scrolling rigidly past
-/// is a pattern in motion; three shearing against each other at their own rates make the shapes
-/// themselves form and pull apart, which is what fog actually does. The second and the third carry a
-/// little vertical drift, so banks rise and settle rather than only sliding.
-const vec3 FOG_CHURN[FOG_SCALES]
-    = vec3[FOG_SCALES](vec3(11.0, 7.0, 0.0), vec3(-6.0, 14.0, 2.5), vec3(19.0, -4.0, -1.5));
-
-/// How far each scale's read is turned about the vertical, as a rotation of the ground plane.
-///
-/// **So that no two scales share a lattice.** A lattice noise has directions in it — its own axes,
-/// which is where its features line up — and three scales of one volume read on one frame stack
-/// those directions rather than averaging them out. Turned against each other, what one scale
-/// draws along an axis the next draws across it. The angles are the two smallest Pythagorean
-/// triangles, so the matrices are exact and neither is near a quarter turn of the other: 3-4-5 is
-/// thirty-seven degrees and 5-12-13 is sixty-seven.
-const mat2 FOG_TURN[FOG_SCALES] = mat2[FOG_SCALES](mat2(1.0, 0.0, 0.0, 1.0), mat2(0.8, 0.6, -0.6, 0.8),
-    mat2(0.3846154, 0.9230769, -0.9230769, 0.3846154));
+/// The turns `FOG_TURN_MIDDLE` and `FOG_TURN_FINE` state, as the matrices a scale's read is turned
+/// by, coarsest first.
+const mat2 FOG_TURN[FOG_SCALES] = mat2[FOG_SCALES](mat2(1.0, 0.0, 0.0, 1.0),
+    mat2(FOG_TURN_MIDDLE.x, FOG_TURN_MIDDLE.y, -FOG_TURN_MIDDLE.y, FOG_TURN_MIDDLE.x),
+    mat2(FOG_TURN_FINE.x, FOG_TURN_FINE.y, -FOG_TURN_FINE.y, FOG_TURN_FINE.x));
 
 /// The field at a place, at one scale, read at whatever level the march can tell apart.
 ///
@@ -55,12 +41,13 @@ const mat2 FOG_TURN[FOG_SCALES] = mat2[FOG_SCALES](mat2(1.0, 0.0, 0.0, 1.0), mat
 /// for nothing.
 ///
 /// @param spacing how far apart the march is sampling here.
-vec2 fogFieldAt(vec3 position, float tile, float spacing, vec3 churn)
+/// @param scale which of `VisibilityConstants::mFogOffsets` the read is moved by.
+vec2 fogFieldAt(vec3 position, float tile, float spacing, uint scale)
 {
     const float texel = tile / float(FOG_FIELD_SIZE);
     const float level = clamp(log2(max(spacing / texel, 1.0)), 0.0, FOG_FIELD_COARSEST);
 
-    return textureLod(fogField, (position + churn * frame.mSkyTime) / tile, level).xy;
+    return textureLod(fogField, position / tile + frame.mFogOffsets[scale], level).xy;
 }
 
 /// The fog's shape at a point: one volume read at three scales, over a domain the coarsest drags.
@@ -78,19 +65,10 @@ vec2 fogFieldAt(vec3 position, float tile, float spacing, vec3 churn)
 /// which is what the coverage band is cut against.
 float fogShape(vec3 position, float spacing)
 {
-    // **The whole field carried downwind, before the scales are dragged past each other** — one
-    // displacement rather than three, because a wind moves the air it is in rather than shearing
-    // it. Minus, for the reason a cloud sheet subtracts its own drift: a bank sits at a fixed
-    // coordinate in the field, so sampling from further upwind as the clock runs is what carries it
-    // past, and adding would walk the whole field into the wind. The host hands over how far,
-    // integrated, because a wind times the clock jumped by the clock's worth at every change of
-    // weather.
-    position.xy -= frame.mFogDrift;
-
     // **The coarsest scale is read undisplaced.** What a warp is for is breaking the regularity of
     // the structure inside a bank, and at this scale a bank is the whole shape rather than a lattice
     // with something laid on it.
-    const vec2 coarse = fogFieldAt(position, FOG_TILE, spacing, FOG_CHURN[0]);
+    const vec2 coarse = fogFieldAt(position, FOG_TILE, spacing, 0u);
 
     // Two channels of a fetch already taken, which is what makes a vector out of a scalar field cost
     // nothing at all. Divided by the spread, so what `FOG_WARP` names is a distance rather than a
@@ -111,7 +89,7 @@ float fogShape(vec3 position, float spacing)
         tile /= FOG_LACUNARITY;
 
         const vec3 turned = vec3(FOG_TURN[scale] * warped.xy, warped.z);
-        total += amplitude * (fogFieldAt(turned, tile, spacing, FOG_CHURN[scale]).x - 0.5);
+        total += amplitude * (fogFieldAt(turned, tile, spacing, scale).x - 0.5);
         squares += amplitude * amplitude;
     }
 

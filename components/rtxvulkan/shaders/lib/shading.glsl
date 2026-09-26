@@ -106,11 +106,13 @@ DirectLight gather(Surface surface, Gloss gloss, uint seed, uint path)
     // place in the sequence and the reservoir's own draws follow them. Otherwise a lamp arriving in
     // the next cell along would move the penumbra of the one already there.
     const vec2 sunDraw = vec2(randomNext(state), randomNext(state));
-    // **Three pairs are drawn and one ray is traced.** The first aims the sky's one ray, the second
-    // pair's `x` picks which source it goes to, and the rest are drawn for their place alone: taking
-    // one out shortens the sequence and moves every lamp draw below.
-    const vec2 moonDraw[2]
-        = vec2[2](vec2(randomNext(state), randomNext(state)), vec2(randomNext(state), randomNext(state)));
+    // **Three pairs are drawn and one ray is traced.** The first aims the sky's one ray, the third's
+    // first draw picks which source it goes to, and the other three are drawn for their place alone:
+    // taking one out shortens the sequence and moves every lamp draw below.
+    randomNext(state);
+    randomNext(state);
+    const float skyPick = randomNext(state);
+    randomNext(state);
     const vec2 lampDraw = vec2(randomNext(state), randomNext(state));
 
     // **The sky's sources are weighed and drawn the way the lamps are.** What each would deliver
@@ -137,8 +139,8 @@ DirectLight gather(Surface surface, Gloss gloss, uint seed, uint path)
     // indirect term nothing resolves on its own, so a moon reaching it through a shadow ray of its
     // own was the dimmest half of the dimmest thing in the frame.
     //
-    // **The pick is `pickByWeight`'s**, which says why it is made against the weights. The draw is
-    // the moons' and the ray's pair is the sun's, so every lamp draw below keeps its place. **The
+    // **The pick is `pickByWeight`'s**, which says why it is made against the weights. It draws with
+    // `skyPick` and the ray aims with the sun's pair, so every lamp draw below keeps its place. **The
     // three are named and not indexed**, for the reason `SkyChoice` gives: the pick is a value the
     // compiler cannot fold, and a local array read at one is a spill.
     const bool lunar = HAS_MOONS && path == PATH_SEEN;
@@ -148,7 +150,7 @@ DirectLight gather(Surface surface, Gloss gloss, uint seed, uint path)
     const SkyChoice secunda = skyChoiceAt(SKY_SOURCE_SECUNDA, normal, side, transmission, lunar, gloss, diffuse);
 
     const WeightedPick pick
-        = pickByWeight(sun.mLight.mWeight, masser.mLight.mWeight, secunda.mLight.mWeight, moonDraw[1].x);
+        = pickByWeight(sun.mLight.mWeight, masser.mLight.mWeight, secunda.mLight.mWeight, skyPick);
     if (pick.mTotal > 0.0)
     {
         const SkyChoice picked = pick.mIndex == 0u ? sun : (pick.mIndex == 1u ? masser : secunda);

@@ -1,5 +1,4 @@
-#ifndef GAME_RENDER_OBJECTSTORAGE_H
-#define GAME_RENDER_OBJECTSTORAGE_H
+#pragma once
 
 #include <components/terrain/objectstorage.hpp>
 
@@ -19,5 +18,3 @@ namespace MWRender
         VFS::Path::Normalized getModel(const ESM::RefId& id) const override;
     };
 }
-
-#endif

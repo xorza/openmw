@@ -112,7 +112,7 @@ namespace Rtx
         {
             const bool offered = std::all_of(option.mExtensions.begin(), option.mExtensions.end(),
                 [&](const char* const name) { return mPhysicalDevice.hasOptionalExtension(name); });
-            if (!offered || !std::all_of(option.mNeeds.begin(), option.mNeeds.end(), enabled))
+            if (!option.mRead || !offered || !std::all_of(option.mNeeds.begin(), option.mNeeds.end(), enabled))
                 continue;
 
             extensions.insert(extensions.end(), option.mExtensions.begin(), option.mExtensions.end());

@@ -1,5 +1,4 @@
-#ifndef OPENMW_COMPONENTS_SKY_SKYCLOCK_H
-#define OPENMW_COMPONENTS_SKY_SKYCLOCK_H
+#pragma once
 
 #include <algorithm>
 #include <cmath>
@@ -66,5 +65,3 @@ namespace Sky
         }
     };
 }
-
-#endif

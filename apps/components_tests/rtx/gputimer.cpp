@@ -89,10 +89,10 @@ namespace Rtx
         };
 
         /// Draws one frame and waits for it, so what comes back is that frame's own report.
-        Drawn draw(Renderer& renderer, const Shaders::VisibilityConstants& camera)
+        Drawn draw(Renderer& renderer, const Shaders::VisibilityConstants& camera, double skySeconds = 0.0)
         {
             const auto start = std::chrono::steady_clock::now();
-            renderer.renderFrame(camera, FrameOptions{});
+            renderer.renderFrame(camera, FrameOptions{ .mSkySeconds = skySeconds });
             const std::optional<FrameResult> result = renderer.finishFrame();
             const double wallMs
                 = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
@@ -222,9 +222,7 @@ namespace Rtx
             const Drawn stood = draw(*mRenderer, standing);
             EXPECT_FALSE(reports(stood.mGpu.spans(), "ripples")) << "a frame with no step due stepped the field";
 
-            Shaders::VisibilityConstants later = standing;
-            later.mSkyTime = 1.0f / 60.0f;
-            const Drawn stepped = draw(*mRenderer, later);
+            const Drawn stepped = draw(*mRenderer, standing, 1.0 / 60.0);
             EXPECT_TRUE(reports(stepped.mGpu.spans(), "ripples")) << "a sixtieth on, the field was not stepped";
             EXPECT_EQ(stepped.mGpu.spans().front().mName, "ripples")
                 << "the field was stepped somewhere other than before the sea";
@@ -232,10 +230,9 @@ namespace Rtx
             // **A surface with no level is a sea as much as a level with no surface**, and the
             // trace samples the tiles wherever a ray meets the water: a frame that synthesised them
             // for the level alone left this one reading the tiles of whichever frame last had one.
-            Shaders::VisibilityConstants dry = later;
+            Shaders::VisibilityConstants dry = standing;
             dry.mWaterLevel = camera.mWaterLevel;
-            dry.mSkyTime = 2.0f / 60.0f;
-            const Drawn surfaced = draw(*mRenderer, dry);
+            const Drawn surfaced = draw(*mRenderer, dry, 2.0 / 60.0);
             EXPECT_TRUE(reports(surfaced.mGpu.spans(), "waves")) << "a water surface with no level synthesised no sea";
             EXPECT_TRUE(reports(surfaced.mGpu.spans(), "ripples")) << "a water surface with no level stepped no field";
         }

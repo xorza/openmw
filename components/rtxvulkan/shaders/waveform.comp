@@ -18,19 +18,20 @@
 #include "wave.h"
 
 #include "lib/pixels.glsl"
+#include "lib/turns.glsl"
 
 layout(local_size_x = WAVE_TILE_WORKGROUP, local_size_y = WAVE_TILE_WORKGROUP) in;
 
-/// The amplitudes drawn for this sea state, and how fast each turns. Centred, so the entry at
+/// The amplitudes drawn for this sea state, and how many turns a second each makes. Centred, so the entry at
 /// `(column, row)` carries the wavevector `TAU / mExtent * (column - n/2, row - n/2)`.
 layout(set = SET_PASS, binding = WAVE_FORM_BIND_AMPLITUDES, scalar) readonly buffer Amplitudes
 {
     vec2 amplitudes[];
 };
 
-layout(set = SET_PASS, binding = WAVE_FORM_BIND_FREQUENCIES, scalar) readonly buffer Frequencies
+layout(set = SET_PASS, binding = WAVE_FORM_BIND_TURN_RATES, scalar) readonly buffer TurnRates
 {
-    float frequencies[];
+    float turnRates[];
 };
 
 /// The three packed spectra, laid end to end: a grid apart is the next pair.
@@ -69,7 +70,7 @@ void main()
     const float step = TAU / frame.mExtent;
     const vec2 wavevector = step * vec2(int(cell.x) - middle, int(cell.y) - middle);
 
-    const float angle = frequencies[at] * frame.mTime;
+    const float angle = TAU * turnsAt(turnRates[at], frame.mTime);
     const vec2 ahead = turnedBy(amplitudes[at], angle);
     const vec2 behind = turnedBy(vec2(amplitudes[mirror].x, -amplitudes[mirror].y), -angle);
 

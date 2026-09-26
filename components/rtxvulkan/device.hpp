@@ -344,9 +344,9 @@ namespace Rtx
         LatencyFunctions mLatency;
 
         // Last, so that they are torn down first, and in this order, because a later one dies
-        // earlier: the graveyard frees through the pool and gives memory back to the allocator,
-        // the pool and the clock hold device objects, and saving the cache and freeing a block
-        // both call on the device that `mHandle` closes last of all.
+        // earlier: the graveyard gives memory back to the allocator, the pool and the clock hold
+        // device objects, and saving the cache and freeing a block both call on the device that
+        // `mHandle` closes last of all.
         std::unique_ptr<PipelineCache> mPipelineCache;
         std::unique_ptr<MemoryAllocator> mMemory;
         std::unique_ptr<Timeline> mTimeline;

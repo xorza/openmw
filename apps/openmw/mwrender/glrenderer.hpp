@@ -1,5 +1,4 @@
-#ifndef GAME_RENDER_GLRENDERER_H
-#define GAME_RENDER_GLRENDERER_H
+#pragma once
 
 #include <fstream>
 #include <memory>
@@ -232,5 +231,3 @@ namespace MWRender
         std::unique_ptr<MyGUIPlatform::OSGTexture> mFrozenFrameTexture;
     };
 }
-
-#endif

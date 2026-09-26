@@ -31,9 +31,6 @@ namespace Rtx
         /// and steepens at a shore.
         float getFrequency(float wavenumber) const;
 
-        /// The same relation the other way round, by Newton from the deep-water guess.
-        float getWavenumber(float frequency) const;
-
         /// The wavelength carrying the most energy, as an angular frequency.
         float getPeak() const { return getFrequency(Shaders::TAU / mPeakWavelength); }
 

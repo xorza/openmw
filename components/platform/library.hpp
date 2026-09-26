@@ -1,5 +1,4 @@
-#ifndef OPENMW_COMPONENTS_PLATFORM_LIBRARY_HPP
-#define OPENMW_COMPONENTS_PLATFORM_LIBRARY_HPP
+#pragma once
 
 #include <cstdint>
 
@@ -58,5 +57,3 @@ namespace Platform::Library
         bool isOpen() const noexcept { return mHandle != Handle::Invalid; }
     };
 }
-
-#endif // OPENMW_COMPONENTS_PLATFORM_LIBRARY_HPP

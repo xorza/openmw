@@ -11,15 +11,6 @@ namespace Rtx
         mStale = false;
     }
 
-    void SlotSet::shrinkTo(const std::size_t count)
-    {
-        if (count >= mFlags.size())
-            return;
-
-        std::erase_if(mSlots, [count](const Index slot) { return slot >= count; });
-        mFlags.resize(count);
-    }
-
     void SlotSet::clear()
     {
         for (const Index slot : mSlots)

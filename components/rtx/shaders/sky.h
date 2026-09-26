@@ -219,7 +219,6 @@ namespace Rtx::Shaders
     const uint SKY_SOURCE_SUN = 0u;
     const uint SKY_SOURCE_MASSER = 1u;
     const uint SKY_SOURCE_SECUNDA = 2u;
-    const uint SKY_SOURCES = 3u;
 
     /// One of the two moons, as a disc a ray that reached nothing can find.
     ///

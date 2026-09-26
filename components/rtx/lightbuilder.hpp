@@ -98,8 +98,9 @@ namespace Rtx
         /// the sheets' worth. Invalid until a sheet is added.
         osg::BoundingSpheref mSheets;
 
-        /// What the flames radiate times the discs they radiate from, summed over every sprite and
-        /// divided by pi — `addSprites` says the arithmetic.
+        /// `r^2 L` summed over every sprite, `L` its radiance with a white texel at `SUNLIT_WHITE`:
+        /// the discs the flames radiate from short of the pi of a disc's area, which `makeLight`
+        /// puts on once.
         osg::Vec3f mDiscs;
 
         /// The ball every sheet and every sprite stands in: the lamp's source. Invalid until

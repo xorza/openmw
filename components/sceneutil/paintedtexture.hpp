@@ -1,5 +1,4 @@
-#ifndef OPENMW_COMPONENTS_SCENEUTIL_PAINTEDTEXTURE_H
-#define OPENMW_COMPONENTS_SCENEUTIL_PAINTEDTEXTURE_H
+#pragma once
 
 #include <array>
 #include <cstddef>
@@ -77,5 +76,3 @@ namespace SceneUtil
         std::uint32_t mPaints = 0;
     };
 }
-
-#endif

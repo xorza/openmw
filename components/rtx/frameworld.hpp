@@ -5,6 +5,7 @@
 #include <limits>
 #include <optional>
 
+#include <osg/Vec2d>
 #include <osg/Vec2f>
 #include <osg/Vec3f>
 
@@ -79,8 +80,10 @@ namespace Rtx
         float mWaterLevel = -std::numeric_limits<float>::infinity();
 
         /// What the water moves by, and what the sky does: the simulation's seconds and the sky's
-        /// own clock. Two, because a sped-up sky is a time-lapse and sped-up water is noise.
-        float mSeconds = 0.0f;
+        /// own clock. Two, because a sped-up sky is a time-lapse and sped-up water is noise. Both
+        /// in double, and narrowed by nothing but the consumer that knows the period it reduces
+        /// them over: a float holding ten hours resolves a quarter of a frame.
+        double mSeconds = 0.0;
         double mSkySeconds = 0.0;
 
         float mRainOnWater = 0.0f;
@@ -123,12 +126,25 @@ namespace Rtx
         /// `timescale`, and the host only ever adds to it.
         void advance(const osg::Vec2f& heading, float wind, double seconds);
 
-        const osg::Vec2f& get() const { return mCarried; }
+        const osg::Vec2d& get() const { return mCarried; }
 
     private:
-        osg::Vec2f mCarried;
+        /// In double, because it grows without bound: after ten hours of storm a float's step
+        /// across it is two units against the twelve a frame carries it.
+        osg::Vec2d mCarried;
         std::optional<double> mLastSeconds;
     };
+
+    /// `seconds` as two floats whose sum is it, for a shader to reduce exactly (`turnsAt`): the
+    /// nearest float, and the nearest float to what that left over. What they carry together is
+    /// good to a nanosecond after years, where one float resolves a quarter of a frame after ten
+    /// hours.
+    osg::Vec2f splitSeconds(double seconds);
+
+    /// Where each scale of the fog's field is read from, `Shaders::VisibilityConstants::mFogOffsets`:
+    /// the churn over `skySeconds` and the air `carried` downwind, turned as the scale is turned,
+    /// reduced against the scale's tile in double and handed over as a fraction of it.
+    std::array<osg::Vec3f, Shaders::FOG_SCALES> fogOffsets(const osg::Vec2d& carried, double skySeconds);
 
     /// Writes the frame's world half into the constants it is traced with, and answers what to hold
     /// the frame's measured exposure back by — `Skylight::mExposureBias`, carried. The camera's

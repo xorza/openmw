@@ -211,6 +211,12 @@ namespace Rtx
         /// (`Misc::FrameClock`) or two runs of one build draw different pictures.
         std::optional<float> mSinceLast = std::nullopt;
 
+        /// How long the sky has been running, in seconds of its own clock (`Sky::skyStep`), which the
+        /// ripple field steps by, sixty ticks to one of these. Here and not in the constants, because
+        /// only the host reads it, and in double, because a tick is a sixtieth and ten hours in a
+        /// float resolve a quarter of one.
+        double mSkySeconds = 0.0;
+
         /// What to multiply the measured exposure by: the hour, which the histogram cannot see
         /// (`Rtx::Skylight::mExposureBias`). A fixed `mExposure` is not touched by it.
         float mExposureBias = 1.0f;

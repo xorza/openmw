@@ -8,6 +8,8 @@
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/renderer.hpp>
 
+#include "benchspec.hpp"
+
 namespace Rtx
 {
     /// Everything a run decides once, before anything is built, that the game's renderer reads:
@@ -47,6 +49,11 @@ namespace Rtx
         /// a setting's: a file that could state a step once turned a played game into a
         /// fixed-step run for good.
         std::optional<float> mStep;
+
+        /// What one frame of world counts for where a run turns seconds into frames — a span, a
+        /// flight, a turning sky: the stated step, or where the wall decides, the step a measured
+        /// run states by default.
+        float getWorldStep() const { return mStep.value_or(sStepSeconds); }
 
         /// Whether each walk waits for the cell it adopts, or nothing to let the frame clock
         /// decide. Settled is what makes two processes draw one picture; a run timing the

@@ -1,5 +1,4 @@
-#ifndef GAME_RENDER_FRAMEDESCRIBER_H
-#define GAME_RENDER_FRAMEDESCRIBER_H
+#pragma once
 
 #include <optional>
 
@@ -112,5 +111,3 @@ namespace MWRender
         std::optional<SceneFrame> mFrame;
     };
 }
-
-#endif

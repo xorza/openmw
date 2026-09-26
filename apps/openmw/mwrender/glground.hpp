@@ -1,5 +1,4 @@
-#ifndef GAME_RENDER_GLGROUND_H
-#define GAME_RENDER_GLGROUND_H
+#pragma once
 
 #include <memory>
 #include <vector>
@@ -46,5 +45,3 @@ namespace MWRender
         std::unique_ptr<Groundcover> mGroundcover;
     };
 }
-
-#endif

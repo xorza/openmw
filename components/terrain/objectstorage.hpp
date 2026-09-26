@@ -1,5 +1,4 @@
-#ifndef OPENMW_COMPONENTS_TERRAIN_OBJECTSTORAGE_H
-#define OPENMW_COMPONENTS_TERRAIN_OBJECTSTORAGE_H
+#pragma once
 
 #include <optional>
 #include <vector>
@@ -80,5 +79,3 @@ namespace Terrain
         virtual VFS::Path::Normalized getModel(const ESM::RefId& id) const = 0;
     };
 }
-
-#endif

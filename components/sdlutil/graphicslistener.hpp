@@ -1,5 +1,4 @@
-#ifndef OPENMW_COMPONENTS_SDLUTIL_GRAPHICSLISTENER_H
-#define OPENMW_COMPONENTS_SDLUTIL_GRAPHICSLISTENER_H
+#pragma once
 
 namespace SDLUtil
 {
@@ -23,5 +22,3 @@ namespace SDLUtil
         virtual void windowResized(int x, int y, int width, int height) {}
     };
 }
-
-#endif

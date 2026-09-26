@@ -7,9 +7,11 @@
 
 namespace Rtx
 {
-    /// How fast a measured run steps the world, in frames a second: world time and not wall time,
-    /// so ten seconds is the same six hundred frames on a build that draws them in four seconds and
-    /// on one that takes twenty. Sixty because that is what the frame budget is written against.
+    /// How fast a measured run steps the world unless it states otherwise, in frames a second: world
+    /// time and not wall time, so ten seconds is the same six hundred frames on a build that draws
+    /// them in four seconds and on one that takes twenty. Sixty because that is what the frame
+    /// budget is written against. A default a run states (`RunSetup::mStep`), and never read in
+    /// place of the step a run stated.
     inline constexpr float sStepRate = 60.0f;
 
     /// How long one of those frames stands for, which is what a measured frame tells the renderer.
@@ -31,9 +33,10 @@ namespace Rtx
         bool empty() const { return mFrames == 0 && mSeconds <= 0.0f; }
         bool isUntilClosed() const { return mFrames == sUntilClosed; }
 
-        /// How many frames this comes to at the rate the world steps. At least one for a span that
-        /// asked for anything at all, and nought for one that asked for nothing.
-        std::uint32_t getFrames() const;
+        /// How many frames this comes to at `step` seconds a frame, the run's own
+        /// (`RunSetup::getWorldStep`). At least one for a span that asked for anything at all, and
+        /// nought for one that asked for nothing.
+        std::uint32_t getFrames(float step) const;
     };
 
     /// How long a stop runs and how much of it is thrown away first. Filled from the command line
@@ -43,8 +46,8 @@ namespace Rtx
         BenchSpan mRun;
         BenchSpan mWarm;
 
-        std::uint32_t getMeasured() const { return mRun.getFrames(); }
-        std::uint32_t getWarmup() const { return mWarm.getFrames(); }
+        std::uint32_t getMeasured(float step) const { return mRun.getFrames(step); }
+        std::uint32_t getWarmup(float step) const { return mWarm.getFrames(step); }
     };
 
     /// Splits a comma-separated list, dropping the space around each name and any empty entry. One
