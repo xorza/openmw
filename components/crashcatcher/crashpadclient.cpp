@@ -4,6 +4,7 @@
 #include <atomic>
 #include <csignal>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
@@ -129,6 +130,25 @@ namespace Crash
         }
 #endif
 
+        /// A crash for `reason`, taken here, whose dump is the stacks as they stand.
+        [[noreturn]] void endAsCrash(std::string_view reason)
+        {
+#if defined(_WIN32)
+            reportAndEnd(reason);
+#else
+            // **The hang request blocked on this thread first**, so it cannot land here between the
+            // report saying what it is and the abort; on another thread it finds the gate taken.
+            // Crashpad's own handler takes the abort, as it takes every fatal signal.
+            sigset_t hang;
+            sigemptyset(&hang);
+            sigaddset(&hang, SIGUSR2);
+            pthread_sigmask(SIG_BLOCK, &hang, nullptr);
+
+            finalReport(ReportKind::Crash, reason);
+            std::abort();
+#endif
+        }
+
         /// **`std::terminate`, with the exception that called it**, which the fault it ends in
         /// names nothing of.
         void onTerminate()
@@ -150,20 +170,7 @@ namespace Crash
                     reason += " on an uncaught exception that is no std::exception";
                 }
             }
-#if defined(_WIN32)
-            reportAndEnd(reason);
-#else
-            // **The hang request blocked on this thread first**, so it cannot land here between the
-            // report saying what it is and the abort; on another thread it finds the gate taken.
-            // Crashpad's own handler takes the abort, as it takes every fatal signal.
-            sigset_t hang;
-            sigemptyset(&hang);
-            sigaddset(&hang, SIGUSR2);
-            pthread_sigmask(SIG_BLOCK, &hang, nullptr);
-
-            finalReport(ReportKind::Crash, reason);
-            std::abort();
-#endif
+            endAsCrash(reason);
         }
 
 #if defined(_MSC_VER)
@@ -287,6 +294,17 @@ namespace Crash
             return;
 
         reportAndContinue(ReportKind::Report, reason);
+    }
+
+    void fatal(std::string_view reason)
+    {
+        if (!sInstalled)
+        {
+            std::fprintf(stderr, "Fatal: %.*s\n", static_cast<int>(reason.size()), reason.data());
+            std::abort();
+        }
+
+        endAsCrash(reason);
     }
 }
 

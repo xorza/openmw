@@ -2,6 +2,7 @@
 
 #include <string>
 
+#include <components/crashcatcher/crash.hpp>
 #include <components/debug/debuglog.hpp>
 #include <components/rtx/error.hpp>
 
@@ -113,9 +114,15 @@ namespace Rtx
 
         std::string message = describeFailure(result, call);
         if (result == VK_ERROR_DEVICE_LOST)
-            message += device.describeFault();
+            deviceFailed(message + device.describeFault());
 
         throw DeviceError(message);
+    }
+
+    void deviceFailed(const std::string& message)
+    {
+        Log(Debug::Error) << "Rtx: " << message;
+        Crash::fatal(message);
     }
 
     std::string timedOut(const char* what, std::uint64_t patience)
@@ -133,7 +140,7 @@ namespace Rtx
     void checkVkWait(const Device& device, const VkResult result, const char* what, const std::uint64_t patience)
     {
         if (result == VK_TIMEOUT)
-            throw DeviceError(timedOut(what, patience));
+            deviceFailed(timedOut(what, patience));
 
         checkVk(device, result, what);
     }

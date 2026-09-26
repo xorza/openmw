@@ -4,7 +4,6 @@
 #include <cstddef>
 
 #include <components/debug/debuglog.hpp>
-#include <components/rtx/error.hpp>
 
 #include "result.hpp"
 
@@ -101,7 +100,7 @@ namespace Rtx
         };
         const VkResult waited = mFunctions.mWaitSemaphores(mDevice, &wait, sPatience);
         if (waited == VK_TIMEOUT)
-            throw DeviceError(timedOut("the driver's sleep releasing the frame", sPatience));
+            deviceFailed(timedOut("the driver's sleep releasing the frame", sPatience));
         checkVk(waited, "vkWaitSemaphores on the frame pacing's semaphore");
 
         mark(VK_LATENCY_MARKER_SIMULATION_START_NV);

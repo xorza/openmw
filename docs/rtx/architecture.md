@@ -631,7 +631,7 @@ spellings for each enum, read by the parser, the report and the menus.
 Infrastructure worth knowing: `Stepped` (a step of a fixed order, asserted), `OwnedBy` and
 `Worker` (a thread and who owns what), `Monitor`, `Spares` (pools that lend stable addresses),
 `InputError`, `Unsupported` and `DeviceError` (what the configuration or the installation
-supplied cannot be run with, this machine cannot, the device failed; a broken contract is
+supplied cannot be run with, this machine cannot, the device refused; a broken contract is
 `Rtx::contract`), `Result` and `Refusals` (how a reader of content answers, and where what it
 refused is recorded),
 `FrameSpend` and `Timing` (what a frame spent on the host, by phase).
@@ -1172,8 +1172,11 @@ one shape and counted by kind. The tables assert what the readers check (`MeshTa
 `SceneDesc::checkPoses`). Content that draws nothing in the game — a lamp of no radius, an empty
 geometry, a moon of size nought — draws nothing here and is no refusal. What the configuration or
 the installation supplied and this renderer cannot run with throws `Rtx::InputError` and ends the
-run; a missing device feature throws `Rtx::Unsupported`, and a device that fails — the frame's own
-memory refused included — throws `Rtx::DeviceError`, which ends the game with its message.
+run; a missing device feature throws `Rtx::Unsupported`, and a device that refuses — the frame's
+own memory refused included — throws `Rtx::DeviceError`, which ends the game with its message. A
+lost device and a wait that never ends are no exception: `Rtx::deviceFailed` logs the whole message
+and ends the process as a crash where it was found, so the crash catcher's report shows that call
+and what every thread was doing.
 
 ---
 

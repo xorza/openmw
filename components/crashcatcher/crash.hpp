@@ -57,6 +57,12 @@ namespace Crash
     /// A key and a value every later report carries: the version, the renderer, the device.
     void annotate(std::string_view key, std::string_view value);
 
+    /// **Ends the process as a crash**, for a failure nothing can go on from: every thread is dumped
+    /// where the failure was found, before anything unwinds, and `reason` heads the summary, cut to
+    /// what a note holds. What is longer the caller logs first. Without a catcher, `reason` goes to
+    /// the standard error and the process aborts all the same.
+    [[noreturn]] void fatal(std::string_view reason);
+
     /// A report without a crash, for a contract broken where the game can go on: a dump of every
     /// thread and a summary, and the game continues. Nothing where no catcher is installed.
     void report(std::string_view reason);

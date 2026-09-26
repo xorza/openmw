@@ -363,19 +363,10 @@ namespace Rtx
 
     void Device::waitIdle() const
     {
-        const VkResult result = vkDeviceWaitIdle(mHandle.get());
-        if (result == VK_ERROR_DEVICE_LOST)
-            settleLost();
-        checkVk(*this, result, "vkDeviceWaitIdle");
+        checkVk(*this, vkDeviceWaitIdle(mHandle.get()), "vkDeviceWaitIdle");
 
         mTimeline->markIdle();
         collect();
-    }
-
-    void Device::settleLost() const
-    {
-        mTimeline->markIdle();
-        mPool->dropDeferred();
     }
 
     void Device::collect() const

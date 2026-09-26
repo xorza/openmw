@@ -104,10 +104,6 @@ namespace Rtx
         /// list.
         void releaseRetired(std::uint64_t finished);
 
-        /// Gives back every deferred batch unsubmitted, for a device that will submit nothing
-        /// again. `Device::settleLost` is the one caller.
-        void dropDeferred();
-
         /// The device's alone, because the device's waits are what collect it: a second pool's
         /// retired buffers would wait for a collect that never came.
         friend class Device;

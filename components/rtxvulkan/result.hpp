@@ -26,9 +26,15 @@ namespace Rtx
     void checkVk(VkResult result, const char* call);
 
     /// The same, for a call that can lose the device: a submit, a wait, an acquire or a present.
-    /// `VK_ERROR_DEVICE_LOST` carries what the device says about the fault, from
+    /// `VK_ERROR_DEVICE_LOST` is `deviceFailed` with what the device says about the fault, from
     /// `Device::describeFault`, which is the one moment that question may be asked.
     void checkVk(const Device& device, VkResult result, const char* call);
+
+    /// **Ends the process as a crash where the device was lost or stopped answering**, which
+    /// nothing below the seam can go on from: the report is taken where the failure was found,
+    /// before anything unwinds, so its stacks show the call that found it and its notes what every
+    /// thread was doing. `message` goes to the log whole, which a report's reason is too short for.
+    [[noreturn]] void deviceFailed(const std::string& message);
 
     /// The same as the first, for a bring-up call whose failure means this machine cannot run the
     /// backend: throws `Unsupported`, which is a machine to skip rather than a fault to report.
@@ -38,14 +44,14 @@ namespace Rtx
     /// budget: the longest honest submit measured is a scene rebuild at a fifth of a second.
     inline constexpr std::uint64_t sPatience = 10'000'000'000ull;
 
-    /// `checkVk` for a wait that was given `patience`: `VK_TIMEOUT` is named apart from the
-    /// other failures, because it is the one that says nothing about what the device thought was
-    /// wrong — only that it stopped saying anything at all.
+    /// `checkVk` for a wait that was given `patience`: `VK_TIMEOUT` is `deviceFailed` under a
+    /// message of its own, because it is the one that says nothing about what the device thought
+    /// was wrong — only that it stopped saying anything at all.
     void checkVkWait(const Device& device, VkResult result, const char* what, std::uint64_t patience);
 
-    /// Waits for `fence` and throws `DeviceError` naming `what` if the device does not answer in
-    /// time. A deadline, because with `UINT64_MAX` a stalled submit took the whole test suite with
-    /// it.
+    /// Waits for `fence`, and ends the process through `deviceFailed` naming `what` if the device
+    /// does not answer in time. A deadline, because with `UINT64_MAX` a stalled submit took the
+    /// whole test suite with it.
     ///
     /// @param patience nanoseconds to allow; a parameter so a test can reach the failure.
     void awaitVk(const Device& device, VkFence fence, const char* what, std::uint64_t patience = sPatience);
@@ -104,12 +110,10 @@ namespace Rtx
     void reportTornDown(std::string_view failure, const char* raised);
 
     /// Runs `work` and reports whatever it raises rather than letting it out — what every teardown
-    /// in this backend goes through, because a destructor is `noexcept` and what fails in one is
-    /// nearly always a lost device, the moment the report matters most: `~VulkanRenderer` waited on
-    /// a lost device and took the process down on top of the fault description it had just built.
-    /// The raise is not removed instead because an allocation can fail with no return code, and
-    /// `checkVk` is what appends the device's fault description. Wherever a caller can act on a
-    /// failure, `checkVk` is the right call.
+    /// in this backend goes through, because a destructor is `noexcept`: a call that refuses, or an
+    /// allocation that fails with no return code, would otherwise end the process from a
+    /// destructor. A lost device ends it anyway, through `deviceFailed`, with the report taken
+    /// where it was found. Wherever a caller can act on a failure, `checkVk` is the right call.
     ///
     /// @param failure the whole clause the log states, which the raised message is appended to.
     template <class Work>

@@ -16,6 +16,7 @@
 #include <components/rtxvulkan/requirements.hpp>
 #include <components/rtxvulkan/result.hpp>
 
+#include "support/death.hpp"
 #include "support/device/harness.hpp"
 
 namespace Rtx
@@ -26,7 +27,8 @@ namespace Rtx
         /// suite these tests are reported under.
         using RtxDeviceTest = Testing::DeviceTest;
 
-        /// A wait on a device that never answers ends, and says which wait it was.
+        /// A wait on a device that never answers ends the process as a crash, and says which wait it
+        /// was.
         ///
         /// **The alternative cannot be told from success.** `vkWaitForFences` with no timeout makes a
         /// device that will never signal and one still working the same call, and a stalled submit
@@ -43,17 +45,11 @@ namespace Rtx
             VkFence fence = VK_NULL_HANDLE;
             ASSERT_EQ(vkCreateFence(mHarness.mDevice->getHandle(), &unsignalled, nullptr, &fence), VK_SUCCESS);
 
-            try
-            {
-                awaitVk(*mHarness.mDevice, fence, "a submit nobody made", 1'000'000ull);
-                ADD_FAILURE() << "the wait returned, so a device that never answers still looks like success";
-            }
-            catch (const DeviceError& e)
-            {
-                // Named, because a count says a frame is stuck and nothing about which one.
-                EXPECT_NE(std::string(e.what()).find("a submit nobody made"), std::string::npos) << e.what();
-                EXPECT_NE(std::string(e.what()).find("stopped answering"), std::string::npos) << e.what();
-            }
+            // Named, because a count says a frame is stuck and nothing about which one. A crash,
+            // because nothing goes on from a device that stopped answering, and the report is
+            // taken where it was found.
+            Testing::expectDies([&] { awaitVk(*mHarness.mDevice, fence, "a submit nobody made", 1'000'000ull); },
+                "a submit nobody made did not complete within 1 ms; the device has stopped answering");
 
             vkDestroyFence(mHarness.mDevice->getHandle(), fence, nullptr);
         }

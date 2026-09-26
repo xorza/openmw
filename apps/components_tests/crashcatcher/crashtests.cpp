@@ -100,6 +100,7 @@ namespace
                 { "stack-overflow-worker", "Crash: ", overflow },
                 { "illegal-instruction", "Crash: ", illegal, {}, true, crashed },
                 { "terminate", "Crash: std::terminate on an uncaught exception: crash-tests threw", {} },
+                { "fatal", "Crash: crash-tests gave up", {}, "crash-tests: what the reason leaves out", true, crashed },
                 { "two-threads", "Crash: ", fault },
                 { "report", "Report: crash-tests asked", {}, "crash-tests lived on", true, ", which asked" },
                 { "hang", "Hang: no frame for", {}, "Hang: frames again after" },
@@ -232,6 +233,13 @@ namespace
             std::thread([] { throw std::runtime_error("crash-tests threw"); }).join();
         if (mode == "abort")
             std::abort();
+        if (mode == "fatal")
+        {
+            // Logged first, as a caller logs what is too long for a reason: it must be on disk
+            // before the process ends.
+            Log(Debug::Error) << "crash-tests: what the reason leaves out";
+            Crash::fatal("crash-tests gave up");
+        }
         if (mode == "two-threads")
         {
             std::thread other([] { readAt(reinterpret_cast<const volatile int*>(static_cast<std::uintptr_t>(0x10))); });

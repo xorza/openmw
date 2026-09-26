@@ -28,9 +28,10 @@ namespace Rtx
         using std::runtime_error::runtime_error;
     };
 
-    /// The device or its driver failed while the renderer ran: a lost device, a wait that never
-    /// ended, a call that refused. Nothing below the seam catches it, because nothing below the
-    /// seam can go on without the device.
+    /// The device or its driver refused while the renderer ran: a call that failed, memory it had
+    /// no room for, a list that never settled. A lost device and a wait that never ended are not
+    /// raised: the backend ends the process as a crash where it finds them, so the report shows
+    /// the call that found them.
     class DeviceError : public std::runtime_error
     {
     public:

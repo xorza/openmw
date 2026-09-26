@@ -122,12 +122,6 @@ namespace Rtx
         mRetiring.releaseThrough(finished, [&](const VkCommandBuffer commands) { mSpare.push_back(commands); });
     }
 
-    void CommandPool::dropDeferred()
-    {
-        recycle(mDeferred);
-        mDeferred.clear();
-    }
-
     void CommandPool::discard(VkCommandBuffer commands)
     {
         // Neither ended nor submitted: a buffer still being recorded is not pending, so this is
