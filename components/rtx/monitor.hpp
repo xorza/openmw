@@ -6,6 +6,7 @@
 #include <exception>
 #include <mutex>
 #include <stop_token>
+#include <thread>
 #include <utility>
 
 namespace Rtx

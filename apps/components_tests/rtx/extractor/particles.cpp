@@ -1,7 +1,6 @@
-#include "fixture.hpp"
-
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <vector>
 
@@ -29,6 +28,8 @@
 #include <components/sceneutil/material.hpp>
 #include <components/sceneutil/statesetupdater.hpp>
 #include <components/vfs/pathutil.hpp>
+
+#include "fixture.hpp"
 
 namespace Rtx::Testing
 {

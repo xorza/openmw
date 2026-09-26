@@ -4,7 +4,6 @@
 #include <cstdlib>
 #include <initializer_list>
 #include <source_location>
-#include <span>
 #include <string>
 #include <string_view>
 #include <vector>

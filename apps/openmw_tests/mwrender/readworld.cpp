@@ -8,6 +8,10 @@
 #include <osg/Vec4f>
 #include <osg/ref_ptr>
 
+#include <apps/openmw/mwrender/precipitation.hpp>
+#include <apps/openmw/mwrender/rtx/skyreader.hpp>
+#include <apps/openmw/mwrender/sceneframe.hpp>
+#include <apps/openmw/mwrender/skystate.hpp>
 #include <components/esm3/loadcell.hpp>
 #include <components/fallback/fallback.hpp>
 #include <components/misc/constants.hpp>
@@ -22,11 +26,6 @@
 #include <components/rtx/skybuilder.hpp>
 #include <components/sky/skyclock.hpp>
 #include <components/vfs/manager.hpp>
-
-#include "apps/openmw/mwrender/precipitation.hpp"
-#include "apps/openmw/mwrender/rtx/skyreader.hpp"
-#include "apps/openmw/mwrender/sceneframe.hpp"
-#include "apps/openmw/mwrender/skystate.hpp"
 
 namespace MWRender
 {

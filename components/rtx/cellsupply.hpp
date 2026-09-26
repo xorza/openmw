@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <stop_token>
+#include <thread>
 #include <vector>
 
 #include <osg/Vec2i>

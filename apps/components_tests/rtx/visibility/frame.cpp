@@ -1,7 +1,3 @@
-#include "../testcamera.hpp"
-#include "../testtexture.hpp"
-#include "fixture.hpp"
-
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -31,6 +27,10 @@
 #include <components/rtx/textureencoding.hpp>
 #include <components/rtx/texturewrap.hpp>
 #include <components/vfs/pathutil.hpp>
+
+#include "../testcamera.hpp"
+#include "../testtexture.hpp"
+#include "fixture.hpp"
 
 namespace Rtx::Testing
 {

@@ -1,6 +1,5 @@
 #include <cstddef>
 #include <cstdint>
-#include <vector>
 
 #include <gtest/gtest.h>
 

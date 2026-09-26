@@ -1,7 +1,6 @@
 #include "offscreentrace.hpp"
 
 #include <algorithm>
-#include <cstddef>
 #include <numbers>
 #include <optional>
 #include <variant>

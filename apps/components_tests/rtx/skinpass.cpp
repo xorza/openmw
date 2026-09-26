@@ -3,8 +3,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <span>
-#include <vector>
 
 #include <gtest/gtest.h>
 

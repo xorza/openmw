@@ -1,5 +1,6 @@
 #include <filesystem>
 #include <fstream>
+#include <span>
 #include <sstream>
 #include <string>
 

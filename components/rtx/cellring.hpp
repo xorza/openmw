@@ -2,7 +2,6 @@
 
 #include <cstddef>
 #include <optional>
-#include <span>
 #include <vector>
 
 #include <boost/container/flat_set.hpp>

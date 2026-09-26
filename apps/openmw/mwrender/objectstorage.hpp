@@ -1,5 +1,9 @@
 #pragma once
 
+#include <memory>
+#include <optional>
+#include <vector>
+
 #include <components/terrain/objectstorage.hpp>
 
 namespace MWRender

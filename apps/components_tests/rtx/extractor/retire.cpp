@@ -1,8 +1,5 @@
-#include "fixture.hpp"
-
 #include <algorithm>
 #include <array>
-#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -23,6 +20,8 @@
 #include <components/rtx/shapefold.hpp>
 #include <components/sceneutil/stableidentity.hpp>
 #include <components/vfs/pathutil.hpp>
+
+#include "fixture.hpp"
 
 namespace Rtx::Testing
 {

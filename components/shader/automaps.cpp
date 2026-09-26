@@ -8,7 +8,6 @@
 #include <osg/Image>
 #include <osg/Node>
 #include <osg/Texture2D>
-
 #include <osgUtil/TangentSpaceGenerator>
 
 #include <components/misc/strings/algorithm.hpp>

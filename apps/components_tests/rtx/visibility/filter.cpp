@@ -1,3 +1,17 @@
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <utility>
+#include <vector>
+
+#include <gtest/gtest.h>
+
+#include <osg/Math>
+#include <osg/Matrixf>
+#include <osg/Vec3f>
+
 #include <components/rtx/camera.hpp>
 #include <components/rtx/mesh.hpp>
 #include <components/rtx/renderer.hpp>
@@ -9,21 +23,6 @@
 #include "../geometry.hpp"
 #include "../testcamera.hpp"
 #include "fixture.hpp"
-
-#include <algorithm>
-#include <array>
-#include <cmath>
-#include <cstddef>
-#include <cstdint>
-#include <optional>
-#include <utility>
-#include <vector>
-
-#include <gtest/gtest.h>
-
-#include <osg/Math>
-#include <osg/Matrixf>
-#include <osg/Vec3f>
 
 namespace Rtx::Testing
 {

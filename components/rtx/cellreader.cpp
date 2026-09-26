@@ -7,7 +7,7 @@
 #include <span>
 #include <string>
 #include <string_view>
-#include <vector>
+#include <utility>
 
 #include <osg/Matrixf>
 #include <osg/Quat>

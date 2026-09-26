@@ -3,7 +3,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
-#include <span>
 #include <string>
 #include <string_view>
 #include <vector>

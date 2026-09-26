@@ -13,6 +13,7 @@
 #include <osg/ref_ptr>
 #include <osgUtil/UpdateVisitor>
 
+#include <apps/openmw/mwrender/rtx/rtxrenderer.hpp>
 #include <apps/openmw/mwrender/rtx/rtxrun.hpp>
 #include <components/resource/imagemanager.hpp>
 #include <components/resource/objectcache.hpp>
@@ -20,8 +21,6 @@
 #include <components/resource/scenemanager.hpp>
 #include <components/testing/util.hpp>
 #include <components/vfs/manager.hpp>
-
-#include "apps/openmw/mwrender/rtx/rtxrenderer.hpp"
 
 namespace MWRender
 {

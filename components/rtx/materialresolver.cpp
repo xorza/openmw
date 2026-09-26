@@ -6,7 +6,6 @@
 #include <cstdint>
 #include <optional>
 #include <span>
-#include <string>
 
 #include <osg/Callback>
 #include <osg/CopyOp>

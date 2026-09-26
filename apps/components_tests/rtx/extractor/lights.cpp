@@ -1,5 +1,3 @@
-#include "fixture.hpp"
-
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -29,6 +27,7 @@
 #include <components/sceneutil/lightmanager.hpp>
 
 #include "../graphlight.hpp"
+#include "fixture.hpp"
 
 namespace Rtx::Testing
 {

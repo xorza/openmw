@@ -1,5 +1,3 @@
-#include "fixture.hpp"
-
 #include <cstddef>
 #include <optional>
 #include <span>
@@ -29,6 +27,8 @@
 #include <components/rtx/meshtable.hpp>
 #include <components/rtx/refusals.hpp>
 #include <components/rtx/sceneextractor.hpp>
+
+#include "fixture.hpp"
 
 namespace Rtx::Testing
 {

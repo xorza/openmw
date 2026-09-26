@@ -1,4 +1,4 @@
-#include <cstddef>
+#include <vector>
 
 #include <gtest/gtest.h>
 
@@ -12,10 +12,9 @@
 #include <osg/Vec4f>
 #include <osg/ref_ptr>
 
+#include <apps/openmw/mwrender/rtx/debugwalk.hpp>
+#include <apps/openmw/mwrender/vismask.hpp>
 #include <components/rtx/debuglines.hpp>
-
-#include "apps/openmw/mwrender/rtx/debugwalk.hpp"
-#include "apps/openmw/mwrender/vismask.hpp"
 
 namespace MWRender
 {

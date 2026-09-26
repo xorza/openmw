@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cassert>
+#include <cstdint>
 
 #include <components/rtx/shaders/spritelight.h>
 

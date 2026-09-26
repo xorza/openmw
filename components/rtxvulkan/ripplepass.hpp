@@ -7,10 +7,9 @@
 #include <span>
 #include <vector>
 
-#include <vulkan/vulkan_core.h>
-
 #include <osg/Vec2f>
 #include <osg/Vec2i>
+#include <vulkan/vulkan_core.h>
 
 #include <components/rtx/ripple.hpp>
 #include <components/rtx/shaders/ripple.h>

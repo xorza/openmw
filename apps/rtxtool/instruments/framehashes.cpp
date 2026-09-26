@@ -8,7 +8,6 @@
 #include <cstdint>
 #include <format>
 #include <fstream>
-#include <span>
 #include <string>
 #include <string_view>
 #include <system_error>

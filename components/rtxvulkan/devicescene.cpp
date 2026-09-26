@@ -2,7 +2,6 @@
 
 #include <cassert>
 #include <cstdint>
-#include <utility>
 #include <vector>
 
 #include <components/rtx/scenedesc.hpp>

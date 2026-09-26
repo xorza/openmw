@@ -3,14 +3,12 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <span>
 #include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
 
 #include <osg/Vec4f>
-
 #include <vulkan/vulkan_core.h>
 
 #include <components/rtx/colour.hpp>

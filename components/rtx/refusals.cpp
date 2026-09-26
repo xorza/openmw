@@ -1,5 +1,7 @@
 #include "refusals.hpp"
 
+#include <string>
+
 #include <components/debug/debuglog.hpp>
 
 namespace Rtx

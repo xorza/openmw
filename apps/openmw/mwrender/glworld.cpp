@@ -1,13 +1,13 @@
 #include "glworld.hpp"
 
 #include <string>
+#include <utility>
 
 #include <osg/Camera>
 #include <osg/ClipControl>
 #include <osg/Group>
 #include <osg/NodeVisitor>
 #include <osg/Uniform>
-
 #include <osgViewer/Viewer>
 
 #include <components/debug/debugdraw.hpp>
@@ -30,7 +30,6 @@
 #include "../mwbase/environment.hpp"
 #include "../mwbase/windowmanager.hpp"
 #include "../mwgui/postprocessorhud.hpp"
-
 #include "postprocessor.hpp"
 #include "precipitation.hpp"
 #include "precipitationocclusion.hpp"

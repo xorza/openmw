@@ -1,5 +1,6 @@
 #include "sceneacceleration.hpp"
 
+#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <span>

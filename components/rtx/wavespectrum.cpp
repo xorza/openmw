@@ -1,6 +1,5 @@
 #include "wavespectrum.hpp"
 
-#include <algorithm>
 #include <cmath>
 
 namespace Rtx

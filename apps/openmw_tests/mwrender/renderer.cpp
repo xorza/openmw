@@ -13,17 +13,16 @@
 #include <osg/Timer>
 #include <osg/ref_ptr>
 
+#include <apps/openmw/mwrender/ground.hpp>
+#include <apps/openmw/mwrender/mapoverlay.hpp>
+#include <apps/openmw/mwrender/offscreenview.hpp>
+#include <apps/openmw/mwrender/renderer.hpp>
+#include <apps/openmw/mwrender/rendermode.hpp>
 #include <components/misc/frameclock.hpp>
 #include <components/myguiplatform/myguiplatform.hpp>
 #include <components/resource/resourcesystem.hpp>
 #include <components/sdlutil/vsyncmode.hpp>
 #include <components/vfs/pathutil.hpp>
-
-#include "apps/openmw/mwrender/ground.hpp"
-#include "apps/openmw/mwrender/mapoverlay.hpp"
-#include "apps/openmw/mwrender/offscreenview.hpp"
-#include "apps/openmw/mwrender/renderer.hpp"
-#include "apps/openmw/mwrender/rendermode.hpp"
 
 namespace MWRender
 {

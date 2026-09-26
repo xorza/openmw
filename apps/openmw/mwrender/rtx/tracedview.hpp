@@ -1,7 +1,5 @@
 #pragma once
 
-#include <cstddef>
-
 #include <osg/Matrixf>
 #include <osg/Node>
 #include <osg/Vec2f>

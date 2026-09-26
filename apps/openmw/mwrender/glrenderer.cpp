@@ -8,9 +8,10 @@
 #include <sstream>
 #include <stdexcept>
 #include <system_error>
+#include <utility>
+#include <vector>
 
 #include <SDL.h>
-
 #include <osg/BoundingSphere>
 #include <osg/Camera>
 #include <osg/DisplaySettings>
@@ -19,11 +20,8 @@
 #include <osg/Stats>
 #include <osg/Texture2D>
 #include <osg/Version>
-
 #include <osgGA/EventQueue>
-
 #include <osgUtil/IncrementalCompileOperation>
-
 #include <osgViewer/Renderer>
 #include <osgViewer/Viewer>
 #include <osgViewer/ViewerEventHandlers>

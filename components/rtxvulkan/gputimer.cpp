@@ -2,7 +2,6 @@
 
 #include <array>
 #include <cassert>
-#include <vector>
 
 #include "result.hpp"
 

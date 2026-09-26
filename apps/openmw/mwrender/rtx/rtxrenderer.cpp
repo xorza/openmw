@@ -3,12 +3,12 @@
 #include <algorithm>
 #include <cassert>
 #include <chrono>
-#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <limits>
 #include <optional>
+#include <ratio>
 #include <stdexcept>
 #include <string>
 

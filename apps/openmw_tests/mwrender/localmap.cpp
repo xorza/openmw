@@ -5,7 +5,7 @@
 #include <osg/BoundingSphere>
 #include <osg/Vec3f>
 
-#include "apps/openmw/mwrender/localmap.hpp"
+#include <apps/openmw/mwrender/localmap.hpp>
 
 namespace MWRender
 {

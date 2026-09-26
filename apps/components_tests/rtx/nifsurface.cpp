@@ -10,24 +10,24 @@
 #include <osg/StateSet>
 #include <osg/ref_ptr>
 
+#include <components/nif/base.hpp>
 #include <components/nif/data.hpp>
+#include <components/nif/niffile.hpp>
+#include <components/nif/nifkey.hpp>
 #include <components/nif/node.hpp>
 #include <components/nif/property.hpp>
+#include <components/nif/record.hpp>
+#include <components/nif/recordptr.hpp>
 #include <components/nifosg/controller.hpp>
 #include <components/nifosg/nifloader.hpp>
 #include <components/resource/bgsmfilemanager.hpp>
 #include <components/resource/imagemanager.hpp>
 #include <components/rtx/surface.hpp>
+#include <components/sceneutil/controller.hpp>
 #include <components/vfs/manager.hpp>
+#include <components/vfs/pathutil.hpp>
 
 #include "../nif/node.hpp"
-#include <components/nif/base.hpp>
-#include <components/nif/niffile.hpp>
-#include <components/nif/nifkey.hpp>
-#include <components/nif/record.hpp>
-#include <components/nif/recordptr.hpp>
-#include <components/sceneutil/controller.hpp>
-#include <components/vfs/pathutil.hpp>
 
 namespace Rtx
 {

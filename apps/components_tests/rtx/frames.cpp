@@ -1,7 +1,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
-#include <string>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -17,7 +16,6 @@
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/visibility.h>
 #include <components/rtx/slot.hpp>
-
 #include <components/rtxvulkan/device.hpp>
 #include <components/rtxvulkan/sceneacceleration.hpp>
 #include <components/rtxvulkan/timeline.hpp>

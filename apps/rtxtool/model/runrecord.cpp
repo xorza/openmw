@@ -1,12 +1,7 @@
 #include "runrecord.hpp"
 
-#include <algorithm>
-#include <cmath>
-#include <cstddef>
 #include <format>
-#include <optional>
 #include <utility>
-#include <vector>
 
 #include <osg/Vec3f>
 

@@ -1,6 +1,6 @@
 #include "memory.hpp"
 
-#include <cstdlib>
+#include <malloc.h>
 
 namespace Platform::Memory
 {

@@ -8,9 +8,8 @@
 #include <osg/Image>
 #include <osg/ref_ptr>
 
+#include <apps/openmw/mwrender/pixels.hpp>
 #include <components/sceneutil/imageregion.hpp>
-
-#include "apps/openmw/mwrender/pixels.hpp"
 
 namespace MWRender
 {

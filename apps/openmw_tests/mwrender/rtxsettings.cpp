@@ -1,12 +1,11 @@
 #include <gtest/gtest.h>
 
+#include <apps/openmw/mwrender/rtx/rtxsettings.hpp>
 #include <components/rtx/error.hpp>
 #include <components/rtx/pacing.hpp>
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/specularlayout.hpp>
 #include <components/rtx/upscale.hpp>
-
-#include "apps/openmw/mwrender/rtx/rtxsettings.hpp"
 
 namespace MWRender
 {

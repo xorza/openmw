@@ -1,5 +1,6 @@
 #include "crashsummary.hpp"
 
+#include <cstddef>
 #include <string_view>
 
 namespace Crash

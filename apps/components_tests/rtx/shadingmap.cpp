@@ -1,12 +1,10 @@
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <numbers>
 #include <span>
-#include <vector>
 
 #include <gtest/gtest.h>
 

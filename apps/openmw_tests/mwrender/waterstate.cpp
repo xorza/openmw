@@ -2,7 +2,7 @@
 
 #include <osg/Vec3f>
 
-#include "apps/openmw/mwrender/sceneframe.hpp"
+#include <apps/openmw/mwrender/sceneframe.hpp>
 
 namespace MWRender
 {

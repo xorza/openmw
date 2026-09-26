@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstring>
 #include <latch>
+#include <span>
 #include <string>
 #include <string_view>
 #include <thread>

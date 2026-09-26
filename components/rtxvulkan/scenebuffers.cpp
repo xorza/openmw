@@ -4,7 +4,6 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
-#include <utility>
 
 #include <components/rtx/instancerecord.hpp>
 #include <components/rtx/light.hpp>

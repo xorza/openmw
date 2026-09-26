@@ -10,7 +10,6 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
-#include <utility>
 
 #include <osg/Math>
 #include <osg/Vec3f>

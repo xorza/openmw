@@ -11,7 +11,6 @@
 #include <osg/PolygonMode>
 #include <osg/Texture2D>
 #include <osg/Viewport>
-
 #include <osgUtil/IntersectionVisitor>
 #include <osgUtil/LineSegmentIntersector>
 

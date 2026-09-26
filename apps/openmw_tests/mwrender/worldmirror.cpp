@@ -11,6 +11,15 @@
 #include <osg/Vec3f>
 #include <osg/ref_ptr>
 
+#include <apps/components_tests/rtx/extractor/fixture.hpp>
+#include <apps/components_tests/rtx/fakeland.hpp>
+#include <apps/openmw/mwrender/objectstorage.hpp>
+#include <apps/openmw/mwrender/precipitation.hpp>
+#include <apps/openmw/mwrender/rtx/tracedterrain.hpp>
+#include <apps/openmw/mwrender/rtx/worldmirror.hpp>
+#include <apps/openmw/mwrender/sceneframe.hpp>
+#include <apps/openmw/mwrender/skystate.hpp>
+#include <apps/openmw/mwrender/vismask.hpp>
 #include <components/esm3/loadcell.hpp>
 #include <components/nifosg/nifloader.hpp>
 #include <components/resource/bgsmfilemanager.hpp>
@@ -20,16 +29,6 @@
 #include <components/rtx/cellworld.hpp>
 #include <components/rtx/extractionstats.hpp>
 #include <components/vfs/manager.hpp>
-
-#include "apps/components_tests/rtx/extractor/fixture.hpp"
-#include "apps/components_tests/rtx/fakeland.hpp"
-#include "apps/openmw/mwrender/objectstorage.hpp"
-#include "apps/openmw/mwrender/precipitation.hpp"
-#include "apps/openmw/mwrender/rtx/tracedterrain.hpp"
-#include "apps/openmw/mwrender/rtx/worldmirror.hpp"
-#include "apps/openmw/mwrender/sceneframe.hpp"
-#include "apps/openmw/mwrender/skystate.hpp"
-#include "apps/openmw/mwrender/vismask.hpp"
 
 namespace MWRender
 {

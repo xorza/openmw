@@ -6,7 +6,6 @@
 
 #include <SDL_keyboard.h>
 #include <SDL_scancode.h>
-
 #include <osg/Vec3d>
 #include <osg/Vec3f>
 

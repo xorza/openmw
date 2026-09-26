@@ -1,11 +1,11 @@
 #include "precipitation.hpp"
 
 #include <cmath>
+#include <memory>
 
 #include <osg/Group>
 #include <osg/PositionAttitudeTransform>
 #include <osg/Texture2D>
-
 #include <osgParticle/BoxPlacer>
 #include <osgParticle/ModularEmitter>
 #include <osgParticle/ModularProgram>
@@ -23,7 +23,6 @@
 #include <components/settings/values.hpp>
 
 #include "../mwworld/weather.hpp"
-
 #include "vismask.hpp"
 
 // Upstream's, from sky.cpp.

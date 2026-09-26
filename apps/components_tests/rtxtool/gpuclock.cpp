@@ -1,5 +1,3 @@
-#include <string>
-
 #include <gtest/gtest.h>
 
 #include <apps/rtxtool/instruments/gpuclock.hpp>

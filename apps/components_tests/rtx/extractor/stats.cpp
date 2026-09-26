@@ -1,5 +1,3 @@
-#include "fixture.hpp"
-
 #include <cstddef>
 #include <cstdint>
 
@@ -12,6 +10,8 @@
 #include <components/rtx/runs.hpp>
 #include <components/rtx/texturedata.hpp>
 #include <components/rtx/texturetable.hpp>
+
+#include "fixture.hpp"
 
 namespace Rtx::Testing
 {

@@ -1,7 +1,9 @@
 #pragma once
 
+#include <filesystem>
 #include <fstream>
 #include <memory>
+#include <vector>
 
 #include <osg/ref_ptr>
 

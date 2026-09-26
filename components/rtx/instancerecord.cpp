@@ -1,7 +1,6 @@
 #include "instancerecord.hpp"
 
 #include <cstddef>
-#include <span>
 
 #include <osg/Vec3f>
 #include <osg/Vec4f>

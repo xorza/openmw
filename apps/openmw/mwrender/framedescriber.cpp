@@ -11,14 +11,11 @@
 
 #include "../mwbase/environment.hpp"
 #include "../mwbase/world.hpp"
-
 #include "../mwmechanics/actorutil.hpp"
-
 #include "../mwworld/cellstore.hpp"
 #include "../mwworld/datetimemanager.hpp"
 #include "../mwworld/ptr.hpp"
 #include "../mwworld/timestamp.hpp"
-
 #include "camera.hpp"
 #include "fogmanager.hpp"
 #include "precipitation.hpp"

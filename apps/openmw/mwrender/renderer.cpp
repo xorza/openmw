@@ -10,7 +10,6 @@
 
 #include <SDL_hints.h>
 #include <SDL_video.h>
-
 #include <osg/Camera>
 #include <osg/FrameStamp>
 #include <osg/Group>

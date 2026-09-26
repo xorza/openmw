@@ -7,11 +7,9 @@
 //                                   checks the log and the dump each left; nought where all hold
 
 #include <algorithm>
-#include <array>
 #include <chrono>
 #include <csignal>
 #include <cstdint>
-#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>

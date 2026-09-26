@@ -21,7 +21,6 @@
 #include <vector>
 
 #include <SDL_messagebox.h>
-
 #include <handler/handler_main.h>
 #include <handler/user_stream_data_source.h>
 #include <minidump/minidump_user_extension_stream_data_source.h>
@@ -50,7 +49,6 @@
 #endif
 
 #if defined(__linux__)
-#include <cerrno>
 #include <sys/syscall.h>
 #include <unistd.h>
 #endif

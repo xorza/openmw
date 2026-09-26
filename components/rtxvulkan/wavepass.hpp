@@ -2,7 +2,6 @@
 
 #include <array>
 #include <cstddef>
-#include <cstdint>
 #include <filesystem>
 
 #include <osg/Vec2f>
