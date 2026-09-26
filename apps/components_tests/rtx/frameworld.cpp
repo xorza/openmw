@@ -203,9 +203,9 @@ namespace Rtx
 
         /// Every number the world decides reaches the constants, and reaches the right one.
         ///
-        /// **The test the two paths never had.** The game and the harness each used to write these
-        /// twenty-odd fields themselves, which is how the sea's clock came to be filled by one and
-        /// left at zero by the other, and how the game's interiors came to run the outdoor fog field.
+        /// **One place fills them for the game and the harness both**, so the two cannot drift apart:
+        /// a sea's clock filled by one and left at zero by the other, or the outdoor fog field run
+        /// in the game's interiors.
         /// One conversion is what fixed that; this is what says the conversion is complete.
         ///
         /// Written against a zeroed frame so that a field `describeWorld` forgets stays zero and
@@ -554,11 +554,10 @@ namespace Rtx
 
         /// A room draws no sky at all, and keeps the air its own record states.
         ///
-        /// **The whole of what `mOutdoors` decides, asserted in one place.** Each of these used to
-        /// be a branch written twice — once in the game and once in the harness — and a room that
-        /// drew an outdoor deck is the shape the drift took the last three times. The moons were
-        /// the one the game kept: the weather system stops reporting when the player steps inside,
-        /// so what it last said was still standing in the frame, lighting through the seams.
+        /// **The whole of what `mOutdoors` decides, asserted in one place**, so the game and the
+        /// harness cannot each decide it their own way. The moons are the case to watch: the weather
+        /// system stops reporting when the player steps inside, so what it last said would still
+        /// stand in the frame, lighting through the seams.
         TEST(RtxFrameWorldTest, aRoomDrawsNoDeckNoStarsNoPatchesAndNoMoons)
         {
             WorldReading room = reading();
@@ -629,12 +628,10 @@ namespace Rtx
         /// Air under a dome is lit by it, and air with no dome over it keeps the colour it was
         /// given.
         ///
-        /// **One flag decides it, where there were two.** A quasi-exterior used to carry a second
-        /// saying its air was a cell's, and its air is a weather's: the Construction Set greys the
-        /// whole `AMBI` record out for a cell that behaves like an exterior. So the dome lights a
-        /// canton's air exactly as it lights any other weather's, and the two readings a flag can
-        /// still tell apart are the open air and a room's. `RtxReadWorldTest` is where a
-        /// quasi-exterior's own air is asserted.
+        /// **One flag decides it.** A quasi-exterior's air is a weather's and not a cell's: the Construction Set greys
+        /// the whole `AMBI` record out for a cell that behaves like an exterior. So the dome lights a canton's air
+        /// exactly as it lights any other weather's, and the two readings a flag can still tell apart are the open air
+        /// and a room's. `RtxReadWorldTest` is where a quasi-exterior's own air is asserted.
         TEST(RtxFrameWorldTest, airUnderADomeIsLitByIt)
         {
             const WorldReading open = reading();

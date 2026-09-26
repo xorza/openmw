@@ -1,6 +1,9 @@
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <random>
+#include <vector>
 
 #include <gtest/gtest.h>
 
@@ -55,9 +58,9 @@ namespace Rtx
 
         /// Every tile holds the whole spectrum, and holds it in tens of thousands of components.
         ///
-        /// **The component count is what the transform is for.** The sinusoid table this replaces
-        /// carried sixty-four, of which the shortest four owned forty per cent of the curvature —
-        /// four plane waves crossing, which is a lattice. A tile of this size holds five orders more
+        /// **The component count is what the transform is for.** A table of sixty-four sinusoids
+        /// gives the shortest four forty per cent of the curvature — four plane waves crossing,
+        /// which is a lattice. A tile of this size holds five orders more
         /// than that inside the same band.
         ///
         /// **And the band is the spectrum's, not the tile's.** A tile cannot hold a wave longer than
@@ -207,6 +210,63 @@ namespace Rtx
                 moved += third[0].mAmplitudes[at] != first[0].mAmplitudes[at] ? 1 : 0;
 
             EXPECT_GT(moved, first[0].mAmplitudes.size() / 20) << "a different sea state is a different sea";
+        }
+
+        /// `causticGain` is the mean it says it is, against the field it was fitted to.
+        ///
+        /// **The fit is the one number in the caustic nobody can read off the shader.** Everything
+        /// else there is arithmetic or a dial; this is three coefficients standing for four million
+        /// draws, and a fit nobody can check is a magic number. So the draws are made again here.
+        ///
+        /// The Hessian of an isotropic Gaussian field has one free parameter. Its fourth spectral
+        /// moments give `Var[Hxx] = Var[Hyy] = 3c`, `Var[Hxy] = Cov[Hxx, Hyy] = c`, so
+        /// `E[(tr H)^2] = 8c` — and the fold is `b` times the root of that, which is the whole of
+        /// what the curve is a function of. Drawn as two independent parts plus one shared: the
+        /// shared draw is what makes `Hxx` and `Hyy` agree by `c`.
+        ///
+        /// Two hundred thousand draws a fold, which puts the standard error of each mean under
+        /// 0.002 — a tenth of what is allowed, so a failure here is the fit and not the draw.
+        TEST(RtxCausticGainTest, theFittedGainIsTheMeanOfWhatTheCausticComputes)
+        {
+            constexpr std::size_t draws = 200000;
+            constexpr float shared = 1.0f / 8.0f;
+            constexpr float own = 3.0f / 8.0f - shared;
+
+            std::mt19937 gen(11);
+            std::normal_distribution<float> normal(0.0f, 1.0f);
+
+            // One field, every fold measured on it, so the folds share their draws and the curve
+            // comes out smooth rather than eight independent estimates of eight points.
+            std::vector<std::array<float, 3>> hessians;
+            hessians.reserve(draws);
+            for (std::size_t draw = 0; draw < draws; ++draw)
+            {
+                const float together = std::sqrt(shared) * normal(gen);
+                hessians.push_back({ std::sqrt(own) * normal(gen) + together, std::sqrt(own) * normal(gen) + together,
+                    std::sqrt(shared) * normal(gen) });
+            }
+
+            for (const float fold : { 0.5f, 1.0f, 1.5f, 2.0f, 2.5f, 3.0f, 3.5f, 4.0f })
+            {
+                // `E[(tr H)^2]` is one for the draws above, so the fold is the bend outright.
+                double total = 0.0;
+                for (const std::array<float, 3>& h : hessians)
+                {
+                    const float determinant = (1.0f - fold * h[0]) * (1.0f - fold * h[1]) - fold * fold * h[2] * h[2];
+
+                    total += 1.0 / double{ std::max(std::abs(determinant), 1.0f / Shaders::WATER_CAUSTIC_MAX) };
+                }
+
+                EXPECT_NEAR(Shaders::causticGain(fold), static_cast<float>(total / draws), 0.02f)
+                    << "at a fold of " << fold;
+            }
+
+            // **The second order is exact rather than fitted**, which is what the numerator's
+            // coefficient being the denominator's plus one buys: a reciprocal of `1 - u` with `u`
+            // of variance `f^2` is worth `1 + f^2` to second order, and the curve has to start
+            // there whatever the draws say further out.
+            EXPECT_FLOAT_EQ(Shaders::causticGain(0.0f), 1.0f) << "a flat sea gathers nothing";
+            EXPECT_NEAR(Shaders::causticGain(0.1f), 1.01f, 0.001f) << "and a nearly flat one is 1 + f^2";
         }
     }
 }

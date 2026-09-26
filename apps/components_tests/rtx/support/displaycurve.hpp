@@ -15,7 +15,7 @@ namespace Rtx::Testing
     ///
     /// **The display curve and not the whole of what `tone.comp` does**: that pass grades and runs
     /// `toneMap` first, and a test measuring what the trace computed wants the radiance rather
-    /// than the picture made of it. `countHits` encodes with this for the same reason.
+    /// than the picture made of it. A visibility frame's `byte` encodes with this for the same reason.
     inline std::uint8_t encodeSrgb(float linear)
     {
         return static_cast<std::uint8_t>(std::lround(std::clamp(Shaders::encodeSrgb(linear), 0.0f, 1.0f) * 255.0f));

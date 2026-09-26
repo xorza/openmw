@@ -3,22 +3,22 @@
 #include <cstdint>
 #include <memory>
 #include <span>
+#include <stdexcept>
 #include <string>
 #include <string_view>
-#include <utility>
 
 #include <gtest/gtest.h>
 
 #include <vulkan/vulkan_core.h>
 
 #include <components/files/configurationmanager.hpp>
-#include <components/rtx/error.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtxvulkan/instance.hpp>
 #include <components/rtxvulkan/physicaldevice.hpp>
-#include <components/rtxvulkan/requirements.hpp>
 #include <components/rtxvulkan/validation.hpp>
 #include <components/rtxvulkan/vulkanrenderer.hpp>
+
+#include "../instanceobstacle.hpp"
 
 namespace Rtx::Testing
 {
@@ -40,13 +40,10 @@ namespace Rtx::Testing
             return validation ? sValidated : sPlain;
         }
 
-        std::unique_ptr<Harness> build(bool validation, std::string& reason)
+        std::unique_ptr<Harness> build(bool validation)
         {
-            if (std::string obstacle = findInstanceObstacle(); !obstacle.empty())
-            {
-                reason = std::move(obstacle);
-                return nullptr;
-            }
+            if (const std::string obstacle = findInstanceObstacle(); !obstacle.empty())
+                throw std::runtime_error(obstacle);
 
             // Tests provoke errors deliberately and assert on them; aborting would take the suite
             // down with the first one. Synchronization validation is **the same switch
@@ -66,10 +63,7 @@ namespace Rtx::Testing
             std::uint32_t count = 0;
             if (vkEnumeratePhysicalDevices(harness->mInstance->getHandle(), &count, nullptr) != VK_SUCCESS
                 || count == 0)
-            {
-                reason = "no Vulkan device is installed";
-                return nullptr;
-            }
+                throw std::runtime_error("no Vulkan device is installed");
 
             harness->mDevice = std::make_unique<Device>(
                 *harness->mInstance, PhysicalDevice::select(harness->mInstance->getHandle()), getPipelineCacheSpec());
@@ -82,11 +76,9 @@ namespace Rtx::Testing
         /// **The flag reaches the cache and the build together**, so the two cannot come apart: a
         /// device built unvalidated and filed under the validated key would be handed to every test
         /// in the suite.
-        Harness* cachedHarness(bool validation, std::string& reason)
+        Harness& cachedHarness(bool validation)
         {
-            return harnessCache(validation).get(reason, [validation](std::string& why) {
-                return build(validation, why);
-            });
+            return harnessCache(validation).get([validation] { return build(validation); });
         }
 
         /// What the layers raised while the validated renderer was made: the other loads none.
@@ -96,28 +88,18 @@ namespace Rtx::Testing
             return sMadeWith;
         }
 
-        std::unique_ptr<VulkanRenderer> buildRenderer(bool validation, std::string& reason)
+        std::unique_ptr<VulkanRenderer> buildRenderer(bool validation)
         {
             // Every test resizes to what it needs; one texel is only what the first target costs.
-            try
-            {
-                auto renderer = std::make_unique<VulkanRenderer>(describeRenderer(1, 1, validation));
-                if (validation)
-                    renderer->takeValidationErrors(rendererMadeWith());
-                return renderer;
-            }
-            catch (const Unsupported& obstacle)
-            {
-                reason = obstacle.what();
-                return nullptr;
-            }
+            auto renderer = std::make_unique<VulkanRenderer>(describeRenderer(1, 1, validation));
+            if (validation)
+                renderer->takeValidationErrors(rendererMadeWith());
+            return renderer;
         }
 
-        VulkanRenderer* cachedRenderer(bool validation, std::string& reason)
+        VulkanRenderer& cachedRenderer(bool validation)
         {
-            return rendererCache(validation).get(reason, [validation](std::string& why) {
-                return buildRenderer(validation, why);
-            });
+            return rendererCache(validation).get([validation] { return buildRenderer(validation); });
         }
 
         /// What holding a device for the run costs the rest of the binary: death tests that exec
@@ -137,31 +119,38 @@ namespace Rtx::Testing
         /// flavour. Closing them here is both the fix and where they belonged: a cache that lives
         /// for the run should end with the run, not with the process.
         ///
-        /// **And no device is a failed run, not an empty one.** Every fixture skips with a reason
-        /// where the harness answers null, which is honest per test and a green run of nothing per
-        /// suite. This binary holds only the tests that need one, so the first thing it does is ask
-        /// for it.
+        /// **And no device is a failed run, not an empty one.** A skip per test is honest per test
+        /// and a green run of nothing per suite. This binary holds only the tests that need a device,
+        /// so the first thing it does is ask for it, and every fixture after it holds a reference.
+        ///
+        /// **The device and not the renderer**, because a death test's child runs this again: the
+        /// renderer costs such a child three and a half seconds, and a device `PhysicalDevice::select`
+        /// accepted is one the renderer is built on. A renderer that still cannot be built throws
+        /// out of `getRenderer`, which fails the test that asked.
         class DeviceEnvironment : public ::testing::Environment
         {
             void SetUp() override
             {
                 GTEST_FLAG_SET(death_test_style, "threadsafe");
 
-                std::string reason;
-                if (getHarness(reason) == nullptr)
-                    FAIL() << "rtx-gpu-tests needs a device and this machine has none: " << reason;
+                try
+                {
+                    getHarness();
+                }
+                catch (const std::exception& obstacle)
+                {
+                    FAIL() << "rtx-gpu-tests needs a device and this machine has none: " << obstacle.what();
+                }
             }
 
             void TearDown() override
             {
-                const std::string why = "the suite closed its devices after the last test";
-
                 // The renderer before the raw devices, which is the order they were built in; neither
                 // depends on the other.
                 for (const bool validation : { true, false })
-                    rendererCache(validation).release(why);
+                    rendererCache(validation).release();
                 for (const bool validation : { true, false })
-                    harnessCache(validation).release(why);
+                    harnessCache(validation).release();
             }
         };
 
@@ -172,32 +161,14 @@ namespace Rtx::Testing
         }();
     }
 
-    std::string findInstanceObstacle()
+    Harness& getHarness()
     {
-        std::uint32_t version = 0;
-        if (vkEnumerateInstanceVersion(&version) != VK_SUCCESS || version < sApiVersion)
-            return "the Vulkan loader is absent or older than this renderer requires";
-
-        try
-        {
-            const Instance probe{ ValidationOptions{}, std::span<const char* const>{} };
-        }
-        catch (const Unsupported& obstacle)
-        {
-            return std::string("no Vulkan driver is installed: ") + obstacle.what();
-        }
-
-        return {};
+        return cachedHarness(true);
     }
 
-    Harness* getHarness(std::string& reason)
+    Harness& getUnvalidatedHarness()
     {
-        return cachedHarness(true, reason);
-    }
-
-    Harness* getUnvalidatedHarness(std::string& reason)
-    {
-        return cachedHarness(false, reason);
+        return cachedHarness(false);
     }
 
     std::filesystem::path getShaderDirectory()
@@ -239,9 +210,9 @@ namespace Rtx::Testing
         return options;
     }
 
-    VulkanRenderer* getRenderer(std::string& reason)
+    VulkanRenderer& getRenderer()
     {
-        return cachedRenderer(true, reason);
+        return cachedRenderer(true);
     }
 
     const std::vector<std::string>& getRendererMadeWith()
@@ -249,23 +220,18 @@ namespace Rtx::Testing
         return rendererMadeWith();
     }
 
-    VulkanRenderer* getUnvalidatedRenderer(std::string& reason)
+    VulkanRenderer& getUnvalidatedRenderer()
     {
-        return cachedRenderer(false, reason);
+        return cachedRenderer(false);
     }
 
     DeviceTest::DeviceTest(bool validation)
-        : mValidation(validation)
+        : mHarness(validation ? getHarness() : getUnvalidatedHarness())
     {
     }
 
     void DeviceTest::SetUp()
     {
-        std::string reason;
-        mHarness = mValidation ? getHarness(reason) : getUnvalidatedHarness(reason);
-        if (mHarness == nullptr)
-            GTEST_SKIP() << reason;
-
         // **Taken and then dropped**, because `takeErrorsOnThisThread` appends where a renderer's
         // own `takeValidationErrors` clears first: the log has to be emptied even though nothing
         // reads what comes off it here.
@@ -275,9 +241,6 @@ namespace Rtx::Testing
 
     void DeviceTest::TearDown()
     {
-        if (mHarness == nullptr)
-            return;
-
         takeRaised();
         for (const std::string& error : mRaised)
             ADD_FAILURE() << "validation error: " << error;
@@ -287,7 +250,7 @@ namespace Rtx::Testing
     {
         // Nothing at all where the layers are not loaded, which is the unvalidated device
         // `getUnvalidatedHarness` says why there is.
-        if (ValidationLog* log = mHarness->mInstance->getValidationLog(); log != nullptr)
+        if (ValidationLog* log = mHarness.mInstance->getValidationLog(); log != nullptr)
             log->takeErrorsOnThisThread(mRaised);
     }
 
@@ -298,20 +261,12 @@ namespace Rtx::Testing
 
     void RendererTest::SetUp()
     {
-        std::string reason;
-        mRenderer = getRenderer(reason);
-        if (mRenderer == nullptr)
-            GTEST_SKIP() << reason;
-
-        forgetErrors(*mRenderer);
+        forgetErrors(mRenderer);
     }
 
     void RendererTest::TearDown()
     {
-        if (mRenderer == nullptr)
-            return;
-
-        reportErrors(*mRenderer, "validation error");
+        reportErrors(mRenderer, "validation error");
     }
 
     void RendererTest::reportErrors(VulkanRenderer& renderer, std::string_view what)

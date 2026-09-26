@@ -89,11 +89,11 @@ namespace MWRender
             }
         };
 
-        /// **What the walk stopped finding is gone from the scene the hand-over takes.** The sweep
-        /// used to run after the frame, so a slot the walk no longer met was traced once more where
-        /// it last stood: the player's body, stamped afresh on every cell it entered, drew as a
-        /// double of itself one frame behind — the arms in front of a player walking backward. A
-        /// stamp is for a node's life now, so the identity that moves here is a structural one: the
+        /// **What the walk stopped finding is gone from the scene the hand-over takes.** A sweep run
+        /// after the frame would trace a slot the walk no longer met once more where it last stood:
+        /// the player's body, stamped afresh on every cell it entered, would draw as a double of
+        /// itself one frame behind — the arms in front of a player walking backward. A stamp is for
+        /// a node's life, so the identity that moves here is a structural one: the
         /// second body shifts into the first's place when the first goes, and is walked as the
         /// first, moved. What must not stand beside it is its own old slot, where the last frame
         /// left it.

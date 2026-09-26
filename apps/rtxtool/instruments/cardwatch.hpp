@@ -98,7 +98,14 @@ namespace RtxTool
     class CardWatch
     {
     public:
-        CardWatch();
+        /// **Ten a second.** The driver samples five times a second and hands back one sample a
+        /// process, the latest, so a poll slower than that loses the samples between; and a
+        /// reading is a few calls into the driver, so a faster poll costs nothing worth measuring.
+        static constexpr std::chrono::milliseconds sPeriod{ 100 };
+
+        /// @param period how often the watch reads, which only a test that waits on its readings
+        ///        asks to be shorter.
+        explicit CardWatch(std::chrono::milliseconds period = sPeriod);
         ~CardWatch();
 
         /// Starts sampling. Nothing where it already is.
@@ -128,6 +135,8 @@ namespace RtxTool
 
         /// The lock over everything below but the worker.
         Rtx::Monitor mMonitor;
+
+        const std::chrono::milliseconds mPeriod;
 
         GpuClock mClock;
         CardTally mTally;

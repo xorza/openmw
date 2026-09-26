@@ -41,7 +41,7 @@ namespace Rtx
         /// and written for a test whose one pipeline never compiles.
         TEST_F(RtxComputePipelineTest, aMissingShaderLeavesNothingBehindOnTheDevice)
         {
-            const Instance& instance = *mHarness->mInstance;
+            const Instance& instance = *mHarness.mInstance;
             auto device
                 = std::make_unique<Device>(instance, PhysicalDevice::select(instance.getHandle()), PipelineCacheSpec{});
 

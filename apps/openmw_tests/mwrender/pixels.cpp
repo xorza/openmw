@@ -86,7 +86,7 @@ namespace MWRender
         /// Outside the outermost centres the edge texel is held, rather than the tap wrapping to the
         /// other side of the picture.
         ///
-        /// **This is what the sampler the overlay used to go through does**, and a cell painted with
+        /// **This is what a clamping sampler does**, and a cell painted with
         /// a wrapping tap would carry a stripe of its opposite edge. The first and last destination
         /// pixels of every cell fall in this band: at eighteen across, the first tap is at
         /// 0.5 / 18 = 0.0278, and the outermost texel centre of a 256-wide tile is at 0.00195.

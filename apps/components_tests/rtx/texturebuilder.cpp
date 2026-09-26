@@ -147,7 +147,7 @@ namespace Rtx
 
         /// Two images into one level table, each description still naming only its own.
         ///
-        /// The description **appends** where it used to clear, which is what lets a whole scene's
+        /// The description **appends** rather than clearing, which is what lets a whole scene's
         /// levels live in one buffer instead of one vector per texture — and what would let a second
         /// image quietly take over the first's span if the offset were ever taken wrong.
         TEST(RtxTextureBuilderTest, describingIntoOneTableLeavesEachImageItsOwnLevels)
@@ -510,10 +510,9 @@ namespace Rtx
         /// slot no material can reach — and count it as a texture that could not be read, which is
         /// what made a departing cell look like a broken one.
         ///
-        /// **The freed slot is first here on purpose.** What comes out is no longer one description
-        /// per entry of the table, so a backend taking position for slot would put every texture
-        /// above the gap one place too low — and it did, until the array was told to honour the slot
-        /// each description carries.
+        /// **The freed slot is first here on purpose.** What comes out is not one description per
+        /// entry of the table, so a backend taking position for slot would put every texture above
+        /// the gap one place too low.
         TEST(RtxTextureBuilderTest, aFreedSlotIsNotDescribedAndTheOthersKeepTheirSlots)
         {
 

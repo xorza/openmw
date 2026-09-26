@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <string_view>
 
+#include <components/rtx/namedenum.hpp>
 #include <components/rtx/reconstruction.hpp>
 
 namespace RtxTool
@@ -78,25 +79,6 @@ namespace RtxTool
             CheckRow{ Check::Finite, "finite", always },
         };
 
-        /// Whether every enumerator up to the table's length has exactly one row. With
-        /// `StopWriter::checkHolds`'s switch, which names every enumerator and no default, a check
-        /// added to the enum stops the build until it has a row here and an answer there.
-        consteval bool checksComplete()
-        {
-            for (std::size_t value = 0; value < sChecks.size(); ++value)
-            {
-                std::size_t rows = 0;
-                for (const CheckRow& row : sChecks)
-                    rows += static_cast<std::size_t>(row.mCheck) == value ? 1 : 0;
-                if (rows != 1)
-                    return false;
-            }
-
-            return true;
-        }
-
-        static_assert(checksComplete(), "every Check has one row in sChecks, and the rows are the enumerators");
-
         constexpr std::array<Check, sChecks.size()> sEvery = [] {
             std::array<Check, sChecks.size()> every{};
             for (std::size_t at = 0; at < sChecks.size(); ++at)
@@ -104,11 +86,16 @@ namespace RtxTool
             return every;
         }();
 
+        // With `StopWriter::checkHolds`'s switch, which names every enumerator and no default, a
+        // check added to the enum stops the build until it has a row here and an answer there.
+        static_assert(
+            Rtx::coversFromNought(sEvery), "every Check has one row in sChecks, and the rows are the enumerators");
+
         const CheckRow& rowOf(const Check check)
         {
             const auto found = std::find_if(
                 sChecks.begin(), sChecks.end(), [check](const CheckRow& row) { return row.mCheck == check; });
-            assert(found != sChecks.end() && "a check with no row: checksComplete holds this shut");
+            assert(found != sChecks.end() && "a check with no row: sEvery's assertion holds this shut");
             return *found;
         }
     }

@@ -41,8 +41,7 @@ namespace Rtx::Testing
             constexpr float samples = float{ size } * size;
 
             SceneDesc scene;
-            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(MeshArrays{ .mPositions = sheetAt(4000.0f, 0.0f), .mIndices = sQuadIndices }) });
+            addQuad(scene, sheetAt(4000.0f, 0.0f));
 
             Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -1.0f, 300.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
@@ -51,17 +50,17 @@ namespace Rtx::Testing
             camera.mAmbientFromSky = 1.0f;
 
             const auto shade = [&](bool filter) {
-                std::vector<std::uint8_t> pixels;
-                EXPECT_EQ(countHits(scene, {}, camera, size, pixels, { .mFilter = filter }), size * size);
-                return pixels;
+                Frame drawn = shoot(scene, {}, camera, size, { .mFilter = filter });
+                EXPECT_EQ(drawn.mHits, size * size);
+                return drawn;
             };
 
-            const auto measure = [&](const std::vector<std::uint8_t>& pixels, std::size_t channel) {
+            const auto measure = [&](const Frame& drawn, std::size_t channel) {
                 float sum = 0.0f;
                 float squares = 0.0f;
-                for (std::size_t i = channel; i < pixels.size(); i += 4)
+                for (std::size_t i = channel; i < drawn.mRadiance.size(); i += 4)
                 {
-                    const float linear = decodeSrgb(pixels[i]);
+                    const float linear = drawn.at(i);
                     sum += linear;
                     squares += linear * linear;
                 }
@@ -70,8 +69,8 @@ namespace Rtx::Testing
                 return std::pair{ mean, std::sqrt(std::max(squares / samples - mean * mean, 0.0f)) };
             };
 
-            const std::vector<std::uint8_t> raw = shade(false);
-            const std::vector<std::uint8_t> filtered = shade(true);
+            const Frame raw = shade(false);
+            const Frame filtered = shade(true);
 
             for (std::size_t channel = 0; channel < 3; ++channel)
             {
@@ -112,9 +111,7 @@ namespace Rtx::Testing
             constexpr std::uint32_t size = 64;
 
             SceneDesc scene;
-            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh
-                = scene.addMesh(MeshArrays{ .mPositions = sheetAt(40000.0f, 0.0f), .mIndices = sQuadIndices }) });
+            addQuad(scene, sheetAt(40000.0f, 0.0f));
 
             // A degree and a half above the floor: the horizon sits near the top of the frame and
             // the ground runs from a few hundred units away to eight thousand, so the distance
@@ -127,7 +124,7 @@ namespace Rtx::Testing
 
             const auto render = [&](std::uint32_t accumulate, bool filter) {
                 std::vector<float> values;
-                renderRadiance(scene, camera, size, values, { .mFrames = accumulate, .mFilter = filter });
+                values = shoot(scene, {}, camera, size, { .mFrames = accumulate, .mFilter = filter }).mRadiance;
                 return values;
             };
 
@@ -179,7 +176,7 @@ namespace Rtx::Testing
             // history in it — which reads as the accumulator doing nothing at all.
             const auto renderSequence = [&](std::uint32_t frames) {
                 std::vector<float> values;
-                renderFiltered(scene, camera, size, values, frames);
+                values = shoot(scene, {}, camera, size, filteredRun(frames)).mRadiance;
                 return values;
             };
 
@@ -195,13 +192,12 @@ namespace Rtx::Testing
             // looking at the same thing, which is what
             // `theHistoryCarriesWhereTheCascadeHasNoNeighboursToBorrow` is for.
             //
-            // **Eight per cent rather than five, because the history is the filtered light now.**
-            // The cascade keeps its levels in half floats, which puts a rounding floor of about 3e-4
-            // of the value under a figure the cascade had already driven to 0.0020 — so past that
-            // point this is measuring a storage format and not an accumulator. Measured on this box:
-            // at full width the pair is 0.00201 and 0.00203, at half width it was 0.00201 and
-            // 0.00210, and with SVGF's feedback it is 0.00201 and 0.00213, against an unfiltered
-            // 0.042.
+            // **Eight per cent rather than five, because the history is the filtered light.** The
+            // cascade keeps its levels in half floats, which puts a rounding floor of about 3e-4 of
+            // the value under a figure the cascade has already driven to 0.0020 — so past that point
+            // this is measuring a storage format and not an accumulator. Measured on this box: at
+            // full width the pair is 0.00201 and 0.00203, at half width 0.00201 and 0.00210, and
+            // with SVGF's feedback 0.00201 and 0.00213, against an unfiltered 0.042.
             //
             // **A flat sheet is where feeding the filtered light back has least to give**, since the
             // cascade has every neighbour it could want and averaging its answers over frames only
@@ -257,18 +253,11 @@ namespace Rtx::Testing
         {
             constexpr std::uint32_t size = 64;
 
-            const std::array wall{
-                osg::Vec3f(-2000.0f, 0.0f, 0.0f),
-                osg::Vec3f(2000.0f, 0.0f, 0.0f),
-                osg::Vec3f(2000.0f, 0.0f, 4000.0f),
-                osg::Vec3f(-2000.0f, 0.0f, 4000.0f),
-            };
+            const std::array wall = uprightQuadAt(2000.0f, 0.0f, osg::Vec2f(0.0f, 2000.0f));
 
             SceneDesc scene;
-            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(MeshArrays{ .mPositions = sheetAt(4000.0f, 0.0f), .mIndices = sQuadIndices }) });
-            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(MeshArrays{ .mPositions = wall, .mIndices = sQuadIndices }) });
+            addQuad(scene, sheetAt(4000.0f, 0.0f));
+            addQuad(scene, wall);
 
             // The floor fills the bottom of the frame and the wall the top, with the crease running
             // straight across the middle of it.
@@ -282,16 +271,15 @@ namespace Rtx::Testing
             // at a time, so that sixty-four pixels stand behind every number and the sampling noise
             // that is left cannot be mistaken for a step.
             const auto rowMeans = [&](std::uint32_t accumulate, bool filter) {
-                std::vector<std::uint8_t> pixels;
-                EXPECT_EQ(countHits(scene, {}, camera, size, pixels, { .mFrames = accumulate, .mFilter = filter }),
-                    size * size);
+                const Frame frame = shoot(scene, {}, camera, size, { .mFrames = accumulate, .mFilter = filter });
+                EXPECT_EQ(frame.mHits, size * size);
 
                 std::array<float, size> rows{};
                 for (std::uint32_t y = 0; y < size; ++y)
                 {
                     float sum = 0.0f;
                     for (std::uint32_t x = 0; x < size; ++x)
-                        sum += decodeSrgb(pixels[(std::size_t{ y } * size + x) * 4 + 1]);
+                        sum += frame.at((std::size_t{ y } * size + x) * 4 + 1);
 
                     rows[y] = sum / size;
                 }
@@ -320,17 +308,16 @@ namespace Rtx::Testing
 
         /// The exposure moves toward what it measured rather than snapping to it.
         ///
-        /// **Adaptation is a time-domain thing, and this was the only term in the frame without
-        /// one.** The histogram was measured on the frame the curve was about to map and applied to
-        /// that same frame, so any one-frame excursion in it was a one-frame excursion in the whole
-        /// image — and the degenerate branch could take a night exterior from an exposure of order
-        /// tens to exactly one between two frames.
+        /// **Adaptation is a time-domain thing.** A histogram measured on the frame the curve is
+        /// about to map and applied to that same frame turns any one-frame excursion in it into a
+        /// one-frame excursion in the whole image — and the degenerate branch could take a night
+        /// exterior from an exposure of order tens to exactly one between two frames.
         ///
         /// Two skies a factor of thirty-two apart and nothing else in the picture, so the histogram
         /// is the only thing that changed. Both halves are claimed: told it has no past, the eye
         /// arrives at once; told it has one, it has barely moved a frame later.
         ///
-        /// **Driven frame by frame rather than through `countHits`**, because that helper calls
+        /// **Driven frame by frame rather than through `shoot`**, because that helper calls
         /// `setScene` every time and a new scene clears the previous camera — which is a reset, and
         /// a reset is exactly what the middle frame here must not have.
         TEST_F(RtxVisibilityTest, theExposureMovesTowardWhatItMeasuresRatherThanSnappingToIt)
@@ -365,15 +352,15 @@ namespace Rtx::Testing
 
             // The exposure measured rather than pinned, which is the whole subject.
             const auto shot = [&](const Shaders::VisibilityConstants& camera) {
-                mRenderer->renderFrame(camera, FrameOptions{ .mExposure = ExposureRule{} });
-                mRenderer->readPixels(pixels);
+                mRenderer.renderFrame(camera, FrameOptions{ .mExposure = ExposureRule{} });
+                mRenderer.readPixels(pixels);
                 return meanByte();
             };
 
             // Nothing to hit, so every pixel is the sky and the mean of the frame is the sky. The
             // scene is set once: setting it again would clear the previous camera and reset the eye.
-            mRenderer->resize(size, size);
-            mRenderer->setScene(Rtx::SceneSlot::world(), SceneDesc{}, {});
+            mRenderer.resize(size, size);
+            mRenderer.setScene(Rtx::SceneSlot::world(), SceneDesc{}, {});
 
             const double lit = shot(bright);
             ASSERT_GT(lit, 0.0) << "the bright sky rendered as black";
@@ -384,7 +371,7 @@ namespace Rtx::Testing
             const double justAfter = shot(dim);
 
             // And the same sky again with no past, which is where it is headed.
-            mRenderer->resetHistory();
+            mRenderer.resetHistory();
             const double adapted = shot(dim);
 
             EXPECT_GT(adapted, 0.0) << "the dark sky rendered as black even with the eye open";
@@ -415,9 +402,7 @@ namespace Rtx::Testing
             constexpr std::uint32_t measured = 3;
 
             SceneDesc scene;
-            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh
-                = scene.addMesh(MeshArrays{ .mPositions = sheetAt(40000.0f, 0.0f), .mIndices = sQuadIndices }) });
+            addQuad(scene, sheetAt(40000.0f, 0.0f));
 
             Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -8000.0f, 200.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
@@ -425,13 +410,13 @@ namespace Rtx::Testing
             camera.mSkyZenith = osg::Vec3f(0.80f, 0.65f, 0.15f);
             camera.mAmbientFromSky = 1.0f;
 
-            mRenderer->resize(size, size);
-            mRenderer->setScene(Rtx::SceneSlot::world(), scene, {});
+            mRenderer.resize(size, size);
+            mRenderer.setScene(Rtx::SceneSlot::world(), scene, {});
 
             const auto renderOne = [&](std::uint32_t frame, bool filter) {
                 Shaders::VisibilityConstants sampled = camera;
                 sampled.mFrame = frame;
-                mRenderer->renderFrame(sampled,
+                mRenderer.renderFrame(sampled,
                     FrameOptions{ .mAccumulate = 0,
                         .mReconstruction = ReconstructionRequest{ .mFilter = filter },
                         .mExposure = 1.0f });
@@ -439,7 +424,7 @@ namespace Rtx::Testing
 
             const auto radiance = [&] {
                 std::vector<float> values;
-                mRenderer->readComposite(values);
+                mRenderer.readComposite(values);
                 return values;
             };
 
@@ -455,7 +440,7 @@ namespace Rtx::Testing
             // that catches a renderer's first frame instead of by the flag under test.
             renderOne(measured + 1, true);
 
-            mRenderer->resetHistory();
+            mRenderer.resetHistory();
             renderOne(measured, true);
             const std::vector<float> single = radiance();
 
@@ -473,7 +458,7 @@ namespace Rtx::Testing
 
             // The frame under test sits between the reset and the frame that can act on it, and
             // reads the signal nowhere.
-            mRenderer->resetHistory();
+            mRenderer.resetHistory();
             renderOne(measured + 2, false);
             renderOne(measured, true);
             const std::vector<float> carried = radiance();
@@ -537,8 +522,7 @@ namespace Rtx::Testing
                 }
 
             SceneDesc scene;
-            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh
+            scene.addInstance(MeshInstance{ .mMesh
                 = scene.addMesh(MeshArrays{ .mPositions = positions, .mNormals = normals, .mIndices = indices }) });
 
             Shaders::VisibilityConstants camera = Testing::makeCamera(
@@ -552,14 +536,14 @@ namespace Rtx::Testing
 
             const auto renderSequence = [&](std::uint32_t frames) {
                 std::vector<float> values;
-                renderFiltered(scene, camera, size, values, frames);
+                values = shoot(scene, {}, camera, size, filteredRun(frames)).mRadiance;
                 return values;
             };
 
             // Unfiltered, because a converged reference has to be the answer and not the filter's
             // opinion of it.
             std::vector<float> reference;
-            renderRadiance(scene, camera, size, reference, { .mFrames = 128 });
+            reference = shoot(scene, {}, camera, size, { .mFrames = 128 }).mRadiance;
 
             const auto errorAgainstReference = [&](const std::vector<float>& values) {
                 double squares = 0.0;
@@ -593,7 +577,7 @@ namespace Rtx::Testing
             for (std::uint32_t frame = 0; frame < Shaders::ACCUMULATE_FRAMES; ++frame)
             {
                 std::vector<float> one;
-                renderFiltered(scene, camera, size, one, 1, frame);
+                one = shoot(scene, {}, camera, size, filteredRun(1, frame)).mRadiance;
                 const double error = errorAgainstReference(one);
                 pooled += error * error / static_cast<double>(Shaders::ACCUMULATE_FRAMES);
             }

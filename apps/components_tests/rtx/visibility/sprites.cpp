@@ -79,9 +79,7 @@ namespace Rtx::Testing
             // the last pixel of the row darker than the open wall.
             const auto coverReaches = [&](const TextureData& texture) {
                 SceneDesc scene;
-                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                    .mMesh
-                    = scene.addMesh(MeshArrays{ .mPositions = sheetAt(4000.0f, 0.0f), .mIndices = sQuadIndices }) });
+                addQuad(scene, sheetAt(4000.0f, 0.0f));
                 const Index cut = scene.textures().add(VFS::Path::NormalizedView("blob.dds"), TextureWrap::Clamp);
                 const std::array<Sprite, 1> sprites{ Sprite{ .mPosition = osg::Vec3f(150.0f, 259.81f, 200.0f),
                     .mRadius = 50.0f,
@@ -98,13 +96,12 @@ namespace Rtx::Testing
                 camera.mSun.mIrradiance = osg::Vec3f();
 
                 const std::array<TextureData, 1> worn{ texture };
-                std::vector<std::uint8_t> pixels;
-                countHits(scene, std::span<const TextureData>(worn), camera, size, pixels);
+                const Frame frame = shoot(scene, std::span<const TextureData>(worn), camera, size);
 
-                const float open = mRadiance[(row * size + 0) * 4];
+                const float open = frame.at((row * size + 0) * 4);
                 std::size_t last = 0;
                 for (std::size_t x = static_cast<std::size_t>(centre); x < size; ++x)
-                    if (mRadiance[(row * size + x) * 4] < open - 0.01f)
+                    if (frame.at((row * size + x) * 4) < open - 0.01f)
                         last = x;
                 return static_cast<float>(last) + 0.5f - centre;
             };
@@ -120,9 +117,9 @@ namespace Rtx::Testing
 
         /// A sprite is shadowed like anything else, by whatever stands over it.
         ///
-        /// **A particle has no normal and it still has an up**, which is what the layer was missing:
-        /// what a point sees of the sky is a question about the point. So rain under a bridge stops
-        /// carrying the open sky, and smoke in a canyon stops carrying the full sun.
+        /// **A particle has no normal and it still has an up**: what a point sees of the sky is a
+        /// question about the point. So rain under a bridge carries no open sky, and smoke in a
+        /// canyon does not carry the full sun.
         ///
         /// **Two rays for the layer and not two for a puff.** `spritesAlong` asks at the first
         /// sprite that is lit, because a rainstorm puts dozens over a pixel and a ray apiece is what
@@ -168,9 +165,7 @@ namespace Rtx::Testing
                 scene.addEmitter(sprites, cut, false);
 
                 if (lidded)
-                    scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                        .mMesh = scene.addMesh(
-                            MeshArrays{ .mPositions = sheetAt(4000.0f, 600.0f), .mIndices = sQuadIndices }) });
+                    addQuad(scene, sheetAt(4000.0f, 600.0f));
 
                 // Over the lid, so the same sheet that takes the sun takes this too.
                 if (source == Source::Lamp)
@@ -188,10 +183,9 @@ namespace Rtx::Testing
                     osg::Vec3f(0.0f, 0.0f, 1.0f), source == Source::Sun ? osg::Vec3f(4.0f, 4.0f, 4.0f) : osg::Vec3f());
                 camera.mAmbient = osg::Vec3f();
 
-                std::vector<std::uint8_t> pixels;
-                countHits(scene, puff, camera, size, pixels);
+                const Frame frame = shoot(scene, puff, camera, size);
 
-                return mRadiance[centre];
+                return frame.at(centre);
             };
 
             // **Nought and not merely less**, which each of the two can be held to: a shadow ray at
@@ -219,8 +213,8 @@ namespace Rtx::Testing
         /// ahead, the ball is what the hand's pixel shows — its green is the ball's, since the pane
         /// has none — and without the ball the pixel is the pane.
         ///
-        /// **And the composite has to know the pixel is the hand's.** The flag rode in a word the
-        /// channel's format dropped, so the composite marched the world's ray there: the ball was
+        /// **And the composite has to know the pixel is the hand's.** A flag riding in a word the
+        /// channel's format drops leaves the composite marching the world's ray there: the ball is
         /// looked for in the right tile and along the wrong line.
         TEST_F(RtxVisibilityTest, aSpriteInFrontOfTheArmsIsLookedUpWhereTheirRayCrossesTheWorldsPicture)
         {
@@ -241,17 +235,12 @@ namespace Rtx::Testing
                 const Index puff = scene.textures().add(VFS::Path::NormalizedView("white.dds"));
 
                 const float across = 200.0f * slope;
-                const std::array<osg::Vec3f, 4> corners{
-                    osg::Vec3f(across - 10.0f, 100.0f, -10.0f),
-                    osg::Vec3f(across + 10.0f, 100.0f, -10.0f),
-                    osg::Vec3f(across + 10.0f, 100.0f, 10.0f),
-                    osg::Vec3f(across - 10.0f, 100.0f, 10.0f),
-                };
-                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                    .mMesh = scene.addMesh(
-                        MeshArrays{ .mPositions = corners, .mTexCoords = sQuadUv, .mIndices = sQuadIndices }),
-                    .mMaterial = scene.addMaterial(Material{ .mDiffuse = pane }),
-                    .mClass = InstanceClass::FirstPerson });
+                const std::array corners = uprightQuadAt(10.0f, 100.0f, osg::Vec2f(across, 0.0f));
+                scene.addInstance(
+                    MeshInstance{ .mMesh = scene.addMesh(MeshArrays{
+                                      .mPositions = corners, .mTexCoords = sQuadUv, .mIndices = sQuadIndices }),
+                        .mMaterial = scene.addMaterial(Material{ .mDiffuse = pane }),
+                        .mClass = InstanceClass::FirstPerson });
 
                 if (sprited)
                 {
@@ -275,11 +264,10 @@ namespace Rtx::Testing
                 // by the fill, which the composite puts over the albedo as it puts it over a frame.
                 // The last of three frames: the first bin has no report to size its list by, walks
                 // every sprite unbinned, and would find the ball from any tile.
-                std::vector<std::uint8_t> pixels;
-                countHits(scene, textures, camera, size, pixels,
+                const Frame frame = shoot(scene, textures, camera, size,
                     Shot{ .mFrames = 3, .mAverage = false, .mShow = SurfaceView::Albedo });
 
-                return std::array<float, 2>{ mRadiance[pixel * 4], mRadiance[pixel * 4 + 1] };
+                return std::array<float, 2>{ frame.at(pixel * 4), frame.at(pixel * 4 + 1) };
             };
 
             const std::array<float, 2> bare = seenAt(false);
@@ -291,10 +279,9 @@ namespace Rtx::Testing
         /// A room's fill reaches a puff from every side, and what stands near takes it away.
         ///
         /// **A puff is a point in a medium and has no face to turn away from**, so what it sees of
-        /// an `AMBI` fill is a question about the whole sphere rather than about a hemisphere. It
-        /// used to be no question at all: indoors the layer asked the world nothing and a puff's own
-        /// thickness was the whole answer, so smoke under a table came out as bright as smoke in the
-        /// middle of the floor.
+        /// an `AMBI` fill is a question about the whole sphere rather than about a hemisphere.
+        /// Answered by a puff's own thickness alone, smoke under a table would come out as bright
+        /// as smoke in the middle of the floor.
         ///
         /// **The law is exactly linear, which is what makes this an assertion rather than a
         /// comparison.** A sheet `h` above and another `h` below block every direction that reaches
@@ -337,9 +324,7 @@ namespace Rtx::Testing
                 // scene with no geometry is the one case where the answer cannot be the geometry's.
                 if (half > 0.0f)
                     for (const float z : { half, -half })
-                        scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                            .mMesh = scene.addMesh(
-                                MeshArrays{ .mPositions = sheetAt(4000.0f, z), .mIndices = sQuadIndices }) });
+                        addQuad(scene, sheetAt(4000.0f, z));
 
                 Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(0.0f, -reach, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
@@ -350,13 +335,12 @@ namespace Rtx::Testing
                 camera.mAmbient = osg::Vec3f(0.5f, 0.5f, 0.5f);
                 camera.mAmbientFromSky = 0.0f;
 
-                std::vector<std::uint8_t> pixels;
-                countHits(scene, puff, camera, size, pixels, { .mFrames = 128 });
+                const Frame frame = shoot(scene, puff, camera, size, { .mFrames = 128 });
 
                 // The middle row, whose rays leave the eye level and stay level.
                 float sum = 0.0f;
                 for (std::uint32_t x = 0; x < size; ++x)
-                    sum += mRadiance[(std::size_t{ size / 2 } * size + x) * 4];
+                    sum += frame.at((std::size_t{ size / 2 } * size + x) * 4);
 
                 return sum;
             };
@@ -390,9 +374,7 @@ namespace Rtx::Testing
 
             const auto through = [&](float height, bool sprited) {
                 SceneDesc scene;
-                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                    .mMesh
-                    = scene.addMesh(MeshArrays{ .mPositions = sheetAt(4000.0f, 0.0f), .mIndices = sQuadIndices }) });
+                addQuad(scene, sheetAt(4000.0f, 0.0f));
 
                 if (sprited)
                 {
@@ -417,11 +399,10 @@ namespace Rtx::Testing
                 camera.mAmbient = osg::Vec3f();
                 camera.mSun.mIrradiance = osg::Vec3f();
 
-                std::vector<std::uint8_t> pixels;
-                countHits(scene, sprited ? std::span<const TextureData>(puff) : std::span<const TextureData>(), camera,
-                    size, pixels);
+                const Frame frame = shoot(
+                    scene, sprited ? std::span<const TextureData>(puff) : std::span<const TextureData>(), camera, size);
 
-                return mRadiance[centre];
+                return frame.at(centre);
             };
 
             const float openFloor = through(200.0f, false);
@@ -466,10 +447,9 @@ namespace Rtx::Testing
                 camera.mAmbient = osg::Vec3f();
                 camera.mSun.mIrradiance = osg::Vec3f();
 
-                std::vector<std::uint8_t> pixels;
-                countHits(scene, flame, camera, size, pixels);
+                const Frame frame = shoot(scene, flame, camera, size);
 
-                return mRadiance[centre];
+                return frame.at(centre);
             };
 
             EXPECT_NEAR(glowing(1), Shaders::SUNLIT_WHITE * sHalfAlpha, 0.01f) << "one adds what it painted";
@@ -481,8 +461,8 @@ namespace Rtx::Testing
         ///
         /// **The axis is the sprite's and not the emitter's**, because `osgParticle` turns a quad by
         /// the angle the particle holds and `Weather::RainShooter` leans every drop it fires into
-        /// the wind that way. The march read the emitter's own authored axis for as long as there
-        /// was one, so a storm the rasterizer drew leaning fell straight down here.
+        /// the wind that way. A march that read the emitter's own authored axis would draw a storm
+        /// the rasterizer leans as falling straight down.
         ///
         /// A streak 120 long and a quarter of that wide, seen face-on from 400 units off through
         /// sixty degrees — so half the frame is `400 * tan 30 = 230.94` units at the sprite's own
@@ -519,10 +499,9 @@ namespace Rtx::Testing
                 camera.mAmbient = osg::Vec3f();
                 camera.mSun.mIrradiance = osg::Vec3f();
 
-                std::vector<std::uint8_t> pixels;
-                countHits(scene, drop, camera, size, pixels);
+                const Frame frame = shoot(scene, drop, camera, size);
 
-                return mRadiance;
+                return frame.mRadiance;
             };
 
             // Where a point of the sprite's own plane lands, as the first value of its pixel. The
@@ -570,9 +549,9 @@ namespace Rtx::Testing
         ///
         /// **The march draws an oriented quad as a cylinder, so it is lit as one.** Its width is
         /// swung about its axis to meet the ray, which is a cylinder's silhouette, and such a body
-        /// presents `sin` of the angle off its axis to whatever lights it. A streak used to take a
-        /// full card's worth of the sun whichever way it hung, so rain at noon was lit as brightly
-        /// as rain at dawn.
+        /// presents `sin` of the angle off its axis to whatever lights it. A streak that took a full
+        /// card's worth of the sun whichever way it hung would light rain at noon as brightly as
+        /// rain at dawn.
         ///
         /// One sun, straight up, and the streak turned under it — which is what keeps everything
         /// else about the three frames identical: the same coverage, the same level, the same air.
@@ -605,10 +584,9 @@ namespace Rtx::Testing
                 camera.mAmbient = osg::Vec3f();
                 camera.mSun = Shaders::sunSource(osg::Vec3f(0.0f, 0.0f, 1.0f), osg::Vec3f(4.0f, 4.0f, 4.0f));
 
-                std::vector<std::uint8_t> pixels;
-                countHits(scene, drop, camera, size, pixels);
+                const Frame frame = shoot(scene, drop, camera, size);
 
-                return mRadiance[centre];
+                return frame.at(centre);
             };
 
             constexpr float lean = 0.8660254f;
@@ -675,10 +653,9 @@ namespace Rtx::Testing
                 camera.mAmbient = osg::Vec3f();
                 camera.mSun.mIrradiance = osg::Vec3f();
 
-                std::vector<std::uint8_t> pixels;
-                countHits(scene, std::span(&layered.mData, 1), camera, size, pixels);
+                const Frame frame = shoot(scene, std::span(&layered.mData, 1), camera, size);
 
-                return mRadiance[centre + 1] / std::max(mRadiance[centre], 1.0e-6f);
+                return frame.at(centre + 1) / std::max(frame.at(centre), 1.0e-6f);
             };
 
             EXPECT_NEAR(green(1.0f), 1.0f, 0.05f) << "a square quad read the level below its own";
@@ -737,10 +714,9 @@ namespace Rtx::Testing
                 camera.mAmbientFromSky = 1.0f;
                 camera.mSun = Shaders::sunSource(sun, osg::Vec3f(4.0f, 4.0f, 4.0f));
 
-                std::vector<std::uint8_t> pixels;
-                countHits(scene, textures, camera, size, pixels);
+                const Frame frame = shoot(scene, textures, camera, size);
 
-                return mRadiance[centre];
+                return frame.at(centre);
             };
 
             const float card = 4.0f * Shaders::INV_PI * sHalfAlpha;
@@ -805,10 +781,9 @@ namespace Rtx::Testing
                 camera.mAmbientFromSky = 1.0f;
                 camera.mSun = Shaders::sunSource(osg::Vec3f(1.0f, 0.0f, 0.0f), osg::Vec3f(4.0f, 4.0f, 4.0f));
 
-                std::vector<std::uint8_t> pixels;
-                countHits(scene, puff, camera, size, pixels);
+                const Frame frame = shoot(scene, puff, camera, size);
 
-                return mRadiance[centre];
+                return frame.at(centre);
             };
 
             const float alone = lit(false);
@@ -865,9 +840,7 @@ namespace Rtx::Testing
                 scene.addEmitter(drops, cut, false, 0.0f, sNoIndex, falls);
 
                 // A lid two hundred wide over the left drop alone, three hundred up.
-                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::translate(-100.0f, 0.0f, 0.0f),
-                    .mMesh
-                    = scene.addMesh(MeshArrays{ .mPositions = sheetAt(100.0f, 300.0f), .mIndices = sQuadIndices }) });
+                addQuad(scene, sheetAt(100.0f, 300.0f), sNoIndex, osg::Matrixf::translate(-100.0f, 0.0f, 0.0f));
 
                 Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(0.0f, -1000.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 30.0f, size, size, 100000.0f);
@@ -878,10 +851,9 @@ namespace Rtx::Testing
                 camera.mSun = Shaders::sunSource(osg::Vec3f(0.0f, -1.0f, 0.0f), osg::Vec3f(4.0f, 4.0f, 4.0f));
                 camera.mShelterHeight = shelter;
 
-                std::vector<std::uint8_t> pixels;
-                countHits(scene, puff, camera, size, pixels);
+                const Frame frame = shoot(scene, puff, camera, size);
 
-                return Read{ mRadiance[left], mRadiance[right] };
+                return Read{ frame.at(left), frame.at(right) };
             };
 
             const Read open = shown(true, 0.0f);

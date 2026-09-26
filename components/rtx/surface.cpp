@@ -26,20 +26,6 @@ namespace Rtx
 {
     namespace
     {
-        constexpr std::array<std::string_view, sTextureRoleCount> sRoleNames = {
-            "diffuseMap",
-            "normalMap",
-            "normalHeightMap",
-            "emissiveMap",
-            "specularMap",
-            "darkMap",
-            "detailMap",
-            "decalMap",
-            "glossMap",
-            "bumpMap",
-            "envMap",
-        };
-
         /// The three modes a NIF can state map one for one. The other three are `SceneUtil::Material`'s
         /// alone — nothing here writes them — and ambient or diffuse on its own still tints the one
         /// albedo, while a specular the renderer has not got is nothing.
@@ -81,7 +67,7 @@ namespace Rtx
                 if (!candidate->get(bound) || bound != static_cast<int>(unit))
                     continue;
 
-                if (const std::optional<TextureRole> role = textureRoleNamed(name))
+                if (const std::optional<TextureRole> role = sTextureRoleNames.named(name))
                     return role;
             }
 
@@ -193,20 +179,6 @@ namespace Rtx
             clamps(texture->getWrap(osg::Texture::WRAP_S)), clamps(texture->getWrap(osg::Texture::WRAP_T)));
     }
 
-    std::string_view textureRoleName(TextureRole role)
-    {
-        return sRoleNames[static_cast<std::size_t>(role)];
-    }
-
-    std::optional<TextureRole> textureRoleNamed(std::string_view name)
-    {
-        for (std::size_t i = 0; i < sRoleNames.size(); ++i)
-            if (sRoleNames[i] == name)
-                return static_cast<TextureRole>(i);
-
-        return std::nullopt;
-    }
-
     bool describeStateSet(const osg::StateSet& stateSet, SurfaceDescription& material)
     {
         SurfaceLocks locks;
@@ -239,7 +211,8 @@ namespace Rtx
             // with a sampler uniform — and the hand-built state sets that do not are the
             // rasterizer's own effects: the water's ripple particles, the sky's dome. The one such
             // picture both renderers draw, the rain, is named where it is built.
-            std::optional<TextureRole> role = textureRoleNamed(SceneUtil::getTextureType(stateSet, *texture, unit));
+            std::optional<TextureRole> role
+                = sTextureRoleNames.named(SceneUtil::getTextureType(stateSet, *texture, unit));
             if (!role.has_value())
                 role = roleBySampler(stateSet, unit);
             if (!role.has_value())

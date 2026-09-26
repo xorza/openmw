@@ -1,5 +1,6 @@
+#include <array>
 #include <cstddef>
-#include <string_view>
+#include <utility>
 
 #include <gtest/gtest.h>
 
@@ -29,33 +30,28 @@ namespace Rtx
 {
     namespace
     {
-        /// Every role has a name and every name is its own role, in both directions.
-        ///
-        /// **The round trip is the point.** These names were fifty string literals spread over four
-        /// files before there was one table, and a typo in any of them produced an untextured
-        /// surface rather than a build error.
-        TEST(RtxSurfaceTest, everyRoleRoundTripsThroughItsName)
+        /// Every role is spelled as the loader binds it, which the content decides and a renamed role
+        /// would stop reading; `blendMap` is bound the same way and is not a role.
+        TEST(RtxSurfaceTest, everyRoleIsSpelledAsTheLoaderBindsIt)
         {
-            for (std::size_t i = 0; i < sTextureRoleCount; ++i)
-            {
-                const auto role = static_cast<TextureRole>(i);
-                const std::string_view name = textureRoleName(role);
+            constexpr std::array bound{
+                std::pair{ TextureRole::Diffuse, "diffuseMap" },
+                std::pair{ TextureRole::Normal, "normalMap" },
+                std::pair{ TextureRole::NormalHeight, "normalHeightMap" },
+                std::pair{ TextureRole::Emissive, "emissiveMap" },
+                std::pair{ TextureRole::Specular, "specularMap" },
+                std::pair{ TextureRole::Dark, "darkMap" },
+                std::pair{ TextureRole::Detail, "detailMap" },
+                std::pair{ TextureRole::Decal, "decalMap" },
+                std::pair{ TextureRole::Gloss, "glossMap" },
+                std::pair{ TextureRole::Bump, "bumpMap" },
+                std::pair{ TextureRole::Environment, "envMap" },
+            };
+            ASSERT_EQ(bound.size(), sTextureRoleNames.mNames.size()) << "a role this test does not pin";
+            for (const auto& [role, spelling] : bound)
+                EXPECT_EQ(sTextureRoleNames.name(role), spelling);
 
-                EXPECT_FALSE(name.empty());
-                EXPECT_EQ(textureRoleNamed(name), role) << name;
-            }
-
-            EXPECT_EQ(textureRoleName(TextureRole::Diffuse), "diffuseMap");
-            EXPECT_EQ(textureRoleName(TextureRole::NormalHeight), "normalHeightMap");
-        }
-
-        /// A name that is not a role is not one. `blendMap` is bound the same way and is not what a
-        /// surface is made of; `diffusemap` is a typo.
-        TEST(RtxSurfaceTest, aNameThatIsNotARoleIsRefused)
-        {
-            EXPECT_FALSE(textureRoleNamed("blendMap").has_value());
-            EXPECT_FALSE(textureRoleNamed("diffusemap").has_value());
-            EXPECT_FALSE(textureRoleNamed("").has_value());
+            EXPECT_FALSE(sTextureRoleNames.named("blendMap").has_value());
         }
 
         /// A state set that sets only modes and uniforms describes no surface, and leaves the
@@ -153,7 +149,7 @@ namespace Rtx
                 EXPECT_EQ(declined.getTexture(static_cast<SurfaceMap>(map)), nullptr) << map;
             for (const TextureRole declinedRole :
                 { TextureRole::Detail, TextureRole::Decal, TextureRole::Gloss, TextureRole::Bump })
-                EXPECT_FALSE(mapOf(declinedRole).has_value()) << textureRoleName(declinedRole);
+                EXPECT_FALSE(mapOf(declinedRole).has_value()) << sTextureRoleNames.name(declinedRole);
         }
 
         /// The colours come off the material attribute, and the opacity off it too until an

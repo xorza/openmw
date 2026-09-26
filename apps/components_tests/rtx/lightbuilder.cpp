@@ -511,8 +511,8 @@ namespace Rtx
             EXPECT_TRUE(isLamp(makeLight(ordinary, osg::Vec3f(), 0.0, 1)));
 
             // **A black record subtracts nothing, so the flag on it decides nothing either.** Both
-            // routes place a lamp that radiates zero, which is what they already did for a black
-            // record without the flag — the record path used to drop this one and disagree.
+            // routes place a lamp that radiates zero, which is what they do for a black record
+            // without the flag, so the two routes agree.
             const SceneUtil::LightCommon unlit = describe(100, 0x00000000, ESM::Light::Negative);
             const osg::ref_ptr<SceneUtil::LightSource> dark
                 = SceneUtil::createLightSource(unlit, Testing::sLightMask, /*isExterior=*/false);

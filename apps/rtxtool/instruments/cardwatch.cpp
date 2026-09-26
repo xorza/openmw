@@ -53,8 +53,9 @@ namespace RtxTool
         return share;
     }
 
-    CardWatch::CardWatch()
-        : mTally(Platform::Process::currentId())
+    CardWatch::CardWatch(const std::chrono::milliseconds period)
+        : mPeriod(period)
+        , mTally(Platform::Process::currentId())
         , mBegan(std::chrono::steady_clock::now())
     {
     }
@@ -63,17 +64,11 @@ namespace RtxTool
 
     void CardWatch::watch()
     {
-        // **Ten a second.** The driver samples five times a second and hands back one sample a
-        // process, the latest, so a poll slower than that loses the samples between; and a
-        // reading is a few calls into the driver, so a faster poll costs nothing worth
-        // measuring.
-        constexpr std::chrono::milliseconds sPeriod{ 100 };
-
         if (mWorker.isRunning())
             return;
 
         mMonitor.under([&] { close(); });
-        mWorker.repeat(sPeriod, [this] { mMonitor.under([this] { read(); }); });
+        mWorker.repeat(mPeriod, [this] { mMonitor.under([this] { read(); }); });
     }
 
     CardShare CardWatch::start()

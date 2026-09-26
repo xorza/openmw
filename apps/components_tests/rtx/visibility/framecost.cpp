@@ -89,10 +89,7 @@ namespace Rtx::Testing
             // number and the reason written down beside it.
             constexpr std::size_t budgetPerFrame = 0;
 
-            std::string reason;
-            Renderer* renderer = getUnvalidatedRenderer(reason);
-            if (renderer == nullptr)
-                GTEST_SKIP() << reason;
+            Renderer& renderer = getUnvalidatedRenderer();
 
             // A wall to trace, and a second one behind it skinned to one bone so that there is a body
             // to pose.
@@ -103,8 +100,8 @@ namespace Rtx::Testing
             poseByOneBone(scene, body, osg::Matrixf::identity());
             const Index puff = scene.textures().add(VFS::Path::NormalizedView("puff.dds"));
 
-            renderer->resize(size, size);
-            renderer->setScene(Rtx::SceneSlot::world(), scene, {});
+            renderer.resize(size, size);
+            renderer.setScene(Rtx::SceneSlot::world(), scene, {});
 
             Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
@@ -121,7 +118,7 @@ namespace Rtx::Testing
                 walked += 1.0f;
                 scene.clearPlacement();
                 poseByOneBone(scene, body, osg::Matrixf::translate(0.0f, walked, 0.0f));
-                renderer->placeScene(Rtx::SceneSlot::world(), scene);
+                renderer.placeScene(Rtx::SceneSlot::world(), scene);
             };
 
             // Sixty-four sprites on the first frame and fewer on every one after, a different count
@@ -140,7 +137,7 @@ namespace Rtx::Testing
 
                 scene.clearPlacement();
                 scene.addEmitter(sprites, puff, false);
-                renderer->placeScene(Rtx::SceneSlot::world(), scene);
+                renderer.placeScene(Rtx::SceneSlot::world(), scene);
             };
             const auto thicken = [&] { rain(mostSprites - storm++ % mostSprites); };
 
@@ -151,8 +148,8 @@ namespace Rtx::Testing
                     change();
 
                     camera.mFrame = index++;
-                    renderer->renderFrame(camera, options);
-                    renderer->finishFrame();
+                    renderer.renderFrame(camera, options);
+                    renderer.finishFrame();
                 };
 
                 for (int i = 0; i < warmUpFrames; ++i)
@@ -186,8 +183,8 @@ namespace Rtx::Testing
             const auto rise = [&] {
                 rain(++rising);
                 camera.mFrame = index++;
-                renderer->renderFrame(camera, FrameOptions{});
-                renderer->finishFrame();
+                renderer.renderFrame(camera, FrameOptions{});
+                renderer.finishFrame();
             };
             for (int i = 0; i < 32; ++i)
                 rise();
@@ -200,10 +197,10 @@ namespace Rtx::Testing
             // **And the read back, which the harness does every frame and the window does never.**
             // Warmed by one call, because the first sizes the caller's vector.
             std::vector<std::uint8_t> pixels;
-            renderer->readPixels(pixels);
+            renderer.readPixels(pixels);
 
             const std::size_t before = Testing::getAllocationCount();
-            renderer->readPixels(pixels);
+            renderer.readPixels(pixels);
             EXPECT_EQ(Testing::getAllocationCount() - before, 0u) << "a second read back into the same vector";
         }
 

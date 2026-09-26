@@ -297,8 +297,8 @@ namespace Rtx
             EXPECT_EQ(filled(0.9f, 0.9f, 0.0f, 0.2f), 0.0f);
 
             // **The night's own sheets come out of the same figure**, which is what keeps a night
-            // where it was as one more layer starts lighting: the stars used to light nothing, and a
-            // tenth of the 0.3 above now comes from them instead of from the fill.
+            // where it was as one more layer starts lighting: a tenth of the 0.3 above comes from the
+            // stars instead of from the fill.
             EXPECT_NEAR(filled(0.3f, 0.6f, 0.03f, 0.8f), 0.27f, 1e-6f);
             EXPECT_EQ(filled(0.3f, 0.6f, 0.5f, 0.8f), 0.0f) << "and sheets that outrun it ask for nothing";
 

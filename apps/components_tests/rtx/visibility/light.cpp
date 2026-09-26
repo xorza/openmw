@@ -57,7 +57,7 @@ namespace Rtx::Testing
             const osg::Vec3f leaning(std::sin(sLeaningNormal), 0.0f, std::cos(sLeaningNormal));
             const std::array<osg::Vec3f, 4> normals{ leaning, leaning, leaning, leaning };
 
-            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+            scene.addInstance(MeshInstance{
                 .mMesh = scene.addMesh(MeshArrays{
                     .mPositions = sheetAt(4000.0f, 0.0f), .mNormals = normals, .mIndices = sQuadIndices }) });
 
@@ -77,12 +77,7 @@ namespace Rtx::Testing
             const Shaders::VisibilityConstants base = Testing::makeCamera(
                 osg::Vec3f(100.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
 
-            const std::array occluder{
-                osg::Vec3f(-10.0f, -25.0f, -10.0f),
-                osg::Vec3f(10.0f, -25.0f, -10.0f),
-                osg::Vec3f(10.0f, -25.0f, 10.0f),
-                osg::Vec3f(-10.0f, -25.0f, 10.0f),
-            };
+            const std::array occluder = uprightQuadAt(10.0f, -25.0f);
 
             // **A sky rather than the cell's ambient, because that is what fills a wall now.** The
             // ambient terminates a path one bounce further along; what a surface the eye can see
@@ -92,8 +87,7 @@ namespace Rtx::Testing
                                     const osg::Vec3f& sky = osg::Vec3f()) {
                 SceneDesc scene = makeWall();
                 if (blocked)
-                    scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                        .mMesh = scene.addMesh(MeshArrays{ .mPositions = occluder, .mIndices = sQuadIndices }) });
+                    addQuad(scene, occluder);
 
                 Shaders::VisibilityConstants camera = base;
                 camera.mSun = Shaders::sunSource(-direction, irradiance);
@@ -101,9 +95,9 @@ namespace Rtx::Testing
                 camera.mSkyZenith = sky;
                 camera.mAmbientFromSky = 1.0f;
 
-                std::vector<std::uint8_t> pixels;
-                EXPECT_GT(countHits(scene, {}, camera, size, pixels), 0u);
-                return pixels[centre];
+                const Frame frame = shoot(scene, {}, camera, size);
+                EXPECT_GT(frame.mHits, 0u);
+                return frame.byte(centre);
             };
 
             // Travelling along +Y, which is straight into the wall's face.
@@ -132,27 +126,21 @@ namespace Rtx::Testing
 
         /// The eye sees through the nearest pane to what stands behind it.
         ///
-        /// **A translucent surface used to be the hit**, resolved against the stand-in cutoff
-        /// `AlphaMode::Blend` is given, so a pane with an opaque texture was drawn solid and whatever
-        /// was behind it was never traced at all. It is now shaded, kept, and the ray carries on from
-        /// where it stood.
+        /// **A translucent surface is not the hit.** Resolved against the stand-in cutoff
+        /// `AlphaMode::Blend` is given, a pane with an opaque texture would be drawn solid and nothing
+        /// behind it traced. It is shaded, kept, and the ray carries on from where it stood.
         ///
         /// A black pane is what makes the arithmetic checkable: it is lit to nothing, so what comes
         /// back is the wall behind it times what the pane let past. At a half that is half the wall's
         /// radiance, which the test above pins at 111 by halving the sun instead — the same number
-        /// by the other route, and 0 under the behaviour this replaces.
+        /// by the other route.
         TEST_F(RtxVisibilityTest, theEyeSeesThroughTheNearestPaneToWhatStandsBehindIt)
         {
             // **On the ray and off the sun's.** The eye stands at x=100 and looks at the origin, so
             // halfway to the wall its ray is at x=50 — and the sun travels along +Y, so what this
             // pane shadows is the strip of wall at x between 30 and 70 rather than the origin the
             // centre pixel is looking at. The wall it is held against is fully lit.
-            const std::array pane{
-                osg::Vec3f(30.0f, -50.0f, -20.0f),
-                osg::Vec3f(70.0f, -50.0f, -20.0f),
-                osg::Vec3f(70.0f, -50.0f, 20.0f),
-                osg::Vec3f(30.0f, -50.0f, 20.0f),
-            };
+            const std::array pane = uprightQuadAt(20.0f, -50.0f, osg::Vec2f(50.0f, 0.0f));
 
             const osg::Vec3f bright(2.0f, 2.0f, 2.0f);
             const auto black = [](float opacity) { return osg::Vec4f(0.0f, 0.0f, 0.0f, opacity); };
@@ -192,8 +180,8 @@ namespace Rtx::Testing
             EXPECT_EQ(through(0), 153) << "the wall alone, as the tests above have it";
             EXPECT_EQ(through(1), 111) << "half the wall through one half pane";
 
-            // A quarter and an eighth, which under the one-layer peel this replaces were nought:
-            // the second pane was drawn as the solid it is not.
+            // A quarter and an eighth, which a one-layer peel reads as nought: it draws the second
+            // pane as the solid it is not.
             EXPECT_EQ(through(2), litThroughStack({}, bright * 0.25f));
             EXPECT_EQ(through(3), litThroughStack({}, bright * 0.125f));
             EXPECT_EQ(through(4), litThroughStack({}, bright * 0.0625f));
@@ -207,12 +195,13 @@ namespace Rtx::Testing
         /// **A shell is one layer of the peel and not two.**
         ///
         /// The rasterizer draws the world with `GL_CULL_FACE` on, so a robe, a cuirass and a pane
-        /// of glass each show the eye one face. Culling nothing, the peel walked through the far
-        /// wall as well as the near one and composited the same alpha twice: the Ancestor Ghost,
-        /// whose seven body shapes blend `SRC_ALPHA, INV_SRC_ALPHA` at an alpha of 0.45 and carry no
-        /// `NiStencilProperty`, covered 0.45 + 0.55 * 0.45 of its pixel where the game covers 0.45.
-        /// A faded actor was worse: `PEEL_LAYERS` is four, counted for a cuirass over a skirt over a
-        /// leg, and with the backs of those three the budget ran out and the last layer drew solid.
+        /// of glass each show the eye one face. Culling nothing, the peel walks through the far wall
+        /// as well as the near one and composites the same alpha twice: the Ancestor Ghost, whose
+        /// seven body shapes blend `SRC_ALPHA, INV_SRC_ALPHA` at an alpha of 0.45 and carry no
+        /// `NiStencilProperty`, would cover 0.45 + 0.55 * 0.45 of its pixel where the game covers
+        /// 0.45. A faded actor is worse: `PEEL_LAYERS` is four, counted for a cuirass over a skirt
+        /// over a leg, and with the backs of those three the budget runs out and the last layer
+        /// draws solid.
         ///
         /// Two black half panes on the eye's ray, the near one facing the eye and the far one facing
         /// away, which is what a closed surface is from outside. The figures are the ones the test
@@ -239,10 +228,10 @@ namespace Rtx::Testing
                 addPane(scene, paneAt(-60.0f, true), half);
                 addPane(scene, paneAt(-50.0f, false), half, 1.0f, bothFaces);
 
-                std::vector<std::uint8_t> pixels;
-                EXPECT_GT(countHits(scene, {}, wallCamera(size, bright), size, pixels), 0u);
+                const Frame frame = shoot(scene, {}, wallCamera(size, bright), size);
+                EXPECT_GT(frame.mHits, 0u);
 
-                return int{ pixels[centreValueOf(size)] };
+                return int{ frame.byte(centreValueOf(size)) };
             };
 
             EXPECT_EQ(throughShell(false), 111) << "the far wall of a shell was drawn";
@@ -263,12 +252,7 @@ namespace Rtx::Testing
         /// — and a material with no mask has nothing there for that test to read.
         TEST_F(RtxVisibilityTest, aFadedPlacementIsSeenThroughWhateverItsMaterialSays)
         {
-            const std::array pane{
-                osg::Vec3f(30.0f, -50.0f, -20.0f),
-                osg::Vec3f(70.0f, -50.0f, -20.0f),
-                osg::Vec3f(70.0f, -50.0f, 20.0f),
-                osg::Vec3f(30.0f, -50.0f, 20.0f),
-            };
+            const std::array pane = uprightQuadAt(20.0f, -50.0f, osg::Vec2f(50.0f, 0.0f));
 
             const osg::Vec3f bright(2.0f, 2.0f, 2.0f);
             const osg::Vec4f black(0.0f, 0.0f, 0.0f, 1.0f);
@@ -297,12 +281,7 @@ namespace Rtx::Testing
         {
             // Square in the sun's path to the middle of the wall, which is where the centre pixel
             // looks — so what this pane changes is the light arriving rather than the view of it.
-            const std::array occluder{
-                osg::Vec3f(-10.0f, -25.0f, -10.0f),
-                osg::Vec3f(10.0f, -25.0f, -10.0f),
-                osg::Vec3f(10.0f, -25.0f, 10.0f),
-                osg::Vec3f(-10.0f, -25.0f, 10.0f),
-            };
+            const std::array occluder = uprightQuadAt(10.0f, -25.0f);
 
             const osg::Vec3f bright(2.0f, 2.0f, 2.0f);
             const auto white = [](float opacity) { return osg::Vec4f(1.0f, 1.0f, 1.0f, opacity); };
@@ -364,12 +343,12 @@ namespace Rtx::Testing
                     .mEmissive = emissiveMap,
                     .mEmissiveColour = emissiveColour,
                 });
-                scene.addInstance(
-                    MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = mesh, .mMaterial = material });
+                scene.addInstance(MeshInstance{ .mMesh = mesh, .mMaterial = material });
 
-                std::vector<std::uint8_t> pixels;
-                EXPECT_EQ(countHits(scene, textures, camera, size, pixels), size * size);
-                return std::array<std::uint8_t, 3>{ pixels[centre], pixels[centre + 1], pixels[centre + 2] };
+                const Frame frame = shoot(scene, textures, camera, size);
+                EXPECT_EQ(frame.mHits, size * size);
+                return std::array<std::uint8_t, 3>{ frame.byte(centre), frame.byte(centre + 1),
+                    frame.byte(centre + 2) };
             };
 
             // A glow on a white surface, taken so that the product is 0.4 linear whatever the scale
@@ -452,14 +431,12 @@ namespace Rtx::Testing
                     .mAlphaRef = alphaRef,
                     .mAlphaMode = mode,
                 });
-                scene.addInstance(
-                    MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = mesh, .mMaterial = material });
+                scene.addInstance(MeshInstance{ .mMesh = mesh, .mMaterial = material });
 
-                std::vector<std::uint8_t> pixels;
+                const Frame frame = shoot(scene, textures, camera, size, Shot{ .mShow = SurfaceView::Albedo });
                 // Something is behind every hole, so every ray lands on one surface or the other.
-                EXPECT_EQ(countHits(scene, textures, camera, size, pixels, Shot{ .mShow = SurfaceView::Albedo }),
-                    size * size);
-                return pixels;
+                EXPECT_EQ(frame.mHits, size * size);
+                return frame.bytes();
             };
 
             // Red where the mask survived and grey where the wall shows through: the mask is pure
@@ -529,12 +506,7 @@ namespace Rtx::Testing
 
             // Ten units across, a quarter of the way from the wall to the lamp: it covers the whole
             // shadow ray and none of the camera's, which passes through x = 25 at that height.
-            const std::array occluder{
-                osg::Vec3f(-10.0f, -25.0f, -10.0f),
-                osg::Vec3f(10.0f, -25.0f, -10.0f),
-                osg::Vec3f(10.0f, -25.0f, 10.0f),
-                osg::Vec3f(-10.0f, -25.0f, 10.0f),
-            };
+            const std::array occluder = uprightQuadAt(10.0f, -25.0f);
 
             // A sky rather than the cell's ambient, for the reason the sun's own test gives: what
             // fills a wall the eye can see is the hemisphere it gathers.
@@ -543,17 +515,16 @@ namespace Rtx::Testing
                 if (light.has_value())
                     scene.addLight(*light);
                 if (blocked)
-                    scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                        .mMesh = scene.addMesh(MeshArrays{ .mPositions = occluder, .mIndices = sQuadIndices }) });
+                    addQuad(scene, occluder);
 
                 Shaders::VisibilityConstants camera = base;
                 camera.mSkyHorizon = sky;
                 camera.mSkyZenith = sky;
                 camera.mAmbientFromSky = 1.0f;
 
-                std::vector<std::uint8_t> pixels;
-                EXPECT_GT(countHits(scene, {}, camera, size, pixels), 0u);
-                return pixels[centre];
+                const Frame frame = shoot(scene, {}, camera, size);
+                EXPECT_GT(frame.mHits, 0u);
+                return frame.byte(centre);
             };
 
             const Light lamp{
@@ -670,8 +641,7 @@ namespace Rtx::Testing
                           VFS::Path::NormalizedView("base_spec.dds"), TextureWrap::Repeat, TextureEncoding::Data);
                       const Index normalMap = scene.textures().add(
                           VFS::Path::NormalizedView("base_n.dds"), TextureWrap::Repeat, TextureEncoding::Data);
-                      scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                          .mMesh = mesh,
+                      scene.addInstance(MeshInstance{ .mMesh = mesh,
                           .mMaterial = scene.addMaterial(Material{ .mDiffuse = diffuse,
                               .mNormal = leaning ? normalMap : sNoIndex,
                               .mSpecular = map,
@@ -682,9 +652,9 @@ namespace Rtx::Testing
                           .mReach = 500.0f,
                       });
 
-                      std::vector<std::uint8_t> pixels;
-                      EXPECT_GT(countHits(scene, textures, camera, size, pixels, Shot{ .mShow = show }), 0u);
-                      return osg::Vec3f(mRadiance[centre], mRadiance[centre + 1], mRadiance[centre + 2]);
+                      const Frame frame = shoot(scene, textures, camera, size, Shot{ .mShow = show });
+                      EXPECT_GT(frame.mHits, 0u);
+                      return osg::Vec3f(frame.at(centre), frame.at(centre + 1), frame.at(centre + 2));
                   };
             const auto lit = [&](std::uint8_t metal, bool leaning, SurfaceView show = SurfaceView::Shaded,
                                  float tint = 1.0f) { return litAbout(normal, metal, leaning, show, tint); };
@@ -844,8 +814,7 @@ namespace Rtx::Testing
                         break;
                 }
 
-                scene.addInstance(MeshInstance{
-                    .mTransform = osg::Matrixf::identity(), .mMesh = mesh, .mMaterial = scene.addMaterial(material) });
+                scene.addInstance(MeshInstance{ .mMesh = mesh, .mMaterial = scene.addMaterial(material) });
                 scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::translate(0.0f, 1000.0f, 0.0f),
                     .mMesh = mesh,
                     .mMaterial = scene.addMaterial(Material{ .mDiffuse = diffuse, .mSpecular = behind }) });
@@ -855,9 +824,9 @@ namespace Rtx::Testing
                     .mReach = 500.0f,
                 });
 
-                std::vector<std::uint8_t> pixels;
-                EXPECT_GT(countHits(scene, textures, camera, size, pixels), 0u);
-                return osg::Vec3f(mRadiance[centre], mRadiance[centre + 1], mRadiance[centre + 2]);
+                const Frame frame = shoot(scene, textures, camera, size);
+                EXPECT_GT(frame.mHits, 0u);
+                return osg::Vec3f(frame.at(centre), frame.at(centre + 1), frame.at(centre + 2));
             };
 
             for (const auto& [role, name] :
@@ -905,9 +874,8 @@ namespace Rtx::Testing
             const Index diffuse = scene.textures().add(VFS::Path::NormalizedView("base.dds"));
             const Index map = scene.textures().add(
                 VFS::Path::NormalizedView("base_spec.dds"), TextureWrap::Repeat, TextureEncoding::Data);
-            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = mesh,
-                .mMaterial = scene.addMaterial(Material{ .mDiffuse = diffuse, .mSpecular = map }) });
+            scene.addInstance(MeshInstance{
+                .mMesh = mesh, .mMaterial = scene.addMaterial(Material{ .mDiffuse = diffuse, .mSpecular = map }) });
 
             const osg::Vec3f toFirst(0.0f, -1.0f, 0.0f);
             const osg::Vec3f toSecond(-0.6f, -0.8f, 0.0f);
@@ -943,9 +911,9 @@ namespace Rtx::Testing
             const float second = lobe(toSecond);
             ASSERT_GT(second, 0.8f * first) << "the directions no longer tell the two targets apart";
 
-            std::vector<std::uint8_t> pixels;
-            EXPECT_GT(countHits(scene, textures, camera, size, pixels), 0u);
-            EXPECT_NEAR(mRadiance[centre], first + second, (first + second) * 1e-4f);
+            const Frame frame = shoot(scene, textures, camera, size);
+            EXPECT_GT(frame.mHits, 0u);
+            EXPECT_NEAR(frame.at(centre), first + second, (first + second) * 1e-4f);
         }
 
         /// **The same for the sky: a metal holds the source its lobe returns, and one frame is the
@@ -981,9 +949,8 @@ namespace Rtx::Testing
             const Index diffuse = scene.textures().add(VFS::Path::NormalizedView("base.dds"));
             const Index map = scene.textures().add(
                 VFS::Path::NormalizedView("base_spec.dds"), TextureWrap::Repeat, TextureEncoding::Data);
-            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = mesh,
-                .mMaterial = scene.addMaterial(Material{ .mDiffuse = diffuse, .mSpecular = map }) });
+            scene.addInstance(MeshInstance{
+                .mMesh = mesh, .mMaterial = scene.addMaterial(Material{ .mDiffuse = diffuse, .mSpecular = map }) });
 
             const osg::Vec3f toSun(0.0f, -1.0f, 0.0f);
             const osg::Vec3f toMoon(-0.6f, -0.8f, 0.0f);
@@ -1023,9 +990,9 @@ namespace Rtx::Testing
             const float moon = lobe(toMoon, moonlight);
             ASSERT_GT(std::abs(moon / sun - 0.2f), 0.05f) << "the directions no longer tell the two targets apart";
 
-            std::vector<std::uint8_t> pixels;
-            EXPECT_GT(countHits(scene, textures, camera, size, pixels), 0u);
-            EXPECT_NEAR(mRadiance[centre], sun + moon, (sun + moon) * 1e-4f);
+            const Frame frame = shoot(scene, textures, camera, size);
+            EXPECT_GT(frame.mHits, 0u);
+            EXPECT_NEAR(frame.at(centre), sun + moon, (sun + moon) * 1e-4f);
         }
 
         /// Which side of a surface the light may come from is the triangle's plane's answer, and a
@@ -1036,7 +1003,7 @@ namespace Rtx::Testing
         /// whose plane is level to a hundredth — and a normal merely turned to face the *ray* is
         /// left pointing down there, because at a shallow enough view it already does face the eye.
         /// A floor with its normal under it drops every lamp overhead on the cosine and sends its
-        /// bounce into itself, which came out as a black band that slid about as the camera moved.
+        /// bounce into itself, which reads as a black band that slides about as the camera moves.
         ///
         /// The wall is met at fourteen degrees to its own plane, which is what makes that possible:
         /// the camera stands at `(200, -50, 0)`, so the ray travels `(-0.970, 0.243, 0)` and a normal
@@ -1072,14 +1039,14 @@ namespace Rtx::Testing
 
             const auto render = [&](std::span<const osg::Vec3f> normals) {
                 SceneDesc scene;
-                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                    .mMesh = scene.addMesh(
-                        MeshArrays{ .mPositions = sWallQuad, .mNormals = normals, .mIndices = sQuadIndices }) });
+                scene.addInstance(
+                    MeshInstance{ .mMesh = scene.addMesh(MeshArrays{
+                                      .mPositions = sWallQuad, .mNormals = normals, .mIndices = sQuadIndices }) });
                 scene.addLight(lamp);
 
-                std::vector<std::uint8_t> pixels;
-                EXPECT_GT(countHits(scene, {}, camera, size, pixels), 0u);
-                return pixels[centre];
+                const Frame frame = shoot(scene, {}, camera, size);
+                EXPECT_GT(frame.mHits, 0u);
+                return frame.byte(centre);
             };
 
             // No vertex normals at all, so the plane is the whole answer and meets the lamp square.
@@ -1133,7 +1100,7 @@ namespace Rtx::Testing
                     material.mAlphaRef = 0.5f;
                 }
 
-                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                scene.addInstance(MeshInstance{
                     .mMesh = scene.addMesh(
                         MeshArrays{ .mPositions = sWallQuad, .mTexCoords = sQuadUv, .mIndices = sQuadIndices },
                         FoldedShape{ .mSheet = sheet }),
@@ -1154,10 +1121,9 @@ namespace Rtx::Testing
                 camera.mSkyZenith = osg::Vec3f();
                 camera.mAmbient = osg::Vec3f();
 
-                std::vector<std::uint8_t> pixels;
-                EXPECT_GT(
-                    countHits(scene, masked ? textures : std::span<const TextureData>(), camera, size, pixels), 0u);
-                return mRadiance[centre];
+                const Frame frame = shoot(scene, masked ? textures : std::span<const TextureData>(), camera, size);
+                EXPECT_GT(frame.mHits, 0u);
+                return frame.at(centre);
             };
 
             const float front = 2.0f * Shaders::INV_PI;
@@ -1219,8 +1185,7 @@ namespace Rtx::Testing
                 if (edge.has_value())
                 {
                     const std::array quad = halfPlane(depth, *edge);
-                    scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                        .mMesh = scene.addMesh(MeshArrays{ .mPositions = quad, .mIndices = sQuadIndices }) });
+                    addQuad(scene, quad);
                 }
                 return scene;
             }
@@ -1230,7 +1195,7 @@ namespace Rtx::Testing
                 const std::optional<Light>& lamp, float depth, const Shaders::VisibilityConstants& camera)
             {
                 std::vector<float> open;
-                renderRadiance(sceneWith(lamp, depth, std::nullopt), camera, sSize, open, { .mFrames = 1 });
+                open = shoot(sceneWith(lamp, depth, std::nullopt), {}, camera, sSize, { .mFrames = 1 }).mRadiance;
                 return open;
             }
 
@@ -1245,7 +1210,7 @@ namespace Rtx::Testing
                 const Shaders::VisibilityConstants& camera, std::uint32_t frames)
             {
                 std::vector<float> shadowed;
-                renderRadiance(scene, camera, sSize, shadowed, { .mFrames = frames });
+                shadowed = shoot(scene, {}, camera, sSize, { .mFrames = frames }).mRadiance;
 
                 double total = 0.0;
                 for (std::uint32_t row = 0; row < sSize; ++row)
@@ -1352,8 +1317,8 @@ namespace Rtx::Testing
         /// where the lamp of the same record reads `500000 * falloff * 0.001667 / pi` = 0.001058,
         /// which is 2 of 255. A sheet ten units under the floor takes nothing away, because the
         /// ball is the ray's clearance and the floor stands inside it: drawn to a point anywhere on
-        /// the ball instead, half of a floor's rays went down through the floor into whatever was
-        /// under it, and came back as a speckle over the whole pool.
+        /// the ball instead, half of a floor's rays would go down through the floor into whatever is
+        /// under it, and come back as a speckle over the whole pool.
         TEST_F(RtxVisibilityTest, aFloorInsideAFillIsLitFromEverySideAndShadowedByNothing)
         {
             constexpr std::uint32_t size = 33;
@@ -1361,13 +1326,9 @@ namespace Rtx::Testing
 
             const auto render = [&](bool fill, bool underneath) {
                 SceneDesc scene;
-                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                    .mMesh
-                    = scene.addMesh(MeshArrays{ .mPositions = sheetAt(4000.0f, 0.0f), .mIndices = sQuadIndices }) });
+                addQuad(scene, sheetAt(4000.0f, 0.0f));
                 if (underneath)
-                    scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                        .mMesh = scene.addMesh(
-                            MeshArrays{ .mPositions = sheetAt(4000.0f, -10.0f), .mIndices = sQuadIndices }) });
+                    addQuad(scene, sheetAt(4000.0f, -10.0f));
                 scene.addLight(Light{
                     .mPosition = osg::Vec3f(300.0f, 0.0f, 0.5f),
                     .mIntensity = osg::Vec3f(500000.0f, 500000.0f, 500000.0f),
@@ -1383,9 +1344,9 @@ namespace Rtx::Testing
                 camera.mSkyZenith = osg::Vec3f();
                 camera.mAmbientFromSky = 1.0f;
 
-                std::vector<std::uint8_t> pixels;
-                EXPECT_GT(countHits(scene, {}, camera, size, pixels), 0u);
-                return pixels[centre];
+                const Frame frame = shoot(scene, {}, camera, size);
+                EXPECT_GT(frame.mHits, 0u);
+                return frame.byte(centre);
             };
 
             EXPECT_EQ(render(false, false), 2) << "the lamp of the same record, nearly level with the floor";
@@ -1425,9 +1386,9 @@ namespace Rtx::Testing
                 camera.mSkyZenith = osg::Vec3f();
                 camera.mAmbientFromSky = 1.0f;
 
-                std::vector<std::uint8_t> pixels;
-                EXPECT_GT(countHits(scene, {}, camera, size, pixels), 0u);
-                return pixels[centre];
+                const Frame frame = shoot(scene, {}, camera, size);
+                EXPECT_GT(frame.mHits, 0u);
+                return frame.byte(centre);
             };
 
             EXPECT_EQ(render(false), 69) << "the lamp";
@@ -1500,13 +1461,11 @@ namespace Rtx::Testing
 
         /// What terminates a path is occluded on both sides of a door, and only the reach differs.
         ///
-        /// **The first level was always occluded and the second never was.** A bounce ray that hits
-        /// something is shaded there and the path stops, and what it was handed was the open sky
-        /// whatever stood over it — so a hollow was lit as though the sky reached into it.
-        /// `ambientReaching` is the missing half, and `mAmbientFromSky` says how far it looks: out
-        /// of doors the ambient is the sky and the ray runs to it, and in a room the ambient is the
-        /// `AMBI` fill, which the walls make rather than block, so only what is within
-        /// `ROOM_FILL_REACH` takes it away.
+        /// **Both levels are occluded.** A bounce ray that hits something is shaded there and the
+        /// path stops, and handed the open sky whatever stood over it, a hollow would be lit as
+        /// though the sky reached into it. `ambientReaching` is that half, and `mAmbientFromSky` says how far it looks:
+        /// out of doors the ambient is the sky and the ray runs to it, and in a room the ambient is the `AMBI` fill,
+        /// which the walls make rather than block, so only what is within `ROOM_FILL_REACH` takes it away.
         ///
         /// A floor under a lid, lit by nothing but the ambient. Every bounce off the floor lands on
         /// the lid's underside, and what that underside is handed is the whole of the claim.
@@ -1525,12 +1484,8 @@ namespace Rtx::Testing
 
             const auto lidAt = [](float lid) {
                 SceneDesc scene;
-                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                    .mMesh
-                    = scene.addMesh(MeshArrays{ .mPositions = sheetAt(4000.0f, 0.0f), .mIndices = sQuadIndices }) });
-                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                    .mMesh
-                    = scene.addMesh(MeshArrays{ .mPositions = sheetAt(4000.0f, lid), .mIndices = sQuadIndices }) });
+                addQuad(scene, sheetAt(4000.0f, 0.0f));
+                addQuad(scene, sheetAt(4000.0f, lid));
 
                 return scene;
             };
@@ -1548,10 +1503,9 @@ namespace Rtx::Testing
                 camera.mAmbient = osg::Vec3f(0.5f, 0.5f, 0.5f);
                 camera.mAmbientFromSky = fromSky;
 
-                std::vector<std::uint8_t> pixels;
-                countHits(scene, {}, camera, size, pixels, { .mFrames = 48 });
+                const Frame frame = shoot(scene, {}, camera, size, { .mFrames = 48 });
 
-                return meanRadiance();
+                return frame.mean();
             };
 
             const SceneDesc open = lidAt(600.0f);
@@ -1606,10 +1560,9 @@ namespace Rtx::Testing
                     = Shaders::sunSource(osg::Vec3f(std::sin(sLeaningNormal), 0.0f, upward * std::cos(sLeaningNormal)),
                         osg::Vec3f(sunlight, sunlight, sunlight));
 
-                std::vector<std::uint8_t> pixels;
-                countHits(scene, {}, camera, size, pixels, { .mFrames = 16 });
+                const Frame frame = shoot(scene, {}, camera, size, { .mFrames = 16 });
 
-                return meanRadiance();
+                return frame.mean();
             };
 
             // The sun along the shading normal itself: cosine one, albedo a half, and the Lambert
@@ -1647,9 +1600,7 @@ namespace Rtx::Testing
 
                 // Wide enough that every direction off the floor which is on its side meets it, so
                 // the share below is the geometry's and not the sheet's edge.
-                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                    .mMesh = scene.addMesh(MeshArrays{ .mPositions = sheetAt(40000.0f, z), .mIndices = sQuadIndices }),
-                    .mMaterial = scene.addMaterial(glowing) });
+                addQuad(scene, sheetAt(40000.0f, z), scene.addMaterial(glowing));
 
                 return scene;
             };
@@ -1665,10 +1616,9 @@ namespace Rtx::Testing
                 camera.mAmbient = osg::Vec3f();
                 camera.mAmbientFromSky = 1.0f;
 
-                std::vector<std::uint8_t> pixels;
-                countHits(scene, {}, camera, size, pixels, { .mFrames = 64 });
+                const Frame frame = shoot(scene, {}, camera, size, { .mFrames = 64 });
 
-                return meanRadiance();
+                return frame.mean();
             };
 
             const float share = 0.5f * (1.0f + std::cos(sLeaningNormal));
@@ -1703,8 +1653,7 @@ namespace Rtx::Testing
             constexpr float samples = float{ size } * size;
 
             SceneDesc scene;
-            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(MeshArrays{ .mPositions = sheetAt(4000.0f, 0.0f), .mIndices = sQuadIndices }) });
+            addQuad(scene, sheetAt(4000.0f, 0.0f));
 
             // Three ranges rather than one, and one of them descending, so a test that passed by
             // matching a total or by swapping two channels would not.
@@ -1723,18 +1672,18 @@ namespace Rtx::Testing
             const auto shade = [&](std::uint32_t frame, std::uint32_t accumulate = 0) {
                 camera.mFrame = frame;
 
-                std::vector<std::uint8_t> pixels;
-                EXPECT_EQ(countHits(scene, {}, camera, size, pixels, { .mFrames = accumulate }), size * size);
-                return pixels;
+                Frame drawn = shoot(scene, {}, camera, size, { .mFrames = accumulate });
+                EXPECT_EQ(drawn.mHits, size * size);
+                return drawn;
             };
 
             // The mean and the standard deviation of one channel across the frame, in linear.
-            const auto measure = [&](const std::vector<std::uint8_t>& pixels, std::size_t channel) {
+            const auto measure = [&](const Frame& drawn, std::size_t channel) {
                 float sum = 0.0f;
                 float squares = 0.0f;
-                for (std::size_t i = channel; i < pixels.size(); i += 4)
+                for (std::size_t i = channel; i < drawn.mRadiance.size(); i += 4)
                 {
-                    const float linear = decodeSrgb(pixels[i]);
+                    const float linear = drawn.at(i);
                     sum += linear;
                     squares += linear * linear;
                 }
@@ -1743,8 +1692,8 @@ namespace Rtx::Testing
                 return std::pair{ mean, std::sqrt(squares / samples - mean * mean) };
             };
 
-            const std::vector<std::uint8_t> first = shade(0);
-            ASSERT_EQ(first.size(), std::size_t{ size } * size * 4);
+            const Frame first = shade(0);
+            ASSERT_EQ(first.mRadiance.size(), std::size_t{ size } * size * 4);
 
             for (std::size_t channel = 0; channel < 3; ++channel)
             {
@@ -1768,10 +1717,10 @@ namespace Rtx::Testing
             // that no amount of accumulation could average away. Two independent samples land on the
             // same byte only by coincidence — green's range covers some eighty of them here, so a
             // few per cent — and the rest must differ.
-            const std::vector<std::uint8_t> second = shade(1);
+            const Frame second = shade(1);
             std::size_t moved = 0;
-            for (std::size_t i = 1; i < first.size(); i += 4)
-                moved += first[i] != second[i] ? 1u : 0u;
+            for (std::size_t i = 1; i < first.mRadiance.size(); i += 4)
+                moved += first.byte(i) != second.byte(i) ? 1u : 0u;
 
             EXPECT_GT(moved, std::size_t{ size } * size * 9 / 10) << "the frame redraws the bounce";
 
@@ -1805,7 +1754,7 @@ namespace Rtx::Testing
             // moves the mean by 0.0046 — the whole point of the assertion, and something a tolerance
             // sized for one noisy frame would wave through.
             constexpr std::uint32_t averaged = 64;
-            const std::vector<std::uint8_t> converged = shade(0, averaged);
+            const Frame converged = shade(0, averaged);
 
             for (std::size_t channel = 0; channel < 3; ++channel)
             {
@@ -1879,17 +1828,17 @@ namespace Rtx::Testing
                 const Index diffuse = scene.textures().add(VFS::Path::NormalizedView("white.dds"));
                 const Index map = scene.textures().add(
                     VFS::Path::NormalizedView("white_spec.dds"), TextureWrap::Repeat, TextureEncoding::Data);
-                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                scene.addInstance(MeshInstance{
                     .mMesh = scene.addMesh(MeshArrays{
                         .mPositions = sheetAt(4000.0f, 0.0f), .mTexCoords = sQuadUv, .mIndices = sQuadIndices }),
                     .mMaterial = scene.addMaterial(Material{ .mDiffuse = diffuse, .mSpecular = map }) });
 
-                std::vector<std::uint8_t> pixels;
-                EXPECT_EQ(countHits(scene, textures, camera, size, pixels, { .mFrames = 4 }), size * size);
+                const Frame frame = shoot(scene, textures, camera, size, { .mFrames = 4 });
+                EXPECT_EQ(frame.mHits, size * size);
 
                 double sum = 0.0;
-                for (std::size_t at = 0; at < mRadiance.size(); at += 4)
-                    sum += static_cast<double>(mRadiance[at]);
+                for (std::size_t at = 0; at < frame.mRadiance.size(); at += 4)
+                    sum += static_cast<double>(frame.at(at));
 
                 return sum / (double{ size } * size);
             };

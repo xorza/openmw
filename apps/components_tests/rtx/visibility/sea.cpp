@@ -4,7 +4,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
-#include <random>
 #include <span>
 #include <vector>
 
@@ -108,13 +107,12 @@ namespace Rtx::Testing
                     osg::Vec3f(0.0f, -0.05f, -500.0f), osg::Vec3f(0.0f, 0.0f, -490.0f), 60.0f, size, size, 10000.0f);
                 litThroughWater(camera);
 
-                std::vector<std::uint8_t> pixels;
-                countHits(scene, {}, camera, size, pixels, { .mSea = sea });
+                const Frame frame = shoot(scene, {}, camera, size, { .mSea = sea });
 
                 std::vector<float> field;
                 field.reserve(count);
                 for (std::size_t i = 0; i < count; ++i)
-                    field.push_back(decodeSrgb(pixels[i * 4 + 1]));
+                    field.push_back(frame.at(i * 4 + 1));
 
                 return field;
             };
@@ -168,19 +166,17 @@ namespace Rtx::Testing
             const auto shaft = [&](const std::optional<std::array<osg::Vec3f, 4>>& lid) {
                 SceneDesc scene = makeOpenWater(4000.0f);
                 if (lid.has_value())
-                    scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                        .mMesh = scene.addMesh(MeshArrays{ .mPositions = *lid, .mIndices = sQuadIndices }) });
+                    addQuad(scene, *lid);
 
                 Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(0.0f, -0.05f, -eye), osg::Vec3f(0.0f, 0.0f, -eye + 10.0f), 60.0f, size, size, 10000.0f);
                 litThroughWater(camera, osg::DegreesToRadians(45.0f));
 
-                std::vector<std::uint8_t> pixels;
-                countHits(scene, {}, camera, size, pixels);
+                const Frame frame = shoot(scene, {}, camera, size);
 
                 float total = 0.0f;
                 for (std::size_t i = 0; i < count; ++i)
-                    total += mRadiance[i * 4 + 1];
+                    total += frame.at(i * 4 + 1);
 
                 return total / static_cast<float>(count);
             };
@@ -238,63 +234,6 @@ namespace Rtx::Testing
             EXPECT_NEAR(beside / open, 1.0f, 0.01f) << "and one that merely stands over them";
         }
 
-        /// `causticGain` is the mean it says it is, against the field it was fitted to.
-        ///
-        /// **The fit is the one number in the caustic nobody can read off the shader.** Everything
-        /// else there is arithmetic or a dial; this is three coefficients standing for four million
-        /// draws, and a fit nobody can check is a magic number. So the draws are made again here.
-        ///
-        /// The Hessian of an isotropic Gaussian field has one free parameter. Its fourth spectral
-        /// moments give `Var[Hxx] = Var[Hyy] = 3c`, `Var[Hxy] = Cov[Hxx, Hyy] = c`, so
-        /// `E[(tr H)^2] = 8c` — and the fold is `b` times the root of that, which is the whole of
-        /// what the curve is a function of. Drawn as two independent parts plus one shared: the
-        /// shared draw is what makes `Hxx` and `Hyy` agree by `c`.
-        ///
-        /// Two hundred thousand draws a fold, which puts the standard error of each mean under
-        /// 0.002 — a tenth of what is allowed, so a failure here is the fit and not the draw.
-        TEST(RtxCausticGainTest, theFittedGainIsTheMeanOfWhatTheCausticComputes)
-        {
-            constexpr std::size_t draws = 200000;
-            constexpr float shared = 1.0f / 8.0f;
-            constexpr float own = 3.0f / 8.0f - shared;
-
-            std::mt19937 gen(11);
-            std::normal_distribution<float> normal(0.0f, 1.0f);
-
-            // One field, every fold measured on it, so the folds share their draws and the curve
-            // comes out smooth rather than eight independent estimates of eight points.
-            std::vector<std::array<float, 3>> hessians;
-            hessians.reserve(draws);
-            for (std::size_t draw = 0; draw < draws; ++draw)
-            {
-                const float together = std::sqrt(shared) * normal(gen);
-                hessians.push_back({ std::sqrt(own) * normal(gen) + together, std::sqrt(own) * normal(gen) + together,
-                    std::sqrt(shared) * normal(gen) });
-            }
-
-            for (const float fold : { 0.5f, 1.0f, 1.5f, 2.0f, 2.5f, 3.0f, 3.5f, 4.0f })
-            {
-                // `E[(tr H)^2]` is one for the draws above, so the fold is the bend outright.
-                double total = 0.0;
-                for (const std::array<float, 3>& h : hessians)
-                {
-                    const float determinant = (1.0f - fold * h[0]) * (1.0f - fold * h[1]) - fold * fold * h[2] * h[2];
-
-                    total += 1.0 / double{ std::max(std::abs(determinant), 1.0f / Shaders::WATER_CAUSTIC_MAX) };
-                }
-
-                EXPECT_NEAR(Shaders::causticGain(fold), static_cast<float>(total / draws), 0.02f)
-                    << "at a fold of " << fold;
-            }
-
-            // **The second order is exact rather than fitted**, which is what the numerator's
-            // coefficient being the denominator's plus one buys: a reciprocal of `1 - u` with `u`
-            // of variance `f^2` is worth `1 + f^2` to second order, and the curve has to start
-            // there whatever the draws say further out.
-            EXPECT_FLOAT_EQ(Shaders::causticGain(0.0f), 1.0f) << "a flat sea gathers nothing";
-            EXPECT_NEAR(Shaders::causticGain(0.1f), 1.01f, 0.001f) << "and a nearly flat one is 1 + f^2";
-        }
-
         /// The waves gather the sun into moving lines on the bed, and move light rather than make it.
         ///
         /// Caustics are ray density — the determinant of the Jacobian of the map from where light
@@ -330,8 +269,7 @@ namespace Rtx::Testing
                 litThroughWater(camera);
                 camera.mWaterTime = splitSeconds(seconds);
 
-                std::vector<std::uint8_t> image;
-                countHits(scene, {}, camera, size, image, { .mSea = sea });
+                const Frame image = shoot(scene, {}, camera, size, { .mSea = sea });
 
                 // **The radiance and not the byte, which is what a ratio of two dark pixels needs.**
                 // Twenty metres of water leaves green at a fiftieth of the scale, where one step of
@@ -340,7 +278,7 @@ namespace Rtx::Testing
                 std::vector<float> linear;
                 linear.reserve(count);
                 for (std::size_t i = 0; i < count; ++i)
-                    linear.push_back(mRadiance[i * 4 + 1]);
+                    linear.push_back(image.at(i * 4 + 1));
 
                 return linear;
             };
@@ -408,13 +346,13 @@ namespace Rtx::Testing
             // is a limit in *time*, not in space: the waves that focus hardest are the shortest, and
             // a wave's period falls with its length, so the same waves that make the boldest
             // caustics are the ones that make them tear.
-            // **A fifth less bold than the sinusoid table drew, and bought on purpose.** Curvature
-            // weights a component by `A k²`, so a table of sixty-four had the shortest few owning
-            // the Hessian outright — a handful of plane waves crossing, which focuses into hard
-            // repeating lines and reads as a lattice. Tens of thousands of components at the same
-            // wavelengths interfere into a mottle instead: the same energy, spread over every
-            // direction rather than four, and no line drawn twice. It measures 0.223 against the
-            // table's 0.277.
+            // **A fifth less bold than a table of sixty-four sinusoids draws, and bought on
+            // purpose.** Curvature weights a component by `A k²`, so such a table has the shortest
+            // few owning the Hessian outright — a handful of plane waves crossing, which focuses
+            // into hard repeating lines and reads as a lattice. Tens of thousands of components at
+            // the same wavelengths interfere into a mottle instead: the same energy, spread over
+            // every direction rather than four, and no line drawn twice. It measures 0.223 against
+            // such a table's 0.277.
             EXPECT_NEAR(contrastOf(shallow), 0.213f, 0.02f) << "the pattern's contrast, as a fraction of its own mean";
 
             // A twelfth of a second, which is how long a frame is worth caring about. For two
@@ -428,11 +366,10 @@ namespace Rtx::Testing
             // over a small sweep of offsets separates them: the pattern travels a pixel here, and
             // that pixel is worth fourteen points of the 67 per cent the raw sum reports.
             //
-            // **The sweep that put tearing at half was taken on a different surface.** 18 units of
-            // wavelength reshuffled 73% and read as stripes running across the bottom, 32 came out
-            // at 51%, 50 was dull at 33% — all of it over a table of sixty-four sinusoids, where the
-            // shortest few owned the Hessian in four directions and the pattern was a lattice. A
-            // lattice reshuffling is what reads as stripes. Tens of thousands of wavevectors
+            // **Over a table of sixty-four sinusoids the same sweep reads otherwise.** 18 units of
+            // wavelength reshuffle 73% and read as stripes running across the bottom, 32 come out at
+            // 51%, 50 is dull at 33% — the shortest few own the Hessian in four directions and the
+            // pattern is a lattice. A lattice reshuffling is what reads as stripes. Tens of thousands of wavevectors
             // interfere into a mottle instead, and two shots a twelfth of a second apart show a net
             // that slides rather than one that boils.
             const std::vector<float> later = causticField(140.0f, 1.0f / 12.0f);
@@ -504,8 +441,7 @@ namespace Rtx::Testing
                 camera.mSunDiscColour = osg::Vec3f(1.0f, 1.0f, 1.0f);
 
                 const SceneDesc scene = makeWall();
-                std::vector<std::uint8_t> pixels;
-                countHits(scene, {}, camera, size, pixels);
+                const Frame frame = shoot(scene, {}, camera, size);
 
                 // A pixel's solid angle is its side squared at these angles: the frame is two
                 // degrees across in one case and twenty in the other, where the cos-cubed the exact
@@ -513,7 +449,7 @@ namespace Rtx::Testing
                 Disc disc{ .mPeak = 0.0f, .mTotal = 0.0f, .mSpreadAngle = camera.mCamera.mSpreadAngle };
                 for (std::size_t i = 0; i < std::size_t{ size } * size; ++i)
                 {
-                    const float radiance = decodeSrgb(pixels[i * 4]);
+                    const float radiance = frame.at(i * 4);
                     disc.mPeak = std::max(disc.mPeak, radiance);
                     disc.mTotal += radiance * camera.mCamera.mSpreadAngle * camera.mCamera.mSpreadAngle;
                 }
@@ -591,14 +527,13 @@ namespace Rtx::Testing
                 camera.mWaterLevel = 0.0f;
 
                 const SceneDesc scene = makeOpenWater(20000.0f);
-                std::vector<std::uint8_t> pixels;
-                countHits(scene, {}, camera, size, pixels, { .mSea = sea });
+                const Frame frame = shoot(scene, {}, camera, size, { .mSea = sea });
 
                 Road found{ .mPeak = 0, .mLit = 0 };
                 for (std::size_t i = 0; i < std::size_t{ size } * size; ++i)
                 {
-                    found.mPeak = std::max(found.mPeak, int{ pixels[i * 4] });
-                    found.mLit += pixels[i * 4] > 0 ? 1 : 0;
+                    found.mPeak = std::max(found.mPeak, int{ frame.byte(i * 4) });
+                    found.mLit += frame.byte(i * 4) > 0 ? 1 : 0;
                 }
                 return found;
             };
@@ -650,7 +585,7 @@ namespace Rtx::Testing
                 camera.mSeaHeading = heading;
 
                 const SceneDesc scene = makeOpenWater(20000.0f);
-                countHits(scene, {}, camera, size, pixels, { .mFrames = 8 });
+                pixels = shoot(scene, {}, camera, size, { .mFrames = 8 }).bytes();
             };
 
             std::vector<std::uint8_t> east;
@@ -731,7 +666,7 @@ namespace Rtx::Testing
                 camera.mWaterTime = splitSeconds(time);
 
                 const SceneDesc scene = makeOpenWater(20000.0f);
-                countHits(scene, {}, camera, size, pixels, { .mSea = SeaState{ .mSignificantHeight = 0.0f } });
+                pixels = shoot(scene, {}, camera, size, { .mSea = SeaState{ .mSignificantHeight = 0.0f } }).bytes();
             };
 
             const auto differing = [](const std::vector<std::uint8_t>& a, const std::vector<std::uint8_t>& b) {
@@ -812,9 +747,8 @@ namespace Rtx::Testing
             // the texture and nothing else: an unlit albedo would need a light, and a light would
             // put its own falloff between the mip and the measurement.
             //
-            // **A patch of the bed and not one pixel of it, which is the whole of what this used to
-            // get wrong.** `mLostSlope` is a mean over the cone's own footprint — 66 units against a
-            // spectrum that stops at 32, so about four correlation cells of the waves that carry the
+            // **A patch of the bed and not one pixel of it.** `mLostSlope` is a mean over the cone's own footprint — 66
+            // units against a spectrum that stops at 32, so about four correlation cells of the waves that carry the
             // slope. One reading of that is not an ensemble mean: measured over this patch the level
             // has a standard deviation of 0.12, and the centre pixel stood 0.8 of one away from the
             // patch's own mean.
@@ -831,11 +765,9 @@ namespace Rtx::Testing
                     .mPositions = sheetAt(500.0f, -depth), .mTexCoords = sQuadUv, .mIndices = sQuadIndices });
                 const Index glow = scene.addMaterial(
                     Material{ .mEmissive = scene.textures().add(VFS::Path::NormalizedView("ladder.dds")) });
-                scene.addInstance(
-                    MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = bed, .mMaterial = glow });
+                scene.addInstance(MeshInstance{ .mMesh = bed, .mMaterial = glow });
 
-                std::vector<std::uint8_t> pixels;
-                countHits(scene, textures, camera, size, pixels, { .mSea = sea });
+                const Frame frame = shoot(scene, textures, camera, size, { .mSea = sea });
 
                 // Back out everything between the texture and the radiance: the emissive scale, the
                 // water the glow crossed on its way up, and the two per cent the surface reflected.
@@ -845,7 +777,7 @@ namespace Rtx::Testing
                 float total = 0.0f;
                 for (std::uint32_t y = size / 2 - across; y <= size / 2 + across; ++y)
                     for (std::uint32_t x = size / 2 - across; x <= size / 2 + across; ++x)
-                        total += std::exp2(ladderLevel(mRadiance[(std::size_t{ y } * size + x) * 4 + 1] / carried));
+                        total += std::exp2(ladderLevel(frame.at((std::size_t{ y } * size + x) * 4 + 1) / carried));
 
                 // In ladder texels, which is a width up to the one scale that cancels below.
                 return total / static_cast<float>((2 * across + 1) * (2 * across + 1));

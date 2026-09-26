@@ -18,7 +18,7 @@ namespace Rtx
         {
             const auto table = Shaders::hitRecordTable();
             EXPECT_EQ(table.size(), 30u);
-            EXPECT_EQ(Shaders::HIT_RECORDS_PER_SHADER, 10u);
+            static_assert(Shaders::HIT_RECORDS_PER_SHADER == 10u, "the offsets below are placed by hand");
 
             const Shaders::HitRecord& waterArmsLayerThree = table[28];
             EXPECT_EQ(waterArmsLayerThree.mArms, 1u);

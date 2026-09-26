@@ -139,7 +139,7 @@ namespace Rtx
         /// the coverage with it. A Halton sequence covers the tile evenly, and converges faster than
         /// a random draw besides.
         ///
-        /// A box and not a plane, because the field has a third axis now and a plane through one
+        /// A box and not a plane, because the field has a third axis and a plane through one
         /// would sample a single slice of it.
         osg::Vec3f haltonAt(std::uint32_t index)
         {
@@ -420,7 +420,7 @@ namespace Rtx
             // Stated rather than read, because the figures below are only the game's if this is.
             ASSERT_EQ(Settings::camera().mViewingDistance, 7168.0f) << "the view range these are against";
 
-            // **Passed rather than assumed**, because outdoors this renderer no longer measures the
+            // **Passed rather than assumed**, because outdoors this renderer does not measure the
             // air against it: the world is built to `distant land cells` and fog tuned to a shorter
             // reach swallows all of it. What is checked here is the conversion, against the range the
             // original engine used, which is still what a room is measured by.
@@ -455,7 +455,7 @@ namespace Rtx
         TEST(RtxFogTest, aRoomsAirIsStretchedPastTheRangeItsRecordWasWrittenAgainst)
         {
             // The shipped default of the range the original engine measures a room against, which is
-            // what the stretch below was set against and is no longer read from.
+            // what the stretch below was set against, and which this renderer does not read.
             constexpr float view = 7168.0f;
 
             // **The dial itself, pinned once**, so moving it is a deliberate line and never a
@@ -491,10 +491,10 @@ namespace Rtx
 
         /// A room's air does not move when the player changes how much world they want to see.
         ///
-        /// **That was the whole reason for a constant.** The original engine measures a room's ramp
-        /// against `viewing distance`, so raising the setting thinned the air in every windowless
-        /// cellar in the game — a knob about how much world is built saying how a room feels. The
-        /// value is that range's shipped default and it is now written down rather than read.
+        /// **The whole reason for a constant.** The original engine measures a room's ramp against
+        /// `viewing distance`, so raising the setting would thin the air in every windowless cellar
+        /// in the game — a knob about how much world is built saying how a room feels. The value is
+        /// that range's shipped default, written down rather than read.
         TEST(RtxFogTest, aRoomsAirIsWhatTheContentSaidAndNotWhatTheViewDistanceIs)
         {
             const ESM::Cell::AMBIstruct room{ .mFog = 0x00808080, .mFogDensity = 0.75f };
@@ -611,8 +611,8 @@ namespace Rtx
             // **A quasi-exterior parts from the open air in the edge alone**, which is the one
             // element of the two that is about this renderer rather than about the weather:
             // Mournhold's every wall is built, so there is no ring of cut ground to close over.
-            // Everything a weather decides it keeps, and `roomFog` was what it used to be read as —
-            // an even unbanked medium, which closes over a sky.
+            // Everything a weather decides it keeps; read as `roomFog` it would be an even unbanked
+            // medium, which closes over a sky.
             const Fog quasi = quasiExteriorFog(haze, 0.69f, 0.3f, 4.0f * cell);
             EXPECT_EQ(quasi.mEdge, 0.0f);
             EXPECT_NE(quasi.mEdge, open.mEdge) << "the one field that parts them, and it did not";

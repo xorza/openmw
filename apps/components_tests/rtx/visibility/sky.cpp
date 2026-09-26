@@ -64,21 +64,20 @@ namespace Rtx::Testing
             camera.mAmbientFromSky = 1.0f;
 
             SceneDesc scene = makeWall();
-            std::vector<std::uint8_t> pixels;
-            countHits(scene, {}, camera, size, pixels);
+            const Frame frame = shoot(scene, {}, camera, size);
 
             // The camera looks level, so the middle row's rays are horizontal: z of zero, which is
             // the horizon end of the mix exactly. Pure red, and no blue at all.
             const std::size_t middle = centreValueOf(size);
-            EXPECT_EQ(pixels[middle], 255) << "the horizon colour, undiluted";
-            EXPECT_EQ(pixels[middle + 2], 0);
+            EXPECT_EQ(frame.byte(middle), 255) << "the horizon colour, undiluted";
+            EXPECT_EQ(frame.byte(middle + 2), 0);
 
             // The top row tilts up by tan(30) of the half-frame, so its z is sin of that angle and
             // the mix has moved toward the zenith. Only the direction of the move is asserted: the
             // exact angle is the camera's business and has its own test.
             const std::size_t top = std::size_t{ size / 2 } * 4;
-            EXPECT_LT(pixels[top], 255) << "less horizon overhead";
-            EXPECT_GT(pixels[top + 2], 0) << "and some zenith";
+            EXPECT_LT(frame.byte(top), 255) << "less horizon overhead";
+            EXPECT_GT(frame.byte(top + 2), 0) << "and some zenith";
         }
 
         /// Both moons light a floor, and the two slots are one code path.
@@ -97,8 +96,7 @@ namespace Rtx::Testing
             constexpr std::uint32_t size = 32;
 
             SceneDesc scene;
-            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(MeshArrays{ .mPositions = sheetAt(4000.0f, 0.0f), .mIndices = sQuadIndices }) });
+            addQuad(scene, sheetAt(4000.0f, 0.0f));
 
             Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -1.0f, 300.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
@@ -122,10 +120,10 @@ namespace Rtx::Testing
                 camera.mMoons[1] = Shaders::MoonDisc{};
                 camera.mMoons[slot] = overhead;
 
-                std::vector<std::uint8_t> pixels;
-                EXPECT_EQ(countHits(scene, {}, camera, size, pixels), size * size);
+                const Frame frame = shoot(scene, {}, camera, size);
+                EXPECT_EQ(frame.mHits, size * size);
 
-                return decodeSrgb(pixels[centreValueOf(size)]);
+                return frame.at(centreValueOf(size));
             };
 
             EXPECT_NEAR(litFromSlot(0), 0.31831f, 0.005f);
@@ -136,9 +134,9 @@ namespace Rtx::Testing
             camera.mMoons[0] = Shaders::MoonDisc{};
             camera.mMoons[1] = Shaders::MoonDisc{};
 
-            std::vector<std::uint8_t> dark;
-            EXPECT_EQ(countHits(scene, {}, camera, size, dark), size * size);
-            EXPECT_FLOAT_EQ(decodeSrgb(dark[centreValueOf(size)]), 0.0f);
+            const Frame dark = shoot(scene, {}, camera, size);
+            EXPECT_EQ(dark.mHits, size * size);
+            EXPECT_FLOAT_EQ(dark.at(centreValueOf(size)), 0.0f);
         }
 
         /// A moon hides the sky behind it, which is the order the engine draws its own in.
@@ -167,9 +165,7 @@ namespace Rtx::Testing
 
             SceneDesc scene;
             scene.textures().add(VFS::Path::NormalizedView("face.dds"));
-            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh
-                = scene.addMesh(MeshArrays{ .mPositions = sheetAt(4000.0f, -2000.0f), .mIndices = sQuadIndices }) });
+            addQuad(scene, sheetAt(4000.0f, -2000.0f));
 
             // Forty-five degrees up along `+y`, which keeps the camera off its own pole.
             Shaders::VisibilityConstants camera = Testing::makeCamera(
@@ -191,10 +187,9 @@ namespace Rtx::Testing
             facing.mFace = Shaders::NO_TEXTURE;
 
             const auto sky = [&](std::size_t at) {
-                std::vector<std::uint8_t> pixels;
-                countHits(scene, face, camera, size, pixels);
+                const Frame frame = shoot(scene, face, camera, size);
 
-                return mRadiance[at];
+                return frame.at(at);
             };
 
             camera.mMoons[0] = facing;
@@ -206,8 +201,8 @@ namespace Rtx::Testing
             EXPECT_NEAR(sky(centre), Shaders::MOON_RADIANCE, 0.01f) << "a face that stands in was drawn";
             camera.mMoons[0].mFace = Shaders::NO_TEXTURE;
 
-            // The sun put exactly behind it, which is what an eclipse is and what the moons used to
-            // take their share of alone.
+            // The sun put exactly behind it, which is what an eclipse is: the pixel is the sun's and
+            // the moon's together, and not the moon's alone.
             camera.mSun = Shaders::sunSource(facing.mSource.mDirection, osg::Vec3f(8.0f, 8.0f, 8.0f));
             camera.mSunDiscColour = osg::Vec3f(1.0f, 1.0f, 1.0f);
             EXPECT_NEAR(sky(centre), Shaders::MOON_RADIANCE, 0.01f) << "the sun came through the moon";
@@ -236,9 +231,7 @@ namespace Rtx::Testing
 
             SceneDesc scene;
             scene.textures().add(VFS::Path::NormalizedView("nebula.dds"));
-            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh
-                = scene.addMesh(MeshArrays{ .mPositions = sheetAt(4000.0f, -2000.0f), .mIndices = sQuadIndices }) });
+            addQuad(scene, sheetAt(4000.0f, -2000.0f));
 
             Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, 0.0f, 0.0f), osg::Vec3f(0.0f, 1000.0f, 1000.0f), 60.0f, size, size, 100000.0f);
@@ -257,9 +250,8 @@ namespace Rtx::Testing
             };
 
             const auto sky = [&]() {
-                std::vector<std::uint8_t> pixels;
-                countHits(scene, sheet, camera, size, pixels);
-                return mRadiance[centre];
+                const Frame frame = shoot(scene, sheet, camera, size);
+                return frame.at(centre);
             };
 
             EXPECT_NEAR(sky(), Shaders::NEBULA_RADIANCE, 1.0e-4f) << "the patch's sheet was not added";
@@ -286,8 +278,7 @@ namespace Rtx::Testing
 
             SceneDesc scene;
             scene.textures().add(VFS::Path::NormalizedView("cloud.dds"));
-            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(MeshArrays{ .mPositions = sheetAt(4000.0f, 0.0f), .mIndices = sQuadIndices }) });
+            addQuad(scene, sheetAt(4000.0f, 0.0f));
 
             constexpr std::array<std::uint8_t, 4> solid{ 255, 255, 255, 255 };
             const std::array<TextureData, 1> sheet{ describeTexel(solid) };
@@ -313,10 +304,9 @@ namespace Rtx::Testing
             const auto floorUnder = [&](float cover) {
                 camera.mClouds.mCover = cover;
 
-                std::vector<std::uint8_t> pixels;
-                countHits(scene, sheet, camera, size, pixels);
+                const Frame frame = shoot(scene, sheet, camera, size);
 
-                return mRadiance[centre];
+                return frame.at(centre);
             };
 
             EXPECT_NEAR(floorUnder(1.0f), 0.31831f, 1.0e-4f) << "a sheet at its own mean darkens nothing";
@@ -332,9 +322,8 @@ namespace Rtx::Testing
             camera.mClouds.mCover = 0.0f;
             std::array<TextureData, 1> standing = sheet;
             standing[0].mSource = TextureSource::StandIn;
-            std::vector<std::uint8_t> pixels;
-            countHits(scene, standing, camera, size, pixels);
-            EXPECT_NEAR(mRadiance[centre], 0.31831f, 1.0e-4f) << "a deck whose sheet stands in shadowed the floor";
+            const Frame frame = shoot(scene, standing, camera, size);
+            EXPECT_NEAR(frame.at(centre), 0.31831f, 1.0e-4f) << "a deck whose sheet stands in shadowed the floor";
         }
 
         /// The deck takes its shape from what the sheet paints, read against what that sheet averages.
@@ -361,9 +350,7 @@ namespace Rtx::Testing
             SceneDesc scene;
             scene.textures().add(VFS::Path::NormalizedView("cloud.dds"));
             scene.textures().add(VFS::Path::NormalizedView("cloud_ahead.dds"));
-            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh
-                = scene.addMesh(MeshArrays{ .mPositions = sheetAt(4000.0f, -2000.0f), .mIndices = sQuadIndices }) });
+            addQuad(scene, sheetAt(4000.0f, -2000.0f));
 
             constexpr std::array<std::uint8_t, 4> white{ 255, 255, 255, 255 };
             constexpr std::array<std::uint8_t, 4> dim{ 64, 64, 64, 255 };
@@ -394,10 +381,9 @@ namespace Rtx::Testing
             const auto deck = [&](float mean) {
                 camera.mClouds.mMean = mean;
 
-                std::vector<std::uint8_t> pixels;
-                countHits(scene, sheets, camera, size, pixels);
+                const Frame frame = shoot(scene, sheets, camera, size);
 
-                return mRadiance[centre];
+                return frame.at(centre);
             };
 
             EXPECT_NEAR(deck(1.0f), 0.4f, 1.0e-3f) << "a texel at its sheet's own mean is half lit";
@@ -431,9 +417,7 @@ namespace Rtx::Testing
 
             SceneDesc scene;
             scene.textures().add(VFS::Path::NormalizedView("white.dds"));
-            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh
-                = scene.addMesh(MeshArrays{ .mPositions = sheetAt(4000.0f, -400.0f), .mIndices = sQuadIndices }) });
+            addQuad(scene, sheetAt(4000.0f, -400.0f));
 
             constexpr std::array<std::uint8_t, 4> white{ 255, 255, 255, 255 };
             std::array<TextureData, 1> sheet{ describeTexel(white) };
@@ -533,12 +517,9 @@ namespace Rtx::Testing
             const auto washed = [&](float strength, float offAxisDegrees, bool walled) {
                 SceneDesc scene;
                 scene.textures().add(VFS::Path::NormalizedView("white.dds"));
-                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                    .mMesh
-                    = scene.addMesh(MeshArrays{ .mPositions = sheetAt(4000.0f, -400.0f), .mIndices = sQuadIndices }) });
+                addQuad(scene, sheetAt(4000.0f, -400.0f));
                 if (walled)
-                    scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                        .mMesh = scene.addMesh(MeshArrays{ .mPositions = wallAt(500.0f), .mIndices = sQuadIndices }) });
+                    addQuad(scene, wallAt(500.0f));
 
                 Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(0.0f, -2000.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
@@ -553,10 +534,10 @@ namespace Rtx::Testing
                 const SunGlare fader{ .mColour = osg::Vec3f(1.0f, 0.0f, 0.0f),
                     .mAngleMax = osg::DegreesToRadians(90.0f),
                     .mStrength = strength };
-                renderShot(scene, sheet, camera, size, Shot{ .mResetHistory = true, .mGlare = fader });
+                shoot(scene, sheet, camera, size, Shot{ .mResetHistory = true, .mGlare = fader });
 
                 std::vector<std::uint8_t> pixels;
-                mRenderer->readPixels(pixels);
+                mRenderer.readPixels(pixels);
                 requireFrame(pixels, size);
 
                 return Read{ pixels[corner], pixels[corner + 1] };
@@ -613,9 +594,8 @@ namespace Rtx::Testing
                 const Shaders::VisibilityConstants camera
                     = underTheEdge(osg::Vec3f(0.0f, -distance, 0.0f), size, edged ? reach : 0.0f);
 
-                std::vector<std::uint8_t> pixels;
-                countHits(makeWall(400.0f), {}, camera, size, pixels);
-                return int{ pixels[centre] };
+                const Frame frame = shoot(makeWall(400.0f), {}, camera, size);
+                return int{ frame.byte(centre) };
             };
 
             EXPECT_NEAR(look(0.5f * reach, true), int{ encodeSrgb(0.32848f) }, 1) << "half of the world";
@@ -661,9 +641,8 @@ namespace Rtx::Testing
             const auto look = [&](const osg::Vec3f& eye) {
                 const Shaders::VisibilityConstants camera = underTheEdge(eye, size, reach);
 
-                std::vector<std::uint8_t> pixels;
-                countHits(makeWall(400.0f), {}, camera, size, pixels);
-                return int{ pixels[centre] };
+                const Frame frame = shoot(makeWall(400.0f), {}, camera, size);
+                return int{ frame.byte(centre) };
             };
 
             EXPECT_EQ(look(osg::Vec3f(0.0f, -reach, -climb)), int{ encodeSrgb(0.3f) })
@@ -702,7 +681,7 @@ namespace Rtx::Testing
 
                 // A wall behind the camera, because a scene has to hold something. Every ray in the
                 // frame misses it and comes back with the sky alone.
-                renderRadiance(makeWall(), camera, size, values);
+                values = shoot(makeWall(), {}, camera, size).mRadiance;
             };
 
             std::vector<float> open;

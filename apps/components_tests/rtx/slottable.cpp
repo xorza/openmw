@@ -47,9 +47,6 @@ namespace Rtx
             void SetUp() override
             {
                 Testing::DeviceTest::SetUp();
-                if (mHarness == nullptr)
-                    return;
-
                 mTable.open(getDevice(), 2, VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, "test");
             }
 
@@ -300,9 +297,9 @@ namespace Rtx
         /// A copy's sync waits for the submit that took the copy's address, and for nothing else.
         ///
         /// **The copy knows its reader; nothing beside it does.** A placement writes the copy the
-        /// frame before last read, and what says that frame is done used to be a count of frames
-        /// kept by the renderer — exact for a frame's trace and wrong for a picture the interface's
-        /// own submit carried. `addressFor` stamps the copy with the value of whatever submit takes
+        /// frame before last read, and a count of frames kept by the renderer, the obvious judge of
+        /// whether that frame is done, is exact for a frame's trace and wrong for a picture the
+        /// interface's own submit carried. `addressFor` stamps the copy with the value of whatever submit takes
         /// it, and `finishReads` waits for that value. Held on the queue while this thread waits,
         /// so the wait cannot return before the hold opens and lasts at least the hold's length.
         TEST_F(RtxSlotTableTest, syncingWaitsForTheSubmitThatTookTheCopysAddress)

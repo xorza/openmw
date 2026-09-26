@@ -6,8 +6,10 @@
 #include <gtest/gtest.h>
 
 #include <osg/BoundingBox>
+#include <osg/Math>
 #include <osg/Matrixf>
 #include <osg/Vec3f>
+#include <vulkan/vulkan_core.h>
 
 #include <components/rtx/instancerecord.hpp>
 #include <components/rtx/material.hpp>
@@ -17,6 +19,7 @@
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/surface.hpp>
+#include <components/rtxvulkan/sceneacceleration.hpp>
 #include <components/vfs/pathutil.hpp>
 
 #include "support/geometry.hpp"
@@ -104,8 +107,7 @@ namespace Rtx
         TEST(RtxInstanceRecordTest, rowsKeptAcrossFramesAreTheRowsBuiltFromNothing)
         {
             SceneDesc scene;
-            const Index mesh
-                = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
+            const Index mesh = Testing::addQuadMesh(scene);
 
             const Index cutout = scene.addMaterial(Material{
                 .mDiffuse = scene.textures().add(VFS::Path::NormalizedView("textures/leaf.dds")),
@@ -237,8 +239,7 @@ namespace Rtx
         TEST(RtxInstanceRecordTest, aRowSaysWhichFacesItIsDrawnFrom)
         {
             SceneDesc scene;
-            const Index plain
-                = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices });
+            const Index plain = Testing::addQuadMesh(scene);
             const Index doubled
                 = scene.addMesh(MeshArrays{ .mPositions = Testing::sUnitQuad, .mIndices = Testing::sQuadIndices },
                     FoldedShape{ .mSheet = true, .mFolded = true });
@@ -260,6 +261,49 @@ namespace Rtx
             EXPECT_TRUE(records[stated].mTwoSided) << "a material the content turned culling off for";
             EXPECT_TRUE(records[leaf].mTwoSided) << "a shape the content doubled and the fold halved";
             EXPECT_TRUE(records[awning].mTwoSided) << "and one the fold took a twin from anywhere at all";
+        }
+
+        /// OpenSceneGraph's transform and an instance descriptor's must move a point to the same
+        /// place.
+        ///
+        /// OSG multiplies a row vector on the left and a descriptor a column vector on the right, so
+        /// the conversion is a transpose with the translation moved from the last row to the last
+        /// column. Getting it wrong mirrors the world about its diagonal, which symmetrical
+        /// architecture hides well enough to survive being looked at.
+        ///
+        /// Asserted on `Transform3x4`, which is where that transposition happens for every backend.
+        TEST(RtxTransformTest, theNeutralTransformMovesAPointWhereOpenSceneGraphWould)
+        {
+            osg::Matrixf matrix = osg::Matrixf::scale(2.0f, 2.0f, 2.0f)
+                * osg::Matrixf::rotate(osg::DegreesToRadians(37.0f), osg::Vec3f(0.3f, -0.5f, 0.8f))
+                * osg::Matrixf::translate(11.0f, -23.0f, 5.0f);
+
+            const osg::Vec3f point(3.0f, -5.0f, 7.0f);
+            const osg::Vec3f expected = point * matrix;
+
+            const Transform3x4 transform = toTransform3x4(matrix);
+            for (int row = 0; row < 3; ++row)
+            {
+                const float actual = transform.mRows[row][0] * point.x() + transform.mRows[row][1] * point.y()
+                    + transform.mRows[row][2] * point.z() + transform.mRows[row][3];
+                EXPECT_NEAR(actual, expected[row], 1e-3f) << "row " << row;
+            }
+        }
+
+        /// Vulkan stores the same three rows of four, so its conversion must not reorder anything.
+        ///
+        /// Cheap, and it is the assertion a second backend copies: whatever `MTLPackedFloat4x3` or
+        /// anything else stores, it has to come back to these twelve numbers in this order.
+        TEST(RtxTransformTest, theVulkanTransformRestatesTheNeutralRowsUnchanged)
+        {
+            const Transform3x4 transform{ { { 1.0f, 2.0f, 3.0f, 4.0f }, { 5.0f, 6.0f, 7.0f, 8.0f },
+                { 9.0f, 10.0f, 11.0f, 12.0f } } };
+
+            const VkTransformMatrixKHR converted = toVulkanTransform(transform);
+            for (int row = 0; row < 3; ++row)
+                for (int column = 0; column < 4; ++column)
+                    EXPECT_EQ(converted.matrix[row][column], transform.mRows[row][column])
+                        << "row " << row << " column " << column;
         }
     }
 }

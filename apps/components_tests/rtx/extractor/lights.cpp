@@ -243,7 +243,7 @@ namespace Rtx::Testing
 
         /// **What the walk asks a `LightSource` is what it radiates, and nothing else.**
         ///
-        /// Two things it used to ask instead. `getEmpty` means the model this light hangs on has no
+        /// Two things it does not ask. `getEmpty` means the model this light hangs on has no
         /// geometry — a rasterizer's reason to skip drawing one, not a statement that the light is
         /// off — and a `LIGH` whose mesh is empty still burns. And the diffuse alone is not a light's
         /// colour: `Animation::setLightEffect` puts a glow light's whole colour in the ambient, so a

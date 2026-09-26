@@ -48,9 +48,6 @@ namespace Rtx
             void SetUp() override
             {
                 Testing::DeviceTest::SetUp();
-                if (mHarness == nullptr)
-                    return;
-
                 mPass = std::make_unique<GuiPass>(getDevice(), Testing::getShaderDirectory(), VK_FORMAT_R8G8B8A8_UNORM);
             }
 
@@ -68,7 +65,7 @@ namespace Rtx
             void drawAndRead(
                 std::span<const GuiVertex> vertices, std::span<const GuiDraw> draws, std::vector<std::uint8_t>& pixels)
             {
-                Device& device = *mHarness->mDevice;
+                Device& device = *mHarness.mDevice;
 
                 Image target(device, sExtent, sExtent, VK_FORMAT_R8G8B8A8_UNORM,
                     VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT

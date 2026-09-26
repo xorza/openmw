@@ -3,7 +3,6 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <limits>
 #include <span>
 #include <vector>
 
@@ -11,12 +10,10 @@
 #include <osg/Matrixf>
 #include <osg/Vec2f>
 #include <osg/Vec3f>
-#include <vulkan/vulkan_core.h>
 
 #include <components/rtx/camera.hpp>
 #include <components/rtx/debuglines.hpp>
 #include <components/rtx/frameimage.hpp>
-#include <components/rtx/instancerecord.hpp>
 #include <components/rtx/material.hpp>
 #include <components/rtx/mesh.hpp>
 #include <components/rtx/runs.hpp>
@@ -28,7 +25,6 @@
 #include <components/rtx/texturewrap.hpp>
 #include <components/vfs/pathutil.hpp>
 
-#include "../support/death.hpp"
 #include "../support/testcamera.hpp"
 #include "../support/testtexture.hpp"
 #include "fixture.hpp"
@@ -37,49 +33,6 @@ namespace Rtx::Testing
 {
     namespace
     {
-        /// OpenSceneGraph's transform and an instance descriptor's must move a point to the same
-        /// place.
-        ///
-        /// OSG multiplies a row vector on the left and a descriptor a column vector on the right, so
-        /// the conversion is a transpose with the translation moved from the last row to the last
-        /// column. Getting it wrong mirrors the world about its diagonal, which symmetrical
-        /// architecture hides well enough to survive being looked at.
-        ///
-        /// Asserted on `Transform3x4`, which is where that transposition happens for every backend.
-        TEST(RtxTransformTest, theNeutralTransformMovesAPointWhereOpenSceneGraphWould)
-        {
-            osg::Matrixf matrix = osg::Matrixf::scale(2.0f, 2.0f, 2.0f)
-                * osg::Matrixf::rotate(osg::DegreesToRadians(37.0f), osg::Vec3f(0.3f, -0.5f, 0.8f))
-                * osg::Matrixf::translate(11.0f, -23.0f, 5.0f);
-
-            const osg::Vec3f point(3.0f, -5.0f, 7.0f);
-            const osg::Vec3f expected = point * matrix;
-
-            const Transform3x4 transform = toTransform3x4(matrix);
-            for (int row = 0; row < 3; ++row)
-            {
-                const float actual = transform.mRows[row][0] * point.x() + transform.mRows[row][1] * point.y()
-                    + transform.mRows[row][2] * point.z() + transform.mRows[row][3];
-                EXPECT_NEAR(actual, expected[row], 1e-3f) << "row " << row;
-            }
-        }
-
-        /// Vulkan stores the same three rows of four, so its conversion must not reorder anything.
-        ///
-        /// Cheap, and it is the assertion a second backend copies: whatever `MTLPackedFloat4x3` or
-        /// anything else stores, it has to come back to these twelve numbers in this order.
-        TEST(RtxTransformTest, theVulkanTransformRestatesTheNeutralRowsUnchanged)
-        {
-            const Transform3x4 transform{ { { 1.0f, 2.0f, 3.0f, 4.0f }, { 5.0f, 6.0f, 7.0f, 8.0f },
-                { 9.0f, 10.0f, 11.0f, 12.0f } } };
-
-            const VkTransformMatrixKHR converted = toVulkanTransform(transform);
-            for (int row = 0; row < 3; ++row)
-                for (int column = 0; column < 4; ++column)
-                    EXPECT_EQ(converted.matrix[row][column], transform.mRows[row][column])
-                        << "row " << row << " column " << column;
-        }
-
         /// A mesh moved by its instance and a mesh whose vertices were already moved must render to
         /// the same bytes.
         ///
@@ -101,190 +54,31 @@ namespace Rtx::Testing
             };
 
             SceneDesc placedByInstance;
-            placedByInstance.addInstance(MeshInstance{ .mTransform = transform,
-                .mMesh = placedByInstance.addMesh(MeshArrays{ .mPositions = local, .mIndices = sQuadIndices }) });
+            addQuad(placedByInstance, local, sNoIndex, transform);
 
             std::array<osg::Vec3f, 4> moved{};
             for (std::size_t i = 0; i < local.size(); ++i)
                 moved[i] = local[i] * transform;
 
             SceneDesc placedByVertex;
-            placedByVertex.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = placedByVertex.addMesh(MeshArrays{ .mPositions = moved, .mIndices = sQuadIndices }) });
+            addQuad(placedByVertex, moved);
 
             constexpr std::uint32_t size = 64;
             const osg::Vec3f centre(11.0f, -23.0f, 5.0f);
             const Shaders::VisibilityConstants camera
                 = Testing::makeCamera(centre - osg::Vec3f(0.0f, 260.0f, 0.0f), centre, 60.0f, size, size, 10000.0f);
 
-            std::vector<std::uint8_t> byInstance;
-            std::vector<std::uint8_t> byVertex;
-            const std::uint32_t instanceHits = countHits(placedByInstance, {}, camera, size, byInstance);
-            const std::uint32_t vertexHits = countHits(placedByVertex, {}, camera, size, byVertex);
+            Frame byInstance;
+            Frame byVertex;
+            byInstance = shoot(placedByInstance, {}, camera, size);
+            const std::uint32_t instanceHits = byInstance.mHits;
+            byVertex = shoot(placedByVertex, {}, camera, size);
+            const std::uint32_t vertexHits = byVertex.mHits;
 
             // Both blank would agree for the wrong reason.
             ASSERT_GT(vertexHits, 0u);
             EXPECT_EQ(instanceHits, vertexHits);
-            EXPECT_EQ(byInstance, byVertex);
-        }
-
-        TEST(RtxCameraTest, theBasisIsRightHandedAboutTheWorldsUpAxis)
-        {
-            // Looking along +Y from the origin, 90 degrees of vertical field of view, square image:
-            // the half-extents at unit distance are both tan(45) = 1.
-            const Shaders::VisibilityConstants camera = Testing::makeCamera(
-                osg::Vec3f(0.0f, 0.0f, 0.0f), osg::Vec3f(0.0f, 1.0f, 0.0f), 90.0f, 100, 100, 1000.0f);
-
-            EXPECT_NEAR(camera.mCamera.mForward.y(), 1.0f, 1e-5f);
-            EXPECT_NEAR(camera.mCamera.mRight.x(), 1.0f, 1e-5f);
-            EXPECT_NEAR(camera.mCamera.mUp.z(), 1.0f, 1e-5f);
-        }
-
-        TEST(RtxCameraTest, aWiderImageWidensTheHorizontalExtentAndLeavesTheVerticalAlone)
-        {
-            const Shaders::VisibilityConstants wide = Testing::makeCamera(
-                osg::Vec3f(0.0f, 0.0f, 0.0f), osg::Vec3f(0.0f, 1.0f, 0.0f), 90.0f, 200, 100, 1000.0f);
-
-            EXPECT_NEAR(wide.mCamera.mRight.x(), 2.0f, 1e-5f);
-            EXPECT_NEAR(wide.mCamera.mUp.z(), 1.0f, 1e-5f);
-        }
-
-        /// A view with no basis is nothing rather than a camera of NaN: a camera nobody filled in
-        /// arrives every frame, and a frame skips rather than filling the image with NaN and
-        /// reporting nothing. An eye looking at itself inverts to no matrix, and one looking
-        /// straight down with the world's up for its roll has no right-hand side.
-        TEST(RtxCameraTest, aViewWithNoBasisIsNothingRatherThanNaN)
-        {
-            const osg::Vec3f eye(1.0f, 2.0f, 3.0f);
-            const osg::Vec3f up(0.0f, 0.0f, 1.0f);
-            EXPECT_FALSE(
-                makeCameraFromView(osg::Matrixf::lookAt(eye, eye, up), 60.0f, 64, 64, sNearPlane, 1.0f).has_value());
-
-            const osg::Vec3f above(0.0f, 0.0f, 100.0f);
-            EXPECT_FALSE(
-                makeCameraFromView(osg::Matrixf::lookAt(above, osg::Vec3f(), up), 60.0f, 64, 64, sNearPlane, 1.0f)
-                    .has_value());
-        }
-
-        /// Straight down, the one viewpoint a map has, with the roll `lookAt`'s own up gives it.
-        ///
-        /// The extents are the box in world units and not an angle: half of two hundred across and
-        /// half of a hundred down, on the axes `lookAt` puts them.
-        TEST(RtxCameraTest, anOrthographicCameraCarriesItsBoxRatherThanAFieldOfView)
-        {
-            const osg::Matrixf view
-                = osg::Matrixf::lookAt(osg::Vec3f(0.0f, 0.0f, 100.0f), osg::Vec3f(), osg::Vec3f(0.0f, 1.0f, 0.0f));
-
-            const Shaders::VisibilityConstants camera
-                = makeOrthographicCameraFromView(view, 200.0f, 100.0f, 64, 32, 5.0f, 400.0f).value();
-
-            EXPECT_EQ(camera.mCamera.mOrthographic, 1u);
-
-            EXPECT_NEAR(camera.mOrigin.z(), 100.0f, 1e-4f);
-            EXPECT_NEAR(camera.mCamera.mForward.z(), -1.0f, 1e-5f);
-            EXPECT_NEAR(camera.mCamera.mRight.x(), 100.0f, 1e-4f);
-            EXPECT_NEAR(camera.mCamera.mUp.y(), 50.0f, 1e-4f);
-
-            // No angle, because a parallel ray's cone does not widen; the shader takes the pixel's
-            // constant footprint off `mRight` instead.
-            EXPECT_EQ(camera.mCamera.mSpreadAngle, 0.0f);
-
-#ifndef NDEBUG
-            expectDies([&] { makeOrthographicCameraFromView(view, 0.0f, 100.0f, 64, 32, 5.0f, 400.0f); },
-                "an orthographic camera with no extent sees nothing");
-#endif
-        }
-
-        /// **The two builders agree on everything a camera carries that is not its own basis.** A
-        /// viewpoint is built before anything has described the world over it, and what the two
-        /// leave behind for `describeWorld` to overwrite has to be one answer — a sea level of
-        /// never, a heading the tiles were drawn on, and a fog layer of the height `FOG_HEIGHT`
-        /// names.
-        ///
-        /// **The clip is the caller's and the reach is the world's.** A picture that clips at four
-        /// hundred units still sends its shadow and ambient rays to `sFarPlane`, because what
-        /// lights a point is the world around it and not how near a picture of it stops.
-        TEST(RtxCameraTest, everyBuilderLeavesTheSameWorldBehindIt)
-        {
-            const osg::Vec3f eye(0.0f, 0.0f, 100.0f);
-            const osg::Matrixf view = osg::Matrixf::lookAt(eye, osg::Vec3f(), osg::Vec3f(0.0f, 1.0f, 0.0f));
-
-            const std::array cameras{
-                makeCameraFromView(view, 60.0f, 64, 32, 1.0f, 400.0f).value(),
-                makeOrthographicCameraFromView(view, 200.0f, 100.0f, 64, 32, 1.0f, 400.0f).value(),
-            };
-
-            for (const Shaders::VisibilityConstants& camera : cameras)
-            {
-                EXPECT_EQ(camera.mWaterLevel, -std::numeric_limits<float>::infinity());
-                EXPECT_EQ(camera.mSeaHeading, osg::Vec2f(1.0f, 0.0f));
-                EXPECT_EQ(camera.mFogLift, 1.0f);
-                EXPECT_EQ(camera.mFar, 400.0f);
-                EXPECT_EQ(camera.mReach, sFarPlane);
-                EXPECT_EQ(camera.mNear, 1.0f);
-            }
-        }
-
-        /// **The image plane is the field of view over the extent.** Hand-computed at 90 degrees
-        /// over 200 by 100: the half-height is `tan(45°)` — one — the half-width is that times the
-        /// aspect, which is two, and one pixel covers `atan(2 / 100)` radians.
-        TEST(RtxCameraTest, theImagePlaneIsTheFieldOfViewOverTheExtent)
-        {
-            const osg::Vec3f eye(3.0f, 4.0f, 5.0f);
-            const osg::Matrixf view
-                = osg::Matrixf::lookAt(eye, eye + osg::Vec3f(0.0f, 1.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 1.0f));
-            const Shaders::VisibilityConstants viewed
-                = makeCameraFromView(view, 90.0f, 200, 100, 1.0f, 1000.0f).value();
-
-            EXPECT_NEAR(viewed.mCamera.mRight.length(), 2.0f, 1e-5f);
-            EXPECT_NEAR(viewed.mCamera.mUp.length(), 1.0f, 1e-5f);
-            EXPECT_NEAR(viewed.mCamera.mSpreadAngle, std::atan(2.0f / 100.0f), 1e-6f);
-        }
-
-        /// The arms' eye is the eye's own until something widens it, and widening keeps the basis
-        /// and moves the plane.
-        ///
-        /// Ninety degrees over 200 by 100 is the plane `theImagePlaneIsTheFieldOfViewOverTheExtent`
-        /// works out — half-height one, half-width two, `atan(2 / 100)` a pixel — reached here
-        /// from a sixty-degree camera whose own half-height is `tan(30°)`.
-        TEST(RtxCameraTest, theArmsEyeIsTheEyesOwnUntilWidened)
-        {
-            const osg::Vec3f eye(3.0f, 4.0f, 5.0f);
-            const osg::Vec3f along(0.0f, 1.0f, 0.0f);
-            const osg::Matrixf view = osg::Matrixf::lookAt(eye, eye + along, osg::Vec3f(0.0f, 0.0f, 1.0f));
-
-            for (const Shaders::VisibilityConstants& built :
-                { makeCameraFromView(view, 60.0f, 200, 100, 1.0f, 1000.0f).value(),
-                    makeOrthographicCameraFromView(view, 200.0f, 100.0f, 200, 100, 1.0f, 1000.0f).value() })
-            {
-                EXPECT_EQ(built.mArms.mForward, built.mCamera.mForward);
-                EXPECT_EQ(built.mArms.mRight, built.mCamera.mRight);
-                EXPECT_EQ(built.mArms.mUp, built.mCamera.mUp);
-                EXPECT_EQ(built.mArms.mSpreadAngle, built.mCamera.mSpreadAngle);
-                EXPECT_EQ(built.mArms.mWidth, built.mCamera.mWidth);
-            }
-
-            const Shaders::VisibilityConstants narrow
-                = makeCameraFromView(view, 60.0f, 200, 100, 1.0f, 1000.0f).value();
-            const Shaders::Camera wide = cameraAtFieldOfView(narrow.mCamera, 90.0f);
-
-            EXPECT_EQ(wide.mForward, narrow.mCamera.mForward);
-            EXPECT_NEAR(wide.mRight.length(), 2.0f, 1e-5f);
-            EXPECT_NEAR(wide.mUp.length(), 1.0f, 1e-5f);
-            EXPECT_NEAR(wide.mSpreadAngle, std::atan(2.0f / 100.0f), 1e-6f);
-            EXPECT_EQ(wide.mWidth, 200u);
-            EXPECT_EQ(wide.mHeight, 100u);
-
-            // The same axes, only longer.
-            for (int axis = 0; axis < 3; ++axis)
-            {
-                EXPECT_NEAR(wide.mRight[axis] / wide.mRight.length(),
-                    narrow.mCamera.mRight[axis] / narrow.mCamera.mRight.length(), 1e-6f)
-                    << "right " << axis;
-                EXPECT_NEAR(
-                    wide.mUp[axis] / wide.mUp.length(), narrow.mCamera.mUp[axis] / narrow.mCamera.mUp.length(), 1e-6f)
-                    << "up " << axis;
-            }
+            EXPECT_EQ(byInstance.bytes(), byVertex.bytes());
         }
 
         /// Parallel rays, and the whole difference between them and a pinhole's.
@@ -305,22 +99,21 @@ namespace Rtx::Testing
             constexpr std::uint32_t size = 64;
 
             SceneDesc scene;
-            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh
-                = scene.addMesh(MeshArrays{ .mPositions = sheetAt(25.0f, -100.0f), .mIndices = sQuadIndices }) });
+            addQuad(scene, sheetAt(25.0f, -100.0f));
 
             // Straight down from a hundred units up, so the sheet is two hundred below the eye.
             // `lookAt` needs an up vector that is not the view direction; +Y is the map's own.
             const osg::Matrixf view
                 = osg::Matrixf::lookAt(osg::Vec3f(0.0f, 0.0f, 100.0f), osg::Vec3f(), osg::Vec3f(0.0f, 1.0f, 0.0f));
 
-            std::vector<std::uint8_t> pixels;
+            Frame frame;
 
-            const std::uint32_t parallel = countHits(scene, {},
-                makeOrthographicCameraFromView(view, 200.0f, 200.0f, size, size, 1.0f, 10000.0f).value(), size, pixels);
+            frame = shoot(scene, {},
+                makeOrthographicCameraFromView(view, 200.0f, 200.0f, size, size, 1.0f, 10000.0f).value(), size);
+            const std::uint32_t parallel = frame.mHits;
 
-            const std::uint32_t pinhole = countHits(
-                scene, {}, makeCameraFromView(view, 90.0f, size, size, 1.0f, 10000.0f).value(), size, pixels);
+            frame = shoot(scene, {}, makeCameraFromView(view, 90.0f, size, size, 1.0f, 10000.0f).value(), size);
+            const std::uint32_t pinhole = frame.mHits;
 
             EXPECT_EQ(parallel, 16u * 16u);
             EXPECT_EQ(pinhole, 8u * 8u);
@@ -340,16 +133,16 @@ namespace Rtx::Testing
             camera.mSkyHorizon = osg::Vec3f(0.0f, 0.25f, 0.0f);
             camera.mSkyZenith = osg::Vec3f(0.0f, 0.25f, 0.0f);
 
-            std::vector<std::uint8_t> pixels;
-            EXPECT_EQ(countHits(makeWall(), {}, camera, size, pixels), 0u);
+            const Frame frame = shoot(makeWall(), {}, camera, size);
+            EXPECT_EQ(frame.mHits, 0u);
 
             // Flat, so every pixel is the same byte: 1.055 * 0.25^(1/2.4) - 0.055 = 0.537099, which
             // is 137 of 255.
-            ASSERT_EQ(pixels.size(), std::size_t{ size } * size * 4);
-            for (std::size_t i = 0; i < pixels.size(); i += 4)
+            ASSERT_EQ(frame.mRadiance.size(), std::size_t{ size } * size * 4);
+            for (std::size_t i = 0; i < frame.mRadiance.size(); i += 4)
             {
-                ASSERT_EQ(pixels[i], 0) << "red at pixel " << i / 4;
-                ASSERT_EQ(pixels[i + 1], 137) << "green at pixel " << i / 4;
+                ASSERT_EQ(frame.byte(i), 0) << "red at pixel " << i / 4;
+                ASSERT_EQ(frame.byte(i + 1), 137) << "green at pixel " << i / 4;
             }
         }
 
@@ -368,16 +161,15 @@ namespace Rtx::Testing
             Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
 
-            std::vector<std::uint8_t> pixels;
-            EXPECT_EQ(
-                countHits(makeWall(), {}, camera, size, pixels, Shot{ .mShow = SurfaceView::Albedo }), size * size);
+            const Frame frame = shoot(makeWall(), {}, camera, size, Shot{ .mShow = SurfaceView::Albedo });
+            EXPECT_EQ(frame.mHits, size * size);
 
-            ASSERT_EQ(pixels.size(), std::size_t{ size } * size * 4);
-            for (std::size_t i = 0; i < pixels.size(); i += 4)
+            ASSERT_EQ(frame.mRadiance.size(), std::size_t{ size } * size * 4);
+            for (std::size_t i = 0; i < frame.mRadiance.size(); i += 4)
             {
-                ASSERT_NEAR(pixels[i], 187, 1) << "red at pixel " << i / 4;
-                ASSERT_NEAR(pixels[i + 1], 187, 1) << "green at pixel " << i / 4;
-                ASSERT_NEAR(pixels[i + 2], 187, 1) << "blue at pixel " << i / 4;
+                ASSERT_NEAR(frame.byte(i), 187, 1) << "red at pixel " << i / 4;
+                ASSERT_NEAR(frame.byte(i + 1), 187, 1) << "green at pixel " << i / 4;
+                ASSERT_NEAR(frame.byte(i + 2), 187, 1) << "blue at pixel " << i / 4;
             }
 
             // **The same frame, measured rather than held, and the whole of the arithmetic is
@@ -410,7 +202,7 @@ namespace Rtx::Testing
             std::vector<std::uint8_t> measured;
             renderPicture(makeWall(), {}, camera, size, measured, Shot{ .mShow = SurfaceView::Albedo });
 
-            ASSERT_EQ(measured.size(), pixels.size());
+            ASSERT_EQ(measured.size(), frame.mRadiance.size());
             for (std::size_t i = 0; i < measured.size(); i += 4)
             {
                 ASSERT_NEAR(measured[i], expected, 1) << "red at pixel " << i / 4;
@@ -428,22 +220,17 @@ namespace Rtx::Testing
         {
             constexpr std::uint32_t size = 64;
 
-            const std::array positions{
-                osg::Vec3f(-30.0f, 0.0f, -30.0f),
-                osg::Vec3f(30.0f, 0.0f, -30.0f),
-                osg::Vec3f(30.0f, 0.0f, 30.0f),
-                osg::Vec3f(-30.0f, 0.0f, 30.0f),
-            };
+            const std::array positions = uprightQuadAt(30.0f, 0.0f);
 
             SceneDesc scene;
-            const Index mesh = scene.addMesh(MeshArrays{ .mPositions = positions, .mIndices = sQuadIndices });
-            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = mesh });
+            const Index mesh = addQuadMesh(scene, positions);
+            scene.addInstance(MeshInstance{ .mMesh = mesh });
 
             const Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
 
-            std::vector<std::uint8_t> pixels;
-            const std::uint32_t hits = countHits(scene, {}, camera, size, pixels);
+            const Frame frame = shoot(scene, {}, camera, size);
+            const std::uint32_t hits = frame.mHits;
 
             const float covered = 30.0f / sCardHalfExtent;
             const auto expected = static_cast<std::uint32_t>(covered * covered * size * size);
@@ -451,36 +238,6 @@ namespace Rtx::Testing
             // Within a pixel of edge on each side of a 33-pixel square.
             const double tolerance = 2.0 * static_cast<double>(covered) * size + 4.0;
             EXPECT_NEAR(static_cast<double>(hits), static_cast<double>(expected), tolerance);
-        }
-
-        /// Halton, against its own definition worked out by hand.
-        ///
-        /// The radical inverse writes an index in a base and reflects its digits about the point, so
-        /// term one in base two is 0.1 binary and term two is 0.01 — a half and a quarter. Base
-        /// three's first three are a third, two thirds and a ninth. Centring subtracts a half from
-        /// each, and the sequence is counted from one because term zero is the origin: a frame that
-        /// sampled the pixel's corner would tell an upscaler nothing an unjittered one did not.
-        TEST(RtxJitterTest, theSequenceIsHaltonInTwoAndThreeAndStraddlesTheCentre)
-        {
-            EXPECT_NEAR(haltonJitter(0).x(), 0.0f, 1e-6f) << "1/2 - 1/2";
-            EXPECT_NEAR(haltonJitter(1).x(), -0.25f, 1e-6f) << "1/4 - 1/2";
-            EXPECT_NEAR(haltonJitter(2).x(), 0.25f, 1e-6f) << "3/4 - 1/2";
-            EXPECT_NEAR(haltonJitter(3).x(), -0.375f, 1e-6f) << "1/8 - 1/2";
-
-            EXPECT_NEAR(haltonJitter(0).y(), 1.0f / 3.0f - 0.5f, 1e-6f);
-            EXPECT_NEAR(haltonJitter(1).y(), 2.0f / 3.0f - 0.5f, 1e-6f);
-            EXPECT_NEAR(haltonJitter(2).y(), 1.0f / 9.0f - 0.5f, 1e-6f);
-
-            // Inside the pixel, every term, which is what makes it a sub-pixel offset rather than a
-            // camera shake.
-            for (std::uint32_t index = 0; index < 64; ++index)
-            {
-                const osg::Vec2f at = haltonJitter(index);
-                EXPECT_GE(at.x(), -0.5f);
-                EXPECT_LT(at.x(), 0.5f);
-                EXPECT_GE(at.y(), -0.5f);
-                EXPECT_LT(at.y(), 0.5f);
-            }
         }
 
         /// Which way the jitter moves the picture, which is the half of this that looks fine wrong.
@@ -508,15 +265,14 @@ namespace Rtx::Testing
             };
 
             SceneDesc scene;
-            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(MeshArrays{ .mPositions = half, .mIndices = sQuadIndices }) });
+            addQuad(scene, half);
 
             Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
 
             const auto covered = [&](float acrossX) {
-                std::vector<std::uint8_t> pixels;
-                return countHits(scene, {}, camera, size, pixels, Shot{ .mOffset = osg::Vec2f(acrossX, 0.0f) });
+                const Frame frame = shoot(scene, {}, camera, size, Shot{ .mOffset = osg::Vec2f(acrossX, 0.0f) });
+                return frame.mHits;
             };
 
             const std::uint32_t centred = covered(0.0f);
@@ -554,8 +310,7 @@ namespace Rtx::Testing
             };
 
             SceneDesc scene;
-            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(MeshArrays{ .mPositions = half, .mIndices = sQuadIndices }) });
+            addQuad(scene, half);
 
             Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
@@ -567,15 +322,14 @@ namespace Rtx::Testing
 
             // The last column the wall covers, and the first one past it.
             constexpr std::size_t row = std::size_t{ size / 2 } * size;
-            const auto redAt = [](const std::vector<std::uint8_t>& pixels, std::size_t column) {
-                return static_cast<int>(pixels[(row + column) * 4]);
+            const auto redAt = [](const Frame& drawn, std::size_t column) {
+                return static_cast<int>(drawn.byte((row + column) * 4));
             };
 
-            std::vector<std::uint8_t> hard;
-            countHits(scene, {}, camera, size, hard, { .mFrames = 16, .mShow = SurfaceView::Albedo });
+            const Frame hard = shoot(scene, {}, camera, size, { .mFrames = 16, .mShow = SurfaceView::Albedo });
 
-            std::vector<std::uint8_t> soft;
-            countHits(scene, {}, camera, size, soft, { .mFrames = 16, .mJitter = true, .mShow = SurfaceView::Albedo });
+            const Frame soft
+                = shoot(scene, {}, camera, size, { .mFrames = 16, .mJitter = true, .mShow = SurfaceView::Albedo });
 
             // Unjittered, every one of the sixteen samples the same point, so the two columns are
             // the wall's byte and the sky's with nothing between them.
@@ -621,21 +375,20 @@ namespace Rtx::Testing
                       for (osg::Vec3f& corner : wall)
                           corner += somewhere;
 
-                      scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                          .mMesh = scene.addMesh(MeshArrays{ .mPositions = wall, .mIndices = sQuadIndices }) });
+                      addQuad(scene, wall);
 
                       const Shaders::VisibilityConstants first = Testing::makeCamera(
                           somewhere, somewhere + osg::Vec3f(0.0f, 100.0f, 0.0f), 60.0f, size, size, 1000000.0f);
 
-                      std::vector<std::uint8_t> pixels;
-                      EXPECT_EQ(countHits(scene, {}, first, size, pixels), size * size) << "at " << away;
+                      const Frame frame = shoot(scene, {}, first, size);
+                      EXPECT_EQ(frame.mHits, size * size) << "at " << away;
 
-                      mRenderer->renderFrame(
+                      mRenderer.renderFrame(
                           Testing::makeCamera(somewhere + eye, somewhere + at, 60.0f, size, size, 1000000.0f),
                           FrameOptions{});
 
                       std::vector<float> motion;
-                      mRenderer->readChannel(Channel::Motion, motion);
+                      mRenderer.readChannel(Channel::Motion, motion);
                       return osg::Vec2f(motion[centre * 2], motion[centre * 2 + 1]);
                   };
 
@@ -664,25 +417,24 @@ namespace Rtx::Testing
             // than shaking it between two.
             {
                 SceneDesc scene;
-                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                    .mMesh = scene.addMesh(MeshArrays{ .mPositions = wallAt(200.0f), .mIndices = sQuadIndices }) });
+                addQuad(scene, wallAt(200.0f));
 
                 const Shaders::VisibilityConstants camera
                     = Testing::makeCamera(osg::Vec3f(), osg::Vec3f(0.0f, 100.0f, 0.0f), 60.0f, size, size, 1000000.0f);
 
-                mRenderer->resize(size, size);
-                mRenderer->setScene(Rtx::SceneSlot::world(), scene, {});
+                mRenderer.resize(size, size);
+                mRenderer.setScene(Rtx::SceneSlot::world(), scene, {});
 
                 for (const std::uint32_t frame : { 1u, 2u })
                 {
                     Shaders::VisibilityConstants sampled = camera;
                     sampled.mFrame = frame;
-                    mRenderer->renderFrame(
+                    mRenderer.renderFrame(
                         sampled, FrameOptions{ .mReconstruction = ReconstructionRequest{ .mJitter = true } });
                 }
 
                 std::vector<float> motion;
-                mRenderer->readChannel(Channel::Motion, motion);
+                mRenderer.readChannel(Channel::Motion, motion);
 
                 // A quarter pixel and better than a third: the second and third Halton terms, which
                 // is what a reprojection that carried the jitter would report here.
@@ -759,28 +511,22 @@ namespace Rtx::Testing
             /// is not the same thing as a scene with nothing in it — a renderer with no geometry at
             /// all has no acceleration structure to trace, and that is a different test.
             const auto motion = [&](float away, const osg::Vec3f& eye, const osg::Vec3f& at) {
-                const std::array<osg::Vec3f, 4> wall{
-                    osg::Vec3f(-8000.0f, away, -8000.0f),
-                    osg::Vec3f(8000.0f, away, -8000.0f),
-                    osg::Vec3f(8000.0f, away, 8000.0f),
-                    osg::Vec3f(-8000.0f, away, 8000.0f),
-                };
+                const std::array wall = wallAt(away);
 
                 SceneDesc scene;
-                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                    .mMesh = scene.addMesh(MeshArrays{ .mPositions = wall, .mIndices = sQuadIndices }) });
+                addQuad(scene, wall);
 
                 const Shaders::VisibilityConstants first
                     = Testing::makeCamera(osg::Vec3f(), osg::Vec3f(0.0f, 100.0f, 0.0f), 60.0f, size, size, 1000000.0f);
 
-                std::vector<std::uint8_t> pixels;
-                const std::uint32_t hit = countHits(scene, {}, first, size, pixels);
+                const Frame frame = shoot(scene, {}, first, size);
+                const std::uint32_t hit = frame.mHits;
                 EXPECT_EQ(hit, away > 0.0f ? size * size : 0u) << "the frame is all wall or all sky";
 
-                mRenderer->renderFrame(Testing::makeCamera(eye, at, 60.0f, size, size, 1000000.0f), FrameOptions{});
+                mRenderer.renderFrame(Testing::makeCamera(eye, at, 60.0f, size, size, 1000000.0f), FrameOptions{});
 
                 std::vector<float> moved;
-                mRenderer->readChannel(Channel::Motion, moved);
+                mRenderer.readChannel(Channel::Motion, moved);
                 return osg::Vec2f(moved[centre * 2], moved[centre * 2 + 1]);
             };
 
@@ -844,17 +590,16 @@ namespace Rtx::Testing
 
             const auto depthOf = [&](float away) {
                 SceneDesc scene;
-                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                    .mMesh = scene.addMesh(MeshArrays{ .mPositions = wallAt(away), .mIndices = sQuadIndices }) });
+                addQuad(scene, wallAt(away));
 
                 const Shaders::VisibilityConstants camera
                     = Testing::makeCamera(osg::Vec3f(), osg::Vec3f(0.0f, 100.0f, 0.0f), 60.0f, size, size, far);
 
-                std::vector<std::uint8_t> pixels;
-                EXPECT_EQ(countHits(scene, {}, camera, size, pixels), size * size);
+                const Frame frame = shoot(scene, {}, camera, size);
+                EXPECT_EQ(frame.mHits, size * size);
 
                 std::vector<float> depth;
-                mRenderer->readChannel(Channel::Depth, depth);
+                mRenderer.readChannel(Channel::Depth, depth);
                 return depth;
             };
 
@@ -882,17 +627,16 @@ namespace Rtx::Testing
             // A ray that hit nothing is as far away as anything can be.
             {
                 SceneDesc scene;
-                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                    .mMesh = scene.addMesh(MeshArrays{ .mPositions = wallAt(200.0f), .mIndices = sQuadIndices }) });
+                addQuad(scene, wallAt(200.0f));
 
                 const Shaders::VisibilityConstants away
                     = Testing::makeCamera(osg::Vec3f(), osg::Vec3f(0.0f, -100.0f, 0.0f), 60.0f, size, size, far);
 
-                std::vector<std::uint8_t> pixels;
-                EXPECT_EQ(countHits(scene, {}, away, size, pixels), 0u);
+                const Frame frame = shoot(scene, {}, away, size);
+                EXPECT_EQ(frame.mHits, 0u);
 
                 std::vector<float> depth;
-                mRenderer->readChannel(Channel::Depth, depth);
+                mRenderer.readChannel(Channel::Depth, depth);
                 for (std::size_t i = 0; i < depth.size(); i += stride)
                 {
                     ASSERT_EQ(depth[i], 1.0f) << "clip depth at " << i / stride;
@@ -928,14 +672,14 @@ namespace Rtx::Testing
             SceneDesc scene;
             const Index wall
                 = addOneBoneBody(scene, MeshArrays{ .mPositions = wallAt(200.0f), .mIndices = sQuadIndices }).mMesh;
-            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = wall });
+            scene.addInstance(MeshInstance{ .mMesh = wall });
             poseByOneBone(scene, wall, osg::Matrixf::identity());
 
-            std::vector<std::uint8_t> pixels;
-            ASSERT_EQ(countHits(scene, {}, camera, size, pixels), size * size);
+            const Frame frame = shoot(scene, {}, camera, size);
+            ASSERT_EQ(frame.mHits, size * size);
 
             std::vector<float> depth;
-            mRenderer->readChannel(Channel::Depth, depth);
+            mRenderer.readChannel(Channel::Depth, depth);
             ASSERT_NEAR(depth[centre], 200.0f * centreCosine, 0.2f) << "where it was built";
 
             /// Moves the wall's bone `away` units off its bind pose and replaces the scene's
@@ -943,21 +687,21 @@ namespace Rtx::Testing
             const auto deformTo = [&](float away) {
                 scene.clearPlacement();
                 poseByOneBone(scene, wall, osg::Matrixf::translate(0.0f, away - 200.0f, 0.0f));
-                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = wall });
-                mRenderer->placeScene(Rtx::SceneSlot::world(), scene);
+                scene.addInstance(MeshInstance{ .mMesh = wall });
+                mRenderer.placeScene(Rtx::SceneSlot::world(), scene);
             };
 
             deformTo(400.0f);
-            mRenderer->renderFrame(camera, FrameOptions{});
-            EXPECT_EQ(mRenderer->finishFrame().value().mHits, size * size);
+            mRenderer.renderFrame(camera, FrameOptions{});
+            EXPECT_EQ(mRenderer.finishFrame().value().mHits, size * size);
 
-            mRenderer->readChannel(Channel::Depth, depth);
+            mRenderer.readChannel(Channel::Depth, depth);
             EXPECT_NEAR(depth[centre], 400.0f * centreCosine, 0.4f) << "and the structure followed its vertices";
 
             // Behind the eye, where a wall that was never rebuilt would still be filling the frame.
             deformTo(-1000.0f);
-            mRenderer->renderFrame(camera, FrameOptions{});
-            EXPECT_EQ(mRenderer->finishFrame().value().mHits, 0u);
+            mRenderer.renderFrame(camera, FrameOptions{});
+            EXPECT_EQ(mRenderer.finishFrame().value().mHits, 0u);
         }
 
         /// A debug line is drawn over the picture where it stands in front of what was traced,
@@ -989,10 +733,10 @@ namespace Rtx::Testing
                     DebugVertex{ .mPosition = osg::Vec3f(500.0f, -100.0f + ahead, -0.5f),
                         .mColour = osg::Vec4f(1.0f, 0.0f, 0.0f, 1.0f) },
                 };
-                renderShot(scene, {}, camera, size, Shot{ .mDebug = { .mLines = line, .mTriangles = triangles } });
+                shoot(scene, {}, camera, size, Shot{ .mDebug = { .mLines = line, .mTriangles = triangles } });
 
                 std::vector<std::uint8_t> pixels;
-                mRenderer->readPixels(pixels);
+                mRenderer.readPixels(pixels);
                 requireFrame(pixels, size);
                 return pixels;
             };
@@ -1058,12 +802,10 @@ namespace Rtx::Testing
             SceneDesc scene;
             const Index grey = scene.textures().add(VFS::Path::NormalizedView("grey.dds"));
             const Index red = scene.textures().add(VFS::Path::NormalizedView("red.dds"));
-            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh
+            scene.addInstance(MeshInstance{ .mMesh
                 = scene.addMesh(MeshArrays{ .mPositions = sWallQuad, .mTexCoords = sQuadUv, .mIndices = sQuadIndices }),
                 .mMaterial = scene.addMaterial(Material{ .mDiffuse = grey }) });
-            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh
+            scene.addInstance(MeshInstance{ .mMesh
                 = scene.addMesh(MeshArrays{ .mPositions = pane, .mTexCoords = sQuadUv, .mIndices = sQuadIndices }),
                 .mMaterial = scene.addMaterial(Material{ .mDiffuse = red }),
                 .mClass = InstanceClass::FirstPerson });
@@ -1082,18 +824,16 @@ namespace Rtx::Testing
             const auto seenWith = [&](const Shaders::Camera& arms) {
                 camera.mArms = arms;
 
-                std::vector<std::uint8_t> pixels;
-                EXPECT_EQ(countHits(scene, textures, camera, size, pixels, Shot{ .mShow = SurfaceView::Albedo }),
-                    size * size);
-                requireFrame(pixels, size);
+                const Frame frame = shoot(scene, textures, camera, size, Shot{ .mShow = SurfaceView::Albedo });
+                EXPECT_EQ(frame.mHits, size * size);
 
                 // Two floats a pixel: clip depth, then distance from the eye.
                 std::vector<float> depth;
-                mRenderer->readChannel(Channel::Depth, depth);
+                mRenderer.readChannel(Channel::Depth, depth);
 
                 return Seen{
-                    .mArm = { pixels[arm * 4], pixels[arm * 4 + 1], pixels[arm * 4 + 2] },
-                    .mMiddle = { pixels[centre * 4], pixels[centre * 4 + 1], pixels[centre * 4 + 2] },
+                    .mArm = { frame.byte(arm * 4), frame.byte(arm * 4 + 1), frame.byte(arm * 4 + 2) },
+                    .mMiddle = { frame.byte(centre * 4), frame.byte(centre * 4 + 1), frame.byte(centre * 4 + 2) },
                     .mArmDistance = depth[arm * 2 + 1],
                     .mMiddleDistance = depth[centre * 2 + 1],
                 };
@@ -1143,12 +883,12 @@ namespace Rtx::Testing
             const Index map = scene.textures().add(
                 VFS::Path::NormalizedView("white_spec.dds"), TextureWrap::Repeat, TextureEncoding::Data);
             const Index painted = scene.textures().add(VFS::Path::NormalizedView("ladder.dds"));
-            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+            scene.addInstance(MeshInstance{
                 .mMesh = scene.addMesh(MeshArrays{
                     .mPositions = uprightQuadAt(40.0f, 100.0f), .mTexCoords = sQuadUv, .mIndices = sQuadIndices }),
                 .mMaterial = scene.addMaterial(Material{ .mDiffuse = diffuse, .mSpecular = map, .mTwoSided = true }),
                 .mClass = InstanceClass::FirstPerson });
-            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+            scene.addInstance(MeshInstance{
                 .mMesh = scene.addMesh(MeshArrays{
                     .mPositions = uprightQuadAt(400.0f, -500.0f), .mTexCoords = sQuadUv, .mIndices = sQuadIndices }),
                 .mMaterial = scene.addMaterial(Material{ .mDiffuse = painted, .mTwoSided = true }) });
@@ -1163,10 +903,9 @@ namespace Rtx::Testing
                 camera.mAmbient = osg::Vec3f(1.0f, 1.0f, 1.0f);
                 camera.mAmbientFromSky = 0.0f;
 
-                std::vector<std::uint8_t> pixels;
-                countHits(scene, textures, camera, size, pixels);
+                const Frame frame = shoot(scene, textures, camera, size);
 
-                return mRadiance[centre * 4];
+                return frame.at(centre * 4);
             };
 
             const float narrow = reflectedWith(30.0f, 30.0f);

@@ -68,7 +68,7 @@ namespace Rtx::Testing
         const unsigned int unit = static_cast<unsigned int>(state.getTextureAttributeList().size());
         state.setTextureAttributeAndModes(unit, texture, osg::StateAttribute::ON);
         state.setTextureAttribute(
-            unit, new SceneUtil::TextureType(std::string(textureRoleName(role))), osg::StateAttribute::ON);
+            unit, new SceneUtil::TextureType(std::string(sTextureRoleNames.name(role))), osg::StateAttribute::ON);
     }
 
     /// The same for a texture that is nothing but a name, which is all a walk reads of most of

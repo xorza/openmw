@@ -136,8 +136,8 @@ namespace Rtx
         /// **The arithmetic in the shader and the mesh it stands for are two ways to one answer.** A
         /// vertex at `(x, y, z)` is both a direction the eye may look along and a point the sheet is
         /// pinned at, so the deck is right exactly when looking along it lands on the pin — and a flat
-        /// layer, which is what the deck was drawn on before this, misses by more the lower it looks:
-        /// a third at forty-five degrees and twice over at fifteen.
+        /// layer misses by more the lower it looks: a third at forty-five degrees and twice over at
+        /// fifteen.
         TEST(RtxCloudShellTest, aRayLandsWhereTheMeshPinsTheSheet)
         {
             osg::ref_ptr<osg::Geometry> layer = makeLayer();
@@ -244,7 +244,7 @@ namespace Rtx
             EXPECT_NEAR(doubled.mCurvature, 0.06f, 1.0e-5f);
         }
 
-        /// A layer that does not curve is the plane the deck used to be drawn on, and that still works.
+        /// A layer that does not curve is a plane, and is still a layer.
         TEST(RtxCloudShellTest, aFlatSheetIsTheSameLayerWithNoCurve)
         {
             const CloudShell flat = readCloudShell(*makeLayer(sHeight, /*curvature=*/0.0f));

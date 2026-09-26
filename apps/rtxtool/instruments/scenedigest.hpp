@@ -71,7 +71,8 @@ namespace RtxTool
 
     /// What a hashes file's header spells for each part, in the order the tables are laid out,
     /// which is the order of the columns: the header is written from this table and a column is
-    /// indexed by the enumerator, so the two must agree, and the assertion below says they do.
+    /// indexed by the enumerator, so the two must agree, which `Rtx::NamedEnum` checks of an enum with
+    /// a `Count`.
     inline constexpr Rtx::NamedEnum sSceneParts{ std::array{
         std::pair{ ScenePart::Positions, std::string_view("positions") },
         std::pair{ ScenePart::Normals, std::string_view("normals") },
@@ -92,18 +93,6 @@ namespace RtxTool
         std::pair{ ScenePart::Poses, std::string_view("poses") },
         std::pair{ ScenePart::Frame, std::string_view("frame") },
     } };
-
-    consteval bool scenePartsInOrder()
-    {
-        const auto values = sSceneParts.values();
-        for (std::size_t at = 0; at < values.size(); ++at)
-            if (static_cast<std::size_t>(values[at]) != at)
-                return false;
-
-        return values.size() == static_cast<std::size_t>(ScenePart::Count);
-    }
-
-    static_assert(scenePartsInOrder(), "the parts table is the columns, so it lists every part in enum order");
 
     /// What a hashes file's header spells for `part`.
     constexpr std::string_view nameOf(const ScenePart part)

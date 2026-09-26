@@ -5,7 +5,6 @@
 #include <memory>
 #include <string>
 #include <string_view>
-#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -35,18 +34,7 @@ namespace Rtx::Testing
         std::vector<std::string> mMadeWith;
     };
 
-    /// Why this machine cannot build a Vulkan instance, or empty where it can.
-    ///
-    /// The two ways a machine legitimately has nothing to trace with: no loader, or a loader with no
-    /// driver behind it — which fails at `vkCreateInstance` with `VK_ERROR_INCOMPATIBLE_DRIVER`
-    /// rather than by handing back an empty device list. Both are a skip.
-    ///
-    /// Shared with the tests that build an instance of their own so the two cannot come to disagree
-    /// about which failure is honest and which is a finding. Whether a device that *does* exist
-    /// qualifies is a different question, and `PhysicalDevice::select` still throws it.
-    std::string findInstanceObstacle();
-
-    /// Something built once for the whole binary, and the reason where it could not be.
+    /// Something built once for the whole binary.
     ///
     /// **Held by whoever declares one rather than in a function-local static**, so that a gtest
     /// environment can close it while the process is still whole — see the teardowns in
@@ -56,37 +44,25 @@ namespace Rtx::Testing
     struct Once
     {
         std::unique_ptr<T> mValue;
-        std::string mReason;
-        bool mTried = false;
 
         template <class Build>
-        T* get(std::string& reason, Build&& build)
+        T& get(Build&& build)
         {
-            if (!mTried)
-            {
-                mTried = true;
-                mValue = build(mReason);
-            }
+            if (mValue == nullptr)
+                mValue = build();
 
-            reason = mReason;
-            return mValue.get();
+            return *mValue;
         }
 
-        /// Closes it, and says so to anything that asks afterwards rather than answering an empty
-        /// reason — which a test would report as a skip with no explanation.
-        void release(std::string why)
-        {
-            mValue.reset();
-            mReason = std::move(why);
-        }
+        void release() { mValue.reset(); }
     };
 
-    /// Null when this machine has no Vulkan device at all, with `reason` saying so.
+    /// The device every test that drives Vulkan directly shares.
     ///
-    /// A machine without a GPU legitimately cannot run these, and skipping is honest. A machine
-    /// *with* one that does not meet the requirements is a finding, so that throws out of
-    /// `PhysicalDevice::select` and fails the suite rather than skipping.
-    Harness* getHarness(std::string& reason);
+    /// **Always there by the time a test asks**: `DeviceEnvironment` asks first and fails the binary
+    /// where there is none. A device that does not meet the requirements throws out of
+    /// `PhysicalDevice::select`, which fails the binary the same way.
+    Harness& getHarness();
 
     /// The same, with no validation layers loaded.
     ///
@@ -96,7 +72,7 @@ namespace Rtx::Testing
     /// between 32,352 and 49,152 allocations over its 32 frames — a thousand to fifteen hundred a
     /// frame against a budget of nought. That is not a stricter test but a deleted one. Everything
     /// else is validated, so this second device is only built if something asks for it.
-    Harness* getUnvalidatedHarness(std::string& reason);
+    Harness& getUnvalidatedHarness();
 
     /// Where the build wrote the compiled shaders.
     std::filesystem::path getShaderDirectory();
@@ -127,10 +103,8 @@ namespace Rtx::Testing
     /// @param validation off only for `getUnvalidatedRenderer`, which says why.
     RendererOptions describeRenderer(std::uint32_t width, std::uint32_t height, bool validation = true);
 
-    /// The renderer the pixel tests trace through, built once for the binary.
-    ///
-    /// Null with `reason` where this machine cannot run the backend this build has — which is the
-    /// ordinary case on a box developing the other one, and a skip rather than a failure.
+    /// The renderer the pixel tests trace through, built once for the binary on the first ask. Throws
+    /// where it cannot be built, which fails the test that asked rather than skipping it.
     ///
     /// **What makes these tests an acceptance suite for any backend.** They assert hand-computed
     /// radiances, mip levels and transmittances, none of which is a statement about an API; a
@@ -143,7 +117,7 @@ namespace Rtx::Testing
     /// after that costs between one and fifteen. So a test that traces through this one is free and
     /// a test that stands up its own costs the suite two seconds. Only an upscaler needs its own,
     /// because the mode is fixed when the renderer is built.
-    VulkanRenderer* getRenderer(std::string& reason);
+    VulkanRenderer& getRenderer();
 
     /// What the layers raised while `getRenderer`'s renderer was made, for the reason
     /// `Harness::mMadeWith` gives. Empty until `getRenderer` has made one.
@@ -155,7 +129,7 @@ namespace Rtx::Testing
     /// `getAllocationCount` replaces the global `operator new`, so it cannot tell one of theirs from
     /// the renderer's — a frame measured through the shared renderer reports hundreds of allocations
     /// that no change to this code could remove. Built only if something asks, and asked by one test.
-    VulkanRenderer* getUnvalidatedRenderer(std::string& reason);
+    VulkanRenderer& getUnvalidatedRenderer();
 
     /// The base of a test that drives Vulkan directly.
     ///
@@ -173,17 +147,16 @@ namespace Rtx::Testing
 
         void TearDown() override;
 
-        Device& getDevice() const { return *mHarness->mDevice; }
+        Device& getDevice() const { return *mHarness.mDevice; }
 
         /// The device's own pool.
         CommandPool& getPool() const;
 
-        Harness* mHarness = nullptr;
+        Harness& mHarness;
 
     private:
         void takeRaised();
 
-        const bool mValidation;
         std::vector<std::string> mRaised;
     };
 
@@ -208,7 +181,7 @@ namespace Rtx::Testing
         /// Reports what `renderer` raised since `forgetErrors`, each failure headed by `what`.
         void reportErrors(VulkanRenderer& renderer, std::string_view what);
 
-        VulkanRenderer* mRenderer = nullptr;
+        VulkanRenderer& mRenderer = getRenderer();
 
     private:
         std::vector<std::string> mErrors;

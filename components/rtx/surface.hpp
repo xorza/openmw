@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <optional>
 #include <string_view>
+#include <utility>
 
 #include <osg/CopyOp>
 #include <osg/Image>
@@ -12,6 +13,7 @@
 #include <osg/Vec2f>
 #include <osg/ref_ptr>
 
+#include "namedenum.hpp"
 #include "texturewrap.hpp"
 
 namespace osg
@@ -93,11 +95,22 @@ namespace Rtx
         Environment,
     };
 
-    inline constexpr std::size_t sTextureRoleCount = 11;
-
-    /// The name the OpenGL renderer binds this role under — one table, so a typo is a build error
-    /// rather than an untextured surface.
-    std::string_view textureRoleName(TextureRole role);
+    /// The name the OpenGL renderer binds each role under — one table, so a typo is a build error
+    /// rather than an untextured surface. A name that is not a role reads as none: `blendMap` and
+    /// the shadow maps are bound the same way and are not what a surface is made of.
+    inline constexpr NamedEnum sTextureRoleNames{ std::array{
+        std::pair{ TextureRole::Diffuse, std::string_view("diffuseMap") },
+        std::pair{ TextureRole::Normal, std::string_view("normalMap") },
+        std::pair{ TextureRole::NormalHeight, std::string_view("normalHeightMap") },
+        std::pair{ TextureRole::Emissive, std::string_view("emissiveMap") },
+        std::pair{ TextureRole::Specular, std::string_view("specularMap") },
+        std::pair{ TextureRole::Dark, std::string_view("darkMap") },
+        std::pair{ TextureRole::Detail, std::string_view("detailMap") },
+        std::pair{ TextureRole::Decal, std::string_view("decalMap") },
+        std::pair{ TextureRole::Gloss, std::string_view("glossMap") },
+        std::pair{ TextureRole::Bump, std::string_view("bumpMap") },
+        std::pair{ TextureRole::Environment, std::string_view("envMap") },
+    } };
 
     /// The maps a surface keeps: the roles the trace reads. `TextureRole` names what the content
     /// can bind, so a unit can be told from one that is no role at all; this names what is
@@ -214,10 +227,6 @@ namespace Rtx
 
         bool takesTexture(TextureRole role, osg::StateAttribute::OverrideValue flags);
     };
-
-    /// The role a texture unit's name means, or nothing for a name that is not a role: `blendMap`
-    /// and the shadow maps are bound the same way and are not what a surface is made of.
-    std::optional<TextureRole> textureRoleNamed(std::string_view name);
 
     /// What a surface is, as the content said and before any renderer has an opinion. Read off the
     /// finished `osg::StateSet` by `describeStateSet`, because that is the one place whoever loaded

@@ -271,18 +271,19 @@ namespace Rtx
                                        << joined(found);
         }
 
-        /// Every file `shader` reaches through `#include`, itself included, by the paths the
-        /// shaders spell: relative to the including file.
-        void reachedBy(const std::filesystem::path& shader, std::set<std::filesystem::path>& reached)
+        /// Every file `file` reaches through `#include "..."`, itself included, by the paths the
+        /// sources spell: relative to the including file.
+        void reachedBy(const std::filesystem::path& file, std::set<std::filesystem::path>& reached)
         {
-            if (!reached.insert(shader).second)
+            const std::filesystem::path normal = file.lexically_normal();
+            if (!reached.insert(normal).second)
                 return;
 
-            for (const std::string& line : linesOf(shader))
+            for (const std::string& line : linesOf(normal))
             {
                 if (const std::optional<std::string> included = includedBy(line))
                 {
-                    const std::filesystem::path named = shader.parent_path() / *included;
+                    const std::filesystem::path named = normal.parent_path() / *included;
                     if (std::filesystem::exists(named))
                         reachedBy(named, reached);
                 }
@@ -322,6 +323,71 @@ namespace Rtx
             EXPECT_TRUE(found.empty()) << "a compute shader traces a ray, which answers differently under another "
                                           "process's preemption — make the pass a launch:\n"
                                        << joined(found);
+        }
+
+        /// The files `rtx/sources.cmake` names in its list `list`, as paths.
+        std::vector<std::filesystem::path> listedIn(const std::string_view list)
+        {
+            const std::filesystem::path tests = sRoot / "apps" / "components_tests";
+            const std::string opening = "set(" + std::string(list);
+
+            std::vector<std::filesystem::path> files;
+            bool inside = false;
+            for (const std::string& line : linesOf(tests / "rtx" / "sources.cmake"))
+            {
+                const std::string_view entry = std::string_view(line).substr(skipSpace(line, 0));
+                if (!inside)
+                    inside = entry == opening;
+                else if (entry.starts_with(')'))
+                    break;
+                else if (!entry.empty())
+                    files.push_back(tests / entry);
+            }
+
+            return files;
+        }
+
+        /// **A test lives in the binary its needs decide.** A file of `rtx-gpu-tests` reaches the
+        /// device's support and holds only tests over its fixtures, and a file of `components-tests`
+        /// reaches none of it: CI runs the one and not the other, because hosted runners have no
+        /// GPU, so a plain `TEST` among the device's files is a test CI never runs.
+        TEST(RtxSourceTreeTest, everyTestIsInTheBinaryItsNeedsDecide)
+        {
+            const auto reachesDevice = [](const std::filesystem::path& file) {
+                std::set<std::filesystem::path> reached;
+                reachedBy(file, reached);
+                return std::any_of(reached.begin(), reached.end(), [](const std::filesystem::path& one) {
+                    return one.generic_string().find("/rtx/support/device/") != std::string::npos;
+                });
+            };
+
+            std::vector<std::string> found;
+            const std::vector<std::filesystem::path> device = listedIn("RTX_GPU_TEST_FILES");
+            ASSERT_FALSE(device.empty()) << "sources.cmake lists no device tests: the list was renamed";
+            for (const std::filesystem::path& file : device)
+            {
+                if (file.extension() != ".cpp")
+                    continue;
+                if (!reachesDevice(file))
+                    found.push_back(file.filename().string() + " opens no device: list it in RTX_TEST_FILES");
+
+                const std::vector<std::string> lines = linesOf(file);
+                for (std::size_t at = 0; at < lines.size(); ++at)
+                {
+                    const std::string_view code = codeOf(lines[at]).substr(skipSpace(lines[at], 0));
+                    if (code.starts_with("TEST(") || code.starts_with("TEST_P("))
+                        found.push_back(file.filename().string() + ':' + std::to_string(at + 1)
+                            + ": a test over no device fixture, which CI never runs here");
+                }
+            }
+
+            for (const std::string_view list : { "RTX_TEST_FILES", "RTX_TEST_SUPPORT" })
+                for (const std::filesystem::path& file : listedIn(list))
+                    if (reachesDevice(file))
+                        found.push_back(file.filename().string() + " reaches the device's support: list it in "
+                                                                   "RTX_GPU_TEST_FILES");
+
+            EXPECT_TRUE(found.empty()) << joined(found);
         }
 
         /// The fork's own directories, every file of which the index reads and the rules check.

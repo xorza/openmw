@@ -38,7 +38,7 @@ namespace MWRender
 
         /// **The ground answers upstream's callers as a world with no chunks.** The preloader asks
         /// for a view and resets it on a worker thread; `tb` toggles borders and reports what it
-        /// got. Both used to reach a null and a guard in an upstream file; both now get an answer.
+        /// got. Both get an answer rather than a null and a guard in an upstream file.
         TEST(RtxTracedTerrainTest, aViewIsHandedOutAndBordersStayOff)
         {
             Rtx::Testing::FakeLand land;

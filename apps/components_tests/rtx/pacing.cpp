@@ -1,7 +1,6 @@
 #include <array>
 #include <limits>
 #include <optional>
-#include <stdexcept>
 
 #include <gtest/gtest.h>
 
@@ -12,16 +11,12 @@ namespace Rtx
 {
     namespace
     {
-        /// The three spellings round-trip, and a fourth is refused rather than defaulted: a typo in
-        /// a setting file that quietly ran `off` would be a measurement of nothing.
-        TEST(RtxPacingTest, theModesRoundTripByNameAndAFourthIsRefused)
+        /// The three spellings a settings file writes, which a renamed mode would stop reading.
+        TEST(RtxPacingTest, theModesAreSpelledAsASettingsFileWritesThemAndTheMenusListThemInOrder)
         {
             EXPECT_EQ(sLatencyModeNames.named("off"), LatencyMode::Off);
             EXPECT_EQ(sLatencyModeNames.named("on"), LatencyMode::On);
             EXPECT_EQ(sLatencyModeNames.named("boost"), LatencyMode::Boost);
-            EXPECT_EQ(sLatencyModeNames.named("On"), std::nullopt);
-            EXPECT_EQ(sLatencyModeNames.name(LatencyMode::Boost), "boost");
-            EXPECT_THROW(sLatencyModeNames.require("fast", "a Reflex mode"), std::runtime_error);
 
             // The menus list every mode in that order, and a position past the end or a name off the
             // list answers nothing rather than a mode.

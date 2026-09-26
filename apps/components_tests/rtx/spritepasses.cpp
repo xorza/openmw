@@ -4,7 +4,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <memory>
 #include <span>
 #include <utility>
 #include <vector>
@@ -910,19 +909,7 @@ namespace Rtx
         /// count is.
         struct RtxSpriteShadeTest : Testing::DeviceTest
         {
-            /// **Made on the first ask and not as a member**, which is `DeviceTest::getPool`'s own
-            /// shape and for its reason: the device arrives in `SetUp`, so a member initialiser
-            /// would build the pass against a harness that is not there yet.
-            Shading& shading()
-            {
-                if (mShading == nullptr)
-                    mShading = std::make_unique<Shading>(getDevice());
-
-                return *mShading;
-            }
-
-        private:
-            std::unique_ptr<Shading> mShading;
+            Shading mShading{ getDevice() };
         };
 
         /// A sprite behind another along the light reads that one's fade, and the one in front reads
@@ -937,7 +924,7 @@ namespace Rtx
             Column column;
             column.add(osg::Vec3f(6.0f, 0.0f, -1.0f), 8.0f, 0.75f);
             column.add(osg::Vec3f(0.0f, 0.0f, 0.0f), 4.0f, 1.0f);
-            column.shade(shading(), sEast);
+            column.shade(mShading, sEast);
 
             EXPECT_FLOAT_EQ(column.mSprites[0].mSunLayers, 0.0f) << "nothing is nearer the sun";
             EXPECT_FLOAT_EQ(column.mSprites[1].mSunLayers, 0.75f) << "the near sprite's fade, once";
@@ -960,7 +947,7 @@ namespace Rtx
                     const std::size_t at = reversed ? 2 - i : i;
                     column.add(osg::Vec3f(along[at], 0.0f, 0.0f), 4.0f, fade[at]);
                 }
-                column.shade(shading(), sEast);
+                column.shade(mShading, sEast);
                 return column;
             };
 
@@ -984,7 +971,7 @@ namespace Rtx
             Column column;
             column.add(osg::Vec3f(6.0f, 0.0f, 0.0f), 2.0f, 1.0f);
             column.add(osg::Vec3f(0.0f, 4.0f, 0.0f), 2.0f, 1.0f);
-            column.shade(shading(), sEast);
+            column.shade(mShading, sEast);
 
             EXPECT_FLOAT_EQ(column.mSprites[1].mSunLayers, 0.0f);
         }
@@ -999,7 +986,7 @@ namespace Rtx
             Column column;
             column.add(osg::Vec3f(6.0f, -0.5f, -0.5f), 0.25f, 1.0f);
             column.add(osg::Vec3f(0.0f, -0.5f, -0.5f), 8.0f, 1.0f);
-            column.shade(shading(), sEast);
+            column.shade(mShading, sEast);
 
             EXPECT_NEAR(column.mSprites[1].mSunLayers, 0.19635f, 1.0e-4f);
             EXPECT_FLOAT_EQ(column.mSprites[0].mSunLayers, 0.0f);
@@ -1015,7 +1002,7 @@ namespace Rtx
             Column column;
             column.add(osg::Vec3f(-1.0f, 0.0f, 6.0f), 8.0f, 0.5f);
             column.add(osg::Vec3f(0.0f, 0.0f, 0.0f), 4.0f, 1.0f);
-            column.shade(shading(), sEast);
+            column.shade(mShading, sEast);
 
             EXPECT_FLOAT_EQ(column.mSprites[1].mSkyLayers, 0.5f);
             EXPECT_FLOAT_EQ(column.mSprites[1].mSunLayers, 0.0f);
@@ -1033,19 +1020,19 @@ namespace Rtx
             flame.add(osg::Vec3f(6.0f, 0.0f, 0.0f), 8.0f, 1.0f);
             flame.add(osg::Vec3f(0.0f, 0.0f, 0.0f), 4.0f, 1.0f);
             flame.mEmitter.mFlags = Shaders::EMITTER_ADDITIVE;
-            flame.shade(shading(), sEast);
+            flame.shade(mShading, sEast);
             EXPECT_FLOAT_EQ(flame.mSprites[1].mSunLayers, 0.0f) << "a flame emits and shadows nothing";
 
             Column rain;
             rain.add(osg::Vec3f(6.0f, 0.0f, 0.0f), 8.0f, 1.0f);
             rain.add(osg::Vec3f(0.0f, 0.0f, 0.0f), 4.0f, 1.0f);
             rain.mEmitter.mWidth = 0.1f;
-            rain.shade(shading(), sEast);
+            rain.shade(mShading, sEast);
             EXPECT_FLOAT_EQ(rain.mSprites[1].mSunLayers, 0.0f) << "a streak is a thin thing";
 
             Column lone;
             lone.add(osg::Vec3f(0.0f, 0.0f, 0.0f), 4.0f, 1.0f);
-            lone.shade(shading(), sEast);
+            lone.shade(mShading, sEast);
             EXPECT_FLOAT_EQ(lone.mSprites[0].mSunLayers, 0.0f);
             EXPECT_FLOAT_EQ(lone.mSprites[0].mSkyLayers, 0.0f);
         }
@@ -1091,7 +1078,7 @@ namespace Rtx
             for (const Probe& probe : sProbes)
                 column.add(osg::Vec3f(0.0f, -0.5f - probe.mAcross, -0.5f - probe.mUpward), 0.0f, 0.0f);
 
-            column.shade(shading(), sEast);
+            column.shade(mShading, sEast);
 
             for (std::size_t at = 0; at < sProbes.size(); ++at)
                 EXPECT_NEAR(column.mSprites[at + 1].mSunLayers, sProbes[at].mExpected, 1.0e-5f)
@@ -1110,7 +1097,7 @@ namespace Rtx
             Column column;
             column.add(toSun * 6.0f, 8.0f, 0.75f);
             column.add(osg::Vec3f(), 4.0f, 1.0f);
-            column.shade(shading(), toSun);
+            column.shade(mShading, toSun);
 
             EXPECT_FLOAT_EQ(column.mSprites[0].mSunLayers, 0.0f);
             EXPECT_FLOAT_EQ(column.mSprites[1].mSunLayers, 0.75f);
@@ -1131,7 +1118,7 @@ namespace Rtx
             Column column;
             column.add(osg::Vec3f(0.5f, -0.5f, -0.5f), 6.0f, 0.5f);
             column.add(osg::Vec3f(0.5f, -0.5f, -0.5f), 6.0f, 1.0f);
-            column.shade(shading(), sEast);
+            column.shade(mShading, sEast);
 
             EXPECT_FLOAT_EQ(column.mSprites[0].mSunLayers, 0.0f) << "the lower index lays down first";
             EXPECT_FLOAT_EQ(column.mSprites[1].mSunLayers, 0.5f) << "and the higher one reads it";
@@ -1158,7 +1145,7 @@ namespace Rtx
                 for (std::uint32_t at = 0; at < count; ++at)
                     column.add(osg::Vec3f(static_cast<float>(at) - 0.5f, -0.5f, -0.5f), 6.0f, 1.0f);
 
-                column.shade(shading(), sEast);
+                column.shade(mShading, sEast);
 
                 // Index `at` stands at `at` along the light, so the run shades from the last index
                 // back: the furthest along has nothing over it and the nearest the eye has them all.
@@ -1192,7 +1179,7 @@ namespace Rtx
                 table.add(std::move(column));
             }
 
-            table.shade(shading(), sEast);
+            table.shade(mShading, sEast);
 
             for (std::size_t which = 0; which < sFades.size(); ++which)
             {

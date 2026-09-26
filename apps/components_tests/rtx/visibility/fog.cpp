@@ -33,6 +33,7 @@
 #include <components/vfs/pathutil.hpp>
 
 #include "../support/geometry.hpp"
+#include "../support/halfstep.hpp"
 #include "../support/testcamera.hpp"
 #include "../support/testtexture.hpp"
 #include "fixture.hpp"
@@ -54,14 +55,6 @@ namespace Rtx::Testing
         /// sets this and one that does not sets one. The banks have their own tests, and those run
         /// at nought.
         constexpr float sVolumeOverEvenAir = 0.999f;
-
-        /// The distance between the two half floats either side of `value`: what one reading kept
-        /// in halves can be wrong by, at most half of it each way. The subnormal spacing under
-        /// 2^-14, where the exponent stops falling.
-        float halfStepAt(float value)
-        {
-            return std::ldexp(1.0f, std::max(std::ilogb(value), -14) - 10);
-        }
 
         /// What one unit of a lamp's intensity delivers `span` units away, from the same windowed
         /// inverse square the shader uses: an inverse square that reaches exactly zero at the
@@ -126,9 +119,8 @@ namespace Rtx::Testing
                 litThroughFog(camera, thickness);
 
                 const SceneDesc scene = makeWall();
-                std::vector<std::uint8_t> pixels;
-                countHits(scene, {}, camera, size, pixels);
-                return std::array<int, 3>{ pixels[centre], pixels[centre + 1], pixels[centre + 2] };
+                const Frame frame = shoot(scene, {}, camera, size);
+                return std::array<int, 3>{ frame.byte(centre), frame.byte(centre + 1), frame.byte(centre + 2) };
             };
 
             // The wall is untextured, so its albedo is 0.5 and the cell's ambient is all that is on
@@ -178,9 +170,8 @@ namespace Rtx::Testing
                 litThroughFog(camera, thickness, level);
 
                 const SceneDesc scene = makeWall();
-                std::vector<std::uint8_t> pixels;
-                countHits(scene, {}, camera, size, pixels);
-                return std::array<int, 3>{ pixels[centre], pixels[centre + 1], pixels[centre + 2] };
+                const Frame frame = shoot(scene, {}, camera, size);
+                return std::array<int, 3>{ frame.byte(centre), frame.byte(centre + 1), frame.byte(centre + 2) };
             };
 
             // A dry cell is handed minus infinity and falls back to sea level, which is where a
@@ -205,9 +196,8 @@ namespace Rtx::Testing
                 // Stretched, because the ray runs six hundred units over the middle of the wall the
                 // rest of this test is measured against.
                 const SceneDesc scene = makeWall(20.0f);
-                std::vector<std::uint8_t> pixels;
-                countHits(scene, {}, camera, size, pixels);
-                return std::array<int, 3>{ pixels[centre], pixels[centre + 1], pixels[centre + 2] };
+                const Frame frame = shoot(scene, {}, camera, size);
+                return std::array<int, 3>{ frame.byte(centre), frame.byte(centre + 1), frame.byte(centre + 2) };
             };
 
             const std::array<int, 3> dry = lookAbove(-std::numeric_limits<float>::infinity());
@@ -249,9 +239,8 @@ namespace Rtx::Testing
                 // Stretched, because a ray leaving at forty-five degrees meets the wall two thousand
                 // units off its middle and the wall is four hundred across.
                 const SceneDesc scene = makeWall(20.0f);
-                std::vector<std::uint8_t> pixels;
-                countHits(scene, {}, camera, size, pixels);
-                return std::array<int, 3>{ pixels[centre], pixels[centre + 1], pixels[centre + 2] };
+                const Frame frame = shoot(scene, {}, camera, size);
+                return std::array<int, 3>{ frame.byte(centre), frame.byte(centre + 1), frame.byte(centre + 2) };
             };
 
             // Two thousand up over two thousand along is a path of 2828.43, and the layer's mean
@@ -284,8 +273,8 @@ namespace Rtx::Testing
         /// An eye under the surface has no air in front of it, and the volume must say so too.
         ///
         /// **The one path that could not tell on its own.** `fogExtinctionAt` gives nothing under the
-        /// surface and `fogColumn` integrates nothing there, so the field and the closed form were
-        /// right already. The volume is an accumulation along a *column's* ray rather than a field
+        /// surface and `fogColumn` integrates nothing there, so the field and the closed form need
+        /// nothing more. The volume is an accumulation along a *column's* ray rather than a field
         /// read along the pixel's, and a froxel the surface stands inside draws its sample from the
         /// air the column found — which for a column aimed up out of the water is the air above it.
         /// A pixel under the water then paid for that air, in a band along the waterline where the
@@ -309,9 +298,7 @@ namespace Rtx::Testing
                 litThroughFog(camera, extinction, 0.0f);
                 camera.mFogUniform = sVolumeOverEvenAir;
 
-                std::vector<std::uint8_t> pixels;
-                countHits(scene, {}, camera, size, pixels, { .mSea = SeaState{ .mSignificantHeight = 0.0f } });
-                return pixels;
+                return shoot(scene, {}, camera, size, { .mSea = SeaState{ .mSignificantHeight = 0.0f } }).bytes();
             };
 
             const std::vector<std::uint8_t> foggy = look(3.5e-4f);
@@ -360,9 +347,7 @@ namespace Rtx::Testing
                 // A lid between the ray and the lamp, high enough to be nowhere near what the eye
                 // sees and squarely across every ray the march sends up at the light.
                 if (shaded)
-                    scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                        .mMesh = scene.addMesh(
-                            MeshArrays{ .mPositions = sheetAt(40000.0f, 1000.0f), .mIndices = sQuadIndices }) });
+                    addQuad(scene, sheetAt(40000.0f, 1000.0f));
 
                 if (lit)
                     scene.addLight(Light{
@@ -382,9 +367,8 @@ namespace Rtx::Testing
                 // in it.
                 camera.mFogColour = osg::Vec3f();
 
-                std::vector<std::uint8_t> pixels;
-                countHits(scene, {}, camera, size, pixels);
-                return int{ pixels[centre] };
+                const Frame frame = shoot(scene, {}, camera, size);
+                return int{ frame.byte(centre) };
             };
 
             // With no lamp the air scatters nothing, because the fog's own colour is black here: the
@@ -407,8 +391,8 @@ namespace Rtx::Testing
         ///
         /// **One fixture for the two tests below, because they differ in the lid and in nothing
         /// else.** Both stand a lamp beside a two thousand unit ray with a reach that covers eight
-        /// hundred units of it, which is less than the stretch one probe used to answer for — and
-        /// that is the whole of what they are about. A lamp reaching the whole ray asks the volume
+        /// hundred units of it, which is less than the stretch a single probe of the ray would answer
+        /// for — and that is the whole of what they are about. A lamp reaching the whole ray asks the volume
         /// no question the closed form has not already answered.
         ///
         /// **A narrow field of view, because a column is eight pixels wide.** At sixty degrees a
@@ -466,10 +450,7 @@ namespace Rtx::Testing
                 SceneDesc scene = makeWall();
 
                 if (lidded)
-                    scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                        .mMesh = scene.addMesh(
-                            MeshArrays{ .mPositions = makeLid(Fixture::sLidHeight, -4000.0f, 4000.0f, 4000.0f),
-                                .mIndices = sQuadIndices }) });
+                    addQuad(scene, makeLid(Fixture::sLidHeight, -4000.0f, 4000.0f, 4000.0f));
 
                 if (lit)
                     scene.addLight(Light{
@@ -490,9 +471,8 @@ namespace Rtx::Testing
                 // **Averaged, because one frame is one draw of the probe.** What is asserted is
                 // where the leak sits on average; a single frame either leaked or did not, and
                 // which is a coin.
-                std::vector<std::uint8_t> pixels;
-                countHits(scene, {}, camera, size, pixels, { .mFrames = 32 });
-                return int{ pixels[centre] };
+                const Frame frame = shoot(scene, {}, camera, size, { .mFrames = 32 });
+                return int{ frame.byte(centre) };
             };
 
             const int dark = look(false, true);
@@ -544,10 +524,7 @@ namespace Rtx::Testing
             // Over the near half of the stretch the lamp reaches and no further. A shadow ray
             // crosses this height half way to the lamp, so what it covers is every point of the ray
             // short of the lamp's own y and nothing beyond it.
-            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(MeshArrays{
-                    .mPositions = makeLid(Fixture::sLidHeight, -Fixture::sDistance, Fixture::sLamp.y(), 2000.0f),
-                    .mIndices = sQuadIndices }) });
+            addQuad(scene, makeLid(Fixture::sLidHeight, -Fixture::sDistance, Fixture::sLamp.y(), 2000.0f));
 
             scene.addLight(Light{
                 .mPosition = Fixture::sLamp,
@@ -571,7 +548,11 @@ namespace Rtx::Testing
             camera.mAmbientFromSky = 0.0f;
 
             std::vector<float> radiance;
-            radianceFrameByFrame(scene, camera, size, frames, centre, radiance);
+            shoot(scene, {}, camera, size,
+                Shot{
+                    .mFrames = frames, .mAverage = false, .mResetHistory = true, .mEachFrame = [&](const Frame& each) {
+                        radiance.push_back(each.at(centre * 4));
+                    } });
 
             double total = 0.0;
             double stepped = 0.0;
@@ -654,7 +635,11 @@ namespace Rtx::Testing
                 camera.mAmbientFromSky = 0.0f;
 
                 std::vector<float> radiance;
-                radianceFrameByFrame(scene, camera, size, frames, centre, radiance);
+                shoot(scene, {}, camera, size,
+                    Shot{ .mFrames = frames,
+                        .mAverage = false,
+                        .mResetHistory = true,
+                        .mEachFrame = [&](const Frame& each) { radiance.push_back(each.at(centre * 4)); } });
 
                 double total = 0.0;
                 for (std::size_t frame = frames - settled; frame < frames; ++frame)
@@ -708,8 +693,7 @@ namespace Rtx::Testing
                     osg::Vec3f(where, -60000.0f, 0.0f), 90.0f, size, size, 100000.0f);
                 camera.mFogUniform = uniform;
 
-                std::vector<float> luminance;
-                airThrough(camera, size, luminance);
+                const std::vector<float> luminance = airThrough(camera, size);
 
                 double total = 0.0;
                 for (const float value : luminance)
@@ -742,22 +726,22 @@ namespace Rtx::Testing
             Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -50000.0f, 0.0f), osg::Vec3f(0.0f, -60000.0f, 0.0f), 90.0f, size, size, 100000.0f);
 
-            std::vector<float> luminance;
-            airThrough(camera, size, luminance);
-            EXPECT_EQ(mNotFinite.mFog, 0u);
-            EXPECT_EQ(mNotFinite.mColour, 0u);
-            EXPECT_EQ(mNotFinite.mGuide, 0u);
+            camera.mFogColour = osg::Vec3f(1.0f, 1.0f, 1.0f);
+            camera.mFogExtinction = 3.0e-6f;
+            const Frame clear = shoot(makeWall(), {}, camera, size);
+            EXPECT_EQ(clear.mNotFinite.mFog, 0u);
+            EXPECT_EQ(clear.mNotFinite.mColour, 0u);
+            EXPECT_EQ(clear.mNotFinite.mGuide, 0u);
 
             camera.mFogColour = osg::Vec3f(std::numeric_limits<float>::quiet_NaN(), 1.0f, 1.0f);
             camera.mFogExtinction = 3.0e-6f;
-            std::vector<std::uint8_t> pixels;
-            countHits(makeWall(), {}, camera, size, pixels);
+            const Frame frame = shoot(makeWall(), {}, camera, size);
 
             constexpr std::uint32_t columns = size / Shaders::FOG_VOLUME_SCALE;
-            EXPECT_EQ(mNotFinite.mFog, columns * columns * Shaders::FOG_VOLUME_SLICES)
+            EXPECT_EQ(frame.mNotFinite.mFog, columns * columns * Shaders::FOG_VOLUME_SLICES)
                 << "8 by 8 columns by 64 slices, every one in air short of a wall behind the eye";
-            EXPECT_EQ(mNotFinite.mColour, 0u) << "the trace's own clamp takes the air's NaN to nought";
-            EXPECT_EQ(mNotFinite.mGuide, 0u);
+            EXPECT_EQ(frame.mNotFinite.mColour, 0u) << "the trace's own clamp takes the air's NaN to nought";
+            EXPECT_EQ(frame.mNotFinite.mGuide, 0u);
         }
 
         /// The wind carries the banks downwind, and a camera that walks with the wind sees the air
@@ -790,8 +774,7 @@ namespace Rtx::Testing
                     = fogOffsets(osg::Vec2d(blown), static_cast<double>(seconds));
                 std::copy(offsets.begin(), offsets.end(), camera.mFogOffsets);
 
-                std::vector<float> luminance;
-                airThrough(camera, size, luminance);
+                const std::vector<float> luminance = airThrough(camera, size);
                 return luminance;
             };
 
@@ -874,14 +857,11 @@ namespace Rtx::Testing
                 // sixth with the dither. A sheet below the world is past `mFar` in every direction
                 // any ray here travels.
                 SceneDesc scene;
-                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                    .mMesh = scene.addMesh(
-                        MeshArrays{ .mPositions = sheetAt(4000.0f, -200000.0f), .mIndices = sQuadIndices }) });
+                addQuad(scene, sheetAt(4000.0f, -200000.0f));
 
-                std::vector<std::uint8_t> pixels;
-                countHits(scene, {}, camera, size, pixels);
+                const Frame frame = shoot(scene, {}, camera, size);
 
-                return decodeSrgb(pixels[centre]);
+                return frame.at(centre);
             };
 
             const float ahead = lookPast(1.0f);
@@ -940,10 +920,8 @@ namespace Rtx::Testing
                 // eye met from over and one it met from under would not be the same sheet, and a
                 // roof in the game has an underside the content modelled.
                 SceneDesc scene;
-                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                    .mMesh = scene.addMesh(MeshArrays{
-                        .mPositions = sheetAt(40000.0f, lidded ? 500.0f : -500.0f), .mIndices = sQuadIndices }),
-                    .mMaterial = scene.addMaterial(Material{ .mTwoSided = true }) });
+                addQuad(scene, sheetAt(40000.0f, lidded ? 500.0f : -500.0f),
+                    scene.addMaterial(Material{ .mTwoSided = true }));
 
                 Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(0.0f, 0.0f, 0.0f), osg::Vec3f(0.0f, 1000.0f, 0.0f), 60.0f, size, size, 100000.0f);
@@ -961,9 +939,8 @@ namespace Rtx::Testing
                 camera.mFogExtinction = 2.0e-4f;
                 camera.mFogUniform = 1.0f;
 
-                std::vector<std::uint8_t> pixels;
-                countHits(scene, {}, camera, size, pixels);
-                return int{ pixels[centre] };
+                const Frame frame = shoot(scene, {}, camera, size);
+                return int{ frame.byte(centre) };
             };
 
             const int open = look(false, true);
@@ -1036,12 +1013,11 @@ namespace Rtx::Testing
                 // along the ray, the height falloff is the whole of what varies.
                 camera.mFogUniform = 1.0f;
 
-                std::vector<std::uint8_t> pixels;
-                countHits(scene, flame, camera, size, pixels);
+                const Frame frame = shoot(scene, flame, camera, size);
 
                 // The radiance and not the byte: what is asserted is a ratio, and eight bits of a
                 // display curve is a coarse place to take one.
-                return mRadiance[centre];
+                return frame.at(centre);
             };
 
             const float clear = glow(0.0f);
@@ -1055,10 +1031,10 @@ namespace Rtx::Testing
         /// The air behind a pane is the air that is there.
         ///
         /// **A column of the volume ends where the eye's own ray ends, and the eye sees through
-        /// glass.** `fogdepth.rgen` stopped each column at the first surface its ray met, so every
-        /// slice past a pane was left as it stood and the room behind a window carried no air at
-        /// all: a wall four thousand units off behind a pane at one thousand kept 0.66 of its light
-        /// where 0.25 is what the air leaves it, and taking the pane out of the scene put it back.
+        /// glass.** A column stopped at the first surface its ray meets would leave every slice past a
+        /// pane as it stood, and the room behind a window with no air at all: a wall four thousand
+        /// units off behind a pane at one thousand would keep 0.66 of its light where 0.25 is what
+        /// the air leaves it.
         ///
         /// **A ratio against the same scene in clear air**, so the pane's own half and the wall's
         /// own radiance divide out and what is left is the transmittance. The wall glows, for the
@@ -1073,11 +1049,10 @@ namespace Rtx::Testing
             const auto look = [&](bool paned, float thickness) {
                 SceneDesc scene;
 
-                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                    .mMesh = scene.addMesh(MeshArrays{ .mPositions = wallAt(0.0f), .mIndices = sQuadIndices }),
-                    .mMaterial = scene.addMaterial(Material{
+                addQuad(scene, wallAt(0.0f),
+                    scene.addMaterial(Material{
                         .mEmissiveColour = osg::Vec3f(1.0f, 1.0f, 1.0f),
-                    }) });
+                    }));
 
                 // A quarter of the way along the path, and wide enough to fill the middle of the
                 // frame from there.
@@ -1096,10 +1071,9 @@ namespace Rtx::Testing
                 camera.mSun.mIrradiance = osg::Vec3f();
                 camera.mFogColour = osg::Vec3f();
 
-                std::vector<std::uint8_t> pixels;
-                countHits(scene, {}, camera, size, pixels);
+                const Frame frame = shoot(scene, {}, camera, size);
 
-                return mRadiance[centre];
+                return frame.at(centre);
             };
 
             // The volume's own quadrature stands this a little over the closed form, which is what
@@ -1114,11 +1088,10 @@ namespace Rtx::Testing
 
         /// A pane is hazed over its own distance and not over the path behind it.
         ///
-        /// **Two stretches of one path, split at the glass.** The composite ran before the water
-        /// and the air rather than after them, so the pane was multiplied by the transmittance
-        /// measured to the surface *behind* it — and a lit window a few units out arrived as dim as
-        /// the wall four thousand units further on. Moving the glass along the path changed nothing
-        /// at all.
+        /// **Two stretches of one path, split at the glass.** A composite run before the water and
+        /// the air rather than after them multiplies the pane by the transmittance measured to the
+        /// surface *behind* it — and a lit window a few units out arrives as dim as the wall four
+        /// thousand units further on, wherever along the path the glass stands.
         ///
         /// **A surface that glows on its own, because a lit one brings its own questions.** What is
         /// asserted is a transmittance, so the radiance under it has to be a figure no shadow, no
@@ -1129,13 +1102,13 @@ namespace Rtx::Testing
         ///
         /// The eye stands 4000 units from the wall, and the pane is held at 1000 units and again at
         /// 3000, so over air of even density and an extinction of 3.5e-4 the two answers are
-        /// `exp(-0.35)` = 0.70469 and `exp(-1.05)` = 0.34994. Composited the old way both read the
-        /// wall's own column instead, and read the same number as each other.
+        /// `exp(-0.35)` = 0.70469 and `exp(-1.05)` = 0.34994. Composited from the wall's own column
+        /// instead, both would read that column, and the same number as each other.
         ///
         /// **And the same two figures with a second pane in front of it**, which is the same fault
-        /// one layer deeper: the stack was charged the medium in front of its *nearest* layer, so a
-        /// glowing pane behind a plain one at five hundred units read as though it stood at five
-        /// hundred, and moving it along the path changed nothing at all. The plain pane halves both
+        /// one layer deeper: a stack charged the medium in front of its *nearest* layer reads a glowing
+        /// pane behind a plain one at five hundred units as though it stood at five hundred,
+        /// wherever along the path it stands. The plain pane halves both
         /// frames and divides out of the ratio.
         ///
         /// **The tolerances are the volume's own quadrature and nothing else.** Its slices are
@@ -1154,22 +1127,20 @@ namespace Rtx::Testing
             const auto glow = [&](float paneAway, float thickness, bool behindAnother = false) {
                 SceneDesc scene;
 
-                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                    .mMesh = scene.addMesh(MeshArrays{ .mPositions = wall, .mIndices = sQuadIndices }),
-                    .mMaterial = scene.addMaterial(Material{
+                addQuad(scene, wall,
+                    scene.addMaterial(Material{
                         .mDiffuseColour = osg::Vec3f(0.0f, 0.0f, 0.0f),
-                    }) });
+                    }));
 
                 // Wide enough to fill the middle of the frame from the far end of the path, where
                 // a sixty-degree frame covers 1732 units either side of the axis.
                 const std::array<osg::Vec3f, 4> pane = uprightQuadAt(2400.0f, paneAway - wallAway);
-                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                    .mMesh = scene.addMesh(MeshArrays{ .mPositions = pane, .mIndices = sQuadIndices }),
-                    .mMaterial = scene.addMaterial(Material{
+                addQuad(scene, pane,
+                    scene.addMaterial(Material{
                         .mEmissiveColour = osg::Vec3f(1.0f, 1.0f, 1.0f),
                         .mOpacity = 0.5f,
                         .mAlphaMode = AlphaMode::Blend,
-                    }) });
+                    }));
 
                 // Half way to the glowing one at its nearest, and black, so what it puts into the
                 // pixel is nothing and what it does to the pane behind it is a half.
@@ -1188,10 +1159,9 @@ namespace Rtx::Testing
                 camera.mSun.mIrradiance = osg::Vec3f();
                 camera.mFogColour = osg::Vec3f();
 
-                std::vector<std::uint8_t> pixels;
-                countHits(scene, {}, camera, size, pixels);
+                const Frame frame = shoot(scene, {}, camera, size);
 
-                return mRadiance[centre];
+                return frame.at(centre);
             };
 
             const float nearClear = glow(1000.0f, 0.0f);
@@ -1207,23 +1177,6 @@ namespace Rtx::Testing
                 << "a thousand units of air, behind a second pane";
             EXPECT_NEAR(glow(3000.0f, extinction, true) / glow(3000.0f, 0.0f, true), 0.34994f, 0.02f)
                 << "three thousand units of it, behind a second pane";
-        }
-
-        /// The step the tolerance below is derived from, at the magnitudes a half float has: ten
-        /// mantissa bits under the value's own power of two, and 2^-24 flat under 2^-14, where the
-        /// exponent stops falling. One is 2^-10; 0.19 sits in [2^-3, 2^-2), so 2^-13; 0.001 in
-        /// [2^-10, 2^-9), so 2^-20; and 65504, the largest half, in [2^15, 2^16), so 2^5.
-        TEST(RtxHalfStepTest, theStepIsTheValuesOwnBinadeOverTenBits)
-        {
-            EXPECT_EQ(halfStepAt(1.0f), 0.0009765625f);
-            EXPECT_EQ(halfStepAt(0.19f), 0.0001220703125f);
-            EXPECT_EQ(halfStepAt(0.001f), 9.5367431640625e-07f);
-            EXPECT_EQ(halfStepAt(65504.0f), 32.0f);
-
-            // The smallest normal half, one under it, and nothing at all: the subnormal spacing.
-            EXPECT_EQ(halfStepAt(6.103515625e-05f), 5.9604644775390625e-08f);
-            EXPECT_EQ(halfStepAt(1.0e-6f), 5.9604644775390625e-08f);
-            EXPECT_EQ(halfStepAt(0.0f), 5.9604644775390625e-08f);
         }
 
         /// A moon too faint for a shadow ray still lights the air.
@@ -1244,8 +1197,7 @@ namespace Rtx::Testing
         /// bright in red and green and near black in blue puts the crossing far above what the air
         /// itself puts into blue. The faintest leg adds eight parts in a hundred thousand to that
         /// channel, a quarter of the display curve's smallest step, so read through the curve the
-        /// figure was whichever side of a byte the air happened to sit on — and one card put it
-        /// at four times the bound.
+        /// figure would be whichever side of a byte the air happens to sit on.
         ///
         /// **What is asserted is the light per unit of irradiance**, which is bounded above and
         /// below rather than fixed: a leg under the threshold casts no ray and arrives unshadowed,
@@ -1299,12 +1251,10 @@ namespace Rtx::Testing
                 // `theFogScattersTheSunForwardFarHarderThanBack` gives: a wall in the path of a
                 // shadow ray would shadow what this measures.
                 SceneDesc scene;
-                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                    .mMesh = scene.addMesh(
-                        MeshArrays{ .mPositions = sheetAt(4000.0f, -200000.0f), .mIndices = sQuadIndices }) });
+                addQuad(scene, sheetAt(4000.0f, -200000.0f));
 
                 std::vector<float> radiance;
-                renderRadiance(scene, camera, size, radiance);
+                radiance = shoot(scene, {}, camera, size).mRadiance;
 
                 // Blue is the third of the pixel's four values, and the channel the moon has to
                 // itself.

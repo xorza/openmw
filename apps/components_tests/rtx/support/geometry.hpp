@@ -74,16 +74,20 @@ namespace Rtx::Testing
         };
     }
 
-    /// A square in the xz plane at y = `away`, `halfExtent` from the axis on every side. Its face
-    /// points along -Y, back at an eye standing on the negative side and looking along +Y, which is
-    /// where every camera in these tests stands.
-    inline std::array<osg::Vec3f, 4> uprightQuadAt(float halfExtent, float away)
+    /// A square in the xz plane at y = `away`, `halfExtent` either side of `centre` — its x and its
+    /// z. Its face points along -Y, back at an eye standing on the negative side and looking along
+    /// +Y, which is where every camera in these tests stands.
+    inline std::array<osg::Vec3f, 4> uprightQuadAt(float halfExtent, float away, const osg::Vec2f& centre = {})
     {
+        const float left = centre.x() - halfExtent;
+        const float right = centre.x() + halfExtent;
+        const float bottom = centre.y() - halfExtent;
+        const float top = centre.y() + halfExtent;
         return {
-            osg::Vec3f(-halfExtent, away, -halfExtent),
-            osg::Vec3f(halfExtent, away, -halfExtent),
-            osg::Vec3f(halfExtent, away, halfExtent),
-            osg::Vec3f(-halfExtent, away, halfExtent),
+            osg::Vec3f(left, away, bottom),
+            osg::Vec3f(right, away, bottom),
+            osg::Vec3f(right, away, top),
+            osg::Vec3f(left, away, top),
         };
     }
 
@@ -113,6 +117,21 @@ namespace Rtx::Testing
     inline std::array<osg::Vec3f, 4> cardAt(float away)
     {
         return uprightQuadAt(sCardHalfExtent, away);
+    }
+
+    /// A mesh of one quad of `corners` and nothing else, unplaced.
+    inline Index addQuadMesh(SceneDesc& scene, std::span<const osg::Vec3f, 4> corners = sUnitQuad)
+    {
+        return scene.addMesh(MeshArrays{ .mPositions = corners, .mIndices = sQuadIndices });
+    }
+
+    /// A quad of `corners` placed in `scene` by `transform`, in `material` where it names one.
+    /// Returns the placement.
+    inline Index addQuad(SceneDesc& scene, std::span<const osg::Vec3f, 4> corners, Index material = sNoIndex,
+        const osg::Matrixf& transform = osg::Matrixf::identity())
+    {
+        const Index mesh = addQuadMesh(scene, corners);
+        return scene.addInstance(MeshInstance{ .mTransform = transform, .mMesh = mesh, .mMaterial = material });
     }
 
     /// A mesh, a material and the texture it names, which is how a model arrives, and where it

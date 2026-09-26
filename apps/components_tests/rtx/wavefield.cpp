@@ -261,7 +261,7 @@ namespace Rtx
 
                         // The two moments a mip chain is asked for, which have to be the squares of
                         // what sits beside them rather than anything of their own. **And the second
-                        // is the whole of what pins the elevation**, which the pass no longer stores
+                        // is the whole of what pins the elevation**, which the pass does not store
                         // on its own: nothing shades from it, and the slope and the curvature carry
                         // its sign between them.
                         ASSERT_NEAR(got.mHeightSquared, wave * wave, 5e-3f) << "height squared" << where;

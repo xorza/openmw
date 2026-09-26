@@ -71,14 +71,10 @@ namespace Rtx::Testing
         TEST_F(RtxVisibilityTest, waterIsVisibleToACameraAndInvisibleToAShadowRay)
         {
             const auto made = [](MaterialKind kind) {
-                return [kind](SceneDesc& scene, std::span<const osg::Vec3f> pane) {
+                return [kind](SceneDesc& scene, std::span<const osg::Vec3f, 4> pane) {
                     Material material;
                     material.mKind = kind;
-                    scene.addInstance(MeshInstance{
-                        .mTransform = osg::Matrixf::identity(),
-                        .mMesh = scene.addMesh(MeshArrays{ .mPositions = pane, .mIndices = sQuadIndices }),
-                        .mMaterial = scene.addMaterial(material),
-                    });
+                    addQuad(scene, pane, scene.addMaterial(material));
                 };
             };
 
@@ -105,16 +101,15 @@ namespace Rtx::Testing
         TEST_F(RtxVisibilityTest, theFirstPersonArmsAreSeenAndShadowNothing)
         {
             const auto placed = [](bool firstPerson) {
-                return [firstPerson](SceneDesc& scene, std::span<const osg::Vec3f> pane) {
+                return [firstPerson](SceneDesc& scene, std::span<const osg::Vec3f, 4> pane) {
                     scene.addInstance(MeshInstance{
-                        .mTransform = osg::Matrixf::identity(),
-                        .mMesh = scene.addMesh(MeshArrays{ .mPositions = pane, .mIndices = sQuadIndices }),
+                        .mMesh = addQuadMesh(scene, pane),
                         .mClass = firstPerson ? InstanceClass::FirstPerson : InstanceClass::Static,
                     });
                 };
             };
 
-            const std::uint8_t open = paneOverWall([](SceneDesc&, std::span<const osg::Vec3f>) {}, false)[0];
+            const std::uint8_t open = paneOverWall([](SceneDesc&, std::span<const osg::Vec3f, 4>) {}, false)[0];
             ASSERT_GT(open, 0) << "the sun lights the wall";
             EXPECT_EQ(paneOverWall(placed(false), false)[0], 0) << "a solid pane shadows the wall";
             EXPECT_EQ(paneOverWall(placed(true), false)[0], open) << "and the arms do not";
@@ -150,9 +145,8 @@ namespace Rtx::Testing
                 // No height at all, which is a flat sea: a table whose amplitudes are zero. It is
                 // also what makes the caustic exactly one — a flat surface has no curvature to
                 // gather anything with, so the Jacobian is the identity.
-                std::vector<std::uint8_t> pixels;
-                countHits(scene, {}, camera, size, pixels, { .mSea = SeaState{ .mSignificantHeight = 0.0f } });
-                return std::array<int, 3>{ pixels[centre], pixels[centre + 1], pixels[centre + 2] };
+                const Frame frame = shoot(scene, {}, camera, size, { .mSea = SeaState{ .mSignificantHeight = 0.0f } });
+                return std::array<int, 3>{ frame.byte(centre), frame.byte(centre + 1), frame.byte(centre + 2) };
             };
 
             // A sun as near overhead as the reflection allows, where `throughFlatWater`'s slant is
@@ -218,12 +212,13 @@ namespace Rtx::Testing
             // On the scene, as the walk puts them, and pressed on every frame of the run: the
             // renderer reads the scene's list as the scene is set.
             const auto look = [&](std::vector<std::uint8_t>& pixels) {
-                mRenderer->resetHistory();
-                countHits(scene, {}, camera, size, pixels,
+                mRenderer.resetHistory();
+                pixels = shoot(scene, {}, camera, size,
                     Shot{ .mSea = SeaState{ .mSignificantHeight = 0.0f },
                         .mFrames = 30,
                         .mAverage = false,
-                        .mSkyStep = 1.0f / Shaders::RIPPLE_STEP_RATE });
+                        .mSkyStep = 1.0f / Shaders::RIPPLE_STEP_RATE })
+                             .bytes();
             };
 
             std::vector<std::uint8_t> still;
@@ -287,9 +282,8 @@ namespace Rtx::Testing
 
             const auto look = [&](const SceneDesc& scene) {
                 // No height at all, which is a flat sea: a table whose amplitudes are zero.
-                std::vector<std::uint8_t> pixels;
-                countHits(scene, {}, camera, size, pixels, { .mSea = SeaState{ .mSignificantHeight = 0.0f } });
-                return std::array<int, 3>{ pixels[centre], pixels[centre + 1], pixels[centre + 2] };
+                const Frame frame = shoot(scene, {}, camera, size, { .mSea = SeaState{ .mSignificantHeight = 0.0f } });
+                return std::array<int, 3>{ frame.byte(centre), frame.byte(centre + 1), frame.byte(centre + 2) };
             };
 
             // `WATER_SCATTER.r * 0.5` is 0.02, less the two per cent the surface reflects away, and
@@ -336,9 +330,8 @@ namespace Rtx::Testing
                     osg::Vec3f(0.0f, -0.05f, from), osg::Vec3f(0.0f, 0.0f, from - 10.0f), 60.0f, size, size, 10000.0f);
                 litThroughWater(camera);
 
-                std::vector<std::uint8_t> pixels;
-                countHits(scene, {}, camera, size, pixels, { .mSea = SeaState{ .mSignificantHeight = 0.0f } });
-                return std::array<int, 3>{ pixels[centre], pixels[centre + 1], pixels[centre + 2] };
+                const Frame frame = shoot(scene, {}, camera, size, { .mSea = SeaState{ .mSignificantHeight = 0.0f } });
+                return std::array<int, 3>{ frame.byte(centre), frame.byte(centre + 1), frame.byte(centre + 2) };
             };
 
             // Ten above and ten below, and the two legitimately differ by a little. From above the
@@ -361,9 +354,9 @@ namespace Rtx::Testing
         /// The water *over* an eye dims what the water in front of it scatters.
         ///
         /// **The half that only a submerged camera can see.** `waterColumn` charges the sun for the
-        /// water between the surface and where the stretch begins, and the ambient for nothing at
-        /// all — so the sea's own scattering arrived at full sky brightness however deep the eye
-        /// was. From above that is right, because the stretch begins at the surface and there is no
+        /// water between the surface and where the stretch begins. Charging the ambient for nothing
+        /// there would bring the sea's own scattering in at full sky brightness however deep the eye
+        /// is. From above that is right, because the stretch begins at the surface and there is no
         /// water over it. From below it is the whole column over the camera, missing.
         ///
         /// **The stretch is held at 200 units and the bed moves with the eye**, so the only thing
@@ -392,10 +385,10 @@ namespace Rtx::Testing
                 camera.mAmbientFromSky = 1.0f;
                 camera.mWaterLevel = 0.0f;
 
-                std::vector<std::uint8_t> pixels;
+                Frame frame;
                 const SceneDesc scene = makeFlooded(4000.0f, eye + stretch);
-                countHits(scene, {}, camera, size, pixels, { .mSea = SeaState{ .mSignificantHeight = 0.0f } });
-                return std::array<int, 3>{ pixels[centre], pixels[centre + 1], pixels[centre + 2] };
+                frame = shoot(scene, {}, camera, size, { .mSea = SeaState{ .mSignificantHeight = 0.0f } });
+                return std::array<int, 3>{ frame.byte(centre), frame.byte(centre + 1), frame.byte(centre + 2) };
             };
 
             const auto scattered = [&](float eye, std::size_t channel) {
@@ -456,17 +449,16 @@ namespace Rtx::Testing
             camera.mAmbientFromSky = 1.0f;
             camera.mWaterLevel = 0.0f;
 
-            std::vector<std::uint8_t> pixels;
-            EXPECT_EQ(countHits(makeOpenWater(4000.0f), {}, camera, size, pixels), 0u)
-                << "the sheet is overhead, so every ray leaves the scene";
+            const Frame frame = shoot(makeOpenWater(4000.0f), {}, camera, size);
+            EXPECT_EQ(frame.mHits, 0u) << "the sheet is overhead, so every ray leaves the scene";
 
             std::array<int, 3> lowest{ 255, 255, 255 };
             std::array<int, 3> highest{ 0, 0, 0 };
-            for (std::size_t at = 0; at < pixels.size(); at += 4)
+            for (std::size_t at = 0; at < frame.mRadiance.size(); at += 4)
                 for (std::size_t channel = 0; channel < 3; ++channel)
                 {
-                    lowest[channel] = std::min(lowest[channel], int{ pixels[at + channel] });
-                    highest[channel] = std::max(highest[channel], int{ pixels[at + channel] });
+                    lowest[channel] = std::min(lowest[channel], int{ frame.byte(at + channel) });
+                    highest[channel] = std::max(highest[channel], int{ frame.byte(at + channel) });
                 }
 
             for (std::size_t channel = 0; channel < 3; ++channel)
@@ -482,11 +474,12 @@ namespace Rtx::Testing
         /// A pixel of water with no water under it is the ground beside it, and how much water is
         /// under it is measured straight down.
         ///
-        /// **Along the refraction was the wrong measure, and a grazing view of a shore is where it
-        /// showed.** The refracted ray leaves the surface at forty degrees off the vertical and
-        /// lands somewhere else entirely — at a shore, somewhere the bed is much further down — so
-        /// the fade read deep water at a pixel with none, never engaged, and left the plane cutting
-        /// the terrain along a hard line. Straight down is a view-independent answer.
+        /// **Along the refraction is the wrong measure, and a grazing view of a shore is where it
+        /// shows.** The refracted ray leaves the surface at forty degrees off the vertical and
+        /// lands somewhere else entirely — at a shore, somewhere the bed is much further down — so a
+        /// fade measured along it reads deep water at a pixel with none, never engages, and leaves
+        /// the plane cutting the terrain along a hard line. Straight down is a view-independent
+        /// answer.
         ///
         /// Two parallel projections of one shore, one straight down and one sixty degrees off it,
         /// with their rows laid over the same run of x. The bed is black under a white sky and
@@ -517,14 +510,10 @@ namespace Rtx::Testing
             black.mDiffuseColour = osg::Vec3f(0.0f, 0.0f, 0.0f);
 
             SceneDesc dry;
-            dry.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = dry.addMesh(MeshArrays{ .mPositions = bed, .mIndices = sQuadIndices }),
-                .mMaterial = dry.addMaterial(black) });
+            addQuad(dry, bed, dry.addMaterial(black));
 
             SceneDesc wet = makeOpenWater(extent);
-            wet.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = wet.addMesh(MeshArrays{ .mPositions = bed, .mIndices = sQuadIndices }),
-                .mMaterial = wet.addMaterial(black) });
+            addQuad(wet, bed, wet.addMaterial(black));
 
             // Straight down, with the image's up along +x so that a row is a run of x.
             const osg::Matrixf above = osg::Matrixf::lookAt(
@@ -554,10 +543,9 @@ namespace Rtx::Testing
                 camera.mSkyZenith = osg::Vec3f(1.0f, 1.0f, 1.0f);
                 camera.mAmbientFromSky = 1.0f;
 
-                std::vector<std::uint8_t> withWater;
-                countHits(wet, {}, camera, size, withWater, { .mSea = SeaState{ .mSignificantHeight = 0.0f } });
-                std::vector<std::uint8_t> without;
-                countHits(dry, {}, camera, size, without, { .mSea = SeaState{ .mSignificantHeight = 0.0f } });
+                const Frame withWater
+                    = shoot(wet, {}, camera, size, { .mSea = SeaState{ .mSignificantHeight = 0.0f } });
+                const Frame without = shoot(dry, {}, camera, size, { .mSea = SeaState{ .mSignificantHeight = 0.0f } });
 
                 // How far each row is from the ground beside it, as the mean over its columns.
                 std::vector<double> apart(size, 0.0);
@@ -566,7 +554,7 @@ namespace Rtx::Testing
                     for (std::uint32_t column = 0; column < size; ++column)
                     {
                         const std::size_t i = (std::size_t{ row } * size + column) * 4;
-                        apart[row] += std::abs(double{ decodeSrgb(withWater[i]) } - double{ decodeSrgb(without[i]) });
+                        apart[row] += std::abs(double{ withWater.at(i) } - double{ without.at(i) });
                     }
                     apart[row] /= static_cast<double>(size);
                 }
@@ -617,11 +605,9 @@ namespace Rtx::Testing
         ///
         /// **The half the invariant above cannot see.** Both of its cameras look *down*, so the hit
         /// is the bed and the column is charged whichever side the eye is on. Aim up from below and
-        /// the hit is the surface itself, which used to be excluded outright — the reasoning being
-        /// that a ray reaching it from below had already paid — and what had paid was each of the
-        /// surface's own rays over its own stretch. The stretch from the eye up to the surface is a
-        /// different one, and nothing was charging it: a surface seen from a hundred units down read
-        /// exactly as bright as one seen from ten.
+        /// the hit is the surface itself. Each of the surface's own rays pays for its own stretch,
+        /// and the stretch from the eye up to the surface is a different one: left uncharged, a
+        /// surface seen from a hundred units down reads exactly as bright as one seen from ten.
         ///
         /// **No sun and no ambient, so nothing scatters into the ray and the answer is the exponent
         /// alone.** The bed is then unlit and what reflects off the underside of the surface is
@@ -653,9 +639,8 @@ namespace Rtx::Testing
                 camera.mSkyZenith = camera.mSkyHorizon;
                 camera.mAmbientFromSky = 1.0f;
 
-                std::vector<std::uint8_t> pixels;
-                countHits(scene, {}, camera, size, pixels, { .mSea = SeaState{ .mSignificantHeight = 0.0f } });
-                return static_cast<int>(pixels[centre]);
+                const Frame frame = shoot(scene, {}, camera, size, { .mSea = SeaState{ .mSignificantHeight = 0.0f } });
+                return static_cast<int>(frame.byte(centre));
             };
 
             EXPECT_NEAR(lookUp(-100.0f), 157, 2) << "a hundred units of water over the eye";
@@ -702,10 +687,9 @@ namespace Rtx::Testing
                 constexpr float blazing = 100.0f * sSunOverWater;
                 camera.mSun.mIrradiance = osg::Vec3f(blazing, blazing, blazing);
 
-                std::vector<std::uint8_t> pixels;
-                countHits(scene, {}, camera, size, pixels, { .mSea = SeaState{ .mSignificantHeight = 0.0f } });
+                const Frame frame = shoot(scene, {}, camera, size, { .mSea = SeaState{ .mSignificantHeight = 0.0f } });
 
-                return double{ decodeSrgb(pixels[centre + 1]) };
+                return double{ frame.at(centre + 1) };
             };
 
             // **The centre pixel and not the frame's mean.** A lobe this narrow is most of its own
@@ -724,7 +708,7 @@ namespace Rtx::Testing
         /// arriving at the point it left, so it crosses the same depth the sun crosses and has to
         /// lose the same fraction to it. Returning the sky whole lights a submerged floor as though
         /// the water above it were not there — the fault `aColumnOfWaterAgreesFromAboveAndFromBelow`
-        /// was written for, in the one term that test cannot see: a bounce shades the same bed
+        /// guards against, in the one term that test cannot see: a bounce shades the same bed
         /// identically from either side of the surface, so the two views agree while both are wrong.
         ///
         /// **From under the water, because only a primary hit bounces.** A bed seen down through the
@@ -767,15 +751,14 @@ namespace Rtx::Testing
             camera.mWaterLevel = 0.0f;
 
             // Flat, so the surface the bounce passes through neither bends it nor gathers it.
-            std::vector<std::uint8_t> pixels;
-            countHits(scene, {}, camera, size, pixels, { .mSea = SeaState{ .mSignificantHeight = 0.0f } });
+            const Frame frame = shoot(scene, {}, camera, size, { .mSea = SeaState{ .mSignificantHeight = 0.0f } });
 
             for (std::size_t channel = 0; channel < 3; ++channel)
             {
                 const float down = std::exp(-Shaders::WATER_EXTINCTION[channel] * depth);
                 const float out = std::exp(-Shaders::WATER_EXTINCTION[channel] * above);
 
-                EXPECT_NEAR(pixels[centre + channel], int{ encodeSrgb(0.5f * sky * down * out) }, 1)
+                EXPECT_NEAR(frame.byte(centre + channel), int{ encodeSrgb(0.5f * sky * down * out) }, 1)
                     << "channel " << channel;
             }
         }
@@ -806,9 +789,7 @@ namespace Rtx::Testing
             // A ceiling, drawn from both faces because what the water reflects is its underside
             // and a ceiling in the game has one the content modelled.
             SceneDesc scene = makeOpenWater(4000.0f);
-            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(MeshArrays{ .mPositions = sheetAt(4000.0f, 200.0f), .mIndices = sQuadIndices }),
-                .mMaterial = scene.addMaterial(Material{ .mTwoSided = true }) });
+            addQuad(scene, sheetAt(4000.0f, 200.0f), scene.addMaterial(Material{ .mTwoSided = true }));
 
             const auto look = [&](float across) {
                 Shaders::VisibilityConstants camera = Testing::makeCamera(
@@ -826,26 +807,26 @@ namespace Rtx::Testing
             // beside it is for, and not what is being measured here.
             constexpr SeaState still{ .mSignificantHeight = 0.0f };
 
-            std::vector<std::uint8_t> pixels;
-            countHits(scene, {}, look(0.0f), size, pixels, { .mSea = still });
+            Frame frame;
+            frame = shoot(scene, {}, look(0.0f), size, { .mSea = still });
 
             std::vector<float> mirrored;
             std::vector<float> moved;
-            mRenderer->readChannel(Channel::ReflectionMotion, mirrored);
-            mRenderer->readChannel(Channel::Motion, moved);
+            mRenderer.readChannel(Channel::ReflectionMotion, mirrored);
+            mRenderer.readChannel(Channel::Motion, moved);
             ASSERT_EQ(mirrored.size(), std::size_t{ size } * size * 2);
 
             // **Nothing has moved yet**, which the mirrored field has to say as plainly as the
             // ordinary one: a still camera over still water reflects a still ceiling.
-            mRenderer->renderFrame(look(0.0f), FrameOptions{});
-            mRenderer->readChannel(Channel::ReflectionMotion, mirrored);
+            mRenderer.renderFrame(look(0.0f), FrameOptions{});
+            mRenderer.readChannel(Channel::ReflectionMotion, mirrored);
             EXPECT_NEAR(mirrored[centre * 2], 0.0f, 0.01f) << "a still frame reflects a still image";
             EXPECT_NEAR(mirrored[centre * 2 + 1], 0.0f, 0.01f);
 
             // A step sideways, with everything in the world standing still.
-            mRenderer->renderFrame(look(step), FrameOptions{});
-            mRenderer->readChannel(Channel::ReflectionMotion, mirrored);
-            mRenderer->readChannel(Channel::Motion, moved);
+            mRenderer.renderFrame(look(step), FrameOptions{});
+            mRenderer.readChannel(Channel::ReflectionMotion, mirrored);
+            mRenderer.readChannel(Channel::Motion, moved);
 
             EXPECT_NEAR(std::abs(moved[centre * 2]), surface, 0.1f) << "the water is a hundred units under the eye";
             EXPECT_NEAR(std::abs(mirrored[centre * 2]), image, 0.1f)
@@ -864,9 +845,9 @@ namespace Rtx::Testing
                 return camera;
             };
 
-            countHits(bare, {}, turn(0.0f), size, pixels, { .mSea = still });
-            mRenderer->renderFrame(turn(40.0f), FrameOptions{});
-            mRenderer->readChannel(Channel::ReflectionMotion, mirrored);
+            frame = shoot(bare, {}, turn(0.0f), size, { .mSea = still });
+            mRenderer.renderFrame(turn(40.0f), FrameOptions{});
+            mRenderer.readChannel(Channel::ReflectionMotion, mirrored);
 
             EXPECT_GT(std::abs(mirrored[centre * 2]), 1.0f) << "the mirrored sky slid when the camera turned";
             EXPECT_LT(std::abs(mirrored[centre * 2]), static_cast<float>(size)) << "and stayed on screen";

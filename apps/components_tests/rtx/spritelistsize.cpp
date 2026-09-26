@@ -15,8 +15,7 @@ namespace Rtx
         /// The buffer holds the starts and the capacity, and the pass is told the capacity alone.
         ///
         /// **The two halves of one number, and a test that they stay that.** A buffer sized from one
-        /// figure and a capacity taken from another is a dispatch past the end of an allocation, and
-        /// the two used to be three statements apart.
+        /// figure and a capacity taken from another is a dispatch past the end of an allocation.
         TEST(RtxSpriteListSizeTest, theBufferHoldsTheStartsAndTheCapacityTogether)
         {
             SpriteListSize size;

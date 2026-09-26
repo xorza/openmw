@@ -116,7 +116,7 @@ namespace MWRender
             EXPECT_EQ(renderer.mApplied.size(), 4u);
         }
 
-        /// **The default `awaitFrame` is the limiter the engine's loop used to hold**: it sleeps to
+        /// **The default `awaitFrame` is upstream's own frame limiter**: it sleeps to
         /// the limit and answers the limit's own length where it slept, and the wall where it did
         /// not. The rasterizer keeps exactly the pacing it had, one call earlier in the loop. A
         /// renderer that paces its own frames hears of each limit once, with the limit already

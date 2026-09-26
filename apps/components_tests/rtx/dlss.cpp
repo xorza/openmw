@@ -89,12 +89,8 @@ namespace Rtx
         protected:
             static void SetUpTestSuite()
             {
-                std::string reason;
-                const Testing::Harness* harness = Testing::getHarness(reason);
-                if (harness == nullptr)
-                    return;
-
-                sNgx = std::make_unique<Dlss>(*harness->mDevice, harness->mInstance->getHandle());
+                const Testing::Harness& harness = Testing::getHarness();
+                sNgx = std::make_unique<Dlss>(*harness.mDevice, harness.mInstance->getHandle());
             }
 
             static void TearDownTestSuite() { sNgx.reset(); }
@@ -102,14 +98,11 @@ namespace Rtx
             void SetUp() override
             {
                 Testing::DeviceTest::SetUp();
-                if (mHarness == nullptr)
-                    return;
-
                 if (!sNgx->isAvailable())
                     GTEST_SKIP() << sNgx->getObstacle();
             }
 
-            VkInstance getInstance() const { return mHarness->mInstance->getHandle(); }
+            VkInstance getInstance() const { return mHarness.mInstance->getHandle(); }
 
             /// The extent every size question here is asked about, which is the one the frame budget
             /// is written against.
@@ -235,7 +228,7 @@ namespace Rtx
             fill(pool, reflections, { 0.0f, 0.0f, 0.0f, 0.0f });
             fill(pool, output, { 0.0f, 0.0f, 0.0f, 0.0f });
 
-            mHarness->mInstance->getValidationLog()->clear();
+            mHarness.mInstance->getValidationLog()->clear();
 
             pool.submitAndWait([&](VkCommandBuffer commands) {
                 pass->record(commands,
@@ -283,7 +276,7 @@ namespace Rtx
             // liked the parameter map — not that what it recorded was valid. The layers are what
             // have an opinion about the resources it then touched.
             std::vector<std::string> raised;
-            mHarness->mInstance->getValidationLog()->takeErrorsOnThisThread(raised);
+            mHarness.mInstance->getValidationLog()->takeErrorsOnThisThread(raised);
             for (const std::string& message : raised)
                 ADD_FAILURE() << "validation error from the evaluation: " << message;
         }
@@ -409,9 +402,7 @@ namespace Rtx
             // A wall four hundred units across, larger than the frame, lit by one sun and no sky —
             // so every pixel is the same surface and nothing in the picture is background.
             SceneDesc scene;
-            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh
-                = scene.addMesh(MeshArrays{ .mPositions = Testing::sWallQuad, .mIndices = Testing::sQuadIndices }) });
+            Testing::addQuad(scene, Testing::sWallQuad);
 
             // **One camera for both, and it is built for the render extent**, because that is what
             // both renderers trace at — the upscaler only changes what happens after.
@@ -422,11 +413,10 @@ namespace Rtx
             camera.mSkyZenith = osg::Vec3f();
 
             std::vector<std::uint8_t> reference;
-            mRenderer->resize(extents.mRenderWidth, extents.mRenderHeight);
-            mRenderer->setScene(Rtx::SceneSlot::world(), scene, {});
-            mRenderer->renderFrame(
-                camera, FrameOptions{ .mReconstruction = ReconstructionRequest{ .mFilter = false } });
-            mRenderer->readPixels(reference);
+            mRenderer.resize(extents.mRenderWidth, extents.mRenderHeight);
+            mRenderer.setScene(Rtx::SceneSlot::world(), scene, {});
+            mRenderer.renderFrame(camera, FrameOptions{ .mReconstruction = ReconstructionRequest{ .mFilter = false } });
+            mRenderer.readPixels(reference);
 
             // **Several frames, because a temporal upscaler has nothing on the first.** The camera
             // does not move, so what the run buys is history rather than a different picture.
@@ -482,9 +472,7 @@ namespace Rtx
             const std::array<TextureData, 1> puff{ Testing::describeTexel(white) };
 
             SceneDesc scene;
-            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::translate(0.0f, 200.0f, 0.0f),
-                .mMesh
-                = scene.addMesh(MeshArrays{ .mPositions = Testing::sWallQuad, .mIndices = Testing::sQuadIndices }) });
+            Testing::addQuad(scene, Testing::sWallQuad, sNoIndex, osg::Matrixf::translate(0.0f, 200.0f, 0.0f));
             const Index cut = scene.textures().add(VFS::Path::NormalizedView("sprite.dds"));
             const std::array<Sprite, 1> sprites{ Sprite{ .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f),
                 .mRadius = 60.0f,
@@ -509,15 +497,15 @@ namespace Rtx
 
             std::vector<std::uint8_t> reference;
             Shaders::VisibilityConstants whole = cameraAt(extents.mOutputWidth, extents.mOutputHeight);
-            mRenderer->resize(extents.mOutputWidth, extents.mOutputHeight);
-            mRenderer->setScene(Rtx::SceneSlot::world(), scene, puff);
+            mRenderer.resize(extents.mOutputWidth, extents.mOutputHeight);
+            mRenderer.setScene(Rtx::SceneSlot::world(), scene, puff);
             for (std::uint32_t frame = 0; frame < sFrames; ++frame)
             {
                 whole.mFrame = frame;
-                mRenderer->renderFrame(
+                mRenderer.renderFrame(
                     whole, FrameOptions{ .mReconstruction = ReconstructionRequest{ .mFilter = false } });
             }
-            mRenderer->readPixels(reference);
+            mRenderer.readPixels(reference);
 
             Shaders::VisibilityConstants camera = cameraAt(extents.mRenderWidth, extents.mRenderHeight);
             upscaling->setScene(Rtx::SceneSlot::world(), scene, puff);
@@ -567,9 +555,7 @@ namespace Rtx
                 GTEST_SKIP() << reason;
 
             SceneDesc scene;
-            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh
-                = scene.addMesh(MeshArrays{ .mPositions = Testing::sWallQuad, .mIndices = Testing::sQuadIndices }) });
+            Testing::addQuad(scene, Testing::sWallQuad);
             upscaling->setScene(Rtx::SceneSlot::world(), scene, {});
 
             const auto drawTwice = [&] {
@@ -616,9 +602,7 @@ namespace Rtx
                 GTEST_SKIP() << reason;
 
             SceneDesc scene;
-            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh
-                = scene.addMesh(MeshArrays{ .mPositions = Testing::sWallQuad, .mIndices = Testing::sQuadIndices }) });
+            Testing::addQuad(scene, Testing::sWallQuad);
             upscaling->setScene(Rtx::SceneSlot::world(), scene, {});
 
             const auto drawAndRead = [&] {
@@ -686,10 +670,11 @@ namespace
     /// fewer tests.
     ///
     /// One test for the file rather than a stub per test above, because a stub written per name is
-    /// a list that stops matching the moment a test is added on the other side of the `#ifdef`. Its
-    /// own suite name for the same reason it is a bare `TEST`: the suite above is `TEST_F`, and one
-    /// suite cannot hold both forms.
-    TEST(RtxDlss, thisBuildHasNoRayReconstruction)
+    /// a list that stops matching the moment a test is added on the other side of the `#ifdef`.
+    /// Over the device fixture, as every test of this binary is (`RtxSourceTreeTest`).
+    using RtxDlss = Rtx::Testing::DeviceTest;
+
+    TEST_F(RtxDlss, thisBuildHasNoRayReconstruction)
     {
         GTEST_SKIP() << "this build has no DLSS; configure with -DOPENMW_RTX_DLSS=ON";
     }

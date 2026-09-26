@@ -31,7 +31,7 @@ namespace Rtx
         /// hit count is one — was paying a pair of driver calls a frame for a pointer it held.
         TEST_F(RtxBufferTest, aHostVisibleBufferIsMappedOnceAndKeepsTheAddress)
         {
-            const Device& device = *mHarness->mDevice;
+            const Device& device = *mHarness.mDevice;
 
             const Buffer buffer = Buffer::readBack(device, 64, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, "test");
 
@@ -55,7 +55,7 @@ namespace Rtx
         /// graveyard, and the new one is moved into the member the old one was in.
         TEST_F(RtxBufferTest, aMovedBufferTakesItsMappingWithIt)
         {
-            const Device& device = *mHarness->mDevice;
+            const Device& device = *mHarness.mDevice;
 
             Buffer first = Buffer::readBack(device, 64, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, "test");
 
@@ -75,7 +75,7 @@ namespace Rtx
         /// this a state rather than a race: the copy is on the queue for as long as the test says.
         TEST_F(RtxBufferTest, aCopyNamesBothEndsAndAHostWriteWaitsForIt)
         {
-            const Device& device = *mHarness->mDevice;
+            const Device& device = *mHarness.mDevice;
             CommandPool& pool = getPool();
 
             constexpr VkBufferUsageFlags copyable = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;

@@ -431,7 +431,7 @@ namespace Rtx::Testing
             {
                 stateset->setTextureAttributeAndModes(1, new osg::Texture2D(mSheets.front()), osg::StateAttribute::ON);
                 stateset->setTextureAttribute(1,
-                    new SceneUtil::TextureType(std::string(textureRoleName(TextureRole::Environment))),
+                    new SceneUtil::TextureType(std::string(sTextureRoleNames.name(TextureRole::Environment))),
                     osg::StateAttribute::ON);
             }
 
@@ -1207,7 +1207,7 @@ namespace Rtx::Testing
             osg::ref_ptr<osg::Geometry> clamped = makeQuad();
             clamped->getOrCreateStateSet()->setTextureAttributeAndModes(0, clamp, osg::StateAttribute::ON);
             clamped->getOrCreateStateSet()->setTextureAttribute(0,
-                new SceneUtil::TextureType(std::string(textureRoleName(TextureRole::Diffuse))),
+                new SceneUtil::TextureType(std::string(sTextureRoleNames.name(TextureRole::Diffuse))),
                 osg::StateAttribute::ON);
 
             osgUtil::UpdateVisitor update;

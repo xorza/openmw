@@ -58,9 +58,7 @@ namespace Rtx::Testing
         // What `MaterialResolver::resolveWater` says of the sea, because a swimmer looks up at the
         // surface from under it and a ray that draws culls everything the content shows one face of.
         water.mTwoSided = true;
-        scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-            .mMesh = scene.addMesh(MeshArrays{ .mPositions = sheetAt(extent, 0.0f), .mIndices = sQuadIndices }),
-            .mMaterial = scene.addMaterial(water) });
+        addQuad(scene, sheetAt(extent, 0.0f), scene.addMaterial(water));
 
         return scene;
     }
@@ -72,8 +70,7 @@ namespace Rtx::Testing
     inline SceneDesc makeFlooded(float extent, float depth)
     {
         SceneDesc scene = makeOpenWater(extent);
-        scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-            .mMesh = scene.addMesh(MeshArrays{ .mPositions = sheetAt(extent, -depth), .mIndices = sQuadIndices }) });
+        addQuad(scene, sheetAt(extent, -depth));
 
         return scene;
     }
@@ -124,8 +121,7 @@ namespace Rtx::Testing
     inline SceneDesc makeWall(float scale = 1.0f)
     {
         SceneDesc scene;
-        const Index mesh = scene.addMesh(MeshArrays{ .mPositions = sWallQuad, .mIndices = sQuadIndices });
-        scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::scale(scale, 1.0f, scale), .mMesh = mesh });
+        addQuad(scene, sWallQuad, sNoIndex, osg::Matrixf::scale(scale, 1.0f, scale));
         return scene;
     }
 
@@ -135,8 +131,8 @@ namespace Rtx::Testing
     /// **The two numbers an opacity is made of, added the one way.** The shader multiplies a
     /// material's alpha by a placement's fade, and a helper that built either of them its own way
     /// would be holding up a surface this renderer does not have.
-    inline void addPane(SceneDesc& scene, std::span<const osg::Vec3f> quad, const osg::Vec4f& colour, float fade = 1.0f,
-        bool twoSided = false)
+    inline void addPane(SceneDesc& scene, std::span<const osg::Vec3f, 4> quad, const osg::Vec4f& colour,
+        float fade = 1.0f, bool twoSided = false)
     {
         // A test states a pane as a colour and how much of it there is, which is the pair the
         // record states too. Linear already, so there is nothing to decode: `Rtx::decodeColour` is
@@ -148,10 +144,7 @@ namespace Rtx::Testing
             .mTwoSided = twoSided,
         });
 
-        scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-            .mMesh = scene.addMesh(MeshArrays{ .mPositions = quad, .mIndices = sQuadIndices }),
-            .mMaterial = glass,
-            .mOpacity = fade });
+        scene.addInstance(MeshInstance{ .mMesh = addQuadMesh(scene, quad), .mMaterial = glass, .mOpacity = fade });
     }
 
     /// The eye and the sun every test over that wall stands it under: the sun along +Y, square to
@@ -187,16 +180,6 @@ namespace Rtx::Testing
         return centreOf(size) * 4;
     }
 
-    /// A byte the shader wrote, back to the linear value behind it.
-    ///
-    /// Ratios have to be taken in linear. sRGB is a power curve, so the same proportional
-    /// brightening is a different number of bytes at the top of the range and at the bottom.
-    inline float decodeSrgb(std::uint8_t byte)
-    {
-        const float encoded = static_cast<float>(byte) / 255.0f;
-        return encoded <= 0.04045f ? encoded / 12.92f : std::pow((encoded + 0.055f) / 1.055f, 2.4f);
-    }
-
     /// How brightly the sky is lit, in the tests that measure a wall through fog or against the
     /// world's edge.
     ///
@@ -225,6 +208,60 @@ namespace Rtx::Testing
 
         texture.describe(extent, extent, "opaque sheet");
     }
+
+    /// What one render over this fixture came to: the composite before the display curve, how many
+    /// primary rays hit, and what was not finite.
+    ///
+    /// **The radiance and not the picture.** `tone.comp` puts `toneMap` between the two, and that
+    /// curve is a display transform: it takes 0.04 off a shadow and rolls a highlight away from one,
+    /// neither of which a test about what the trace computed has an opinion on. A byte is the
+    /// display curve over the same radiance, computed when asked for, so a figure derived against
+    /// the display curve and one derived in radiance read the one frame.
+    struct Frame
+    {
+        /// Four values a pixel, row major.
+        std::vector<float> mRadiance;
+
+        std::uint32_t mHits = 0;
+        Rtx::NotFinite mNotFinite;
+
+        float at(std::size_t value) const { return mRadiance[value]; }
+
+        /// The mean of one channel over the frame.
+        ///
+        /// **The frame and not a pixel, where every pixel of it is the same measurement.** The
+        /// estimator is one sample per pixel, so a frame lit evenly is as many samples as it has
+        /// pixels and its mean is the figure with that error divided down — which is what lets a
+        /// test hold a derived number to three decimal places over a stochastic renderer.
+        float mean(std::size_t channel = 0) const
+        {
+            float sum = 0.0f;
+            for (std::size_t value = channel; value < mRadiance.size(); value += 4)
+                sum += mRadiance[value];
+
+            return sum / static_cast<float>(mRadiance.size() / 4);
+        }
+
+        /// The byte a test names for one value: the display curve over a colour, and coverage,
+        /// which the curve does not touch, over the fourth.
+        std::uint8_t byte(std::size_t value) const
+        {
+            if (value % 4 == 3)
+                return static_cast<std::uint8_t>(std::lround(std::clamp(mRadiance[value], 0.0f, 1.0f) * 255.0f));
+
+            return encodeSrgb(mRadiance[value]);
+        }
+
+        /// Every value as its byte.
+        std::vector<std::uint8_t> bytes() const
+        {
+            std::vector<std::uint8_t> all(mRadiance.size());
+            for (std::size_t value = 0; value < all.size(); ++value)
+                all[value] = byte(value);
+
+            return all;
+        }
+    };
 
     /// Everything a render over this fixture decides beyond the scene, the camera and the extent.
     ///
@@ -283,7 +320,7 @@ namespace Rtx::Testing
 
         /// The exposure the composite is held at. `std::nullopt` is the exposure the frame measures
         /// for itself, which is what a test about the exposure pass wants — and what every figure
-        /// derived through `countHits` must not have, since those are about what the trace computed.
+        /// derived through `shoot` must not have, since those are about what the trace computed.
         std::optional<float> mExposure = 1.0f;
 
         /// How far the sky's clock moves a frame, which is what the ripple field steps by. A step
@@ -305,43 +342,53 @@ namespace Rtx::Testing
 
         /// The sun glare fader over the picture. None, for every test not about it.
         SunGlare mGlare;
+
+        /// Run once each frame of the run is finished, with that frame, for a caller measuring what
+        /// moves between two frames rather than what a run of them averages to.
+        std::function<void(const Frame&)> mEachFrame;
     };
+
+    /// A run of `frames` filtered frames with the history let build from nothing, each frame
+    /// standing on its own.
+    ///
+    /// @param first the sampler's frame the run starts at, so a run can be handed a stream of its
+    ///        own rather than the one every other run in the test consumed.
+    inline Shot filteredRun(std::uint32_t frames, std::uint32_t first = 0)
+    {
+        return Shot{
+            .mFrames = frames, .mAverage = false, .mFirstFrame = first, .mFilter = true, .mResetHistory = true
+        };
+    }
 
     class RtxVisibilityTest : public Testing::RendererTest
     {
     protected:
-        /// Draws `scene` at `size` square, and returns how many primary rays hit.
+        /// Draws `scene` at `size` square and returns the last frame of the shot.
         ///
-        /// **The one render loop over this fixture.** Every helper below reaches the device through
-        /// here, so what a shot means is said once rather than once per way of reading the answer.
-        ///
-        /// The frame is left on the device, where `readRadiance` and `readPixels` can ask for it.
-        ///
-        /// @param afterEach run once each frame is finished, for a caller measuring what moves
-        ///        between two frames rather than what a run of them averages to.
-        std::uint32_t renderShot(const SceneDesc& scene, std::span<const TextureData> textures,
-            const Shaders::VisibilityConstants& camera, std::uint32_t size, const Shot& shot = {},
-            const std::function<void()>& afterEach = {})
+        /// **The one render loop over this fixture**, so what a shot means is said once rather than
+        /// once per way of reading the answer.
+        Frame shoot(const SceneDesc& scene, std::span<const TextureData> textures,
+            const Shaders::VisibilityConstants& camera, std::uint32_t size, const Shot& shot = {})
         {
-            mRenderer->resize(size, size);
-            mRenderer->setSea(shot.mSea);
-            mRenderer->setScene(Rtx::SceneSlot::world(), scene, inSceneOrder(textures));
+            mRenderer.resize(size, size);
+            mRenderer.setSea(shot.mSea);
+            mRenderer.setScene(Rtx::SceneSlot::world(), scene, inSceneOrder(textures));
 
             if (shot.mResetHistory)
-                mRenderer->resetHistory();
+                mRenderer.resetHistory();
 
             // One frame per sample, each waited out before the next, which orders them — and the
             // renderer's own history barrier is what makes each sum visible to the next.
             const std::uint32_t drawn = std::max(shot.mFrames, 1u);
-            std::uint32_t hits = 0;
-            for (std::uint32_t frame = 0; frame < drawn; ++frame)
+            Frame frame;
+            for (std::uint32_t at = 0; at < drawn; ++at)
             {
                 Shaders::VisibilityConstants sampled = camera;
                 if (shot.mFrames > 0)
-                    sampled.mFrame = shot.mFirstFrame + frame;
-                mRenderer->renderFrame(sampled,
-                    FrameOptions{ .mAccumulate = shot.mFrames > 0 && shot.mAverage ? frame + 1 : 0,
-                        .mSkySeconds = static_cast<double>(frame) * static_cast<double>(shot.mSkyStep),
+                    sampled.mFrame = shot.mFirstFrame + at;
+                mRenderer.renderFrame(sampled,
+                    FrameOptions{ .mAccumulate = shot.mFrames > 0 && shot.mAverage ? at + 1 : 0,
+                        .mSkySeconds = static_cast<double>(at) * static_cast<double>(shot.mSkyStep),
                         .mGlare = shot.mGlare,
                         .mReconstruction = ReconstructionRequest{ .mFilter = shot.mFilter,
                             .mJitter = shot.mJitter,
@@ -355,18 +402,20 @@ namespace Rtx::Testing
 
                 // Every frame hits the same primary geometry, so the last one's count is the answer
                 // rather than a sum to be divided back down.
-                const std::optional<FrameResult> finished = mRenderer->finishFrame();
+                const std::optional<FrameResult> finished = mRenderer.finishFrame();
                 if (!finished.has_value())
                     throw std::runtime_error("the renderer drew a frame and gave none back");
 
-                hits = finished->mHits;
-                mNotFinite = finished->mNotFinite;
+                frame.mHits = finished->mHits;
+                frame.mNotFinite = finished->mNotFinite;
 
-                if (afterEach)
-                    afterEach();
+                if (shot.mEachFrame || at + 1 == drawn)
+                    readFrame(size, frame);
+                if (shot.mEachFrame)
+                    shot.mEachFrame(frame);
             }
 
-            return hits;
+            return frame;
         }
 
         /// The luminance of every pixel of a frame that holds nothing but air, from a camera
@@ -379,145 +428,42 @@ namespace Rtx::Testing
         ///
         /// @param camera has its fog colour and thickness set here; whatever else a test set on
         ///        it — the coverage, the wind, the moment — stays.
-        void airThrough(Shaders::VisibilityConstants camera, std::uint32_t size, std::vector<float>& luminance)
+        std::vector<float> airThrough(Shaders::VisibilityConstants camera, std::uint32_t size)
         {
             camera.mFogColour = osg::Vec3f(1.0f, 1.0f, 1.0f);
             camera.mFogExtinction = 3.0e-6f;
 
-            const SceneDesc scene = makeWall();
-            std::vector<std::uint8_t> pixels;
-            countHits(scene, {}, camera, size, pixels);
+            const Frame frame = shoot(makeWall(), {}, camera, size);
 
-            luminance.resize(std::size_t{ size } * size);
+            std::vector<float> luminance(std::size_t{ size } * size);
             for (std::size_t i = 0; i < luminance.size(); ++i)
-                luminance[i] = decodeSrgb(pixels[i * 4]);
-        }
-
-        /// Renders `scene` at `size` square and encodes what the trace computed, returning how many
-        /// primary rays hit.
-        ///
-        /// **The radiance encoded here rather than the picture read back.** `tone.comp` puts
-        /// `toneMap` between the two, and that curve is a display transform: it takes 0.04 off a
-        /// shadow and rolls a highlight away from one, neither of which a test about what the trace
-        /// computed has an opinion on. Every figure over this fixture was derived against the
-        /// radiance through the display curve, which is this.
-        std::uint32_t countHits(const SceneDesc& scene, std::span<const TextureData> textures,
-            const Shaders::VisibilityConstants& camera, std::uint32_t size, std::vector<std::uint8_t>& pixels,
-            const Shot& shot = {})
-        {
-            const std::uint32_t hits = renderShot(scene, textures, camera, size, shot);
-
-            readRadiance(size, mRadiance);
-            encodeRadiance(pixels);
-
-            return hits;
-        }
-
-        /// What a probe read back, against the frame it asked for.
-        ///
-        /// **A throw and not an assertion of either kind.** Every caller indexes the buffer by a
-        /// number it worked out from `size`, so a short read-back has to stop the test rather than
-        /// mark it: `<cassert>` is compiled out of the build a figure is taken in, and an
-        /// `ASSERT_EQ` here would return from this function and leave the caller indexing past the
-        /// end of what it was handed. The message names both sizes, which is what a located failure
-        /// would have had to say anyway.
-        template <class T>
-        static void requireFrame(const std::vector<T>& read, std::uint32_t size)
-        {
-            const std::size_t wanted = std::size_t{ size } * size * 4;
-            if (read.size() != wanted)
-                throw std::runtime_error("a probe read back " + std::to_string(read.size()) + " values where a "
-                    + std::to_string(size) + " by " + std::to_string(size) + " frame is " + std::to_string(wanted));
-        }
-
-        /// The mean of one channel of the last render, in linear radiance.
-        ///
-        /// **The frame and not a pixel, where every pixel of it is the same measurement.** The
-        /// estimator is one sample per pixel, so a frame lit evenly is as many samples as it has
-        /// pixels and its mean is the figure with that error divided down — which is what lets a
-        /// test hold a derived number to three decimal places over a stochastic renderer.
-        float meanRadiance(std::size_t channel = 0) const
-        {
-            float sum = 0.0f;
-            for (std::size_t at = channel; at < mRadiance.size(); at += 4)
-                sum += mRadiance[at];
-
-            return sum / float(mRadiance.size() / 4);
+                luminance[i] = frame.at(i * 4);
+            return luminance;
         }
 
         /// The picture a display would show: this pass's own tone curve and display curve over
         /// the exposure the frame measured for itself.
         ///
         /// **The one thing here that wants the picture rather than the radiance**, because what
-        /// it measures is the exposure pass. Every other test over this fixture is about what the
-        /// trace computed, which `countHits` gives without a display transform over it.
+        /// it measures is the exposure pass.
         void renderPicture(const SceneDesc& scene, std::span<const TextureData> textures,
             const Shaders::VisibilityConstants& camera, std::uint32_t size, std::vector<std::uint8_t>& pixels,
             Shot shot = {})
         {
             shot.mExposure = std::nullopt;
-            renderShot(scene, textures, camera, size, shot);
-            mRenderer->readPixels(pixels);
+            shoot(scene, textures, camera, size, shot);
+            mRenderer.readPixels(pixels);
 
             requireFrame(pixels, size);
         }
 
-        /// The frame the caller drew itself through `mRenderer`, as the bytes `countHits` gives:
-        /// for a test that extends or places the standing world and draws it again, which
-        /// `renderShot` cannot, since it sets the scene.
-        void encodeLastFrame(std::uint32_t size, std::vector<std::uint8_t>& pixels)
+        /// The frame the caller drew itself through `mRenderer`: for a test that extends or places
+        /// the standing world and draws it again, which `shoot` cannot, since it sets the scene.
+        Frame readFrame(std::uint32_t size)
         {
-            readRadiance(size, mRadiance);
-            encodeRadiance(pixels);
-        }
-
-        /// The same render as `countHits`, read back in linear radiance rather than as bytes.
-        ///
-        /// **What a figure is measured on.** `readPixels` gives the picture a display would
-        /// show — eight bits, after the tone curve and the display curve — and the filter
-        /// figures had reached the point where that was the quantiser talking: two thirds
-        /// of a byte at the brightness they sit at. This is the same frame before either.
-        void renderRadiance(const SceneDesc& scene, const Shaders::VisibilityConstants& camera, std::uint32_t size,
-            std::vector<float>& values, const Shot& shot = {})
-        {
-            renderShot(scene, {}, camera, size, shot);
-            readRadiance(size, values);
-        }
-
-        /// A run of filtered frames with the history let build, read back in linear radiance.
-        ///
-        /// @param first the sampler's frame the run starts at, so a run can be handed a stream of its
-        ///        own rather than the one every other run in the test consumed.
-        void renderFiltered(const SceneDesc& scene, const Shaders::VisibilityConstants& camera, std::uint32_t size,
-            std::vector<float>& values, std::uint32_t frames, std::uint32_t first = 0)
-        {
-            renderRadiance(scene, camera, size, values,
-                Shot{ .mFrames = frames,
-                    .mAverage = false,
-                    .mFirstFrame = first,
-                    .mFilter = true,
-                    .mResetHistory = true });
-        }
-
-        /// What one pixel read on each frame of a run, with the history let build across them.
-        ///
-        /// **The frames apart rather than averaged, which is what a test about flicker needs.** How
-        /// far two frames stand from each other is the whole of what a boiling image is, and a mean
-        /// over them says nothing about it. So this reads the pixel out after every frame, with the
-        /// composite's accumulator and the denoiser both off, so what moves between two entries
-        /// moved in the trace.
-        void radianceFrameByFrame(const SceneDesc& scene, const Shaders::VisibilityConstants& camera,
-            std::uint32_t size, std::uint32_t frames, std::size_t pixel, std::vector<float>& radiance)
-        {
-            radiance.clear();
-            radiance.reserve(frames);
-
-            std::vector<float> values;
-            renderShot(
-                scene, {}, camera, size, Shot{ .mFrames = frames, .mAverage = false, .mResetHistory = true }, [&] {
-                    readRadiance(size, values);
-                    radiance.push_back(values[pixel * 4]);
-                });
+            Frame frame;
+            readFrame(size, frame);
+            return frame;
         }
 
         /// A wall square to the sun with one pane held in front of it, as the byte its centre
@@ -538,7 +484,7 @@ namespace Rtx::Testing
         /// @param where the caller's own line, never passed. **One test holds five panes up, and
         ///        every failure would otherwise report at this helper's own line**, which says which
         ///        helper broke and not which pane.
-        std::uint8_t litThroughPane(std::span<const osg::Vec3f> pane, std::optional<osg::Vec4f> colour,
+        std::uint8_t litThroughPane(std::span<const osg::Vec3f, 4> pane, std::optional<osg::Vec4f> colour,
             const osg::Vec3f& irradiance, float fade = 1.0f,
             std::source_location where = std::source_location::current())
         {
@@ -552,10 +498,10 @@ namespace Rtx::Testing
 
             const Shaders::VisibilityConstants camera = wallCamera(size, irradiance);
 
-            std::vector<std::uint8_t> pixels;
-            EXPECT_GT(countHits(scene, {}, camera, size, pixels), 0u);
+            const Frame frame = shoot(scene, {}, camera, size);
+            EXPECT_GT(frame.mHits, 0u);
 
-            return pixels[centreValueOf(size)];
+            return frame.byte(centreValueOf(size));
         }
 
         /// A wall square to the sun with a stack of panes strung along the eye's own ray, as the
@@ -593,10 +539,10 @@ namespace Rtx::Testing
 
             const Shaders::VisibilityConstants camera = wallCamera(size, irradiance);
 
-            std::vector<std::uint8_t> pixels;
-            EXPECT_GT(countHits(scene, {}, camera, size, pixels), 0u);
+            const Frame frame = shoot(scene, {}, camera, size);
+            EXPECT_GT(frame.mHits, 0u);
 
-            return pixels[centreValueOf(size)];
+            return frame.byte(centreValueOf(size));
         }
 
         /// A wall square to the sun with a pane held twenty units across at y = -50, as the three
@@ -609,7 +555,7 @@ namespace Rtx::Testing
         /// at the pane, to see it at all.
         /// @param where the caller's own line, never passed, for the reason `litThroughPane` gives.
         std::array<std::uint8_t, 3> paneOverWall(
-            const std::function<void(SceneDesc&, std::span<const osg::Vec3f>)>& place, bool lookAtIt,
+            const std::function<void(SceneDesc&, std::span<const osg::Vec3f, 4>)>& place, bool lookAtIt,
             std::source_location where = std::source_location::current())
         {
             const ::testing::ScopedTrace trace(where.file_name(), static_cast<int>(where.line()), "paneOverWall");
@@ -617,12 +563,7 @@ namespace Rtx::Testing
             constexpr std::uint32_t size = 33;
             constexpr std::size_t centre = centreValueOf(size);
 
-            const std::array pane{
-                osg::Vec3f(-20.0f, -50.0f, -20.0f),
-                osg::Vec3f(20.0f, -50.0f, -20.0f),
-                osg::Vec3f(20.0f, -50.0f, 20.0f),
-                osg::Vec3f(-20.0f, -50.0f, 20.0f),
-            };
+            const std::array pane = uprightQuadAt(20.0f, -50.0f);
 
             SceneDesc scene = makeWall();
             place(scene, pane);
@@ -632,54 +573,44 @@ namespace Rtx::Testing
                 ? wallCamera(size, bright, osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, -50.0f, 0.0f))
                 : wallCamera(size, bright);
 
-            std::vector<std::uint8_t> pixels;
-            EXPECT_GT(countHits(scene, {}, camera, size, pixels), 0u);
-            return { pixels[centre], pixels[centre + 1], pixels[centre + 2] };
+            const Frame frame = shoot(scene, {}, camera, size);
+            EXPECT_GT(frame.mHits, 0u);
+            return { frame.byte(centre), frame.byte(centre + 1), frame.byte(centre + 2) };
         }
 
-        /// What the last `countHits` or `encodeLastFrame` traced, in linear radiance, for a test
-        /// that wants the figure rather than the byte.
+        /// What a probe read back, against the frame it asked for.
         ///
-        /// **Filled by those two and by nothing else**, because they are the helpers whose bytes a
-        /// test then holds this against. `renderRadiance` reads into the caller's own vector, so a
-        /// read of this after one of those is a read of the frame before it.
-        std::vector<float> mRadiance;
-
-        /// What the last frame `renderShot` drew wrote that was not finite, by boundary.
-        Rtx::NotFinite mNotFinite;
+        /// **A throw and not an assertion of either kind.** Every caller indexes the buffer by a
+        /// number it worked out from `size`, so a short read-back has to stop the test rather than
+        /// mark it: `<cassert>` is compiled out of the build a figure is taken in, and an
+        /// `ASSERT_EQ` here would return from this function and leave the caller indexing past the
+        /// end of what it was handed. The message names both sizes, which is what a located failure
+        /// would have had to say anyway.
+        template <class T>
+        static void requireFrame(const std::vector<T>& read, std::uint32_t size)
+        {
+            const std::size_t wanted = std::size_t{ size } * size * 4;
+            if (read.size() != wanted)
+                throw std::runtime_error("a probe read back " + std::to_string(read.size()) + " values where a "
+                    + std::to_string(size) + " by " + std::to_string(size) + " frame is " + std::to_string(wanted));
+        }
 
     private:
-        /// The last frame's radiance, checked against the extent it was drawn at.
-        void readRadiance(std::uint32_t size, std::vector<float>& values)
+        void readFrame(std::uint32_t size, Frame& frame)
         {
-            mRenderer->readComposite(values);
-            requireFrame(values, size);
-        }
-
-        /// The last frame's radiance, as the bytes a test names.
-        void encodeRadiance(std::vector<std::uint8_t>& pixels) const
-        {
-            pixels.resize(mRadiance.size());
-            for (std::size_t at = 0; at < mRadiance.size(); at += 4)
-            {
-                for (std::size_t channel = 0; channel < 3; ++channel)
-                    pixels[at + channel] = encodeSrgb(mRadiance[at + channel]);
-
-                // Coverage rather than radiance, which the curve does not touch either.
-                pixels[at + 3]
-                    = static_cast<std::uint8_t>(std::lround(std::clamp(mRadiance[at + 3], 0.0f, 1.0f) * 255.0f));
-            }
+            mRenderer.readComposite(frame.mRadiance);
+            requireFrame(frame.mRadiance, size);
         }
 
         /// The fixture's textures, numbered the way its scene added them.
         ///
         /// **A convention of these tests and not of the renderer.** Every test here builds its
-        /// descriptions in the order its scene calls `addTexture`, so position is slot. The
-        /// array used to assume that of every caller, which is a trap for the one whose scene
-        /// has given a slot back: its table has a hole in it and its descriptions do not.
+        /// descriptions in the order its scene calls `addTexture`, so position is slot. The slot is
+        /// written here rather than assumed of every caller, because a scene that has given a slot
+        /// back has a hole in its table and none in its descriptions.
         ///
         /// **The span reaches into `mNumbered` and the next render overwrites it**, which is safe
-        /// because `renderShot` is the one caller and hands it straight to `setScene`.
+        /// because `shoot` is the one caller and hands it straight to `setScene`.
         std::span<const TextureData> inSceneOrder(std::span<const TextureData> textures)
         {
             mNumbered.assign(textures.begin(), textures.end());

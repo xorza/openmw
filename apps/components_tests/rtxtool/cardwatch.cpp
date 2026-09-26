@@ -137,16 +137,18 @@ namespace RtxTool
         /// A watch samples across the window it is open for, and every window starts from
         /// nothing.
         ///
-        /// **The reading count is the whole claim for the clock.** What the row said before this
-        /// existed was two samples printed as a range, and a reader could not tell that from a
-        /// card watched throughout — so what a watch has to prove is that it took more than two.
+        /// **The reading count is the whole claim for the clock.** Two samples printed as a range
+        /// cannot be told from a card watched throughout, so what a watch has to prove is that it
+        /// took more than two.
         TEST(RtxCardWatchTest, aWatchSamplesAcrossTheWindowAndEveryWindowStartsFromNothing)
         {
             const bool sampled = Nvml().hasSamples();
             if (!Nvml().isOpen())
                 GTEST_SKIP() << "no driver library on this machine";
 
-            CardWatch watch;
+            // A twentieth of the harness's period: what is claimed is a few turns of the loop, and
+            // not how often it turns.
+            CardWatch watch(std::chrono::milliseconds(5));
             watch.watch();
 
             // **Waited for and not slept out.** What the claim needs is a few turns of the watch's

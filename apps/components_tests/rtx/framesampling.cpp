@@ -32,8 +32,8 @@ namespace Rtx
         }
 
         /// **The profile answers what the frame did not ask**, the delight and the surface view
-        /// among them, which the host once read back off the renderer to hand in again — and a
-        /// frame that forgot traced with a delight of nought.
+        /// among them, rather than the host reading them back off the renderer to hand in again —
+        /// where a frame that forgot would trace with a delight of nought.
         TEST(RtxFrameSamplingTest, theProfileAnswersWhatTheFrameDidNotAsk)
         {
             const RenderProfile profile{ .mDelight = 0.75f, .mShow = SurfaceView::Albedo };

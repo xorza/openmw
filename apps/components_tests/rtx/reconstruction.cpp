@@ -18,11 +18,11 @@ namespace Rtx
         /// DLSS's performance mode, which traces at half the width: exactly minus one level.
         constexpr FrameExtents sHalved{ .mRenderWidth = 1920, .mOutputWidth = 3840 };
 
-        /// The rule that used to be two expressions in the middle of the frame path.
+        /// What an upscaler and a request decide between them: who denoises, and whether the
+        /// sample point moves.
         ///
         /// **Worth a test of its own because it is a function of its inputs and nothing else** — no
-        /// device, no scene, no frame. What it decides used to be decided where nothing could ask
-        /// about it, which is the whole reason it moved.
+        /// device, no scene, no frame.
         TEST(RtxReconstructionTest, anUpscalerDenoisesForItselfAndJittersWhateverWasAsked)
         {
             // Nothing upscaling: the two switches mean exactly what they say.
@@ -118,23 +118,17 @@ namespace Rtx
             EXPECT_FALSE(upscaled.filtered()) << "Ray Reconstruction is the denoiser, and it is not this one";
         }
 
-        /// Every name round-trips, because a report is only worth anything if it reads back.
-        TEST(RtxReconstructionTest, everyPresetAndDenoiserHasANameThatReadsBack)
+        /// The spellings a settings file and a report write: the SDK's preset letters in lower case,
+        /// and `auto` left to the harness as its word for no override.
+        TEST(RtxReconstructionTest, thePresetsAndNoiseSourcesAreSpelledAsASettingsFileWritesThem)
         {
-            for (const Preset preset : { Preset::Default, Preset::D, Preset::E })
-                EXPECT_EQ(sPresetNames.named(sPresetNames.name(preset)), preset)
-                    << "round trip through " << sPresetNames.name(preset);
-
+            EXPECT_EQ(sPresetNames.name(Preset::Default), "default");
+            EXPECT_EQ(sPresetNames.name(Preset::D), "d");
+            EXPECT_EQ(sPresetNames.name(Preset::E), "e");
             EXPECT_EQ(sPresetNames.named("D"), std::nullopt) << "spelled as the SDK's letter and not as a capital";
-            EXPECT_EQ(sPresetNames.named("transformer"), std::nullopt) << "refused rather than defaulted";
 
-            // Distinct, so a report cannot say two things with one word.
-            EXPECT_NE(sDenoiserNames.name(Denoiser::None), sDenoiserNames.name(Denoiser::Wavelet));
-            EXPECT_NE(sDenoiserNames.name(Denoiser::Wavelet), sDenoiserNames.name(Denoiser::RayReconstruction));
-
-            for (const NoiseSource noise : { NoiseSource::BlueNoiseTile, NoiseSource::WhiteHash })
-                EXPECT_EQ(sNoiseSourceNames.named(sNoiseSourceNames.name(noise)), noise)
-                    << "round trip through " << sNoiseSourceNames.name(noise);
+            EXPECT_EQ(sNoiseSourceNames.name(NoiseSource::BlueNoiseTile), "blue-noise");
+            EXPECT_EQ(sNoiseSourceNames.name(NoiseSource::WhiteHash), "white-hash");
             EXPECT_EQ(sNoiseSourceNames.named("auto"), std::nullopt)
                 << "auto is the harness's word for no override, and not a source";
         }

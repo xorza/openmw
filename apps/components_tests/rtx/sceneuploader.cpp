@@ -86,7 +86,7 @@ namespace Rtx
             EXPECT_EQ(renderer.mTextures, 3u);
 
             // **And its texture is given back on that same frame.** Nothing arrived, so this is the
-            // branch that used to do only the placing — and waiting for an arrival to hand the memory
+            // branch that could do only the placing — and waiting for an arrival to hand the memory
             // over is a whole grid of cells on a route that keeps moving.
             EXPECT_EQ(left.mDropped, std::size_t{ 1 });
             EXPECT_EQ(renderer.mDropped, (std::vector<std::uint32_t>{ first.mTexture }));

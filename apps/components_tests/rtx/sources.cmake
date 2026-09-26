@@ -10,6 +10,7 @@ set(RTX_TEST_FILES
     rtx/alphaimage.cpp
     rtx/bluenoise.cpp
     rtx/brdf.cpp
+    rtx/camera.cpp
     rtx/cellgrid.cpp
     rtx/cellring.cpp
     rtx/cloudshell.cpp
@@ -31,16 +32,20 @@ set(RTX_TEST_FILES
     rtx/framesampling.cpp
     rtx/frameworld.cpp
     rtx/groundreader.cpp
+    rtx/halfstep.cpp
     rtx/hitrecords.cpp
+    rtx/instance.cpp
     rtx/instancerecord.cpp
     rtx/latencypacer.cpp
     rtx/lightbuilder.cpp
     rtx/lightgrid.cpp
+    rtx/memoryreport.cpp
     rtx/meshreader.cpp
     rtx/mipchain.cpp
     rtx/mirroridentity.cpp
     rtx/monitor.cpp
     rtx/moonbuilder.cpp
+    rtx/namedenum.cpp
     rtx/nodekind.cpp
     rtx/offscreentrace.cpp
     rtx/pacedmodes.cpp
@@ -110,7 +115,10 @@ set(RTX_TEST_SUPPORT
     rtx/support/graph.hpp
     rtx/support/graphlight.hpp
     rtx/support/guiquad.hpp
+    rtx/support/halfstep.hpp
     rtx/support/heldimages.hpp
+    rtx/support/instanceobstacle.cpp
+    rtx/support/instanceobstacle.hpp
     rtx/support/layers.hpp
     rtx/support/lobeintegrals.hpp
     rtx/support/spritelightbake.cpp

@@ -4,3 +4,4 @@
 - fsr and other denoisers and upscalers
 - physical brightness
 - audit #ifdefs and platform code
+- shader build on loading screen

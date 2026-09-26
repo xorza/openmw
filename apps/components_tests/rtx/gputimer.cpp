@@ -42,8 +42,7 @@ namespace Rtx
         SceneDesc wall()
         {
             SceneDesc scene;
-            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(MeshArrays{ .mPositions = sWallCorners, .mIndices = Testing::sQuadIndices }) });
+            Testing::addQuad(scene, sWallCorners);
 
             return scene;
         }
@@ -55,10 +54,7 @@ namespace Rtx
             SceneDesc scene = wall();
             Material water;
             water.mKind = MaterialKind::Water;
-            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(
-                    MeshArrays{ .mPositions = Testing::sheetAt(1000.0f, -100.0f), .mIndices = Testing::sQuadIndices }),
-                .mMaterial = scene.addMaterial(water) });
+            Testing::addQuad(scene, Testing::sheetAt(1000.0f, -100.0f), scene.addMaterial(water));
 
             return scene;
         }
@@ -116,15 +112,15 @@ namespace Rtx
 
         TEST_F(RtxGpuTimerTest, aFrameAccountsForItsOwnDeviceTimePassByPass)
         {
-            mRenderer->resize(sSize, sSize);
+            mRenderer.resize(sSize, sSize);
 
             SceneDesc scene = wall();
-            mRenderer->setScene(Rtx::SceneSlot::world(), scene, {});
+            mRenderer.setScene(Rtx::SceneSlot::world(), scene, {});
 
             const Shaders::VisibilityConstants camera
                 = Testing::makeCamera(osg::Vec3f(), osg::Vec3f(0.0f, 100.0f, 0.0f), 60.0f, sSize, sSize, 10000.0f);
 
-            const Drawn drawn = draw(*mRenderer, camera);
+            const Drawn drawn = draw(mRenderer, camera);
             if (drawn.mGpu.spans().empty())
                 GTEST_SKIP() << "this device cannot write timestamps";
 
@@ -141,7 +137,7 @@ namespace Rtx
 
             Shaders::VisibilityConstants flooded = camera;
             flooded.mWaterLevel = 0.0f;
-            const Drawn wet = draw(*mRenderer, flooded);
+            const Drawn wet = draw(mRenderer, flooded);
             EXPECT_TRUE(reports(wet.mGpu.spans(), "waves")) << "a frame with water in it synthesised no sea";
             EXPECT_EQ(wet.mGpu.spans().front().mName, "waves")
                 << "the sea was synthesised somewhere other than before the trace";
@@ -164,8 +160,8 @@ namespace Rtx
             // point of carrying them in the same report is that they are the same frame's cost.
             EXPECT_FALSE(reports(drawn.mGpu.spans(), "tlas")) << "nothing was placed, so nothing was built";
 
-            mRenderer->placeScene(Rtx::SceneSlot::world(), scene);
-            const Drawn placed = draw(*mRenderer, camera);
+            mRenderer.placeScene(Rtx::SceneSlot::world(), scene);
+            const Drawn placed = draw(mRenderer, camera);
 
             EXPECT_TRUE(reports(placed.mGpu.spans(), "tlas")) << "the top level was rebuilt and went unmeasured";
             EXPECT_GT(placed.mGpu.spans().size(), drawn.mGpu.spans().size()) << "placing the world added no zone";
@@ -182,7 +178,7 @@ namespace Rtx
             EXPECT_EQ(zones.front().mName, compact == zones.end() ? "tlas" : "compact");
 
             // And the report does not accumulate: the frame after is its own again.
-            const Drawn after = draw(*mRenderer, camera);
+            const Drawn after = draw(mRenderer, camera);
             EXPECT_EQ(after.mGpu.spans().size(), drawn.mGpu.spans().size())
                 << "last frame's zones were carried into this one";
             EXPECT_FALSE(reports(after.mGpu.spans(), "tlas"));
@@ -191,11 +187,10 @@ namespace Rtx
             // structures its meshes bring are recorded ahead of the placement and ride its submit,
             // so without a bracket of their own they are device time the frame's fence carries and
             // no zone accounts for — which is exactly the frame a player feels.
-            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::translate(0.0f, -50.0f, 0.0f),
-                .mMesh = scene.addMesh(MeshArrays{ .mPositions = sWallCorners, .mIndices = Testing::sQuadIndices }) });
+            Testing::addQuad(scene, sWallCorners, sNoIndex, osg::Matrixf::translate(0.0f, -50.0f, 0.0f));
 
-            mRenderer->extendScene(Rtx::SceneSlot::world(), scene, {});
-            const Drawn arrived = draw(*mRenderer, camera);
+            mRenderer.extendScene(Rtx::SceneSlot::world(), scene, {});
+            const Drawn arrived = draw(mRenderer, camera);
 
             EXPECT_TRUE(reports(arrived.mGpu.spans(), "blas"))
                 << "a mesh arrived and its structure was built unmeasured";
@@ -206,7 +201,7 @@ namespace Rtx
             EXPECT_GT(arrived.mGpu.spans().front().mMs, 0.0) << "the arrival's builds took no time at all";
 
             // And only on the frame the arrival landed in.
-            const Drawn settled = draw(*mRenderer, camera);
+            const Drawn settled = draw(mRenderer, camera);
             EXPECT_FALSE(reports(settled.mGpu.spans(), "blas")) << "nothing arrived, so nothing was built";
 
             // **The ripple field is stood for a scene that holds water and stepped only where the
@@ -214,14 +209,14 @@ namespace Rtx
             // stood on steps nothing and reports no zone; a sixtieth on, the step comes first of
             // all, ahead of the sea.
             const SceneDesc flooding = wallOverWater();
-            mRenderer->setScene(Rtx::SceneSlot::world(), flooding, {});
+            mRenderer.setScene(Rtx::SceneSlot::world(), flooding, {});
 
             Shaders::VisibilityConstants standing = flooded;
             standing.mWaterLevel = -100.0f;
-            const Drawn stood = draw(*mRenderer, standing);
+            const Drawn stood = draw(mRenderer, standing);
             EXPECT_FALSE(reports(stood.mGpu.spans(), "ripples")) << "a frame with no step due stepped the field";
 
-            const Drawn stepped = draw(*mRenderer, standing, 1.0 / 60.0);
+            const Drawn stepped = draw(mRenderer, standing, 1.0 / 60.0);
             EXPECT_TRUE(reports(stepped.mGpu.spans(), "ripples")) << "a sixtieth on, the field was not stepped";
             EXPECT_EQ(stepped.mGpu.spans().front().mName, "ripples")
                 << "the field was stepped somewhere other than before the sea";
@@ -231,7 +226,7 @@ namespace Rtx
             // for the level alone left this one reading the tiles of whichever frame last had one.
             Shaders::VisibilityConstants dry = standing;
             dry.mWaterLevel = camera.mWaterLevel;
-            const Drawn surfaced = draw(*mRenderer, dry, 2.0 / 60.0);
+            const Drawn surfaced = draw(mRenderer, dry, 2.0 / 60.0);
             EXPECT_TRUE(reports(surfaced.mGpu.spans(), "waves")) << "a water surface with no level synthesised no sea";
             EXPECT_TRUE(reports(surfaced.mGpu.spans(), "ripples")) << "a water surface with no level stepped no field";
         }
