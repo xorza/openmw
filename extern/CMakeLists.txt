@@ -340,6 +340,12 @@ if (OPENMW_CRASHPAD)
         add_subdirectory(${crashpad_SOURCE_DIR} ${crashpad_BINARY_DIR})
     endif()
 
+    # `capture_context_linux.S` states nothing of the stack, and a linker that meets an object
+    # without the note makes the whole executable's stack executable, as Ubuntu 24.04's does.
+    if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        target_compile_options(crashpad_util PRIVATE $<$<COMPILE_LANGUAGE:ASM>:-Wa,--noexecstack>)
+    endif()
+
     # For `components/CMakeLists.txt`, which builds one of its files into every executable.
     set(CRASHPAD_SOURCE_DIR ${crashpad_SOURCE_DIR} PARENT_SCOPE)
 endif()

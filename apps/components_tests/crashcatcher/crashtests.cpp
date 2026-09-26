@@ -38,6 +38,7 @@ namespace
     /// What one mode must leave: the summary's first line holds `mHeadline` and one of
     /// `mRaised` where that is not empty, and a dump carries the same summary. A mode the game
     /// lives through leaves `mFollows` after it, and a mode that reports nothing leaves no line.
+    /// A crash ends the game with a status other than nought; a report or a hang does not.
     struct Mode
     {
         std::string_view mName;
@@ -300,8 +301,11 @@ namespace
     }
 
     /// Whether `mode` left what it must in `folder`, and what it did not where it did not.
-    std::optional<std::string> check(const Mode& mode, const std::filesystem::path& folder)
+    std::optional<std::string> check(const Mode& mode, const std::filesystem::path& folder, int status)
     {
+        if ((status != 0) != mode.mHeadline.starts_with("Crash: "))
+            return "it ended with status " + std::to_string(status);
+
         std::vector<std::string> lines;
         {
             std::ifstream log(folder / "crash-tests.log");
@@ -400,14 +404,14 @@ namespace
                 + quoted(Files::pathToUnicodeString(folder));
 #if defined(_WIN32)
             // `cmd /c` takes the whole line in one more pair of quotes.
-            std::system(quoted(command).c_str());
+            const int status = std::system(quoted(command).c_str());
 #else
-            std::system((command + " 2>/dev/null").c_str());
+            const int status = std::system((command + " 2>/dev/null").c_str());
 #endif
             const auto took
                 = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start);
 
-            const std::optional<std::string> wrong = check(mode, folder);
+            const std::optional<std::string> wrong = check(mode, folder, status);
             std::cout << (wrong ? "FAIL " : "ok   ") << mode.mName << " (" << took.count() << " ms)"
                       << (wrong ? ": " + *wrong : "") << '\n';
             failed += wrong ? 1 : 0;
