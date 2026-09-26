@@ -1,9 +1,5 @@
 - audit includes
 - audit #pragmas
-- load time allocations
-- move some computations to loadtime
 
-- tracy
 - fsr and other denoisers and upscalers
-- balmora house appears on distant terrain
 - physical brightness
