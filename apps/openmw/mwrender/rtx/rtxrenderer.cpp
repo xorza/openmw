@@ -247,7 +247,7 @@ namespace MWRender
         visitor.setTraversalMode(was);
     }
 
-    void RtxRenderer::detachWorld()
+    void RtxRenderer::detachWorld() noexcept
     {
         // No frame phase expected: the world goes on the way out of an exception a frame threw,
         // and the assert would stand between the throw and its message. The attachment is
@@ -259,12 +259,12 @@ namespace MWRender
         mWorldRoot = nullptr;
     }
 
-    float RtxRenderer::getGroundReach() const
+    float RtxRenderer::getGroundReach() const noexcept
     {
         return mMirror.getReach();
     }
 
-    void RtxRenderer::configureResources(Resource::ResourceSystem& resources)
+    void RtxRenderer::configureResources(Resource::ResourceSystem& resources) noexcept
     {
         setResourceExpiry(resources, getFrameClock().getStatedStep());
 
@@ -300,50 +300,50 @@ namespace MWRender
             resources.setExpiryDelay(std::numeric_limits<double>::infinity());
     }
 
-    osg::ref_ptr<osg::Group> RtxRenderer::createSceneRoot()
+    osg::ref_ptr<osg::Group> RtxRenderer::createSceneRoot() noexcept
     {
         return new osg::Group;
     }
 
-    std::unique_ptr<Ground> RtxRenderer::createGround(const GroundSpec& spec)
+    std::unique_ptr<Ground> RtxRenderer::createGround(const GroundSpec& spec) noexcept
     {
         return std::make_unique<TracedGround>(spec.mSceneRoot, spec.mStorage, Mask_Terrain, spec.mWorldspace, mMirror);
     }
 
-    void RtxRenderer::addCell(const MWWorld::CellStore* cell)
+    void RtxRenderer::addCell(const MWWorld::CellStore* cell) noexcept
     {
         mPhase.expect(Phase::Between);
         mMirror.standSea(*cell);
     }
 
-    void RtxRenderer::removeCell(const MWWorld::CellStore* cell)
+    void RtxRenderer::removeCell(const MWWorld::CellStore* cell) noexcept
     {
         mPhase.expect(Phase::Between);
         mRipples.removeCell(*cell);
     }
 
-    void RtxRenderer::addWaterRippleEmitter(const MWWorld::Ptr& ptr)
+    void RtxRenderer::addWaterRippleEmitter(const MWWorld::Ptr& ptr) noexcept
     {
         mRipples.add(ptr);
     }
 
-    void RtxRenderer::removeWaterRippleEmitter(const MWWorld::Ptr& ptr)
+    void RtxRenderer::removeWaterRippleEmitter(const MWWorld::Ptr& ptr) noexcept
     {
         mRipples.remove(ptr);
     }
 
-    void RtxRenderer::emitWaterRipple(const osg::Vec3f& position)
+    void RtxRenderer::emitWaterRipple(const osg::Vec3f& position) noexcept
     {
         mRipples.splash(position);
     }
 
     void RtxRenderer::listAssetsToPreload(
-        std::vector<VFS::Path::Normalized>& models, std::vector<VFS::Path::Normalized>& textures)
+        std::vector<VFS::Path::Normalized>& models, std::vector<VFS::Path::Normalized>& textures) noexcept
     {
         SkyReader::listAssets(*getResources().getVFS(), models, textures);
     }
 
-    void RtxRenderer::attachWorld(RenderingManager& world, osg::Group& worldRoot)
+    void RtxRenderer::attachWorld(RenderingManager& world, osg::Group& worldRoot) noexcept
     {
         mPhase.expect(Phase::Between);
         mAttachment.step(Attachment::Attached, Attachment::Detached);
@@ -360,7 +360,7 @@ namespace MWRender
         mSky.attach(mMirror.getScene(), *getResources().getSceneManager());
     }
 
-    void RtxRenderer::adoptTraversalRoot(osg::Group& root)
+    void RtxRenderer::adoptTraversalRoot(osg::Group& root) noexcept
     {
         mPhase.expect(Phase::Between);
         // Under the camera, whose matrices are what put a viewport ray in the world; parented once
@@ -370,7 +370,7 @@ namespace MWRender
             camera.addChild(&root);
     }
 
-    void RtxRenderer::advance(double simulationTime)
+    void RtxRenderer::advance(double simulationTime) noexcept
     {
         mPhase.expect(Phase::Between);
         getFrameStamp().setFrameNumber(getFrameStamp().getFrameNumber() + 1);
@@ -381,13 +381,13 @@ namespace MWRender
         getFrameStamp().setSimulationTime(simulationTime);
     }
 
-    void RtxRenderer::eventTraversal()
+    void RtxRenderer::eventTraversal() noexcept
     {
         // Nothing to traverse: this renderer adopted no queue, and everything the game acts on came
         // through `SDLUtil::InputWrapper` and MyGUI before this.
     }
 
-    void RtxRenderer::updateTraversal()
+    void RtxRenderer::updateTraversal() noexcept
     {
         mPhase.expect(Phase::Between);
         // **Before the early return, because a main menu has no scene root.** MyGUI's widget
@@ -468,7 +468,7 @@ namespace MWRender
     /// surface, and a window that stops answering is one the compositor eventually says so about.
     /// What the GUI goes over is then the last frame traced, or black where nothing has been — a
     /// main menu, or the moment before the first cell finishes loading.
-    void RtxRenderer::renderGui()
+    void RtxRenderer::renderGui() noexcept
     {
         // From between two frames, which is a loading screen presenting; from the walk, which is
         // a frame with the world hidden; or from the frame's own trace and the run's hook after it.
@@ -537,7 +537,7 @@ namespace MWRender
             height > 0 ? height : static_cast<int>(frame.mHeight), Rtx::RowOrder::BottomFirst, channels);
     }
 
-    void RtxRenderer::capture(osg::Image& image, int width, int height)
+    void RtxRenderer::capture(osg::Image& image, int width, int height) noexcept
     {
         const osg::ref_ptr<osg::Image> taken = readFrame(width, height, Rtx::Channels::Rgb);
         if (taken == nullptr)
@@ -546,7 +546,7 @@ namespace MWRender
         image.swap(*taken);
     }
 
-    void RtxRenderer::saveScreenshot()
+    void RtxRenderer::saveScreenshot() noexcept
     {
         const osg::ref_ptr<osg::Image> taken = readFrame();
         if (taken == nullptr)
@@ -558,32 +558,32 @@ namespace MWRender
         getScreenshotWriter()(*taken, 0);
     }
 
-    std::unique_ptr<OffscreenView> RtxRenderer::createWorldView(const OffscreenViewSpec& spec)
+    std::unique_ptr<OffscreenView> RtxRenderer::createWorldView(const OffscreenViewSpec& spec) noexcept
     {
         assert(mGui != nullptr && "a view before the interface was made");
         return std::make_unique<TracedView>(
             spec, ViewKind::World, *mRenderer, mViews, *mGui, mMirror.getTraversals(), mMirror.getSpecularLayout());
     }
 
-    std::unique_ptr<SubjectView> RtxRenderer::createSubjectView(const OffscreenViewSpec& spec)
+    std::unique_ptr<SubjectView> RtxRenderer::createSubjectView(const OffscreenViewSpec& spec) noexcept
     {
         assert(mGui != nullptr && "a view before the interface was made");
         return std::make_unique<TracedView>(
             spec, ViewKind::Subject, *mRenderer, mViews, *mGui, mMirror.getTraversals(), mMirror.getSpecularLayout());
     }
 
-    std::unique_ptr<MapOverlay> RtxRenderer::createMapOverlay(const MapOverlaySpec& spec)
+    std::unique_ptr<MapOverlay> RtxRenderer::createMapOverlay(const MapOverlaySpec& spec) noexcept
     {
         assert(mGui != nullptr && "an overlay before the interface was made");
         return std::make_unique<TracedOverlay>(spec, mViews, *mGui);
     }
 
-    void RtxRenderer::setVSync(SDLUtil::VSyncMode mode)
+    void RtxRenderer::setVSync(SDLUtil::VSyncMode mode) noexcept
     {
         mRenderer->setVerticalSync(mode);
     }
 
-    bool RtxRenderer::holdFrame()
+    bool RtxRenderer::holdFrame() noexcept
     {
         mPhase.expect(Phase::Between);
 
@@ -606,7 +606,7 @@ namespace MWRender
         return clicked;
     }
 
-    void RtxRenderer::applyFrameRateLimit()
+    void RtxRenderer::applyFrameRateLimit() noexcept
     {
         mRenderer->setPacing(getPacing());
     }
@@ -619,7 +619,7 @@ namespace MWRender
         };
     }
 
-    void RtxRenderer::processChangedSettings(const Settings::CategorySettingVector& changed)
+    void RtxRenderer::processChangedSettings(const Settings::CategorySettingVector& changed) noexcept
     {
         const bool upscale = changed.contains({ "RTX", "upscale" });
         const bool reflex = changed.contains({ "RTX", "reflex" });
@@ -676,7 +676,7 @@ namespace MWRender
         }
     }
 
-    MyGUI::ITexture& RtxRenderer::freezeFrame()
+    MyGUI::ITexture& RtxRenderer::freezeFrame() noexcept
     {
         const osg::ref_ptr<osg::Image> taken = readFrame();
 
@@ -704,7 +704,7 @@ namespace MWRender
     }
 
     std::unique_ptr<MyGUIPlatform::Platform> RtxRenderer::createGuiPlatform(
-        float scalingFactor, VFS::Path::NormalizedView resourcePath, const std::filesystem::path& logPath)
+        float scalingFactor, VFS::Path::NormalizedView resourcePath, const std::filesystem::path& logPath) noexcept
     {
         // **MyGUI over the ray tracer, and nothing of OpenSceneGraph in it.** Nothing is hung in the
         // graph; the backend is called by this renderer's own frame instead — `updateTraversal` for
@@ -717,7 +717,7 @@ namespace MWRender
             std::move(manager), getResources().getVFS(), resourcePath, logPath);
     }
 
-    void RtxRenderer::notifyCut()
+    void RtxRenderer::notifyCut() noexcept
     {
         mPhase.expect(Phase::Between);
         // **Told rather than worked out.** The mirror grows and recycles its slots and is never

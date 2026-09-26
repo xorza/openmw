@@ -80,10 +80,8 @@ namespace Rtx
             // constant footprint off `mRight` instead.
             EXPECT_EQ(camera.mCamera.mSpreadAngle, 0.0f);
 
-#ifndef NDEBUG
             Testing::expectDies([&] { makeOrthographicCameraFromView(view, 0.0f, 100.0f, 64, 32, 5.0f, 400.0f); },
                 "an orthographic camera with no extent sees nothing");
-#endif
         }
 
         /// **The two builders agree on everything a camera carries that is not its own basis.** A

@@ -11,8 +11,8 @@
 
 #include <osg/Math>
 
+#include <components/crashcatcher/crash.hpp>
 #include <components/files/conversion.hpp>
-#include <components/rtx/contract.hpp>
 #include <components/rtx/skylight.hpp>
 
 #include "model/benchrecord.hpp"
@@ -226,7 +226,7 @@ namespace RtxTool
                 case FilmCut::Distance:
                     return "too far to fly";
             }
-            Rtx::broken("a cut with no name");
+            Crash::fatal("a cut with no name");
         }
 
         /// What set a segment's length, in the words and numbers that set it.
@@ -247,7 +247,7 @@ namespace RtxTool
                 case FilmPace::Still:
                     return "nothing changes";
             }
-            Rtx::broken("a pace with no name");
+            Crash::fatal("a pace with no name");
         }
     }
 

@@ -1132,8 +1132,8 @@ the presenter whether the swapchain wants a rebuild before it compares the exten
 | the driver's compile threads | the driver                  | rebuild the launches from what they measured and swap them in; the pinned arithmetic traces the same frame on either |
 | the work queue, the Lua worker | upstream                  | preloading, the screenshot writer; scripts                                        |
 
-`OwnedBy` asserts which thread a member belongs to. A worker that throws closes the monitor
-and the frame rethrows it.
+`OwnedBy` asserts which thread a member belongs to. A worker that throws ends the process where
+it threw: nothing catches it, and the crash catcher's report keeps that thread's stack.
 
 ---
 

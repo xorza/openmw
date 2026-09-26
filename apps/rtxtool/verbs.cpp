@@ -6,7 +6,7 @@
 #include <string_view>
 #include <utility>
 
-#include <components/rtx/contract.hpp>
+#include <components/crashcatcher/crash.hpp>
 #include <components/rtx/namedenum.hpp>
 
 namespace RtxTool
@@ -47,7 +47,7 @@ namespace RtxTool
             if (verb == one)
                 return policy;
 
-        Rtx::broken("a command with no row in the policy table");
+        Crash::fatal("a command with no row in the policy table");
     }
 
     std::string_view verbName(const Verbs one)

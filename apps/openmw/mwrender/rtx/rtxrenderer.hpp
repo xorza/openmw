@@ -80,6 +80,13 @@ namespace MWRender
     /// no OpenGL anywhere: the window is an SDL surface the backend builds on. It drives the frame
     /// itself, the scene-graph half of what `osgViewer::Viewer` does, with no cull because rays go
     /// everywhere; the mirror runs after the update traversal and the present after the mirror.
+    ///
+    /// **Every seam call is `noexcept` but three**: the constructor, `awaitShaders` and
+    /// `renderFrame`, whose failures a player is told in words — a machine that cannot run this, a
+    /// shader missing from the installation, a device out of room. The engine calls the rest inside
+    /// `Engine::frame`'s update, which logs what it catches and goes on, and a loading screen draws
+    /// its frames there: a cell change stopped halfway, over a renderer stopped mid-frame, is no
+    /// game to go on with. So whatever they throw ends the process as a crash where it was thrown.
     class RtxRenderer final : public Renderer
     {
     public:
@@ -92,74 +99,74 @@ namespace MWRender
 
         /// A plain group: the lights are gathered on this renderer's own walk, so nothing here
         /// wants a light manager's method.
-        osg::ref_ptr<osg::Group> createSceneRoot() override;
+        osg::ref_ptr<osg::Group> createSceneRoot() noexcept override;
 
         void listAssetsToPreload(
-            std::vector<VFS::Path::Normalized>& models, std::vector<VFS::Path::Normalized>& textures) override;
+            std::vector<VFS::Path::Normalized>& models, std::vector<VFS::Path::Normalized>& textures) noexcept override;
 
         /// Where the sea stands: `WorldMirror::standSea` says why a cell decides it.
-        void addCell(const MWWorld::CellStore* cell) override;
+        void addCell(const MWWorld::CellStore* cell) noexcept override;
 
         /// The cell's wading actors stop wading.
-        void removeCell(const MWWorld::CellStore* cell) override;
+        void removeCell(const MWWorld::CellStore* cell) noexcept override;
 
         /// What disturbs the water, as `RippleEmitters` keeps it: an actor that may wade, and a
         /// strike on the surface.
-        void addWaterRippleEmitter(const MWWorld::Ptr& ptr) override;
-        void removeWaterRippleEmitter(const MWWorld::Ptr& ptr) override;
-        void emitWaterRipple(const osg::Vec3f& position) override;
+        void addWaterRippleEmitter(const MWWorld::Ptr& ptr) noexcept override;
+        void removeWaterRippleEmitter(const MWWorld::Ptr& ptr) noexcept override;
+        void emitWaterRipple(const osg::Vec3f& position) noexcept override;
 
         /// A `TracedGround`: the storage, the worldspace and the active grid, and no chunks.
-        std::unique_ptr<Ground> createGround(const GroundSpec& spec) override;
+        std::unique_ptr<Ground> createGround(const GroundSpec& spec) noexcept override;
 
-        void detachWorld() override;
+        void detachWorld() noexcept override;
 
-        float getGroundReach() const override;
-        SDL_Window* getWindow() const override { return mWindow.get(); }
+        float getGroundReach() const noexcept override;
+        SDL_Window* getWindow() const noexcept override { return mWindow.get(); }
 
-        void attachWorld(RenderingManager& world, osg::Group& worldRoot) override;
+        void attachWorld(RenderingManager& world, osg::Group& worldRoot) noexcept override;
 
-        void advance(double simulationTime) override;
-        void eventTraversal() override;
-        void updateTraversal() override;
+        void advance(double simulationTime) noexcept override;
+        void eventTraversal() noexcept override;
+        void updateTraversal() noexcept override;
 
         void renderFrame(const SceneFrame& frame) override;
 
-        void notifyCut() override;
+        void notifyCut() noexcept override;
 
         /// A trace into a texture the GUI draws from. A picture of the world traces against the
         /// scene this renderer holds; a subject that stands in no cell is mirrored into a scene of
         /// its own.
-        std::unique_ptr<OffscreenView> createWorldView(const OffscreenViewSpec& spec) override;
-        std::unique_ptr<SubjectView> createSubjectView(const OffscreenViewSpec& spec) override;
+        std::unique_ptr<OffscreenView> createWorldView(const OffscreenViewSpec& spec) noexcept override;
+        std::unique_ptr<SubjectView> createSubjectView(const OffscreenViewSpec& spec) noexcept override;
 
         /// A `TracedOverlay`: the explored cells composited in main memory and mirrored into the
         /// interface.
-        std::unique_ptr<MapOverlay> createMapOverlay(const MapOverlaySpec& spec) override;
+        std::unique_ptr<MapOverlay> createMapOverlay(const MapOverlaySpec& spec) noexcept override;
 
         /// The frame just presented, read back into a GUI texture. One black texel before anything
         /// has been presented, which is the very first load.
-        MyGUI::ITexture& freezeFrame() override;
+        MyGUI::ITexture& freezeFrame() noexcept override;
 
         /// The interface over whatever was last traced, and the frame onto the screen. Every frame
         /// this renderer draws ends here, with a world in it or not.
-        void renderGui() override;
+        void renderGui() noexcept override;
 
         /// A step of its own on the loading screen, where the kernels are not all made by the time
         /// the content is read: `Rtx::Renderer::awaitKernels`.
         void awaitShaders(Loading::Listener& listener) override;
 
-        void capture(osg::Image& image, int width, int height) override;
-        void saveScreenshot() override;
+        void capture(osg::Image& image, int width, int height) noexcept override;
+        void saveScreenshot() noexcept override;
 
         /// A present mode: off is mailbox rather than immediate, and adaptive is relaxed FIFO.
-        void setVSync(SDLUtil::VSyncMode mode) override;
-        void processChangedSettings(const Settings::CategorySettingVector& changed) override;
+        void setVSync(SDLUtil::VSyncMode mode) noexcept override;
+        void processChangedSettings(const Settings::CategorySettingVector& changed) noexcept override;
 
-        std::unique_ptr<MyGUIPlatform::Platform> createGuiPlatform(
-            float scalingFactor, VFS::Path::NormalizedView resourcePath, const std::filesystem::path& logPath) override;
+        std::unique_ptr<MyGUIPlatform::Platform> createGuiPlatform(float scalingFactor,
+            VFS::Path::NormalizedView resourcePath, const std::filesystem::path& logPath) noexcept override;
 
-        osg::Timer_t getStartTick() const override { return mStartTick; }
+        osg::Timer_t getStartTick() const noexcept override { return mStartTick; }
 
         /*internal:*/
         /// Runs the camera's own update callback and nothing below it: the scene is walked from its
@@ -203,20 +210,20 @@ namespace MWRender
     protected:
         /// No GLSL is compiled here, so no model is given a program: the shader visitor is off, and
         /// a model's state is read as the loader left it.
-        void configureResources(Resource::ResourceSystem& resources) override;
+        void configureResources(Resource::ResourceSystem& resources) noexcept override;
 
-        void adoptTraversalRoot(osg::Group& root) override;
+        void adoptTraversalRoot(osg::Group& root) noexcept override;
 
         /// Read off the seam at the trace, so nothing to put anywhere.
-        void applyViewMask() override {}
-        void applyWorldShown() override {}
+        void applyViewMask() noexcept override {}
+        void applyWorldShown() noexcept override {}
 
         /// The driver's sleep where the driver paces, and the seam's limiter where it does not,
         /// asked every frame. What either held is the frame's `Sleep` row.
-        bool holdFrame() override;
+        bool holdFrame() noexcept override;
 
         /// The limit, as the interval the driver's sleep holds two presents apart.
-        void applyFrameRateLimit() override;
+        void applyFrameRateLimit() noexcept override;
 
     private:
         /// Builds everything from the setup, which is spent here. Delegated to, so `mRun` can bind

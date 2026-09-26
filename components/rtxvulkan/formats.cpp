@@ -1,5 +1,7 @@
 #include "formats.hpp"
 
+#include <components/crashcatcher/crash.hpp>
+
 namespace Rtx
 {
     VkFormat toVulkanFormat(TextureFormat format)
@@ -45,6 +47,6 @@ namespace Rtx
 
         // A format nothing above named: a new one that forgets a case lands here rather than
         // creating an image with a format nobody chose.
-        broken("a texture format this renderer does not upload");
+        Crash::fatal("a texture format this renderer does not upload");
     }
 }

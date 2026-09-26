@@ -7,11 +7,6 @@
 
 namespace Platform::Process
 {
-    void trap() noexcept
-    {
-        __builtin_trap();
-    }
-
     bool setEnvironmentDefault(const char* name, const char* value)
     {
         if (std::getenv(name) != nullptr)

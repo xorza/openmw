@@ -9,7 +9,7 @@
 #include <cstring>
 #include <utility>
 
-#include <components/rtx/contract.hpp>
+#include <components/crashcatcher/crash.hpp>
 
 #include "barriers.hpp"
 #include "buffer.hpp"
@@ -84,7 +84,7 @@ namespace Rtx
                     return 0;
 
                 default:
-                    broken("no texel size is recorded for this image format");
+                    Crash::fatal("no texel size is recorded for this image format");
             }
         }
     }
@@ -472,7 +472,7 @@ namespace Rtx
                 return;
 
             default:
-                broken("no float decode is recorded for this image format");
+                Crash::fatal("no float decode is recorded for this image format");
         }
     }
 

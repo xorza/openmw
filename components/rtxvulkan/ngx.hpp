@@ -9,7 +9,7 @@
 #include <nvsdk_ngx_defs_dlssd.h>
 #include <nvsdk_ngx_vk.h>
 
-#include <components/rtx/contract.hpp>
+#include <components/crashcatcher/crash.hpp>
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/upscale.hpp>
 
@@ -50,7 +50,7 @@ namespace Rtx
                 break;
         }
 
-        broken("Ray Reconstruction was asked to build for an upscale mode that is the absence of one");
+        Crash::fatal("Ray Reconstruction was asked to build for an upscale mode that is the absence of one");
     }
 
     /// The network a preset selects, as NGX numbers them — Ray Reconstruction's own enum in
@@ -91,6 +91,6 @@ namespace Rtx
                 break;
         }
 
-        broken("Ray Reconstruction was asked for the preset of an upscale mode that is the absence of one");
+        Crash::fatal("Ray Reconstruction was asked for the preset of an upscale mode that is the absence of one");
     }
 }

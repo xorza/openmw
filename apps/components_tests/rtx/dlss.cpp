@@ -168,10 +168,8 @@ namespace Rtx
         /// path a frame budget is measured against.
         TEST_F(RtxDlssTest, theAbsenceOfAnUpscalerNamesNoSizeToRenderAt)
         {
-#ifndef NDEBUG
             Testing::expectDies(
                 [&] { sNgx->getRenderSize(sOutput, Upscale::Off); }, "an upscale mode that is the absence of one");
-#endif
         }
 
         /// **A flat frame is the one input whose correct output is arithmetic** rather than a

@@ -11,6 +11,7 @@
 #include <utility>
 #include <vector>
 
+#include <components/crashcatcher/crash.hpp>
 #include <components/crashcatcher/crashnote.hpp>
 #include <components/debug/debuglog.hpp>
 #include <components/rtx/contract.hpp>
@@ -117,7 +118,7 @@ namespace Rtx
             for (const CurveTwins& twins : sCurveTwins)
                 if (twins.mLinear == format)
                     return twins.mEncoded;
-            broken("a format with no twin under a curve");
+            Crash::fatal("a format with no twin under a curve");
         }
 
         /// What a written texture is stored as, which is what the shaders that write it declare,
@@ -630,7 +631,7 @@ namespace Rtx
                 break;
         }
 
-        broken("a stand-in made rather than drawn as the one the array holds");
+        Crash::fatal("a stand-in made rather than drawn as the one the array holds");
     }
 
     void TextureArray::stand(

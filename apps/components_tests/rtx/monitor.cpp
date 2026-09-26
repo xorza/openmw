@@ -13,6 +13,8 @@
 #include <components/rtx/monitor.hpp>
 #include <components/rtx/worker.hpp>
 
+#include "support/death.hpp"
+
 namespace Rtx
 {
     namespace
@@ -57,12 +59,10 @@ namespace Rtx
                 mMonitor.give([&] { mPending.push_back(one); });
             }
 
-            /// Waits for `count` and answers them, or empty where the monitor closed first.
+            /// Waits for `count` and answers them.
             std::vector<int> awaitDone(std::size_t count)
             {
-                if (!mMonitor.await([&] { return mDone.size() >= count; }))
-                    return {};
-
+                mMonitor.await([&] { return mDone.size() >= count; });
                 return mMonitor.under([&] { return mDone; });
             }
         };
@@ -98,49 +98,22 @@ namespace Rtx
             served.mWorker.stop();
         }
 
-        /// A turn that throws closes the monitor rather than ending the process, and the frame gets
-        /// what it threw.
-        ///
-        /// **The whole of why a worker's exception is caught.** One out of a `std::jthread`'s body
-        /// is a `std::terminate` that names nothing, and the frame would have waited for a result
-        /// that was never coming.
-        TEST(RtxMonitorTest, aTurnThatThrowsClosesTheMonitorAndTheFrameGetsIt)
+        /// **A turn that throws ends the process, and says what it threw.** Nothing catches it, so
+        /// `std::terminate` is called on the worker's thread where it was thrown, and the crash
+        /// catcher's report keeps that stack; a catch that carried the exception to the frame would
+        /// hand over the message with the stack already unwound.
+        TEST(RtxMonitorTest, aTurnThatThrowsEndsTheProcessNamingWhatItThrew)
         {
-            Served served;
-            served.mTurn = [](int one, std::stop_token) { throw std::runtime_error("turn " + std::to_string(one)); };
-            served.start();
-
-            served.give(4);
-
-            // Empty, because the monitor closed before anything was ever done.
-            EXPECT_TRUE(served.awaitDone(1).empty());
-
-            EXPECT_THROW(served.mMonitor.rethrowFailure(), std::runtime_error);
-
-            // Thrown once: the owner asks where it can report, and a second ask has nothing to say.
-            EXPECT_NO_THROW(served.mMonitor.rethrowFailure());
-        }
-
-        /// A monitor closed by a failure is opened again for the next worker, which serves as if
-        /// nothing had happened: `CellSupply::follow` does this for every world it is pointed at.
-        TEST(RtxMonitorTest, aReopenedMonitorServesTheNextWorker)
-        {
-            Served served;
-            served.mTurn = [](int, std::stop_token) { throw std::runtime_error("the first reader"); };
-            served.start();
-            served.give(1);
-            EXPECT_TRUE(served.awaitDone(1).empty());
-
-            served.mWorker.stop();
-            EXPECT_THROW(served.mMonitor.rethrowFailure(), std::runtime_error);
-            served.mMonitor.reopen();
-
-            served.mTurn = [](int, std::stop_token) {};
-            served.start();
-            served.give(2);
-
-            EXPECT_EQ(served.awaitDone(1), (std::vector<int>{ 2 })) << "a reopened monitor still refused its worker";
-            EXPECT_NO_THROW(served.mMonitor.rethrowFailure());
+            Testing::expectDies(
+                [] {
+                    Served served;
+                    served.mTurn
+                        = [](int one, std::stop_token) { throw std::runtime_error("turn " + std::to_string(one)); };
+                    served.start();
+                    served.give(4);
+                    served.awaitDone(1);
+                },
+                "turn 4");
         }
 
         /// A stop drops what is still queued rather than taking one more turn nobody collects.
@@ -172,27 +145,6 @@ namespace Rtx
             // Read without the lock, because the join is what makes this the only thread left.
             EXPECT_EQ(served.mDone, (std::vector<int>{ 1 })) << "a stopped loop took work nobody was left to collect";
             EXPECT_EQ(served.mPending.size(), 2u);
-        }
-
-        /// A close wakes a frame that is waiting and answers false, rather than leaving it there.
-        TEST(RtxMonitorTest, aCloseWakesAFrameThatIsWaitingForWhatWillNeverCome)
-        {
-            Monitor monitor;
-            std::atomic<bool> waiting{ false };
-            std::atomic<bool> answered{ true };
-
-            std::jthread frame([&] {
-                waiting = true;
-                answered = monitor.await([] { return false; });
-            });
-
-            while (!waiting)
-                std::this_thread::yield();
-
-            monitor.close();
-            frame.join();
-
-            EXPECT_FALSE(answered) << "a wait against a closed monitor answers rather than holding";
         }
     }
 }

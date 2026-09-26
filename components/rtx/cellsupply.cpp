@@ -1,10 +1,5 @@
 #include "cellsupply.hpp"
 
-#include <exception>
-#include <thread>
-
-#include <components/debug/debuglog.hpp>
-
 #include "cellreader.hpp"
 #include "prepared.hpp"
 
@@ -49,20 +44,6 @@ namespace Rtx
         // holds them goes. Nothing is given back: what the frame held dies with the reader.
         mWorker.stop();
 
-        // A reader that threw closed the monitor, and the world it read is going with it. What it
-        // threw is said here where a frame has not asked, and the monitor is opened again for the
-        // reader about to be made — closed, the new reader's loop would return on its first turn
-        // and every wait on it would answer at once with nothing.
-        try
-        {
-            mMonitor.rethrowFailure();
-        }
-        catch (const std::exception& failed)
-        {
-            Log(Debug::Warning) << "Ray tracing: the cell reader of the world being left had failed: " << failed.what();
-        }
-        mMonitor.reopen();
-
         mWanted.clear();
         mRequested.clear();
         mReading.clear();
@@ -95,19 +76,15 @@ namespace Rtx
 
     void CellSupply::take(std::vector<PreparedCell*>& into)
     {
-        // Asked here, because this is the one call every frame makes. A reader that threw is a
-        // world that cannot be read, and the frame learns it where it would have taken a cell.
-        mMonitor.rethrowFailure();
-
         mMonitor.under([&] {
             into.insert(into.end(), mDone.begin(), mDone.end());
             mDone.clear();
         });
     }
 
-    bool CellSupply::waitForOne()
+    void CellSupply::waitForOne()
     {
-        return mMonitor.await([&] { return !mDone.empty(); });
+        mMonitor.await([&] { return !mDone.empty(); });
     }
 
     void CellSupply::publish()

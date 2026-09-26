@@ -16,6 +16,7 @@
 #include <osg/Image>
 #include <osg/ref_ptr>
 
+#include <components/crashcatcher/crash.hpp>
 #include <components/crashcatcher/crashnote.hpp>
 #include <components/resource/imagemanager.hpp>
 #include <components/vfs/pathutil.hpp>
@@ -72,7 +73,7 @@ namespace Rtx
                     break;
             }
 
-            broken("a format widened that is not sixteen bits a texel");
+            Crash::fatal("a format widened that is not sixteen bits a texel");
         }
 
         /// The byte nearest what a device samples from a `bits`-bit unsigned normalized channel,

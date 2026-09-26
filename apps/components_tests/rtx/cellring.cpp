@@ -947,39 +947,19 @@ namespace Rtx::Testing
             EXPECT_EQ(mRing.getHeldCellCount(), held + 1);
         }
 
-        /// A reader that throws is reported to the frame once, and the next world the ring is
-        /// pointed at is read by a reader of its own: the failure closed the supply's monitor, and
-        /// `follow` opens it again.
-        TEST_F(RtxCellRingTest, aWorldFollowedAfterAReaderFailedIsReadAgain)
+        /// **A reader that throws ends the process where it threw**, and says what it threw.
+        /// Nothing catches it on the reader's thread, so the crash catcher's report keeps that
+        /// thread's stack; a catch that carried it to the frame handed over the message alone. The
+        /// first walk asks and waits, and the wait is where the process ends.
+        TEST_F(RtxCellRingTest, aReaderThatThrowsEndsTheProcessNamingWhatItThrew)
         {
             mStorage.mThrows = true;
-            start();
-
-            // The first walk asks and waits; the reader throws on its thread and closes the
-            // monitor, so the wait ends with nothing. A later walk is what takes the failure.
-            bool thrown = false;
-            for (std::size_t walked = 0; walked < 4 && !thrown; ++walked)
-            {
-                try
-                {
+            expectDies(
+                [&] {
+                    start();
                     walk(mWalked++);
-                }
-                catch (const std::runtime_error&)
-                {
-                    thrown = true;
-                }
-            }
-            EXPECT_TRUE(thrown) << "a reader that threw was never reported to the frame";
-            EXPECT_EQ(mRing.getHeldCellCount(), 0u);
-
-            // Another worldspace is another reader over the same storages.
-            mStorage.mThrows = false;
-            mAround.mWorld.mWorldspace = ESM::RefId::stringRefId("elsewhere");
-            mRing.follow(mAround);
-
-            fill();
-            EXPECT_EQ(mRing.getHeldCellCount(), sPreparedCells)
-                << "the supply stayed closed after its reader was replaced";
+                },
+                "a storage that cannot be read");
         }
 
 #ifndef NDEBUG

@@ -89,8 +89,8 @@ namespace Rtx
         void take(std::vector<PreparedCell*>& into);
 
         /// Blocks until the thread has read at least one more cell, for a settled run
-        /// (`CellRing::setSettled`). False where the reader threw, or a caller would wait for ever.
-        bool waitForOne();
+        /// (`CellRing::setSettled`).
+        void waitForOne();
 
         /// Where a caller puts what it has finished with. Handed over by `publish`.
         CellReturns& giveBack()

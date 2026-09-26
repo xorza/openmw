@@ -1,22 +1,19 @@
 #pragma once
 
-#include <cassert>
 #include <condition_variable>
-#include <cstdint>
-#include <exception>
 #include <mutex>
 #include <stop_token>
-#include <thread>
 #include <utility>
 
 namespace Rtx
 {
     /// The lock between a frame and the workers it keeps, and the two waits across it — the dance
     /// and not the data, which stays with its owner. Every operation is a template on what it
-    /// runs, so nothing here allocates on the frame's path. A worker that throws closes the
-    /// monitor rather than ending the process: an exception out of a `std::jthread` is a
-    /// `std::terminate` that names nothing, so the first one is kept and `rethrowFailure` hands it
-    /// to the frame.
+    /// runs, so nothing here allocates on the frame's path. A worker that throws ends the process:
+    /// nothing catches it, so `std::terminate` is called where it was thrown, before anything
+    /// unwinds, and the crash catcher's report names the exception beside that thread's stack. A
+    /// worker's failure is a bug or an allocation that failed; what the world supplies a worker
+    /// refuses in its own results.
     class Monitor
     {
     public:
@@ -49,18 +46,12 @@ namespace Rtx
             mToFrame.notify_all();
         }
 
-        /// The frame's side: waits until `ready`. False where the monitor closed, which is a worker
-        /// that threw or a run that is over, because a frame that waits on a worker which has gone
-        /// would otherwise wait for ever.
+        /// The frame's side: waits until `ready`.
         template <class Ready>
-        bool await(Ready ready)
+        void await(Ready ready)
         {
             std::unique_lock<std::mutex> lock(mMutex);
-            ++mWaiting;
-            mToFrame.wait(lock, [&] { return mClosed || ready(); });
-            --mWaiting;
-
-            return !mClosed;
+            mToFrame.wait(lock, ready);
         }
 
         /// A worker's whole loop: wait for work, pick it up, do it, and again until stopped. `ready`
@@ -78,76 +69,19 @@ namespace Rtx
         {
             for (;;)
             {
-                try
                 {
-                    {
-                        std::unique_lock<std::mutex> lock(mMutex);
-                        ++mWaiting;
-                        const bool woken = mToWorker.wait(lock, stop, [&] { return mClosed || ready(); });
-                        --mWaiting;
-                        if (!woken || mClosed || stop.stop_requested())
-                            return;
+                    std::unique_lock<std::mutex> lock(mMutex);
+                    if (!mToWorker.wait(lock, stop, ready) || stop.stop_requested())
+                        return;
 
-                        take();
-                    }
+                    take();
+                }
 
-                    turn(stop);
-                }
-                catch (...)
-                {
-                    fail(std::current_exception());
-                    return;
-                }
+                turn(stop);
             }
         }
 
-        /// Wakes every waiter and refuses every wait after it. What a worker that threw does, and
-        /// what an owner shutting down may do.
-        void close()
-        {
-            under([&] { mClosed = true; });
-
-            mToWorker.notify_all();
-            mToFrame.notify_all();
-        }
-
-        /// Throws what the first worker to fail threw, and nothing where none did. Thrown once: the
-        /// owner asks at a point where it can report, and a second ask after that has nothing to
-        /// say.
-        void rethrowFailure()
-        {
-            const std::exception_ptr failed = under([&] { return std::exchange(mFailed, nullptr); });
-            if (failed != nullptr)
-                std::rethrow_exception(failed);
-        }
-
-        /// Takes a closed monitor back into service for a new worker: a supply pointed at another
-        /// world after its reader failed starts a reader that has not. Only with no worker
-        /// running and nobody waiting on either side, which the owner guarantees by joining
-        /// first; a failure nobody took is dropped with the worker that made it, so an owner that
-        /// wants it asks `rethrowFailure` before this.
-        void reopen()
-        {
-            under([&] {
-                assert(mWaiting == 0 && "a monitor reopened under a waiter");
-                mClosed = false;
-                mFailed = nullptr;
-            });
-        }
-
     private:
-        /// Keeps the first failure and closes. The first and not the last, so the message names
-        /// what actually went wrong rather than whichever worker finished after it.
-        void fail(std::exception_ptr thrown)
-        {
-            under([&] {
-                if (mFailed == nullptr)
-                    mFailed = std::move(thrown);
-            });
-
-            close();
-        }
-
         std::mutex mMutex;
 
         /// `condition_variable_any` on the worker's side and the plain one on the frame's,
@@ -155,11 +89,5 @@ namespace Rtx
         /// its own that the frame has no use for.
         std::condition_variable_any mToWorker;
         std::condition_variable mToFrame;
-
-        std::exception_ptr mFailed;
-        bool mClosed = false;
-
-        /// How many stand inside either wait, under the lock. Read by `reopen`'s assert alone.
-        std::uint32_t mWaiting = 0;
     };
 }

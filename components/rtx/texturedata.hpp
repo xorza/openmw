@@ -10,7 +10,8 @@
 #include <string_view>
 #include <vector>
 
-#include "contract.hpp"
+#include <components/crashcatcher/crash.hpp>
+
 #include "runs.hpp"
 #include "textureencoding.hpp"
 #include "texturewrap.hpp"
@@ -199,7 +200,7 @@ namespace Rtx
                 break;
         }
 
-        broken("a texture format with no layout");
+        Crash::fatal("a texture format with no layout");
     }
 
     /// Whether a loose format states its colours blue first, which every reader of its bytes has
@@ -240,7 +241,7 @@ namespace Rtx
                 return false;
         }
 
-        broken("unknown texture format");
+        Crash::fatal("unknown texture format");
     }
 
     /// Whether a format is BC1, whose blocks carry a punch-through alpha in their endpoint order,

@@ -2,7 +2,7 @@
 
 #include <vulkan/vulkan_core.h>
 
-#include <components/rtx/contract.hpp>
+#include <components/crashcatcher/crash.hpp>
 #include <components/rtx/shaders/storageformat.h>
 #include <components/rtx/texturedata.hpp>
 
@@ -39,6 +39,6 @@ namespace Rtx
                 return VK_FORMAT_R32G32B32A32_SFLOAT;
         }
 
-        broken("a storage format with no Vulkan format");
+        Crash::fatal("a storage format with no Vulkan format");
     }
 }

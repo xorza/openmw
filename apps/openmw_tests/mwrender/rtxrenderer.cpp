@@ -2,6 +2,9 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <type_traits>
+#include <utility>
+#include <vector>
 
 #include <gtest/gtest.h>
 
@@ -26,6 +29,46 @@ namespace MWRender
 {
     namespace
     {
+        /// **The seam's promise, held where it is compiled**: what the engine calls inside
+        /// `Engine::frame`'s update ends the process where it throws, and the three calls whose
+        /// failures a player is told in words still throw. `RtxRenderer` says why.
+        static_assert(noexcept(std::declval<RtxRenderer&>().createSceneRoot()));
+        static_assert(noexcept(std::declval<RtxRenderer&>().listAssetsToPreload(
+            std::declval<std::vector<VFS::Path::Normalized>&>(), std::declval<std::vector<VFS::Path::Normalized>&>())));
+        static_assert(noexcept(std::declval<RtxRenderer&>().addCell(nullptr)));
+        static_assert(noexcept(std::declval<RtxRenderer&>().removeCell(nullptr)));
+        static_assert(
+            noexcept(std::declval<RtxRenderer&>().addWaterRippleEmitter(std::declval<const MWWorld::Ptr&>())));
+        static_assert(
+            noexcept(std::declval<RtxRenderer&>().removeWaterRippleEmitter(std::declval<const MWWorld::Ptr&>())));
+        static_assert(noexcept(std::declval<RtxRenderer&>().emitWaterRipple(std::declval<const osg::Vec3f&>())));
+        static_assert(noexcept(std::declval<RtxRenderer&>().createGround(std::declval<const GroundSpec&>())));
+        static_assert(noexcept(std::declval<RtxRenderer&>().detachWorld()));
+        static_assert(noexcept(std::declval<RtxRenderer&>().getGroundReach()));
+        static_assert(noexcept(std::declval<RtxRenderer&>().getWindow()));
+        static_assert(noexcept(
+            std::declval<RtxRenderer&>().attachWorld(std::declval<RenderingManager&>(), std::declval<osg::Group&>())));
+        static_assert(noexcept(std::declval<RtxRenderer&>().advance(0.0)));
+        static_assert(noexcept(std::declval<RtxRenderer&>().eventTraversal()));
+        static_assert(noexcept(std::declval<RtxRenderer&>().updateTraversal()));
+        static_assert(noexcept(std::declval<RtxRenderer&>().notifyCut()));
+        static_assert(noexcept(std::declval<RtxRenderer&>().createWorldView(std::declval<const OffscreenViewSpec&>())));
+        static_assert(
+            noexcept(std::declval<RtxRenderer&>().createSubjectView(std::declval<const OffscreenViewSpec&>())));
+        static_assert(noexcept(std::declval<RtxRenderer&>().createMapOverlay(std::declval<const MapOverlaySpec&>())));
+        static_assert(noexcept(std::declval<RtxRenderer&>().freezeFrame()));
+        static_assert(noexcept(std::declval<RtxRenderer&>().renderGui()));
+        static_assert(noexcept(std::declval<RtxRenderer&>().capture(std::declval<osg::Image&>(), 0, 0)));
+        static_assert(noexcept(std::declval<RtxRenderer&>().saveScreenshot()));
+        static_assert(noexcept(std::declval<RtxRenderer&>().setVSync(std::declval<SDLUtil::VSyncMode>())));
+        static_assert(noexcept(std::declval<RtxRenderer&>().processChangedSettings(
+            std::declval<const Settings::CategorySettingVector&>())));
+        static_assert(noexcept(std::declval<RtxRenderer&>().getStartTick()));
+
+        static_assert(!noexcept(std::declval<RtxRenderer&>().renderFrame(std::declval<const SceneFrame&>())));
+        static_assert(!noexcept(std::declval<RtxRenderer&>().awaitShaders(std::declval<Loading::Listener&>())));
+        static_assert(!std::is_nothrow_constructible_v<RtxRenderer, const RendererSpec&>);
+
         /// Counts the traversals that reached the node it hangs on.
         class CountingCallback : public osg::NodeCallback
         {
