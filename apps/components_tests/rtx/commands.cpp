@@ -12,7 +12,7 @@
 #include <components/rtxvulkan/device.hpp>
 #include <components/rtxvulkan/timeline.hpp>
 
-#include "harness.hpp"
+#include "support/device/harness.hpp"
 
 namespace Rtx
 {

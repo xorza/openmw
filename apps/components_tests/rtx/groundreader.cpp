@@ -30,7 +30,7 @@
 #include <components/terrain/defs.hpp>
 #include <components/vfs/pathutil.hpp>
 
-#include "fakeland.hpp"
+#include "support/fakeland.hpp"
 
 namespace Rtx::Testing
 {

@@ -38,7 +38,7 @@
 #include <components/vfs/manager.hpp>
 #include <components/vfs/pathutil.hpp>
 
-#include "heldimages.hpp"
+#include "support/heldimages.hpp"
 
 namespace Rtx
 {

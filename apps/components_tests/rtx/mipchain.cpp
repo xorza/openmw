@@ -7,8 +7,8 @@
 #include <components/rtx/mipchain.hpp>
 #include <components/rtx/texturedata.hpp>
 
-#include "allocations.hpp"
-#include "testtexture.hpp"
+#include "support/allocations.hpp"
+#include "support/testtexture.hpp"
 
 namespace Rtx
 {

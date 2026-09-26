@@ -22,8 +22,8 @@
 #include <components/sky/moonstate.hpp>
 #include <components/vfs/manager.hpp>
 
-#include "allocations.hpp"
-#include "heldimages.hpp"
+#include "support/allocations.hpp"
+#include "support/heldimages.hpp"
 
 namespace Rtx
 {

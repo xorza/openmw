@@ -20,8 +20,8 @@
 #include <components/rtx/shaders/visibility.h>
 #include <components/rtx/slot.hpp>
 
-#include "../geometry.hpp"
-#include "../testcamera.hpp"
+#include "../support/geometry.hpp"
+#include "../support/testcamera.hpp"
 #include "fixture.hpp"
 
 namespace Rtx::Testing

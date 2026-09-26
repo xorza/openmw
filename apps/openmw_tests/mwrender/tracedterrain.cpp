@@ -9,7 +9,7 @@
 #include <osgUtil/IntersectionVisitor>
 #include <osgUtil/LineSegmentIntersector>
 
-#include <apps/components_tests/rtx/fakeland.hpp>
+#include <apps/components_tests/rtx/support/fakeland.hpp>
 #include <apps/openmw/mwrender/rtx/tracedterrain.hpp>
 #include <components/esm3/loadcell.hpp>
 #include <components/terrain/view.hpp>

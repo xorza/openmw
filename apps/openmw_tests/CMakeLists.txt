@@ -43,8 +43,8 @@ endif()
 
 if (OPENMW_RTX)
     set(RTX_TEST_FILES
-        ${OpenMW_SOURCE_DIR}/apps/components_tests/rtx/allocations.cpp
-        ${OpenMW_SOURCE_DIR}/apps/components_tests/rtx/fallbackseed.cpp
+        ${OpenMW_SOURCE_DIR}/apps/components_tests/rtx/support/allocations.cpp
+        ${OpenMW_SOURCE_DIR}/apps/components_tests/rtx/support/fallbackseed.cpp
         mwrender/debugwalk.cpp
         mwrender/frametimer.cpp
         mwrender/precipitation.cpp

@@ -29,8 +29,8 @@
 #include <components/sceneutil/lightutil.hpp>
 #include <components/sceneutil/util.hpp>
 
-#include "graphlight.hpp"
-#include "statistics.hpp"
+#include "support/graphlight.hpp"
+#include "support/statistics.hpp"
 
 namespace Rtx
 {

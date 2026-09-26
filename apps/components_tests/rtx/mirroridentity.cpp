@@ -8,7 +8,7 @@
 #include <components/rtx/mirrorpass.hpp>
 #include <components/rtx/runs.hpp>
 
-#include "death.hpp"
+#include "support/death.hpp"
 
 namespace Rtx
 {

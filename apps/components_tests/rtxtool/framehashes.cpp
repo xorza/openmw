@@ -18,7 +18,7 @@
 #include <components/rtx/upscale.hpp>
 #include <components/testing/util.hpp>
 
-#include "../rtx/death.hpp"
+#include "../rtx/support/death.hpp"
 
 namespace RtxTool
 {

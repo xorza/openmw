@@ -23,7 +23,8 @@
 #include <components/rtxvulkan/slottable.hpp>
 #include <components/rtxvulkan/structurebuild.hpp>
 
-#include "harness.hpp"
+#include "support/device/harness.hpp"
+#include "support/device/memorylimits.hpp"
 
 namespace Rtx
 {

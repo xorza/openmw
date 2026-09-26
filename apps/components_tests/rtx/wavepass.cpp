@@ -17,8 +17,9 @@
 #include <components/rtxvulkan/device.hpp>
 #include <components/rtxvulkan/wavepass.hpp>
 
-#include "harness.hpp"
-#include "wavemoments.hpp"
+#include "support/device/harness.hpp"
+#include "support/device/readback.hpp"
+#include "support/wavemoments.hpp"
 
 namespace Rtx
 {

@@ -3,8 +3,9 @@
 #
 # Two binaries. `components-tests` holds what runs on any machine; `rtx-gpu-tests` holds what
 # opens a device, and fails outright where there is none, so a run on a box without a driver
-# cannot pass by skipping half the suite. The support list is compiled into both, and two more
-# lists at the end name the tests that take the flags differently.
+# cannot pass by skipping half the suite. `RTX_TEST_SUPPORT` is compiled into both and
+# `RTX_GPU_TEST_SUPPORT` into the second alone, and two more lists at the end name the tests that
+# take the flags differently.
 set(RTX_TEST_FILES
     rtx/alphaimage.cpp
     rtx/bluenoise.cpp
@@ -29,7 +30,6 @@ set(RTX_TEST_FILES
     rtx/frameimage.cpp
     rtx/framesampling.cpp
     rtx/frameworld.cpp
-    rtx/graphlight.hpp
     rtx/groundreader.cpp
     rtx/hitrecords.cpp
     rtx/instancerecord.cpp
@@ -101,22 +101,36 @@ set(RTX_TEST_FILES
 )
 
 set(RTX_TEST_SUPPORT
-    rtx/countingrenderer.hpp
-    rtx/death.hpp
-    rtx/displaycurve.hpp
-    rtx/fakeland.hpp
-    rtx/fallbackseed.cpp
-    rtx/geometry.hpp
-    rtx/guiquad.hpp
-    rtx/heldimages.hpp
-    rtx/layers.hpp
-    rtx/lobeintegrals.hpp
-    rtx/spritelightbake.cpp
-    rtx/spritelightbake.hpp
-    rtx/statistics.hpp
-    rtx/testcamera.hpp
-    rtx/testtexture.hpp
-    rtx/wavemoments.hpp
+    rtx/support/countingrenderer.hpp
+    rtx/support/death.hpp
+    rtx/support/displaycurve.hpp
+    rtx/support/fakeland.hpp
+    rtx/support/fallbackseed.cpp
+    rtx/support/geometry.hpp
+    rtx/support/graph.hpp
+    rtx/support/graphlight.hpp
+    rtx/support/guiquad.hpp
+    rtx/support/heldimages.hpp
+    rtx/support/layers.hpp
+    rtx/support/lobeintegrals.hpp
+    rtx/support/spritelightbake.cpp
+    rtx/support/spritelightbake.hpp
+    rtx/support/statistics.hpp
+    rtx/support/testcamera.hpp
+    rtx/support/testtexture.hpp
+    rtx/support/wavemoments.hpp
+)
+
+set(RTX_GPU_TEST_SUPPORT
+    rtx/support/device/harness.cpp
+    rtx/support/device/harness.hpp
+    rtx/support/device/heldsubmit.cpp
+    rtx/support/device/heldsubmit.hpp
+    rtx/support/device/memorylimits.cpp
+    rtx/support/device/memorylimits.hpp
+    rtx/support/device/readback.cpp
+    rtx/support/device/readback.hpp
+    rtx/support/device/texturepasses.hpp
 )
 
 set(RTX_GPU_TEST_FILES
@@ -134,8 +148,6 @@ set(RTX_GPU_TEST_FILES
     rtx/groundcompositepass.cpp
     rtx/guipass.cpp
     rtx/guitextures.cpp
-    rtx/harness.cpp
-    rtx/harness.hpp
     rtx/memory.cpp
     rtx/mipchainpass.cpp
     rtx/pinnedarithmetic.cpp
@@ -186,8 +198,8 @@ set(RTX_TEST_FILES_UPSTREAM
 # here for the fork's flags.
 set(RTX_TEST_FILES_EITHER
     misc/frameclock.cpp
-    rtx/allocations.cpp
-    rtx/allocations.hpp
+    rtx/support/allocations.cpp
+    rtx/support/allocations.hpp
     sceneutil/paintedtexture.cpp
     terrain/refstack.cpp
 )

@@ -16,7 +16,7 @@
 #include <components/rtx/runs.hpp>
 #include <components/sceneutil/morphgeometry.hpp>
 
-#include "../allocations.hpp"
+#include "../support/allocations.hpp"
 #include "fixture.hpp"
 
 namespace Rtx::Testing

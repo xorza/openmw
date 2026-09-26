@@ -26,10 +26,11 @@
 #include <components/rtxvulkan/texture.hpp>
 #include <components/vfs/pathutil.hpp>
 
-#include "../allocations.hpp"
-#include "../geometry.hpp"
-#include "../harness.hpp"
-#include "../testcamera.hpp"
+#include "../support/allocations.hpp"
+#include "../support/device/harness.hpp"
+#include "../support/device/texturepasses.hpp"
+#include "../support/geometry.hpp"
+#include "../support/testcamera.hpp"
 #include "fixture.hpp"
 
 namespace Rtx::Testing

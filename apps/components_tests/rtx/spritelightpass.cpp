@@ -17,9 +17,10 @@
 #include <components/rtxvulkan/spritelightpass.hpp>
 #include <components/rtxvulkan/texture.hpp>
 
-#include "harness.hpp"
-#include "spritelightbake.hpp"
-#include "testtexture.hpp"
+#include "support/device/harness.hpp"
+#include "support/device/texturepasses.hpp"
+#include "support/spritelightbake.hpp"
+#include "support/testtexture.hpp"
 
 namespace Rtx
 {

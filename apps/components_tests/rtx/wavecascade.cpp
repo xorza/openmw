@@ -11,7 +11,7 @@
 #include <components/rtx/wavecascade.hpp>
 #include <components/rtx/wavespectrum.hpp>
 
-#include "wavemoments.hpp"
+#include "support/wavemoments.hpp"
 
 namespace Rtx
 {

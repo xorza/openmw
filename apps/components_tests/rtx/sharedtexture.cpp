@@ -14,7 +14,7 @@
 #include <components/rtx/guirenderer.hpp>
 #include <components/rtx/slot.hpp>
 
-#include "countingrenderer.hpp"
+#include "support/countingrenderer.hpp"
 
 namespace MyGUIRtx
 {

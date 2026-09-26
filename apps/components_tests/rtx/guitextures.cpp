@@ -23,12 +23,13 @@
 #include <components/rtx/texturedata.hpp>
 #include <components/vfs/pathutil.hpp>
 
-#include "displaycurve.hpp"
-#include "geometry.hpp"
-#include "guiquad.hpp"
-#include "harness.hpp"
-#include "testcamera.hpp"
-#include "testtexture.hpp"
+#include "support/device/harness.hpp"
+#include "support/device/readback.hpp"
+#include "support/displaycurve.hpp"
+#include "support/geometry.hpp"
+#include "support/guiquad.hpp"
+#include "support/testcamera.hpp"
+#include "support/testtexture.hpp"
 
 namespace Rtx
 {

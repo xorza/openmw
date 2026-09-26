@@ -9,7 +9,8 @@
 #include <components/rtxvulkan/memory.hpp>
 #include <components/rtxvulkan/structurestorage.hpp>
 
-#include "harness.hpp"
+#include "support/device/harness.hpp"
+#include "support/device/memorylimits.hpp"
 
 namespace Rtx
 {

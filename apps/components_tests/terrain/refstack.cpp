@@ -10,7 +10,7 @@
 #include <components/esm3/refnum.hpp>
 #include <components/terrain/objectstorage.hpp>
 
-#include "../rtx/allocations.hpp"
+#include "../rtx/support/allocations.hpp"
 
 namespace Terrain
 {

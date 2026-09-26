@@ -21,7 +21,7 @@
 #include <components/sceneutil/stableidentity.hpp>
 #include <components/vfs/pathutil.hpp>
 
-#include "../death.hpp"
+#include "../support/death.hpp"
 #include "fixture.hpp"
 
 namespace Rtx::Testing

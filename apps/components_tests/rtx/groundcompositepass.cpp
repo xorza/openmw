@@ -29,9 +29,10 @@
 #include <components/rtxvulkan/texture.hpp>
 #include <components/vfs/pathutil.hpp>
 
-#include "harness.hpp"
-#include "layers.hpp"
-#include "testtexture.hpp"
+#include "support/device/harness.hpp"
+#include "support/device/texturepasses.hpp"
+#include "support/layers.hpp"
+#include "support/testtexture.hpp"
 
 namespace Rtx
 {

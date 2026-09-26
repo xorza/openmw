@@ -30,8 +30,9 @@
 #include <components/rtxvulkan/skintables.hpp>
 #include <components/rtxvulkan/slottable.hpp>
 
-#include "geometry.hpp"
-#include "harness.hpp"
+#include "support/device/harness.hpp"
+#include "support/device/heldsubmit.hpp"
+#include "support/geometry.hpp"
 
 namespace Rtx
 {

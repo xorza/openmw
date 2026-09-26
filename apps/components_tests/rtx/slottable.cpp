@@ -16,7 +16,8 @@
 #include <components/rtxvulkan/frameslots.hpp>
 #include <components/rtxvulkan/slottable.hpp>
 
-#include "harness.hpp"
+#include "support/device/harness.hpp"
+#include "support/device/heldsubmit.hpp"
 
 namespace Rtx
 {

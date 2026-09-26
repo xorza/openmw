@@ -26,9 +26,9 @@
 #include <components/rtxvulkan/commands.hpp>
 #include <components/rtxvulkan/spritepasses.hpp>
 
-#include "allocations.hpp"
-#include "harness.hpp"
-#include "testcamera.hpp"
+#include "support/allocations.hpp"
+#include "support/device/harness.hpp"
+#include "support/testcamera.hpp"
 
 namespace Rtx
 {

@@ -27,7 +27,7 @@
 #include <components/rtx/scenedesc.hpp>
 #include <components/shader/automaps.hpp>
 
-#include "extractor/fixture.hpp"
+#include "support/graph.hpp"
 
 namespace Rtx::Testing
 {
@@ -49,9 +49,7 @@ namespace Rtx::Testing
         {
             osg::ref_ptr<osg::Geometry> quad = makeQuad();
 
-            osg::ref_ptr<osg::Vec3Array> overall = new osg::Vec3Array;
-            overall->push_back(osg::Vec3f(0.0f, 0.0f, 1.0f));
-            quad->setNormalArray(overall, osg::Array::BIND_OVERALL);
+            quad->setNormalArray(makePositions({ osg::Vec3f(0.0f, 0.0f, 1.0f) }), osg::Array::BIND_OVERALL);
 
             MeshReader reader;
             MeshReading reading;

@@ -4,7 +4,7 @@
 
 #include <gtest/gtest.h>
 
-#include <apps/components_tests/rtx/allocations.hpp>
+#include <apps/components_tests/rtx/support/allocations.hpp>
 #include <apps/openmw/mwrender/rtx/frametimer.hpp>
 #include <components/rtx/latencyreport.hpp>
 

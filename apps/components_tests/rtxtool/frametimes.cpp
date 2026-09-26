@@ -16,7 +16,7 @@
 #include <components/rtx/renderer.hpp>
 #include <components/testing/util.hpp>
 
-#include "../rtx/allocations.hpp"
+#include "../rtx/support/allocations.hpp"
 
 namespace RtxTool
 {

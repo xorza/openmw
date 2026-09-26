@@ -259,7 +259,8 @@ namespace Rtx
 
             const std::vector<std::string> found
                 = linesMatching({ tests / "rtx", tests / "rtx" / "visibility", tests / "rtx" / "extractor",
-                                    tests / "rtxtool", sRoot / "apps" / "openmw_tests" / "mwrender" },
+                                    tests / "rtx" / "support", tests / "rtx" / "support" / "device", tests / "rtxtool",
+                                    sRoot / "apps" / "openmw_tests" / "mwrender" },
                     exempt, [](const std::string_view code) {
                         return code.find("_DEATH(") != std::string_view::npos
                             || code.find("_EXIT(") != std::string_view::npos;

@@ -15,7 +15,7 @@
 #include <components/rtxvulkan/frameslots.hpp>
 #include <components/rtxvulkan/graveyard.hpp>
 
-#include "harness.hpp"
+#include "support/device/harness.hpp"
 
 namespace Rtx
 {

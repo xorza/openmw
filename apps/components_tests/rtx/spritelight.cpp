@@ -11,8 +11,8 @@
 #include <components/rtx/texturedata.hpp>
 #include <components/vfs/pathutil.hpp>
 
-#include "spritelightbake.hpp"
-#include "testtexture.hpp"
+#include "support/spritelightbake.hpp"
+#include "support/testtexture.hpp"
 
 namespace Rtx
 {

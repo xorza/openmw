@@ -31,7 +31,7 @@
 #include <components/rtx/templatewalk.hpp>
 #include <components/shader/automaps.hpp>
 
-#include "extractor/fixture.hpp"
+#include "support/graph.hpp"
 
 namespace Rtx::Testing
 {

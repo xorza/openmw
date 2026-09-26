@@ -17,7 +17,7 @@
 #include <components/rtxvulkan/requirements.hpp>
 #include <components/rtxvulkan/result.hpp>
 
-#include "harness.hpp"
+#include "support/device/harness.hpp"
 
 namespace Rtx
 {

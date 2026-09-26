@@ -91,8 +91,8 @@ file(GLOB UNITTEST_SRC_FILES
 
     terrain/refstack.cpp
 
-    rtx/allocations.cpp
-    rtx/allocations.hpp
+    rtx/support/allocations.cpp
+    rtx/support/allocations.hpp
 
     resource/testmultiobjectcache.cpp
     resource/testobjectcache.cpp
@@ -116,8 +116,8 @@ if (OPENMW_RTX)
     include(rtx/sources.cmake)
     openmw_rtx_expect_listed("${CMAKE_CURRENT_SOURCE_DIR}"
         MATCHING rtx/*.cpp rtx/*.hpp rtxtool/*.cpp rtxtool/*.hpp
-        LISTED ${RTX_TEST_FILES} ${RTX_TEST_SUPPORT} ${RTX_GPU_TEST_FILES} ${RTX_TEST_FILES_FIFO}
-               ${RTX_TEST_FILES_UPSTREAM} ${RTX_TEST_FILES_EITHER})
+        LISTED ${RTX_TEST_FILES} ${RTX_TEST_SUPPORT} ${RTX_GPU_TEST_FILES} ${RTX_GPU_TEST_SUPPORT}
+               ${RTX_TEST_FILES_FIFO} ${RTX_TEST_FILES_UPSTREAM} ${RTX_TEST_FILES_EITHER})
     list(APPEND UNITTEST_SRC_FILES ${RTX_TEST_FILES} ${RTX_TEST_SUPPORT} ${RTX_TEST_FILES_UPSTREAM})
 endif()
 
@@ -147,17 +147,19 @@ if (OPENMW_RTX)
     # only the latter are ours to keep warning-free.
     openmw_rtx_sources(${RTX_TEST_FILES} ${RTX_TEST_SUPPORT} ${RTX_TEST_FILES_EITHER} ERRORS_ONLY ${RTX_TEST_FILES_UPSTREAM})
 
-    # The tests that open a device, as a binary of their own: `rtx/harness.cpp` refuses to start
-    # without one, so a machine with no driver fails this run instead of passing an empty one. The
-    # same `main.cpp`, because what it sets up — the settings' defaults — is what both binaries read.
-    openmw_add_executable(rtx-gpu-tests main.cpp rtx/allocations.cpp ${RTX_GPU_TEST_FILES} ${RTX_TEST_SUPPORT})
+    # The tests that open a device, as a binary of their own: `rtx/support/device/harness.cpp`
+    # refuses to start without one, so a machine with no driver fails this run instead of passing an
+    # empty one. The same `main.cpp`, because what it sets up — the settings' defaults — is what both
+    # binaries read.
+    openmw_add_executable(rtx-gpu-tests main.cpp rtx/support/allocations.cpp
+                          ${RTX_GPU_TEST_FILES} ${RTX_GPU_TEST_SUPPORT} ${RTX_TEST_SUPPORT})
     target_link_libraries(rtx-gpu-tests
         GTest::GTest
         GMock::GMock
         components
         openmw-rtx openmw-rtx-vulkan openmw-rtxtool-lib Vulkan::Vulkan
     )
-    openmw_rtx_sources(${RTX_GPU_TEST_FILES})
+    openmw_rtx_sources(${RTX_GPU_TEST_FILES} ${RTX_GPU_TEST_SUPPORT})
     target_compile_definitions(rtx-gpu-tests
         PRIVATE OPENMW_DATA_DIR=u8"${CMAKE_CURRENT_BINARY_DIR}/data"
                 OPENMW_PROJECT_SOURCE_DIR=u8"${PROJECT_SOURCE_DIR}"

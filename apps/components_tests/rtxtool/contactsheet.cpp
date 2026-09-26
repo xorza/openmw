@@ -7,7 +7,7 @@
 #include <apps/rtxtool/instruments/contactsheet.hpp>
 #include <components/rtx/texturedata.hpp>
 
-#include "../rtx/testtexture.hpp"
+#include "../rtx/support/testtexture.hpp"
 
 namespace RtxTool
 {

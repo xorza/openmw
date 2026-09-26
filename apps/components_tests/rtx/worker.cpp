@@ -4,7 +4,7 @@
 
 #include <components/rtx/worker.hpp>
 
-#include "death.hpp"
+#include "support/death.hpp"
 
 namespace Rtx
 {

@@ -36,11 +36,12 @@
 #include <components/rtxvulkan/spritebin.hpp>
 #include <components/vfs/pathutil.hpp>
 
-#include "../geometry.hpp"
-#include "../harness.hpp"
-#include "../layers.hpp"
-#include "../testcamera.hpp"
-#include "../testtexture.hpp"
+#include "../support/device/harness.hpp"
+#include "../support/device/memorylimits.hpp"
+#include "../support/geometry.hpp"
+#include "../support/layers.hpp"
+#include "../support/testcamera.hpp"
+#include "../support/testtexture.hpp"
 #include "fixture.hpp"
 
 namespace Rtx::Testing

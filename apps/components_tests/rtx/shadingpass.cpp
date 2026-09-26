@@ -19,8 +19,9 @@
 #include <components/rtxvulkan/shadingpass.hpp>
 #include <components/rtxvulkan/texture.hpp>
 
-#include "harness.hpp"
-#include "testtexture.hpp"
+#include "support/device/harness.hpp"
+#include "support/device/texturepasses.hpp"
+#include "support/testtexture.hpp"
 
 namespace Rtx
 {

@@ -40,11 +40,11 @@
 #include <components/rtxvulkan/scenebuffers.hpp>
 #include <components/rtxvulkan/skinpass.hpp>
 
-#include "../displaycurve.hpp"
-#include "../geometry.hpp"
-#include "../harness.hpp"
-#include "../testcamera.hpp"
-#include "../testtexture.hpp"
+#include "../support/device/harness.hpp"
+#include "../support/displaycurve.hpp"
+#include "../support/geometry.hpp"
+#include "../support/testcamera.hpp"
+#include "../support/testtexture.hpp"
 
 namespace Rtx::Testing
 {

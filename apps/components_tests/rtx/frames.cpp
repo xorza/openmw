@@ -20,9 +20,9 @@
 #include <components/rtxvulkan/sceneacceleration.hpp>
 #include <components/rtxvulkan/timeline.hpp>
 
-#include "geometry.hpp"
-#include "harness.hpp"
-#include "testcamera.hpp"
+#include "support/device/harness.hpp"
+#include "support/geometry.hpp"
+#include "support/testcamera.hpp"
 
 namespace Rtx
 {

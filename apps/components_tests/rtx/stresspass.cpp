@@ -12,7 +12,7 @@
 #include <components/rtxvulkan/gputimer.hpp>
 #include <components/rtxvulkan/stresspass.hpp>
 
-#include "harness.hpp"
+#include "support/device/harness.hpp"
 
 namespace Rtx
 {

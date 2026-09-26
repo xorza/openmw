@@ -1,13 +1,9 @@
 #include "harness.hpp"
 
-#include <cmath>
-#include <cstddef>
 #include <cstdint>
-#include <cstring>
-#include <limits>
-#include <optional>
+#include <memory>
 #include <span>
-#include <stdexcept>
+#include <string>
 #include <string_view>
 #include <utility>
 
@@ -17,16 +13,10 @@
 
 #include <components/files/configurationmanager.hpp>
 #include <components/rtx/error.hpp>
-#include <components/rtx/memoryreport.hpp>
 #include <components/rtx/renderer.hpp>
-#include <components/rtx/result.hpp>
-#include <components/rtxvulkan/barriers.hpp>
-#include <components/rtxvulkan/graveyard.hpp>
-#include <components/rtxvulkan/imageuse.hpp>
 #include <components/rtxvulkan/instance.hpp>
 #include <components/rtxvulkan/physicaldevice.hpp>
 #include <components/rtxvulkan/requirements.hpp>
-#include <components/rtxvulkan/result.hpp>
 #include <components/rtxvulkan/validation.hpp>
 #include <components/rtxvulkan/vulkanrenderer.hpp>
 
@@ -130,29 +120,6 @@ namespace Rtx::Testing
             });
         }
 
-        /// One half float, as the number it stands for.
-        ///
-        /// **Spelled out rather than shared with the renderer, and by arithmetic rather than by
-        /// bits.** Several passes keep their output in halves, so a test that read them through the
-        /// same helper the shader used would pass however wrong that helper was — and one written in
-        /// shifts and masks is a second place for the subnormal case to be wrong.
-        float fromHalf(std::uint16_t bits)
-        {
-            const float sign = (bits & 0x8000u) != 0 ? -1.0f : 1.0f;
-            const int exponent = (bits >> 10) & 0x1f;
-            const int mantissa = bits & 0x3ff;
-
-            if (exponent == 0)
-                return sign * std::ldexp(static_cast<float>(mantissa), -24);
-
-            if (exponent == 31)
-                return sign
-                    * (mantissa == 0 ? std::numeric_limits<float>::infinity()
-                                     : std::numeric_limits<float>::quiet_NaN());
-
-            return sign * std::ldexp(1.0f + static_cast<float>(mantissa) / 1024.0f, exponent - 15);
-        }
-
         /// What holding a device for the run costs the rest of the binary: death tests that exec
         /// rather than fork, and every device closed after the last test and before `main` returns.
         ///
@@ -172,8 +139,8 @@ namespace Rtx::Testing
         ///
         /// **And no device is a failed run, not an empty one.** Every fixture skips with a reason
         /// where the harness answers null, which is honest per test and a green run of nothing per
-        /// suite: a machine without a driver passed forty files that opened no device. This binary
-        /// holds only the tests that need one, so the first thing it does is ask for it.
+        /// suite. This binary holds only the tests that need one, so the first thing it does is ask
+        /// for it.
         class DeviceEnvironment : public ::testing::Environment
         {
             void SetUp() override
@@ -257,9 +224,7 @@ namespace Rtx::Testing
         // **Synchronization validation wherever the layers are, because a missing barrier is what
         // this suite is worst at seeing.** Every test here submits and waits, so the ordering a
         // frame relies on is supplied by the harness rather than by the code under test, and a
-        // hazard shows as nothing at all — a traced view wrote its picture with no dependency on
-        // the write before it for as long as there have been traced views. It costs no measurable
-        // time in this suite.
+        // hazard shows as nothing at all. It costs no measurable time in this suite.
         options.mValidation.mLevel = validation ? ValidationLevel::Sync : ValidationLevel::Off;
         // Tests provoke errors deliberately and assert on them; aborting would take the suite down
         // with the first one.
@@ -354,128 +319,5 @@ namespace Rtx::Testing
         renderer.takeValidationErrors(mErrors);
         for (const std::string& error : mErrors)
             ADD_FAILURE() << what << ": " << error;
-    }
-
-    void orderStorageWrites(VkCommandBuffer commands)
-    {
-        handOver(commands, Use::sBufferComputeWrite,
-            BufferUse{ Use::sBufferComputeReadWrite.mStage | Use::sBufferHostRead.mStage,
-                Use::sBufferComputeReadWrite.mAccess | Use::sBufferHostRead.mAccess });
-    }
-
-    HeldSubmit::HeldSubmit(const Device& device)
-        : mDevice(device)
-        , mGate(makeTimelineSemaphore(device, "test hold"))
-    {
-    }
-
-    HeldSubmit::~HeldSubmit()
-    {
-        if (mOpener.joinable())
-            mOpener.join();
-
-        if (!mReleased)
-            release();
-    }
-
-    std::uint64_t HeldSubmit::submit(VkCommandBuffer commands)
-    {
-        const VkSemaphoreSubmitInfo wait{
-            .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
-            .semaphore = mGate.get(),
-            .value = 1,
-            .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-        };
-        return mDevice.getPool().submit(commands, std::span(&wait, 1));
-    }
-
-    void HeldSubmit::releaseAfter(const std::chrono::milliseconds delay)
-    {
-        mOpener = std::thread([this, delay] {
-            std::this_thread::sleep_for(delay);
-            release();
-        });
-    }
-
-    void HeldSubmit::release()
-    {
-        mReleased = true;
-
-        const VkSemaphoreSignalInfo signal{
-            .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO,
-            .semaphore = mGate.get(),
-            .value = 1,
-        };
-        checkVk(mDevice, vkSignalSemaphore(mDevice.getHandle(), &signal), "vkSignalSemaphore");
-    }
-
-    Image makeTestImage(
-        const Device& device, const VkExtent2D extent, const VkFormat format, const std::string_view name)
-    {
-        // `SAMPLED` because an upscaler samples its inputs and an image it cannot sample reads as
-        // zero — no error, no validation message, a black frame. Both transfer bits so a clear can
-        // fill it and the result can be read back.
-        return Image(device, extent.width, extent.height, format,
-            VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT
-                | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
-            name);
-    }
-
-    std::vector<float> readHalves(const Image& image, std::uint32_t level)
-    {
-        std::vector<std::uint8_t> bytes;
-        image.read(VK_IMAGE_LAYOUT_GENERAL, bytes, level);
-
-        std::vector<float> values(bytes.size() / sizeof(std::uint16_t));
-        for (std::size_t at = 0; at < values.size(); ++at)
-        {
-            std::uint16_t bits = 0;
-            std::memcpy(&bits, bytes.data() + at * sizeof(bits), sizeof(bits));
-            values[at] = fromHalf(bits);
-        }
-
-        return values;
-    }
-
-    BudgetLimit::BudgetLimit(MemoryAllocator& memory, const VkDeviceSize bytes)
-        : mMemory(memory)
-    {
-        mMemory.limitBudget(bytes);
-    }
-
-    BudgetLimit::~BudgetLimit()
-    {
-        mMemory.limitBudget(std::nullopt);
-    }
-
-    VkDeviceSize budgetAbove(const MemoryAllocator& memory, const MemoryUse use, const VkDeviceSize above)
-    {
-        const std::uint32_t heap = memory.getVideoHeap();
-        const HeapUse held = memory.report().mHeaps[heap];
-        if (held.mHeld == 0)
-            throw std::runtime_error("a device with no budget extension cannot say what the heap holds");
-
-        VkDeviceSize owed = held.mHeld - held.mReserved;
-        for (std::size_t before = 0; before < static_cast<std::size_t>(use); ++before)
-            owed += memory.getHeld(heap, static_cast<MemoryUse>(before));
-
-        return held.mHeld + owed + above;
-    }
-
-    NoRoomForContent::NoRoomForContent(const Device& device)
-        : mNone(device.getMemory(), 0)
-    {
-        // Largest first, so the gaps fill in a few dozen buffers and not thousands, down to the
-        // structure alignment, below which no resource content asks for is placed.
-        for (VkDeviceSize size = VkDeviceSize{ 16 } << 20; size >= 256; size /= 16)
-            while (true)
-            {
-                Result<Buffer, std::string_view> filler = Buffer::tryMake(MemoryUse::Texture, device,
-                    BufferKind::DeviceLocal, size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "content filler");
-                if (!filler.isOk())
-                    break;
-
-                mFillers.push_back(std::move(filler.value()));
-            }
     }
 }

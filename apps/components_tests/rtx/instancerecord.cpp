@@ -19,7 +19,7 @@
 #include <components/rtx/surface.hpp>
 #include <components/vfs/pathutil.hpp>
 
-#include "geometry.hpp"
+#include "support/geometry.hpp"
 
 namespace Rtx
 {

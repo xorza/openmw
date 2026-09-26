@@ -28,9 +28,9 @@
 #include <components/rtx/texturewrap.hpp>
 #include <components/vfs/pathutil.hpp>
 
-#include "../death.hpp"
-#include "../testcamera.hpp"
-#include "../testtexture.hpp"
+#include "../support/death.hpp"
+#include "../support/testcamera.hpp"
+#include "../support/testtexture.hpp"
 #include "fixture.hpp"
 
 namespace Rtx::Testing

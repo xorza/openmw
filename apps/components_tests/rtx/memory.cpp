@@ -20,7 +20,8 @@
 #include <components/rtxvulkan/physicaldevice.hpp>
 #include <components/rtxvulkan/result.hpp>
 
-#include "harness.hpp"
+#include "support/device/harness.hpp"
+#include "support/device/memorylimits.hpp"
 
 namespace Rtx
 {

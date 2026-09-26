@@ -24,9 +24,9 @@
 #include <components/rtx/texturedata.hpp>
 #include <components/vfs/pathutil.hpp>
 
-#include "../geometry.hpp"
-#include "../testcamera.hpp"
-#include "../testtexture.hpp"
+#include "../support/geometry.hpp"
+#include "../support/testcamera.hpp"
+#include "../support/testtexture.hpp"
 #include "fixture.hpp"
 
 namespace Rtx::Testing

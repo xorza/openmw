@@ -23,8 +23,8 @@
 #include <components/rtxvulkan/formats.hpp>
 #include <components/vfs/pathutil.hpp>
 
-#include "geometry.hpp"
-#include "harness.hpp"
+#include "support/device/harness.hpp"
+#include "support/geometry.hpp"
 
 #ifdef OPENMW_RTX_DLSS
 
@@ -48,9 +48,10 @@
 #include <components/rtxvulkan/upscaler.hpp>
 #include <components/rtxvulkan/vulkanrenderer.hpp>
 
-#include "death.hpp"
-#include "testcamera.hpp"
-#include "testtexture.hpp"
+#include "support/death.hpp"
+#include "support/device/readback.hpp"
+#include "support/testcamera.hpp"
+#include "support/testtexture.hpp"
 
 namespace Rtx
 {

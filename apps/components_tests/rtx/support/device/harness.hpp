@@ -1,40 +1,21 @@
 #pragma once
 
-#include <array>
-#include <chrono>
-#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <memory>
-#include <span>
 #include <string>
 #include <string_view>
-#include <thread>
 #include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
 
-#include <vulkan/vulkan_core.h>
-
 #include <components/rtx/renderer.hpp>
-#include <components/rtxvulkan/buffer.hpp>
 #include <components/rtxvulkan/commands.hpp>
 #include <components/rtxvulkan/device.hpp>
-#include <components/rtxvulkan/handles.hpp>
-#include <components/rtxvulkan/image.hpp>
 #include <components/rtxvulkan/instance.hpp>
-#include <components/rtxvulkan/memory.hpp>
-#include <components/rtxvulkan/mipchainpass.hpp>
 #include <components/rtxvulkan/pipelinecache.hpp>
-#include <components/rtxvulkan/shadingpass.hpp>
-#include <components/rtxvulkan/spritelightpass.hpp>
-#include <components/rtxvulkan/texture.hpp>
 #include <components/rtxvulkan/vulkanrenderer.hpp>
-
-namespace Rtx
-{
-}
 
 namespace Rtx::Testing
 {
@@ -178,15 +159,9 @@ namespace Rtx::Testing
 
     /// The base of a test that drives Vulkan directly.
     ///
-    /// **One shape for the skip.** The suite had two: a fixture in some files and the same four
-    /// lines written out in every test of the others. Which one a file used said nothing about the
-    /// file, and a test that has to remember to ask for the reason is a test that can forget to.
-    ///
     /// **The validation errors are drained before the test and reported after it**, the way
-    /// `RendererTest` does and for the same reason. Three of the twenty-one fixtures over this base
-    /// wrote that pair out for themselves and the other eighteen did not: a hazard the layers caught
-    /// went onto a list nothing ever read. Draining first is how the slate is cleared — whatever a
-    /// previous test left behind is not this one's to report.
+    /// `RendererTest` does and for the same reason: whatever a previous test left behind is not this
+    /// one's to report.
     class DeviceTest : public ::testing::Test
     {
     protected:
@@ -212,31 +187,11 @@ namespace Rtx::Testing
         std::vector<std::string> mRaised;
     };
 
-    /// The three passes a texture is made with, over the test's device, and the bundle an array
-    /// or a `Texture` takes them as: what every test that stands a texture needs and none is
-    /// about.
-    struct TexturePassSet
-    {
-        explicit TexturePassSet(const Device& device)
-            : mChain(device, getShaderDirectory())
-            , mShading(device, getShaderDirectory())
-            , mBake(device, getShaderDirectory())
-            , mPasses{ mChain, mShading, mBake }
-        {
-        }
-
-        MipChainPass mChain;
-        ShadingPass mShading;
-        SpriteLightPass mBake;
-        TexturePasses mPasses;
-    };
-
     /// The base of a test that renders.
     ///
-    /// **The validation errors are drained before the test and reported after it**, which two of the
-    /// five files that render did not do at all: a hazard the layers caught went onto a list nothing
-    /// ever read. Draining first is how the slate is cleared — whatever a previous test left behind
-    /// is not this one's to report.
+    /// **The validation errors are drained before the test and reported after it**, so a hazard the
+    /// layers caught fails the test that caused it: whatever a previous test left behind is not this
+    /// one's to report.
     class RendererTest : public ::testing::Test
     {
     protected:
@@ -257,113 +212,5 @@ namespace Rtx::Testing
 
     private:
         std::vector<std::string> mErrors;
-    };
-
-    /// Orders one compute pass over a storage buffer against the next, and against a host read of
-    /// what the last of them left.
-    ///
-    /// **Written as well as read, for the reason `WavePass::order` gives.** A transform that runs in
-    /// place reads its buffer and writes it back, so what follows a pass is a write after a write as
-    /// much as a read after one, and a dependency naming only the read leaves the two writes
-    /// unordered. Three tests had written this barrier out for themselves and two of them named only
-    /// the read — which is what a suite that never reported a validation error will hide.
-    void orderStorageWrites(VkCommandBuffer commands);
-
-    /// The four bytes at a pixel of an RGBA8 image `width` texels across, row zero at the top.
-    ///
-    /// **Beside `readHalves` because both are the read-back side**, and the two GUI test files each
-    /// wrapped this arithmetic for themselves.
-    inline std::array<std::uint8_t, 4> rgbaAt(
-        std::span<const std::uint8_t> pixels, std::uint32_t width, std::uint32_t x, std::uint32_t y)
-    {
-        const std::size_t offset = (static_cast<std::size_t>(y) * width + x) * 4;
-
-        return { pixels[offset], pixels[offset + 1], pixels[offset + 2], pixels[offset + 3] };
-    }
-
-    /// A submit the queue cannot start until the host says so: it waits on a timeline semaphore
-    /// of its own that only `release` signals.
-    ///
-    /// **What makes "a submit still on the queue" a state a test can stand in.** A copy or a
-    /// dispatch is finished before the host has asked whether it is, so a test of what a host write
-    /// must wait for would otherwise be racing a device that always wins. Held, the submit is on
-    /// the queue for exactly as long as the test wants it there.
-    class HeldSubmit
-    {
-    public:
-        explicit HeldSubmit(const Device& device);
-
-        /// Lets the queue start it on the way out, so a test that fails behind the hold does not
-        /// leave the pool's teardown waiting for a submit that can never run.
-        ~HeldSubmit();
-
-        HeldSubmit(const HeldSubmit&) = delete;
-        HeldSubmit& operator=(const HeldSubmit&) = delete;
-
-        /// Submits `commands`, begun through the device's pool, behind the hold, with whatever the
-        /// pool has deferred ahead of it. Ends `commands`. Returns the value the submit signals on
-        /// the timeline.
-        std::uint64_t submit(VkCommandBuffer commands);
-
-        /// Lets the queue start the submit.
-        void release();
-
-        /// Lets it start `delay` from now, from a thread of its own, so a test can stand inside a
-        /// wait while the hold opens under it. A wait that returns sooner did not wait, which is
-        /// what a bound of `delay` on it says; the thread is joined with the hold.
-        void releaseAfter(std::chrono::milliseconds delay);
-
-    private:
-        const Device& mDevice;
-        Semaphore mGate;
-        std::thread mOpener;
-        bool mReleased = false;
-    };
-
-    /// Every channel of one level of a half-float image, decoded, row major.
-    ///
-    /// **Left in the layout it was found in**, which `Image::read` promises: reading an image is not
-    /// a change to it. Several passes keep their output in halves, so this is the read-back beside
-    /// the decoder rather than one copy of it per suite.
-    std::vector<float> readHalves(const Image& image, std::uint32_t level = 0);
-
-    /// An image a pass can be handed as its frame: written as storage, sampled, and copied both
-    /// ways, so a test can fill it and read it back. One level.
-    Image makeTestImage(const Device& device, VkExtent2D extent, VkFormat format, std::string_view name);
-
-    /// What `MemoryAllocator::limitBudget` is set to for as long as one stands, and taken off
-    /// after: the device is the binary's, and a limit left behind is every later test's.
-    class BudgetLimit
-    {
-    public:
-        BudgetLimit(MemoryAllocator& memory, VkDeviceSize bytes);
-        ~BudgetLimit();
-
-        BudgetLimit(const BudgetLimit&) = delete;
-        BudgetLimit& operator=(const BudgetLimit&) = delete;
-
-    private:
-        MemoryAllocator& mMemory;
-    };
-
-    /// The budget at which `use`'s ceiling stands `above` over what the video heap holds now:
-    /// what the heap holds, and once more what the process holds outside the allocator and what
-    /// every use before `use` holds. Throws on a device with no budget extension, which cannot
-    /// say what the heap holds.
-    VkDeviceSize budgetAbove(const MemoryAllocator& memory, MemoryUse use, VkDeviceSize above);
-
-    /// Video memory with no room left for content, for as long as one stands: every ceiling at
-    /// nought, and every gap in content's own blocks filled, so the next structure or texture is
-    /// refused however small it is — a card that has run out, as an arrival meets one. The
-    /// frame's own memory is still made, in blocks content never shares. Lifted on the way out,
-    /// the fillers before the limit.
-    class NoRoomForContent
-    {
-    public:
-        explicit NoRoomForContent(const Device& device);
-
-    private:
-        BudgetLimit mNone;
-        std::vector<Buffer> mFillers;
     };
 }

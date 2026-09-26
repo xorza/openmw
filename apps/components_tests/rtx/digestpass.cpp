@@ -18,7 +18,7 @@
 #include <components/rtxvulkan/image.hpp>
 #include <components/rtxvulkan/imageuse.hpp>
 
-#include "harness.hpp"
+#include "support/device/harness.hpp"
 
 namespace Rtx
 {

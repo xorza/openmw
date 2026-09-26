@@ -46,8 +46,8 @@
 #include <components/sceneutil/texturetype.hpp>
 #include <components/vfs/pathutil.hpp>
 
-#include "../allocations.hpp"
-#include "../graphlight.hpp"
+#include "../support/allocations.hpp"
+#include "../support/graphlight.hpp"
 #include "fixture.hpp"
 
 namespace Rtx::Testing

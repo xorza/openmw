@@ -11,8 +11,8 @@
 #include <components/rtx/shadingmap.hpp>
 #include <components/rtx/texturedata.hpp>
 
-#include "statistics.hpp"
-#include "testtexture.hpp"
+#include "support/statistics.hpp"
+#include "support/testtexture.hpp"
 
 namespace Rtx
 {

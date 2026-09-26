@@ -15,7 +15,7 @@
 #include <components/rtxvulkan/pipelinecache.hpp>
 #include <components/rtxvulkan/validation.hpp>
 
-#include "harness.hpp"
+#include "support/device/harness.hpp"
 
 namespace Rtx
 {

@@ -59,11 +59,11 @@
 #include <components/terrain/objectstorage.hpp>
 #include <components/vfs/pathutil.hpp>
 
-#include "allocations.hpp"
-#include "death.hpp"
-#include "extractor/fixture.hpp"
-#include "fakeland.hpp"
-#include "geometry.hpp"
+#include "support/allocations.hpp"
+#include "support/death.hpp"
+#include "support/fakeland.hpp"
+#include "support/geometry.hpp"
+#include "support/graph.hpp"
 
 namespace Rtx::Testing
 {

@@ -14,7 +14,7 @@
 #include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/lightgrid.hpp>
 
-#include "allocations.hpp"
+#include "support/allocations.hpp"
 
 namespace Rtx
 {

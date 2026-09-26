@@ -9,7 +9,7 @@
 #include <components/rtx/shaders/brdf.h>
 #include <components/rtx/specularalbedo.hpp>
 
-#include "lobeintegrals.hpp"
+#include "support/lobeintegrals.hpp"
 
 namespace Rtx
 {

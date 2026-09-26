@@ -22,7 +22,7 @@
 #include <components/rtxvulkan/dispatch.hpp>
 #include <components/rtxvulkan/imageuse.hpp>
 
-#include "harness.hpp"
+#include "support/device/harness.hpp"
 
 namespace Rtx
 {

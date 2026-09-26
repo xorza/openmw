@@ -31,8 +31,8 @@
 #include <components/rtx/texturewrap.hpp>
 #include <components/vfs/pathutil.hpp>
 
-#include "allocations.hpp"
-#include "geometry.hpp"
+#include "support/allocations.hpp"
+#include "support/geometry.hpp"
 
 namespace Rtx
 {

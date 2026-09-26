@@ -27,7 +27,8 @@
 #include <components/rtxvulkan/imageuse.hpp>
 #include <components/rtxvulkan/pipeline.hpp>
 
-#include "harness.hpp"
+#include "support/device/harness.hpp"
+#include "support/device/readback.hpp"
 
 namespace Rtx
 {

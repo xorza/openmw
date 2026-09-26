@@ -12,7 +12,7 @@
 #include <osg/ref_ptr>
 
 #include <apps/components_tests/rtx/extractor/fixture.hpp>
-#include <apps/components_tests/rtx/fakeland.hpp>
+#include <apps/components_tests/rtx/support/fakeland.hpp>
 #include <apps/openmw/mwrender/objectstorage.hpp>
 #include <apps/openmw/mwrender/precipitation.hpp>
 #include <apps/openmw/mwrender/rtx/tracedterrain.hpp>

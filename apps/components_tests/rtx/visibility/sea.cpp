@@ -29,11 +29,11 @@
 #include <components/rtx/wavespectrum.hpp>
 #include <components/vfs/pathutil.hpp>
 
-#include "../geometry.hpp"
-#include "../statistics.hpp"
-#include "../testcamera.hpp"
-#include "../testtexture.hpp"
-#include "../wavemoments.hpp"
+#include "../support/geometry.hpp"
+#include "../support/statistics.hpp"
+#include "../support/testcamera.hpp"
+#include "../support/testtexture.hpp"
+#include "../support/wavemoments.hpp"
 #include "fixture.hpp"
 
 namespace Rtx::Testing

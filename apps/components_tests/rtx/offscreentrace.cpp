@@ -1,17 +1,14 @@
 #include <cstdint>
-#include <initializer_list>
 #include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
 
-#include <osg/Array>
 #include <osg/FrameStamp>
 #include <osg/Geometry>
 #include <osg/Group>
 #include <osg/MatrixTransform>
 #include <osg/Node>
-#include <osg/PrimitiveSet>
 #include <osg/Vec2f>
 #include <osg/Vec3f>
 #include <osg/ref_ptr>
@@ -25,7 +22,8 @@
 #include <components/rtx/viewscene.hpp>
 #include <components/sceneutil/offscreenframing.hpp>
 
-#include "countingrenderer.hpp"
+#include "support/countingrenderer.hpp"
+#include "support/graph.hpp"
 
 namespace Rtx
 {
@@ -33,24 +31,6 @@ namespace Rtx
     {
         /// The walk mask that keeps every node: a node mask's default is all ones.
         constexpr osg::Node::NodeMask sEveryNode = ~0u;
-
-        /// A unit quad in the xy plane: four vertices, two triangles.
-        osg::ref_ptr<osg::Geometry> makeQuad()
-        {
-            osg::ref_ptr<osg::Vec3Array> positions = new osg::Vec3Array;
-            for (const osg::Vec3f& value : { osg::Vec3f(0.0f, 0.0f, 0.0f), osg::Vec3f(1.0f, 0.0f, 0.0f),
-                     osg::Vec3f(1.0f, 1.0f, 0.0f), osg::Vec3f(0.0f, 1.0f, 0.0f) })
-                positions->push_back(value);
-
-            osg::ref_ptr<osg::DrawElementsUInt> triangles = new osg::DrawElementsUInt(osg::PrimitiveSet::TRIANGLES);
-            for (const unsigned int index : { 0u, 1u, 2u, 0u, 2u, 3u })
-                triangles->push_back(index);
-
-            osg::ref_ptr<osg::Geometry> geometry = new osg::Geometry;
-            geometry->setVertexArray(positions);
-            geometry->addPrimitiveSet(triangles);
-            return geometry;
-        }
 
         /// The clock a redraw runs on, which has to read differently every time: everything skinned
         /// refuses to move for a traversal number it has already seen.
@@ -71,7 +51,7 @@ namespace Rtx
         {
             Testing::CountingRenderer renderer;
             osg::ref_ptr<osg::Group> subject = new osg::Group;
-            subject->addChild(makeQuad());
+            subject->addChild(Testing::makeQuad());
 
             const OffscreenTrace world(
                 renderer, ViewRequest{ .mWidth = 64, .mHeight = 64, .mRayMask = Shaders::MASK_EVERY_CLASS });
@@ -164,8 +144,8 @@ namespace Rtx
         {
             Testing::CountingRenderer renderer;
 
-            osg::ref_ptr<osg::Geometry> body = makeQuad();
-            osg::ref_ptr<osg::Geometry> shirt = makeQuad();
+            osg::ref_ptr<osg::Geometry> body = Testing::makeQuad();
+            osg::ref_ptr<osg::Geometry> shirt = Testing::makeQuad();
 
             osg::ref_ptr<osg::Group> subject = new osg::Group;
             subject->addChild(body);
@@ -187,7 +167,7 @@ namespace Rtx
 
             // The shirt comes off and a hat goes on — one part replaced, not moved.
             subject->removeChild(shirt);
-            osg::ref_ptr<osg::Geometry> hat = makeQuad();
+            osg::ref_ptr<osg::Geometry> hat = Testing::makeQuad();
             subject->addChild(hat);
 
             ASSERT_TRUE(trace.rebuildSubject(*stampAt(2)));
@@ -204,7 +184,7 @@ namespace Rtx
 
             // The hat comes off in turn, and what replaces it takes the room the sweep is holding.
             subject->removeChild(hat);
-            osg::ref_ptr<osg::Geometry> boots = makeQuad();
+            osg::ref_ptr<osg::Geometry> boots = Testing::makeQuad();
             subject->addChild(boots);
 
             ASSERT_TRUE(trace.rebuildSubject(*stampAt(3)));
@@ -245,7 +225,7 @@ namespace Rtx
         }
 
         /// The mask is an inclusion mask, AND-ed at every node — so a category left out of it is
-        /// dropped wherever it appears below, which is the shape the weather bug had.
+        /// dropped wherever it appears below.
         TEST(RtxOffscreenTraceTest, theSubjectMaskKeepsTheWalkOutOfWhatItDoesNotName)
         {
             Testing::CountingRenderer renderer;
@@ -255,11 +235,11 @@ namespace Rtx
 
             osg::ref_ptr<osg::MatrixTransform> kept = new osg::MatrixTransform;
             kept->setNodeMask(wanted);
-            kept->addChild(makeQuad());
+            kept->addChild(Testing::makeQuad());
 
             osg::ref_ptr<osg::MatrixTransform> skipped = new osg::MatrixTransform;
             skipped->setNodeMask(other);
-            skipped->addChild(makeQuad());
+            skipped->addChild(Testing::makeQuad());
 
             osg::ref_ptr<osg::Group> subject = new osg::Group;
             subject->addChild(kept);

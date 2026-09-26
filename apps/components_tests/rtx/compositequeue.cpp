@@ -13,7 +13,7 @@
 #include <components/rtx/shaders/scene.h>
 #include <components/vfs/pathutil.hpp>
 
-#include "layers.hpp"
+#include "support/layers.hpp"
 
 namespace Rtx
 {

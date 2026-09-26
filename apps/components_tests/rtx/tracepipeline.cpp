@@ -15,7 +15,7 @@
 #include <components/rtxvulkan/pipeline.hpp>
 #include <components/rtxvulkan/tracepipeline.hpp>
 
-#include "harness.hpp"
+#include "support/device/harness.hpp"
 
 namespace Rtx
 {

@@ -26,7 +26,7 @@
 #include <components/sceneutil/lightcontroller.hpp>
 #include <components/sceneutil/lightmanager.hpp>
 
-#include "../graphlight.hpp"
+#include "../support/graphlight.hpp"
 #include "fixture.hpp"
 
 namespace Rtx::Testing

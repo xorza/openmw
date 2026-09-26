@@ -16,7 +16,8 @@
 #include <components/rtxvulkan/image.hpp>
 #include <components/rtxvulkan/ripplepass.hpp>
 
-#include "harness.hpp"
+#include "support/device/harness.hpp"
+#include "support/device/readback.hpp"
 
 namespace Rtx
 {

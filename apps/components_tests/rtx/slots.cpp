@@ -10,7 +10,7 @@
 #include <components/rtx/scratch.hpp>
 #include <components/rtx/slots.hpp>
 
-#include "death.hpp"
+#include "support/death.hpp"
 
 namespace Rtx
 {

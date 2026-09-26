@@ -40,9 +40,9 @@
 #include <components/rtx/texturewrap.hpp>
 #include <components/vfs/pathutil.hpp>
 
-#include "death.hpp"
-#include "geometry.hpp"
-#include "layers.hpp"
+#include "support/death.hpp"
+#include "support/geometry.hpp"
+#include "support/layers.hpp"
 
 namespace Rtx
 {

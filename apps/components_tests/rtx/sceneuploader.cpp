@@ -18,8 +18,8 @@
 #include <components/rtx/slot.hpp>
 #include <components/vfs/pathutil.hpp>
 
-#include "countingrenderer.hpp"
-#include "geometry.hpp"
+#include "support/countingrenderer.hpp"
+#include "support/geometry.hpp"
 
 namespace Rtx
 {
