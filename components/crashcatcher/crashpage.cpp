@@ -16,7 +16,7 @@ namespace Crash
     namespace
     {
         // Short, because macOS takes 31 characters of a shared memory name.
-        std::string nameOf(std::uint64_t process)
+        std::string nameOf(std::uint32_t process)
         {
 #if defined(_WIN32)
             return "Local\\openmw-crash-" + std::to_string(process);
@@ -26,7 +26,7 @@ namespace Crash
         }
     }
 
-    SharedPage SharedPage::create(std::uint64_t process)
+    SharedPage SharedPage::create(std::uint32_t process)
     {
         SharedPage page;
         const std::string name = nameOf(process);
@@ -68,7 +68,7 @@ namespace Crash
         return page;
     }
 
-    SharedPage SharedPage::open(std::uint64_t process)
+    SharedPage SharedPage::open(std::uint32_t process)
     {
         SharedPage page;
         const std::string name = nameOf(process);

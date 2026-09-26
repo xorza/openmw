@@ -414,7 +414,7 @@ namespace Debug
         {
             Crash::Settings settings;
             settings.mApplication = std::string(appName);
-            settings.mReportFolder = logDir;
+            settings.mReportFolder = logDir / "crashes";
             settings.mLogFile = logFile;
 #if (defined(__APPLE__) || defined(__linux) || defined(__unix) || defined(__posix))
             // As the fatal error box below: none for whoever started the game from a shell.
@@ -426,7 +426,7 @@ namespace Debug
             if (const std::optional<std::string> why = Crash::install(settings))
                 Log(Debug::Warning) << "No crash catcher: " << *why;
             else
-                Log(Debug::Info) << "Crash reports go to " << logDir / "crashes";
+                Log(Debug::Info) << "Crash reports go to " << settings.mReportFolder;
         }
     }
 

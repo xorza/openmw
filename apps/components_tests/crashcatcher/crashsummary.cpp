@@ -79,7 +79,7 @@ namespace
 
         Crash::CrashFacts hang;
         hang.mNotes.mKind = Crash::ReportKind::Hang;
-        std::strcpy(hang.mNotes.mReason, "no frame for 20 seconds");
+        hang.mStalledFor = 20;
         hang.mThread = 7;
         hang.mNotes.mCount = 1;
         hang.mNotes.mNotes[0] = noteOf(7, "compiling");

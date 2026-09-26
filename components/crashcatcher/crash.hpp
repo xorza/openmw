@@ -6,8 +6,6 @@
 #include <string>
 #include <string_view>
 
-#include "crashnote.hpp"
-
 /// **The crash catcher**, the same on every system Crashpad supports: Windows, Linux and macOS.
 ///
 /// A monitor process, this same executable started with `--crash-monitor`, reads a crashed,
@@ -21,7 +19,7 @@ namespace Crash
         /// Names the reports: "OpenMW".
         std::string mApplication;
 
-        /// Where the dumps go, in `crashes/` under it: the log folder.
+        /// Where Crashpad keeps the reports: `crashes/` in the log folder.
         std::filesystem::path mReportFolder;
 
         /// Where the monitor appends each summary: the game's own log.

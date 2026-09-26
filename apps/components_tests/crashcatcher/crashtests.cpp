@@ -25,6 +25,8 @@
 #include <vector>
 
 #include <components/crashcatcher/crash.hpp>
+#include <components/crashcatcher/crashnote.hpp>
+#include <components/crashcatcher/crashsummary.hpp>
 #include <components/files/conversion.hpp>
 
 #if defined(_MSC_VER)
@@ -37,8 +39,6 @@
 
 namespace
 {
-    constexpr std::uint32_t sSummaryStream = 0x4F4D5701;
-
     /// What one mode must leave: the summary's first line holds `mHeadline` and one of
     /// `mRaised` where that is not empty, and a dump carries the same summary. A mode the game
     /// lives through leaves `mFollows` after it, and a mode that reports nothing leaves no line.
@@ -175,7 +175,7 @@ namespace
     {
         Crash::Settings settings;
         settings.mApplication = "crash-tests";
-        settings.mReportFolder = folder;
+        settings.mReportFolder = folder / "crashes";
         settings.mLogFile = folder / "crash-tests.log";
         settings.mDialog = false;
         if (const std::optional<std::string> why = Crash::install(settings))
@@ -287,7 +287,8 @@ namespace
         for (std::uint32_t i = 0; i < streams; ++i)
         {
             const std::size_t entry = directory + i * 12;
-            if (word(entry) == sSummaryStream && word(entry + 8) + std::size_t{ word(entry + 4) } <= bytes.size())
+            if (word(entry) == Crash::sSummaryStream
+                && word(entry + 8) + std::size_t{ word(entry + 4) } <= bytes.size())
                 return bytes.substr(word(entry + 8), word(entry + 4));
         }
         return std::nullopt;

@@ -9,6 +9,10 @@
 
 namespace Crash
 {
+    /// The minidump stream the monitor writes the summary into, so the dump carries the text the
+    /// log got: "OMW" and a version.
+    inline constexpr std::uint32_t sSummaryStream = 0x4F4D5701;
+
     /// What the monitor learnt of one report, in words and numbers it can print on any system.
     struct CrashFacts
     {
@@ -21,6 +25,9 @@ namespace Crash
 
         /// The system's id of the thread that faulted or asked. Nought where none is known.
         std::uint64_t mThread = 0;
+
+        /// How long the game drew no frame, where the monitor asked for a hang report.
+        std::uint32_t mStalledFor = 0;
 
         /// The instruction it stopped at, as a module and an offset in it.
         std::string mWhere;

@@ -17,6 +17,7 @@
 #include <components/platform/process.hpp>
 
 #include "crashmonitorarguments.hpp"
+#include "crashnote.hpp"
 #include "crashpage.hpp"
 
 #if defined(_WIN32)
@@ -65,12 +66,18 @@ namespace Crash
 #endif
         }
 
+        /// A dump of every thread and a summary, after which the game goes on.
+        void reportAndContinue(ReportKind kind, std::string_view reason)
+        {
+            setReport(kind, reason);
+            CRASHPAD_SIMULATE_CRASH();
+            setReport(ReportKind::Crash, {});
+        }
+
         /// A hang report, asked for by the monitor, which knows how long the game stood still.
         void reportHang()
         {
-            setReport(ReportKind::Hang, {});
-            CRASHPAD_SIMULATE_CRASH();
-            setReport(ReportKind::Crash, {});
+            reportAndContinue(ReportKind::Hang, {});
         }
 
 #if defined(_WIN32)
@@ -183,16 +190,17 @@ namespace Crash
     {
         static std::atomic<bool> tried{ false };
         if (tried.exchange(true))
-            return "the crash catcher is already installed";
+            return "install was called before, and a process installs once";
 
-        sPage = SharedPage::create(Platform::Process::currentId());
+        const std::uint32_t process = Platform::Process::currentId();
+        sPage = SharedPage::create(process);
         if (sPage.get() == nullptr)
             return "the page it shares with its monitor could not be made";
 
         // Everything the monitor needs to know of this process, on its command line: it reads the
         // notes from here at a crash, as it reads the stacks, and the page by this process's id.
         MonitorArguments monitor;
-        monitor.mClient = Platform::Process::currentId();
+        monitor.mClient = process;
         monitor.mNotes = reinterpret_cast<std::uint64_t>(noteTable().data());
         monitor.mNotesSize = noteTable().size();
         monitor.mLog = settings.mLogFile;
@@ -208,10 +216,9 @@ namespace Crash
         // 4 MiB; on Linux and macOS it keeps what the registers point at.
         info->set_gather_indirectly_referenced_memory(crashpad::TriState::kEnabled, 4 << 20);
 
-        const std::filesystem::path database = settings.mReportFolder / "crashes";
-        if (!sClient.StartHandler(base::FilePath(executable().native()), base::FilePath(database.native()),
-                base::FilePath(), std::string(), std::string(), { { "product", settings.mApplication } },
-                monitor.write(), false, false))
+        if (!sClient.StartHandler(base::FilePath(executable().native()),
+                base::FilePath(settings.mReportFolder.native()), base::FilePath(), std::string(), std::string(),
+                { { "product", settings.mApplication } }, monitor.write(), false, false))
         {
             sPage = SharedPage();
             return "its monitor did not start";
@@ -255,9 +262,7 @@ namespace Crash
         if (!sInstalled)
             return;
 
-        setReport(ReportKind::Report, reason);
-        CRASHPAD_SIMULATE_CRASH();
-        setReport(ReportKind::Crash, {});
+        reportAndContinue(ReportKind::Report, reason);
     }
 }
 

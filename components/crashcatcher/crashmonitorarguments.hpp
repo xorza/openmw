@@ -18,14 +18,14 @@ namespace Crash
     struct MonitorArguments
     {
         /// The game's process id, which names the page they share.
-        std::uint64_t mClient = 0;
+        std::uint32_t mClient = 0;
 
         /// Where the note table lies in the game, and how long it is.
         std::uint64_t mNotes = 0;
         std::size_t mNotesSize = 0;
 
         std::filesystem::path mLog;
-        std::string mApplication = "OpenMW";
+        std::string mApplication;
         bool mDialog = true;
 
         /// Where Crashpad keeps the reports: its own `--database`, which the game does not write

@@ -31,10 +31,10 @@ namespace Crash
     {
     public:
         /// The game's side, made before the monitor starts. Null where the system refused.
-        static SharedPage create(std::uint64_t process);
+        static SharedPage create(std::uint32_t process);
 
         /// The monitor's side of the page `process` made. Null where it is gone or never was.
-        static SharedPage open(std::uint64_t process);
+        static SharedPage open(std::uint32_t process);
 
         SharedPage() = default;
         SharedPage(SharedPage&& other) noexcept;
@@ -51,6 +51,6 @@ namespace Crash
 
         /// The game's id where this side made the page, whose name it gives back if the monitor
         /// never took it: a monitor that did not start leaves it to the game.
-        std::uint64_t mMadeFor = 0;
+        std::uint32_t mMadeFor = 0;
     };
 }

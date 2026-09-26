@@ -57,7 +57,7 @@ namespace Crash
                 continue;
 
             if (const auto client = valueOf(argument, sClient))
-                read.mClient = std::strtoull(std::string(*client).c_str(), nullptr, 10);
+                read.mClient = static_cast<std::uint32_t>(std::strtoul(std::string(*client).c_str(), nullptr, 10));
             else if (const auto notes = valueOf(argument, sNotes))
             {
                 // An address and a length that do not both read as numbers are no table at all.

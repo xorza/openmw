@@ -22,7 +22,7 @@ namespace
         written.mNotes = 0x7ffd12345678;
         written.mNotesSize = 9352;
         written.mLog = std::filesystem::path(u8"C:/Users/Игрок/My Games/OpenMW/openmw.log");
-        written.mApplication = "OpenMW";
+        written.mApplication = "crash-tests";
         written.mDialog = false;
 
         std::vector<std::string> line{ "openmw", "--database=/home/x/crashes" };
@@ -36,7 +36,7 @@ namespace
         EXPECT_EQ(read.mNotes, 0x7ffd12345678u);
         EXPECT_EQ(read.mNotesSize, 9352u);
         EXPECT_EQ(read.mLog, written.mLog);
-        EXPECT_EQ(read.mApplication, "OpenMW");
+        EXPECT_EQ(read.mApplication, "crash-tests");
         EXPECT_FALSE(read.mDialog);
         EXPECT_EQ(read.mDatabase, std::filesystem::path("/home/x/crashes"));
 
@@ -62,8 +62,9 @@ namespace
     /// both ways, and a page made fresh starts at nought. An id that made none has none to open.
     TEST(CrashPageTest, theGameAndItsMonitorShareOnePageByTheGamesId)
     {
-        // An id no running process has, so the test never meets a real game's page.
-        const std::uint64_t id = (std::uint64_t{ 1 } << 40) + Platform::Process::currentId();
+        // An id no running process has, so the test never meets a real game's page: past every POSIX
+        // process id, which is a positive `int`, and odd, where every Windows one is a multiple of four.
+        const std::uint32_t id = 0x80000001u + Platform::Process::currentId();
 
         const Crash::SharedPage game = Crash::SharedPage::create(id);
         ASSERT_NE(game.get(), nullptr);
@@ -82,6 +83,6 @@ namespace
         std::atomic_ref(monitor.get()->mHangEntry).store(0x1234);
         EXPECT_EQ(std::atomic_ref(game.get()->mHangEntry).load(), 0x1234u);
 
-        EXPECT_EQ(Crash::SharedPage::open(id + 1).get(), nullptr);
+        EXPECT_EQ(Crash::SharedPage::open(id + 2).get(), nullptr);
     }
 }

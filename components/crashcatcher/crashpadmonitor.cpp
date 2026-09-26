@@ -53,13 +53,15 @@ namespace Crash
 {
     namespace
     {
-        /// The minidump stream the monitor writes its summary into, so the dump carries the text
-        /// the log got: "OMW" and a version.
-        constexpr std::uint32_t sSummaryStream = 0x4F4D5701;
-
         /// What the game told the monitor on its command line, and what the monitor learnt since.
         struct Monitor : MonitorArguments
         {
+            explicit Monitor(MonitorArguments arguments)
+                : MonitorArguments(std::move(arguments))
+                , mPage(SharedPage::open(mClient))
+            {
+            }
+
             SharedPage mPage;
 
             /// How long the game stood still when the watch asked for a hang report.
@@ -128,7 +130,7 @@ namespace Crash
 
         /// The exception as the system names it, or nothing where the dump was asked for rather
         /// than raised by a fault.
-        std::string describe(const crashpad::ExceptionSnapshot& exception, std::uint64_t process)
+        std::string describe(const crashpad::ExceptionSnapshot& exception, std::uint32_t process)
         {
             const std::uint32_t code = exception.Exception();
 #if defined(_WIN32)
@@ -325,9 +327,7 @@ namespace Crash
                 readNotes(read ? std::span<const std::byte>(table) : std::span<const std::byte>(), facts.mThread,
                     facts.mNotes);
 
-                if (facts.mNotes.mKind == ReportKind::Hang)
-                    std::snprintf(facts.mNotes.mReason, sizeof(facts.mNotes.mReason), "no frame for %u seconds",
-                        mMonitor.mStalledFor.load());
+                facts.mStalledFor = mMonitor.mStalledFor.load();
 
                 if (exception != nullptr)
                 {
@@ -374,13 +374,13 @@ namespace Crash
             Monitor& mMonitor;
         };
 
-        void requestHangReport(const Monitor& monitor, Heartbeat& page)
+        void requestHangReport(const Monitor& monitor)
         {
 #if defined(_WIN32)
             // The game has no signal to take the request on, so a thread of its own is started in
             // it at the function it named, as a debugger starts one; the game's frames are
             // untouched.
-            const auto entry = std::atomic_ref(page.mHangEntry).load();
+            const auto entry = std::atomic_ref(monitor.mPage.get()->mHangEntry).load();
             const HANDLE process = OpenProcess(PROCESS_CREATE_THREAD | PROCESS_QUERY_INFORMATION | PROCESS_VM_OPERATION
                     | PROCESS_VM_WRITE | PROCESS_VM_READ,
                 FALSE, static_cast<DWORD>(monitor.mClient));
@@ -396,7 +396,6 @@ namespace Crash
                 CloseHandle(thread);
             CloseHandle(process);
 #else
-            (void)page;
             kill(static_cast<pid_t>(monitor.mClient), SIGUSR2);
 #endif
         }
@@ -476,7 +475,7 @@ namespace Crash
 
                 reported = true;
                 monitor.mStalledFor = static_cast<std::uint32_t>(stalled.count());
-                requestHangReport(monitor, *page);
+                requestHangReport(monitor);
                 if (monitor.mDialog && askToEnd(monitor, static_cast<std::uint32_t>(stalled.count())))
                     endClient(monitor);
             }
@@ -512,11 +511,8 @@ namespace Crash
         if (std::none_of(argv, argv + argc, [](const char* one) { return std::string_view(one) == sMonitorSwitch; }))
             return;
 
-        Monitor monitor;
         std::vector<std::string> handler;
-        static_cast<MonitorArguments&>(monitor) = MonitorArguments::read(commandLine(argc, argv), handler);
-
-        monitor.mPage = SharedPage::open(monitor.mClient);
+        Monitor monitor(MonitorArguments::read(commandLine(argc, argv), handler));
 
         crashpad::UserStreamDataSources sources;
         sources.push_back(std::make_unique<SummarySource>(monitor));

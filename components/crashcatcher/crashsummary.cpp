@@ -45,11 +45,16 @@ namespace Crash
         const NotesRead& notes = facts.mNotes;
         const std::string kind = std::string(kindOf(notes.mKind)) + ": ";
 
+        // The game gives no reason for a hang, which only its monitor saw.
+        const std::string reason = notes.mKind == ReportKind::Hang
+            ? "no frame for " + std::to_string(facts.mStalledFor) + " seconds"
+            : std::string(notes.mReason);
+
         // The reason first where the code that asked gave one, because it is the reason the
         // exception was raised: `std::terminate` raises its own, which names nothing of its cause.
         std::string headline = kind;
-        if (notes.mReason[0] != '\0')
-            headline += notes.mReason;
+        if (!reason.empty())
+            headline += reason;
         else if (!facts.mException.empty())
             headline += facts.mException;
         else
@@ -58,7 +63,7 @@ namespace Crash
             headline += " in thread " + std::to_string(facts.mThread);
         lines.push_back(std::move(headline));
 
-        if (notes.mReason[0] != '\0' && !facts.mException.empty())
+        if (!reason.empty() && !facts.mException.empty())
             lines.push_back(kind + "raised as " + facts.mException);
 
         if (!facts.mWhere.empty())

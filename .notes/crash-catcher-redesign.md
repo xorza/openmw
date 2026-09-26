@@ -7,7 +7,8 @@ Status: built, except where section 0 says otherwise. Section 9 records the deci
 What was built, and where it departs from the plan below:
 
 - **Crashpad** is `getsentry/crashpad` at the commit sentry-native 0.17.1 pins, the newest release,
-  with its three submodules as pinned archives (`extern/CMakeLists.txt`). On Linux its libcurl
+  with two of its submodules as pinned archives, `mini_chromium` and `lss`, and the tree's own zlib
+  in place of the third (`extern/CMakeLists.txt`). On Linux its libcurl
   upload transport is patched to its socket transport, so nothing links libcurl
   (`extern/crashpadpatch.cmake`). It is on for Windows, Linux and macOS.
 - **The legacy catcher is gone**: the Windows monitor and its shared memory, the gdb and lldb path,
