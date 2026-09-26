@@ -104,8 +104,8 @@ const uint SEED_BOUNCE_LOBE = SEED_BOUNCE_TRACED + 1u;
 ///
 /// **An additive recurrence with an irrational step**, which is the cheapest sequence whose every
 /// prefix covers `[0, 1)` evenly rather than only its powers of two. The fog draws one number and
-/// takes the golden ratio; the bounce draws a pair and takes R2's steps, the plastic constant's
-/// first two powers, which is the same construction in two dimensions.
+/// takes the golden ratio; a pair takes R2's steps, the plastic constant's first two powers, which
+/// is the same construction in two dimensions.
 ///
 /// A rational step would close into a cycle and the frames after it would resample what the ones
 /// before had already asked.
@@ -113,13 +113,15 @@ const uint SEED_BOUNCE_LOBE = SEED_BOUNCE_TRACED + 1u;
 /// **The one part of the stream table that stays here**, because a constant array is spelled
 /// `float[](...)` in GLSL and `{...}` in C++ and there is no third spelling both compile. It is
 /// `RANDOM_STREAMS` long by declaration, so the count still binds it; what a second shader needs to
-/// know — which channels are taken — is `STREAM_FOG`, `STREAM_BOUNCE` and `STREAM_WATER`, and those
-/// sit with the count in `scene.h`.
+/// know — which channels are taken — is the `STREAM_` ids, and those sit with the count in
+/// `scene.h`.
 ///
-/// The golden ratio for one number, the two-dimensional `R2` pair for the bounce, and `sqrt(2) - 1`
-/// for the water — a fourth irrational rather than a second copy of the first, because two streams
-/// turning by the same step differ only by where they started and converge on the same sweep.
-const float STREAM_TURN[RANDOM_STREAMS] = float[](0.6180340, 0.7548777, 0.5698403, 0.4142136);
+/// The two-dimensional `R2` pair for the fog's column and for the bounce, `sqrt(2) - 1` for the
+/// water and the golden ratio for the fog's march — two different irrationals for the two single
+/// numbers, because two streams turning by the same step differ only by where they started and
+/// converge on the same sweep. The two pairs share `R2`, and are never read together.
+const float STREAM_TURN[RANDOM_STREAMS]
+    = float[](0.7548777, 0.5698403, 0.7548777, 0.5698403, 0.4142136, 0.6180340);
 
 /// The bounce's pair on its own, for a march that carries one draw along its own steps rather
 /// than through the frames: each step turns by the same two irrationals the frames turn by.

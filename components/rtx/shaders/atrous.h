@@ -42,8 +42,7 @@ namespace Rtx::Shaders
     const uint ATROUS_BIND_FILTERED = 1;
     const uint ATROUS_BIND_GUIDE = 2;
     const uint ATROUS_BIND_DEPTH = 3;
-    const uint ATROUS_BIND_MOMENTS = 4;
-    const uint ATROUS_BINDINGS = 5;
+    const uint ATROUS_BINDINGS = 4;
 
     /// Threads along each edge of a level's workgroup.
     const uint ATROUS_WORKGROUP = 8;

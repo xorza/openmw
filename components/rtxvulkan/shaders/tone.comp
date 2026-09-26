@@ -108,9 +108,8 @@ void main()
         float puffs = 1.0;
         if (frame.mCoverAlpha != 0u)
         {
-            const float shellsThrough = imageLoad(puffsDepth, ivec2(traced)).y;
             puffs = puffsCoverNothing(SpriteTileList(frame.mSpriteTileList), SpritePresence(frame.mSpritePresence),
-                        frame.mTracedWidth, traced, shellsThrough)
+                        frame.mTracedWidth, traced, unpackPuffsStood(imageLoad(puffsDepth, ivec2(traced)).xy))
                 ? 1.0
                 : lit.a;
         }

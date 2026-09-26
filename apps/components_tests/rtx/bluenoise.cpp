@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <complex>
 #include <cstddef>
@@ -134,6 +135,36 @@ namespace Rtx
                 std::iota(expected.begin(), expected.end(), std::uint32_t{ 0 });
                 EXPECT_EQ(ranks, expected) << "channel " << which << " is a permutation of its ranks";
             }
+        }
+
+        /// The tile is the same tile on every toolchain: its first two pixels and its last, rank by
+        /// rank.
+        ///
+        /// **Pinned, because the seeds alone did not pin it.** The first arrangement was dealt by
+        /// `std::shuffle`, whose algorithm is each standard library's own, so libstdc++ and libc++
+        /// shuffled one seed into two tiles and two builds traced different noise. These are the
+        /// ranks the written-out shuffle deals, and a build with GCC and libstdc++, with Clang and
+        /// libstdc++ and with Clang and libc++ all dealt them.
+        TEST(RtxBlueNoiseTest, theTileIsTheSameOnEveryToolchain)
+        {
+            ASSERT_EQ(Shaders::RANDOM_STREAMS, 6u) << "the pinned ranks are six channels a pixel";
+
+            const std::span<const float> values = BlueNoise::shared().getValues();
+            const auto rankAt = [&](std::size_t pixel, std::uint32_t which) {
+                return static_cast<std::uint32_t>(
+                    std::lround(values[pixel * Shaders::RANDOM_STREAMS + which] * static_cast<float>(sCount) - 0.5f));
+            };
+
+            constexpr std::array<std::array<std::uint32_t, 6>, 3> pinned{ {
+                { 2482, 1759, 429, 2938, 2345, 2700 },
+                { 3266, 3057, 3117, 697, 2832, 2169 },
+                { 2081, 2646, 2559, 3383, 2957, 4082 },
+            } };
+            const std::array<std::size_t, 3> pixels{ 0, 1, sCount - 1 };
+            for (std::size_t at = 0; at < pixels.size(); ++at)
+                for (std::uint32_t which = 0; which < Shaders::RANDOM_STREAMS; ++which)
+                    EXPECT_EQ(rankAt(pixels[at], which), pinned[at][which])
+                        << "pixel " << pixels[at] << " channel " << which;
         }
 
         /// The channels differ, which is the only thing that keeps two draws by one pixel apart.

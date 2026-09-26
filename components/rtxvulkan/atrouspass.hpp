@@ -35,16 +35,15 @@ namespace Rtx
         ///
         /// @param buffer handed over, so the trace's writes are visible. Only the guide and the
         ///        depth are read from it.
-        /// @param blended what the accumulator made of this frame's bounce: the first level's
+        /// @param blended what the accumulator made of this frame's bounce, and the variance that
+        ///        turns a difference in brightness into an edge or into noise: the first level's
         ///        input, written by the odd-numbered levels.
-        /// @param moments the estimator's own variance, which turns a difference in brightness into
-        ///        an edge or into noise. A pixel with no history carries one, which filters widely.
         /// @param history what the first level writes and the accumulator finds as its mean next
         ///        frame. `AccumulateHistory::getHistory` says why the feedback belongs here.
         /// @param scratch `makeScratch`'s, at least the camera's extent.
         /// @param camera the one the frame was traced with; the edge tests rebuild its rays.
-        const Image& record(VkCommandBuffer commands, const GBuffer& buffer, const Image& blended, const Image& moments,
-            const Image& history, const Image& scratch, const Shaders::Camera& camera) const;
+        const Image& record(VkCommandBuffer commands, const GBuffer& buffer, const Image& blended, const Image& history,
+            const Image& scratch, const Shaders::Camera& camera) const;
 
     private:
         ComputePipeline mPipeline;

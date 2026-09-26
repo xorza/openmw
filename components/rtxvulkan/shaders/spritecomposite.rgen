@@ -57,12 +57,12 @@ layout(push_constant, scalar) uniform Push
 };
 
 /// Composites the puffs over one shown pixel, whose centre falls in `traced`.
-void compositeAt(uvec2 pixel, uvec2 extent, uvec2 tracedExtent, uvec2 traced, vec3 stood)
+void compositeAt(uvec2 pixel, uvec2 extent, uvec2 tracedExtent, uvec2 traced, PuffsStood stood)
 {
     const vec2 across = vec2(tracedExtent) / vec2(extent);
 
     // The traced camera on this grid — `cameraOnGrid` says why it is the same basis.
-    const Camera camera = cameraOnGrid(stood.z > 0.5 ? frame.mArms : frame.mCamera, extent.x, extent.y);
+    const Camera camera = cameraOnGrid(stood.mArms ? frame.mArms : frame.mCamera, extent.x, extent.y);
 
     const Ray ray = rayAt(camera, vec2(pixel));
     const vec3 origin = frame.mOrigin + ray.mOffset;
@@ -72,17 +72,18 @@ void compositeAt(uvec2 pixel, uvec2 extent, uvec2 tracedExtent, uvec2 traced, ve
     const float distance = imageLoad(depth, ivec2(traced)).y;
 
     const Cone cone = coneAt(camera);
-    const PuffLayer shape = spritesAlong(traced, origin, direction, distance, cone, false);
+    const uvec2 binned = binnedPixel(traced, direction, stood.mArms);
+    const PuffLayer shape = spritesAlong(binned, origin, direction, distance, cone, false);
 
     PuffLayer layer = shape;
-    layer.mTransmittance = shape.mTransmittance * stood.y;
-    layer.mCoveredAt = stood.x;
+    layer.mTransmittance = shape.mTransmittance * stood.mShellsThrough;
+    layer.mCoveredAt = stood.mCoveredAt;
 
     // **The additive meshes, gathered here beside the flames** for the reason this launch draws
     // the flames at all: at the picture's own extent and past the denoiser. One query against a
     // mask a handful of instances carry, and only in the tiles one of them can be met from.
     if ((presenceAt(SpriteTileList(frame.mTables.mSpriteTileList), SpritePresence(frame.mTables.mSpritePresence),
-             tracedExtent.x, traced)
+             tracedExtent.x, binned)
             & PRESENCE_ADDITIVE)
         != 0u)
         layer.mAdded += additiveAlong(traced, origin, direction, distance, cone);
@@ -151,12 +152,12 @@ void main()
     // What the trace left at this pixel: how far the puffs stand, what the shells let through, and
     // which eye the ray was cast from — the arms' where the arms were found, so the march here runs
     // along the same ray the trace lit them on.
-    const vec3 stood = imageLoad(puffsDepth, ivec2(traced)).xyz;
+    const PuffsStood stood = unpackPuffsStood(imageLoad(puffsDepth, ivec2(traced)).xy);
 
     // **Nothing to draw and nothing to write.** The curve makes the same test and reads a one
     // where this wrote nothing; `puffsCoverNothing` says what it saves.
     if (puffsCoverNothing(SpriteTileList(frame.mTables.mSpriteTileList), SpritePresence(frame.mTables.mSpritePresence),
-            tracedExtent.x, traced, stood.y))
+            tracedExtent.x, traced, stood))
         return;
 
     const uvec2 first = shownPixelsFrom(traced, extent, tracedExtent);

@@ -469,7 +469,10 @@ struct BounceDraw
 ///
 /// **One pair for either half**, `STREAM_BOUNCE`'s: only one half is kept, so the pair's spread
 /// across the screen serves whichever it is.
-BounceDraw bounceDraw(Surface surface, Gloss gloss, float face, uvec2 pixel)
+///
+/// @param cone the eye's cone at the stage that found the surface — the arms' camera for the
+///        player's own arms — whose spread a reflection widens by.
+BounceDraw bounceDraw(Surface surface, Gloss gloss, float face, uvec2 pixel, Cone cone)
 {
     const vec2 draw = unitPair(pixel, STREAM_BOUNCE);
     const vec3 scattered = cosineDirection(surface.mNormal * face, draw);
@@ -494,7 +497,7 @@ BounceDraw bounceDraw(Surface surface, Gloss gloss, float face, uvec2 pixel)
     const LobeSample sampled = lobeSample(gloss, draw);
     const vec3 diffuseWeight = (1.0 - fresnelAt(gloss, normalize(gloss.mToEye + scattered))) / (1.0 - chance);
     const float lobeSpread
-        = min(coneAt(frame.mCamera).mSpread + ggxConeWidth(gloss.mAlpha, BOUNCE_SPREAD), BOUNCE_SPREAD);
+        = min(cone.mSpread + ggxConeWidth(gloss.mAlpha, BOUNCE_SPREAD), BOUNCE_SPREAD);
 
     drawn.mTowards = specular ? sampled.mTowards : scattered;
     drawn.mWeight = specular ? sampled.mWeight / chance : diffuseWeight;
@@ -561,7 +564,8 @@ vec3 bounceArriving(Surface surface, BounceDraw drawn, vec3 weight, uvec2 pixel)
 /// be lit by it.
 ///
 /// @param gloss the surface's specular half, `glossOf`.
-Bounce bounceLight(Surface surface, Gloss gloss, uvec2 pixel)
+/// @param cone as `bounceDraw` takes it.
+Bounce bounceLight(Surface surface, Gloss gloss, uvec2 pixel, Cone cone)
 {
     // A sheet bounces off either face, and `SEED_SHEET_SIDE` says why the side is not drawn from
     // the pair the direction is. Drawn on every hit and not behind a test on the transmission: the
@@ -571,7 +575,7 @@ Bounce bounceLight(Surface surface, Gloss gloss, uvec2 pixel)
     float sided;
     const float face = sampledFace(surface.mTransmission, randomNext(sideState), sided);
 
-    const BounceDraw drawn = bounceDraw(surface, gloss, face, pixel);
+    const BounceDraw drawn = bounceDraw(surface, gloss, face, pixel, cone);
 
     // A reflection below the shading normal's horizon brings nothing back, and is not traced to
     // find that out.
@@ -590,11 +594,14 @@ Bounce bounceLight(Surface surface, Gloss gloss, uvec2 pixel)
 /// **One statement of what a ground pixel is, used twice** — for the hit itself, and for the bed
 /// under a waterline pixel, which is that ground and has to be shaded exactly as it. Written twice
 /// is how the two would come to disagree.
-void shadeSolid(Surface hit, uvec2 pixel, out vec3 direct, out vec3 bounce, out SurfaceResponse response)
+///
+/// @param cone as `bounceDraw` takes it.
+void shadeSolid(
+    Surface hit, uvec2 pixel, Cone cone, out vec3 direct, out vec3 bounce, out SurfaceResponse response)
 {
     const Gloss gloss = glossOf(hit);
     const vec3 lit = shadeSurface(hit, gloss, vec3(0.0), pixelKey(pixel) + SEED_LAMPS_EYE, PATH_SEEN);
-    const Bounce bounced = bounceLight(hit, gloss, pixel);
+    const Bounce bounced = bounceLight(hit, gloss, pixel, cone);
 
     direct = lit + bounced.mSpecular;
     bounce = bounced.mDiffuse;

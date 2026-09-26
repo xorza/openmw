@@ -144,14 +144,15 @@ namespace Rtx::Shaders
     /// with each other as well as with its neighbours'. Shared with C++ because the tile is
     /// generated there and has to carry exactly this many masks.
     ///
-    /// Exactly the number drawn and not a round one: the fog takes a number, the bounce takes a
-    /// pair, and the water's own march takes a number. A spare channel would have to be given a step
-    /// to advance by, and the honest step for a stream nobody reads is nothing — which is a value
-    /// frozen for the life of the process, waiting for whoever reaches for it next.
-    const uint RANDOM_STREAMS = 4;
+    /// Exactly the number drawn and not a round one: the fog's column takes a pair and its march a
+    /// number, the bounce takes a pair, and the water's own march takes a number. A spare channel
+    /// would have to be given a step to advance by, and the honest step for a stream nobody reads is
+    /// nothing — which is a value frozen for the life of the process, waiting for whoever reaches
+    /// for it next.
+    const uint RANDOM_STREAMS = 6;
 
-    /// Which channel of the tile each draw takes. A pair costs two, which is why the bounce leaves
-    /// a gap.
+    /// Which channel of the tile each draw takes. A pair costs two, which is why the column and the
+    /// bounce each leave a gap.
     ///
     /// **A channel apiece, not a salt on a shared one.** Every draw a pixel makes has to be
     /// uncorrelated with every other: a fog offset and a bounce elevation drawn from one number is a
@@ -159,15 +160,23 @@ namespace Rtx::Shaders
     ///
     /// **Here rather than beside the sampler**, because the count above is a promise these ids have
     /// to keep.
-    const uint STREAM_FOG = 0u;
-    const uint STREAM_BOUNCE = 1u;
+    ///
+    /// **The column's two offsets are a pair and not two draws of one channel.** Salted apart by the
+    /// pixel alone, both turned by the same step each frame, so their difference never changed and
+    /// every column walked one diagonal of its block.
+    const uint STREAM_FOG_COLUMN = 0u;
+    const uint STREAM_BOUNCE = 2u;
 
     /// Where the water's shaft march starts inside its first step.
     ///
     /// **Its own channel and not the fog's**, though both are march offsets down one ray: a pixel
     /// whose air started late would have its water start late too, and the two marches lie end to
     /// end along the same line.
-    const uint STREAM_WATER = 3u;
+    const uint STREAM_WATER = 4u;
+
+    /// Where a froxel's sample sits inside its own slice, down the column's ray: a march offset like
+    /// the water's, and its own channel for the same reason.
+    const uint STREAM_FOG_ALONG = 5u;
 
     /// What `VisibilityConstants::mNoise` says the per-pixel draws come from: the tile, turned
     /// by an irrational step each frame, or a hashed counter seeded by the pixel, the frame and

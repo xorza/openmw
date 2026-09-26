@@ -103,7 +103,7 @@ void main()
     // ray inside its own block of pixels, and that draw is the column's for every slice of it, so
     // the froxels of a column are stretches of one ray and the lamp integral along them is an
     // integral. This one moves the sample inside its own slice, and is the froxel's alone.
-    const float alongJitter = randomAt(uvec2(column) + FOG_SLICE_TURN * slice, STREAM_FOG);
+    const float alongJitter = randomAt(uvec2(column) + FOG_SLICE_TURN * slice, STREAM_FOG_ALONG);
 
     const Ray ray = fogColumnRay(uvec2(column));
     const vec3 origin = frame.mOrigin + ray.mOffset;

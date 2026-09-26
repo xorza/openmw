@@ -1,4 +1,5 @@
 #include "../testcamera.hpp"
+#include "../testtexture.hpp"
 #include "fixture.hpp"
 
 #include <algorithm>
@@ -27,6 +28,8 @@
 #include <components/rtx/shaders/visibility.h>
 #include <components/rtx/slot.hpp>
 #include <components/rtx/texturedata.hpp>
+#include <components/rtx/textureencoding.hpp>
+#include <components/rtx/texturewrap.hpp>
 #include <components/vfs/pathutil.hpp>
 
 namespace Rtx::Testing
@@ -1111,6 +1114,65 @@ namespace Rtx::Testing
             const float across = ((26.5f / 33.0f) * 2.0f - 1.0f) * std::tan(osg::DegreesToRadians(30.0f));
             EXPECT_NEAR(wide.mArmDistance, 200.0f * std::sqrt(1.0f + across * across), 0.05f)
                 << "the pane stands a hundred units behind the wall, and is drawn in front of it";
+        }
+
+        /// A glossy surface of the player's arms reflects through the arms' own cone, whatever the
+        /// world's is.
+        ///
+        /// **How wide a reflection's cone grows is the eye's that found the surface.** A white metal
+        /// pane two hundred ahead reflects a wall behind the eye painted with the mip ladder, whose
+        /// levels are different greys, so the level the reflected cone reads is what the pixel shows.
+        /// The arms are thirty degrees in all three runs: under a thirty-degree world and a
+        /// ninety-degree one the pixel is the same to the bit, and widening the arms' own eye moves
+        /// it — the world's spread, three times the arms', read the ladder a level and a half
+        /// coarser.
+        TEST_F(RtxVisibilityTest, aGlossyArmReflectsThroughTheArmsOwnCone)
+        {
+            constexpr std::uint32_t size = 33;
+            constexpr std::size_t centre = centreOf(size);
+
+            constexpr std::array<std::uint8_t, 4> white{ 255, 255, 255, 255 };
+            constexpr std::array<std::uint8_t, 4> mirror{ 255, 26, 255, 255 };
+            Testing::TestTexture ladder;
+            Testing::paintMipLadder(ladder);
+            std::array<TextureData, 3> textures{ describeTexel(white, 0), describeTexel(mirror, 1), ladder.mData };
+            textures[2].mSlot = 2;
+
+            SceneDesc scene;
+            const Index diffuse = scene.textures().add(VFS::Path::NormalizedView("white.dds"));
+            const Index map = scene.textures().add(
+                VFS::Path::NormalizedView("white_spec.dds"), TextureWrap::Repeat, TextureEncoding::Data);
+            const Index painted = scene.textures().add(VFS::Path::NormalizedView("ladder.dds"));
+            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                .mMesh = scene.addMesh(MeshArrays{
+                    .mPositions = uprightQuadAt(40.0f, 100.0f), .mTexCoords = sQuadUv, .mIndices = sQuadIndices }),
+                .mMaterial = scene.addMaterial(Material{ .mDiffuse = diffuse, .mSpecular = map, .mTwoSided = true }),
+                .mClass = InstanceClass::FirstPerson });
+            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                .mMesh = scene.addMesh(MeshArrays{
+                    .mPositions = uprightQuadAt(400.0f, -500.0f), .mTexCoords = sQuadUv, .mIndices = sQuadIndices }),
+                .mMaterial = scene.addMaterial(Material{ .mDiffuse = painted, .mTwoSided = true }) });
+
+            const auto reflectedWith = [&](float world, float arms) {
+                Shaders::VisibilityConstants camera = Testing::makeCamera(
+                    osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), world, size, size, 10000.0f);
+                camera.mArms = cameraAtFieldOfView(camera.mCamera, arms);
+                camera.mSkyHorizon = osg::Vec3f();
+                camera.mSkyZenith = osg::Vec3f();
+                camera.mSun.mIrradiance = osg::Vec3f();
+                camera.mAmbient = osg::Vec3f(1.0f, 1.0f, 1.0f);
+                camera.mAmbientFromSky = 0.0f;
+
+                std::vector<std::uint8_t> pixels;
+                countHits(scene, textures, camera, size, pixels);
+
+                return mRadiance[centre * 4];
+            };
+
+            const float narrow = reflectedWith(30.0f, 30.0f);
+            ASSERT_GT(narrow, 0.0f) << "the pane reflected nothing";
+            EXPECT_EQ(reflectedWith(90.0f, 30.0f), narrow) << "the arms' reflection widened with the world's eye";
+            EXPECT_NE(reflectedWith(30.0f, 60.0f), narrow) << "the arms' own cone reached no level of the ladder";
         }
     }
 }

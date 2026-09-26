@@ -124,7 +124,7 @@ void answerSolid(inout Answer answer, Surface surface)
         return;
     }
 
-    shadeSolid(surface, pixel, answer.mRadiance, answer.mBounced, answer.mResponse);
+    shadeSolid(surface, pixel, stageCone(), answer.mRadiance, answer.mBounced, answer.mResponse);
 }
 
 /// Fills the payload in for a water surface, and for the ground showing through its last half metre.
@@ -168,7 +168,7 @@ void answerWater(inout Answer answer, Surface surface)
 
     vec3 bedLight;
     SurfaceResponse lambert;
-    shadeSolid(bed, pixel, bedLight, answer.mBounced, lambert);
+    shadeSolid(bed, pixel, cone, bedLight, answer.mBounced, lambert);
 
     // The direct light and the response as a blend, and the bounce whole, since the albedo it is put
     // back against carries the share.

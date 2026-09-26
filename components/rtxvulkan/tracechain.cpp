@@ -70,23 +70,19 @@ namespace Rtx
         // The temporal half first: the accumulator hands on the variance of its mean, which is
         // what lets the levels below stop at an edge in the light and not only in the geometry.
         openZone(timer, commands, "accumulate");
-        const Image& moments = mPasses.mAccumulate.record(commands, mHistory, *mChannels, camera, far, historyLost);
+        mPasses.mAccumulate.record(commands, mHistory, *mChannels, camera, far, historyLost);
         const Image& blended = mHistory.getBlended();
         closeZone(timer, commands);
 
-        // The cascade reads what the accumulator just wrote, in both images, and it reads through
-        // the texture unit — so the dependency names the sampled access and not only the storage
-        // one. The history the cascade writes for the next frame is ordered by the discard
-        // `AccumulatePass::record` made of it, which named a compute write as what would come next.
-        Barriers handed(commands);
-        for (const Image* written : { &blended, &moments })
-            handed.add(written->describeTransition(Use::sComputeWrite, Use::sComputeReadOrSample));
-
-        handed.flush();
+        // The cascade reads what the accumulator just wrote, and it reads through the texture unit
+        // — so the dependency names the sampled access and not only the storage one. The history
+        // the cascade writes for the next frame is ordered by the discard `AccumulatePass::record`
+        // made of it, which named a compute write as what would come next.
+        blended.transition(commands, Use::sComputeWrite, Use::sComputeReadOrSample);
 
         openZone(timer, commands, "filter");
-        const Image& indirect = mPasses.mFilter.record(
-            commands, *mChannels, blended, moments, mHistory.getHistory(), mFilterScratch, camera);
+        const Image& indirect
+            = mPasses.mFilter.record(commands, *mChannels, blended, mHistory.getHistory(), mFilterScratch, camera);
         closeZone(timer, commands);
 
         return indirect;

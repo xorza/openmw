@@ -25,17 +25,16 @@ namespace Rtx
     public:
         AccumulatePass(const Device& device, const std::filesystem::path& shaderDirectory);
 
-        /// Blends the buffer's indirect channel with `history`, and leaves this frame's moments and
-        /// its blend (`AccumulateHistory::getBlended`) where the cascade can read them — into an
-        /// image of the history's own, or `Channel::Indirect` would mean two different things.
+        /// Blends the buffer's indirect channel with `history`, and leaves the blend and its variance
+        /// (`AccumulateHistory::getBlended`) where the cascade can read them — into an image of the
+        /// history's own, or `Channel::Indirect` would mean two different things.
         ///
         /// @param far the frame's far plane, which this turns into a storage scale rather than
         ///        writing a depth against. `AccumulateConstants::mDistanceScale` says why it is a
         ///        parameter of its own instead of a field of `Camera`.
         /// @param reset true where there is no history worth carrying — the first frame, a resize, a
         ///        door walked through. The same signal Ray Reconstruction is handed.
-        /// @return the moments image the cascade weighs its taps by.
-        const Image& record(VkCommandBuffer commands, AccumulateHistory& history, const GBuffer& buffer,
+        void record(VkCommandBuffer commands, AccumulateHistory& history, const GBuffer& buffer,
             const Shaders::Camera& camera, float far, bool reset) const;
 
     private:

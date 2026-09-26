@@ -206,6 +206,88 @@ namespace Rtx::Testing
             }
         }
 
+        /// A sprite in front of the player's hand is looked for where the arms' ray crosses the
+        /// world's picture, and not in the tile of the pixel the ray was cast for.
+        ///
+        /// **The bin is the world camera's, and the arms have an eye of their own.** Sixty-five
+        /// pixels, the world at sixty degrees and the arms at thirty. Column 60's arms ray leaves
+        /// at `u = 60.5 / 65 * 2 - 1 = 0.8615`, a slope of `0.8615 * tan 15° = 0.2309`, which the
+        /// world's eye sees at `0.2309 / tan 30° = 0.400`: world pixel `1.4 / 2 * 65 = 45.5`, in
+        /// tile 2, where column 60 is in tile 3. A ball of two a hundred ahead on that ray spans
+        /// `2 / (100 tan 30°) * 32.5 = 1.13` pixels either side, 44.4 to 46.6, and with the bin's
+        /// pixel of slack still inside tile 2. In front of a red first-person pane two hundred
+        /// ahead, the ball is what the hand's pixel shows — its green is the ball's, since the pane
+        /// has none — and without the ball the pixel is the pane.
+        ///
+        /// **And the composite has to know the pixel is the hand's.** The flag rode in a word the
+        /// channel's format dropped, so the composite marched the world's ray there: the ball was
+        /// looked for in the right tile and along the wrong line.
+        TEST_F(RtxVisibilityTest, aSpriteInFrontOfTheArmsIsLookedUpWhereTheirRayCrossesTheWorldsPicture)
+        {
+            constexpr std::uint32_t size = 65;
+            constexpr std::size_t column = 60;
+            constexpr std::size_t pixel = std::size_t{ size / 2 } * size + column;
+
+            constexpr std::array<std::uint8_t, 4> red{ 255, 0, 0, 255 };
+            constexpr std::array<std::uint8_t, 4> white{ 255, 255, 255, 255 };
+            const std::array<TextureData, 2> textures{ describeTexel(red, 0), describeTexel(white, 1) };
+
+            const float slope
+                = ((static_cast<float>(column) + 0.5f) / size * 2.0f - 1.0f) * std::tan(osg::DegreesToRadians(15.0f));
+
+            const auto seenAt = [&](bool sprited) {
+                SceneDesc scene;
+                const Index pane = scene.textures().add(VFS::Path::NormalizedView("red.dds"));
+                const Index puff = scene.textures().add(VFS::Path::NormalizedView("white.dds"));
+
+                const float across = 200.0f * slope;
+                const std::array<osg::Vec3f, 4> corners{
+                    osg::Vec3f(across - 10.0f, 100.0f, -10.0f),
+                    osg::Vec3f(across + 10.0f, 100.0f, -10.0f),
+                    osg::Vec3f(across + 10.0f, 100.0f, 10.0f),
+                    osg::Vec3f(across - 10.0f, 100.0f, 10.0f),
+                };
+                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                    .mMesh = scene.addMesh(
+                        MeshArrays{ .mPositions = corners, .mTexCoords = sQuadUv, .mIndices = sQuadIndices }),
+                    .mMaterial = scene.addMaterial(Material{ .mDiffuse = pane }),
+                    .mClass = InstanceClass::FirstPerson });
+
+                if (sprited)
+                {
+                    const std::array<Sprite, 1> sprites{ Sprite{ .mPosition = osg::Vec3f(100.0f * slope, 0.0f, 0.0f),
+                        .mRadius = 2.0f,
+                        .mColour = osg::Vec3f(1.0f, 1.0f, 1.0f),
+                        .mAlpha = 1.0f } };
+                    scene.addEmitter(sprites, puff, false);
+                }
+
+                Shaders::VisibilityConstants camera = Testing::makeCamera(
+                    osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
+                camera.mArms = cameraAtFieldOfView(camera.mCamera, 30.0f);
+                camera.mSkyHorizon = osg::Vec3f();
+                camera.mSkyZenith = osg::Vec3f();
+                camera.mSun.mIrradiance = osg::Vec3f();
+                camera.mAmbient = osg::Vec3f(0.5f, 0.5f, 0.5f);
+                camera.mAmbientFromSky = 0.0f;
+
+                // The surfaces as their albedo, so the pane is red and nothing else; the ball is lit
+                // by the fill, which the composite puts over the albedo as it puts it over a frame.
+                // The last of three frames: the first bin has no report to size its list by, walks
+                // every sprite unbinned, and would find the ball from any tile.
+                std::vector<std::uint8_t> pixels;
+                countHits(scene, textures, camera, size, pixels,
+                    Shot{ .mFrames = 3, .mAverage = false, .mShow = SurfaceView::Albedo });
+
+                return std::array<float, 2>{ mRadiance[pixel * 4], mRadiance[pixel * 4 + 1] };
+            };
+
+            const std::array<float, 2> bare = seenAt(false);
+            EXPECT_EQ(bare[0], 1.0f) << "the hand's pixel is not the pane";
+            EXPECT_EQ(bare[1], 0.0f);
+            EXPECT_GT(seenAt(true)[1], 0.25f) << "the sprite in front of the hand was not found";
+        }
+
         /// A room's fill reaches a puff from every side, and what stands near takes it away.
         ///
         /// **A puff is a point in a medium and has no face to turn away from**, so what it sees of
@@ -217,12 +299,19 @@ namespace Rtx::Testing
         /// **The law is exactly linear, which is what makes this an assertion rather than a
         /// comparison.** A sheet `h` above and another `h` below block every direction that reaches
         /// them inside `ROOM_FILL_REACH` — that is `|d.z| >= h / reach` — and a uniform sphere draw
-        /// puts `d.z` evenly on `[-1, 1]`, so the share left is `h / reach` and nothing else. At 35
-        /// and 70 units of a 140-unit reach that is a quarter and a half of the open fill.
+        /// puts `d.z` evenly on `[-1, 1]`, so the share left is `h / reach` and nothing else. At 70
+        /// and 105 units of a 140-unit reach that is a half and three quarters of the open fill.
         ///
         /// **And it is the sphere the law comes from.** Drawing the cosine about the up instead
-        /// would leave `(h / reach)^2` — a sixteenth and a quarter — which the tolerance below is
-        /// nowhere near.
+        /// would leave `(h / reach)^2` — a quarter and nine sixteenths — which is 0.25 and 0.19 from
+        /// the law, more than twice the tolerance below.
+        ///
+        /// **Not nearer, because the puff is lit out of the fog's columns.** A column is eight
+        /// pixels square, forty units at the puff, and a sheet 35 units off cuts through the columns
+        /// the middle row reads: what the field holds there is the column's mean over its block,
+        /// which is not the point's — measured with independent draws over 1024 frames, 0.35 for a
+        /// law of 0.25. **And the tolerance is the field's own noise at 128 frames**: four runs
+        /// from four starting frames came within 0.05 of the law at both heights.
         ///
         /// The sprite is opaque and carries no lighting bake, so what a pixel shows is the fill
         /// alone. Only the middle row is read: those rays are level, so they meet neither sheet and
@@ -275,8 +364,8 @@ namespace Rtx::Testing
             const float open = boxedAt(0.0f);
             ASSERT_GT(open, 0.01f) << "the fill did not light the puff at all";
 
-            EXPECT_NEAR(boxedAt(35.0f) / open, 35.0f / reach, 0.04f) << "a quarter of the sphere is left";
-            EXPECT_NEAR(boxedAt(70.0f) / open, 70.0f / reach, 0.04f) << "and half of it at twice the room";
+            EXPECT_NEAR(boxedAt(70.0f) / open, 70.0f / reach, 0.08f) << "half of the sphere is left";
+            EXPECT_NEAR(boxedAt(105.0f) / open, 105.0f / reach, 0.08f) << "and three quarters in a taller room";
         }
 
         /// The alpha every sprite test below cuts its sprite from: half, so that what it hides and

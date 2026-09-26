@@ -63,7 +63,7 @@ namespace Rtx
 
         /// Two of each, because this frame reads what the last one wrote: the mean, written by the
         /// cascade; the surface it belongs to, for the reprojection; and the two moments of its
-        /// luminance, where the variance and the frame count sit. Empty until `resize`.
+        /// luminance, beside the frame count. Empty until `resize`.
         std::array<Image, 2> mColour;
         std::array<Image, 2> mSurface;
         std::array<Image, 2> mMoments;

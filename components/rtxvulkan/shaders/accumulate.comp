@@ -55,21 +55,22 @@ layout(set = SET_PASS, binding = ACCUMULATE_BIND_HISTORY_COLOUR, ACCUMULATE_COLO
 layout(set = SET_PASS, binding = ACCUMULATE_BIND_HISTORY_SURFACE, ACCUMULATE_SURFACE)
     uniform readonly image2D historySurface;
 
-/// The first and second moments of that mean's luminance in `rg`, in `b` the variance the cascade
-/// weighs a tap by, and in `a` how many frames the mean holds.
-///
-/// **The variance is written rather than left to be derived, and the single-sample case is why.**
-/// `E[l²] - E[l]²` over one sample is exactly nought, which a filter reads as "this pixel is
-/// certain" — the opposite of the truth, and it would leave the noise precisely where it is. What a
-/// pixel with no history has is no idea how noisy it is, and the honest value for that is the
-/// largest one, not the smallest.
+/// The first and second moments of that mean's luminance in `rg`, and in `a` how many frames the mean
+/// holds. `b` holds nothing: the variance goes to the cascade beside the blend.
 layout(set = SET_PASS, binding = ACCUMULATE_BIND_HISTORY_MOMENTS, ACCUMULATE_MOMENTS)
     uniform readonly image2D historyMoments;
 
 layout(set = SET_PASS, binding = ACCUMULATE_BIND_SURFACE_OUT, ACCUMULATE_SURFACE) uniform writeonly image2D surfaceOut;
 layout(set = SET_PASS, binding = ACCUMULATE_BIND_MOMENTS_OUT, ACCUMULATE_MOMENTS) uniform writeonly image2D momentsOut;
 
-/// This frame's bounce blended with the history, which is what the cascade reads.
+/// This frame's bounce blended with the history in `rgb`, which is what the cascade reads, and in `a`
+/// the variance of its luminance, which the cascade weighs a tap by and carries through its levels.
+///
+/// **The variance is written rather than left to be derived, and the single-sample case is why.**
+/// `E[l²] - E[l]²` over one sample is exactly nought, which a filter reads as "this pixel is
+/// certain" — the opposite of the truth, and it would leave the noise precisely where it is. What a
+/// pixel with no history has is no idea how noisy it is, and the honest value for that is the
+/// largest one, not the smallest.
 ///
 /// **The cascade's channel and not the trace's**, so `CHANNEL_INDIRECT` keeps what the trace put
 /// there for the whole of the frame. `AccumulatePass::record` says what that separation is worth.
@@ -122,9 +123,9 @@ void main()
         // surface straight through, so one this never wrote would arrive there as whatever the
         // allocation held — and the composite multiplies it by an albedo of nought, which turns a
         // stray infinity into a NaN rather than into nothing.
-        imageStore(blendedOut, at, vec4(sampled, 1.0));
+        imageStore(blendedOut, at, vec4(sampled, NO_HISTORY_VARIANCE));
         imageStore(surfaceOut, at, vec4(0.0));
-        imageStore(momentsOut, at, vec4(0.0, 0.0, NO_HISTORY_VARIANCE, 0.0));
+        imageStore(momentsOut, at, vec4(0.0));
 
         return;
     }
@@ -214,7 +215,7 @@ void main()
             variance = max(blendedMoments.y - blendedMoments.x * blendedMoments.x, 0.0);
     }
 
-    imageStore(blendedOut, at, vec4(blended, 1.0));
+    imageStore(blendedOut, at, vec4(blended, variance));
     imageStore(surfaceOut, at, vec4(normal, scaled));
-    imageStore(momentsOut, at, vec4(blendedMoments, variance, count));
+    imageStore(momentsOut, at, vec4(blendedMoments, 0.0, count));
 }

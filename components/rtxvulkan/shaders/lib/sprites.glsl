@@ -408,6 +408,30 @@ SpriteCrossing ballCrossing(
         true, 0.5 * (from + until), (until - from) / (2.0 * halfChord), at, sqrt(radial2), lift, rate, vec3(0.0));
 }
 
+/// The pixel whose tile a ray looks its sprites up in: its own for the world's eye, and for the arms'
+/// the world pixel the ray passes through, held to the frame.
+///
+/// **The bin is the world camera's.** An arms' ray leaves the same eye across a plane of the arms'
+/// own field of view, so the pixel it was cast for names a tile the world's ray through that pixel
+/// meets, and not the tile of what the arms' ray meets — a sprite in front of the hand was looked
+/// for a few tiles off. Mapped
+/// for every ray and selected, so a warp over the hand's edge takes one path. A ray past the world's
+/// frame is held to its edge tile, which is the nearest the bin has.
+///
+/// @param direction the ray's, ahead of the eye.
+uvec2 binnedPixel(uvec2 pixel, vec3 direction, bool arms)
+{
+    const Camera world = frame.mCamera;
+    const Screen screen = screenOf(world.mForward, world.mRight, world.mUp, direction, vec2(1.0));
+
+    // `rayAt`'s generation undone: the pixel whose area the ray crosses the plane in.
+    const vec2 across = (screen.mAt / screen.mAhead + 1.0) * 0.5 * vec2(world.mWidth, world.mHeight) - world.mJitter;
+    const uvec2 through
+        = uvec2(clamp(floor(across), vec2(0.0), vec2(float(world.mWidth - 1u), float(world.mHeight - 1u))));
+
+    return arms ? through : pixel;
+}
+
 /// Every emitter's sprites the ray crosses, composited.
 ///
 /// **No acceleration structure and one sphere per emitter.** A lamp is asked for by a shading

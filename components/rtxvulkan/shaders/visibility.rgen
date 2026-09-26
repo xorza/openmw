@@ -356,11 +356,12 @@ void main()
     // neither descends the top level to find nothing nor merges a layer that holds nothing — and
     // the merge is not free: it divides a coverage back out, which moves a level on a pixel that
     // meets no medium.
-    PuffLayer layer = spritesAlong(pixel, origin, direction, distance, cone, true);
+    const uvec2 binned = binnedPixel(pixel, direction, arms);
+    PuffLayer layer = spritesAlong(binned, origin, direction, distance, cone, true);
     float shellsThrough = 1.0;
 
     if ((presenceAt(SpriteTileList(frame.mTables.mSpriteTileList), SpritePresence(frame.mTables.mSpritePresence),
-             frame.mCamera.mWidth, pixel)
+             frame.mCamera.mWidth, binned)
             & PRESENCE_MEDIUM)
         != 0u)
     {
@@ -372,7 +373,7 @@ void main()
     // And which eye this pixel's ray was cast from, for the composite to march its own again
     // through the same one: `spritecomposite.rgen` reads it beside the depth.
     imageStore(puffs, ivec2(pixel), vec4(layer.mColour, layer.mTransmittance));
-    imageStore(puffsDepth, ivec2(pixel), vec4(layer.mCoveredAt, shellsThrough, arms ? 1.0 : 0.0, 0.0));
+    imageStore(puffsDepth, ivec2(pixel), vec4(packPuffsStood(PuffsStood(layer.mCoveredAt, shellsThrough, arms)), 0.0, 0.0));
 
     // **The sun glare fader's query, one ray at a time.** The rasterizer draws the sun's quad
     // against the world's depth and counts the pixels that survived; here every primary ray inside

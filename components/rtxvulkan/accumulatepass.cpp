@@ -31,7 +31,7 @@ namespace Rtx
     {
     }
 
-    const Image& AccumulatePass::record(VkCommandBuffer commands, AccumulateHistory& history, const GBuffer& buffer,
+    void AccumulatePass::record(VkCommandBuffer commands, AccumulateHistory& history, const GBuffer& buffer,
         const Shaders::Camera& camera, float far, bool reset) const
     {
         assert(far > 0.0f && "a frame with no far plane to scale a stored distance by");
@@ -78,7 +78,5 @@ namespace Rtx
 
         dispatch(commands, mPipeline, writes.get(), constants, groupsFor(camera.mWidth, Shaders::ACCUMULATE_WORKGROUP),
             groupsFor(camera.mHeight, Shaders::ACCUMULATE_WORKGROUP));
-
-        return turn.mMoments;
     }
 }

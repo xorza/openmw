@@ -18,16 +18,15 @@ namespace Rtx
 {
     namespace
     {
-        /// The channel coming in, the channel going out, the two that say where the edges in the
-        /// surface are and the one that says where the edges in the light are. All pushed. Sampled
-        /// on the four this pass only reads, because a twenty-five tap gather wants the texture
+        /// The channel coming in with its variance, which says where the edges in the light are,
+        /// the channel going out, and the two that say where the edges in the surface are. All
+        /// pushed. Sampled on the three this pass only reads, because a twenty-five tap gather wants the texture
         /// unit's cache — a few per cent of the cascade — and legal from `VK_IMAGE_LAYOUT_GENERAL`.
         constexpr std::array<VkDescriptorSetLayoutBinding, Shaders::ATROUS_BINDINGS> sBindings{
             computeBinding(Shaders::ATROUS_BIND_SOURCE, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE),
             computeBinding(Shaders::ATROUS_BIND_FILTERED, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE),
             computeBinding(Shaders::ATROUS_BIND_GUIDE, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE),
             computeBinding(Shaders::ATROUS_BIND_DEPTH, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE),
-            computeBinding(Shaders::ATROUS_BIND_MOMENTS, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE),
         };
 
         /// Both reads, because a level's inputs are sampled and its target is storage. An image
@@ -58,7 +57,7 @@ namespace Rtx
     }
 
     const Image& AtrousPass::record(VkCommandBuffer commands, const GBuffer& buffer, const Image& blended,
-        const Image& moments, const Image& history, const Image& scratch, const Shaders::Camera& camera) const
+        const Image& history, const Image& scratch, const Shaders::Camera& camera) const
     {
         assert(!scratch.isEmpty() && "a filter with no scratch to ping-pong through");
         assert(scratch.getWidth() >= camera.mWidth && scratch.getHeight() >= camera.mHeight);
@@ -100,7 +99,7 @@ namespace Rtx
                 between.flush();
             }
 
-            // Sampled from `GENERAL` on the four this pass only reads. A `SAMPLED_IMAGE`
+            // Sampled from `GENERAL` on the three this pass only reads. A `SAMPLED_IMAGE`
             // descriptor names the image alone and no sampler, which is what `sBindings` declares.
             DescriptorWrites<Shaders::ATROUS_BINDINGS> writes;
             writes.image(
@@ -109,8 +108,6 @@ namespace Rtx
             writes.image(Shaders::ATROUS_BIND_GUIDE, buffer.get(Channel::Guide).describeSampled(VK_NULL_HANDLE),
                 VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE);
             writes.image(Shaders::ATROUS_BIND_DEPTH, buffer.get(Channel::Depth).describeSampled(VK_NULL_HANDLE),
-                VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE);
-            writes.image(Shaders::ATROUS_BIND_MOMENTS, moments.describeSampled(VK_NULL_HANDLE),
                 VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE);
 
             level.mStep = 1u << pass;

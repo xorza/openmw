@@ -28,8 +28,9 @@
 // gradient along the tap, `exp(-|z(p) - z(q)| / (sigma_z * |grad z . (p - q)| + eps))`; what is
 // below is a plane-distance test, which is what the denoisers written since — NRD's among them —
 // settled on, and which handles a grazing floor without needing a derivative that a ray tracer has
-// no rasterizer to hand it. SVGF's luminance term weighs by the variance of an accumulated
-// history, which is what the accumulator in front of this cascade keeps for it.
+// no rasterizer to hand it. The luminance term is SVGF's whole: it weighs by the variance of the
+// accumulated history, prefiltered 3x3 at each level, and each level carries what averaging left of
+// that variance to the next in the alpha beside its colour.
 
 #include "accumulate.h"
 #include "atrous.h"
@@ -42,11 +43,14 @@
 
 layout(local_size_x = ATROUS_WORKGROUP, local_size_y = ATROUS_WORKGROUP) in;
 
-/// One bounce, albedo divided out, as the last level left it.
+/// One bounce, albedo divided out, as the last level left it, and in `a` the variance of its
+/// luminance: the accumulator's for the first level, and what the last level's average left of it
+/// for every level after. One where a pixel has no history to have measured a spread with, which
+/// reads as "trust the neighbours entirely" and is the honest answer for a single sample.
 ///
 /// **A sampled image and not a storage one, on every input this pass only reads.**
 /// `AtrousPass::sBindings` carries the measurement. A sampled declaration states no format, which
-/// is why these four name none where the target below does.
+/// is why these three name none where the target below does.
 layout(set = SET_PASS, binding = ATROUS_BIND_SOURCE) uniform texture2D source;
 
 /// Where this level puts what it made of it.
@@ -60,11 +64,6 @@ layout(set = SET_PASS, binding = ATROUS_BIND_GUIDE) uniform texture2D guide;
 /// Clip depth in `r` and the distance from the eye in `g`. This reads the second, in world units,
 /// because a tolerance against a clip value would mean something different at every distance.
 layout(set = SET_PASS, binding = ATROUS_BIND_DEPTH) uniform texture2D depth;
-
-/// The estimator's own variance in `b`, written by the accumulator in front of this cascade. One
-/// where a pixel has no history to have measured a spread with, which reads as "trust the
-/// neighbours entirely" and is the honest answer for a single sample.
-layout(set = SET_PASS, binding = ATROUS_BIND_MOMENTS) uniform texture2D moments;
 
 layout(push_constant, scalar) uniform Push
 {
@@ -84,6 +83,35 @@ float kernelAt(int offset)
     const int away = abs(offset);
 
     return away == 0 ? 6.0 / 16.0 : (away == 1 ? 4.0 / 16.0 : 1.0 / 16.0);
+}
+
+/// The variance at `at`, as a 3x3 Gaussian of the level's input over the surfaces around it.
+///
+/// **SVGF's prefilter, taken at every level**, as its reference implementation takes it: one pixel's
+/// estimate over a short history is itself noisy, and an edge stopped by a noisy spread is a
+/// blotch. A tap with no surface under it carries no variance of a surface, and is left out.
+float varianceAround(ivec2 at)
+{
+    float sum = 0.0;
+    float weight = 0.0;
+    for (int y = -1; y <= 1; ++y)
+        for (int x = -1; x <= 1; ++x)
+        {
+            const ivec2 tap = at + ivec2(x, y);
+            if (outsideOf(tap, uvec2(level.mCamera.mWidth, level.mCamera.mHeight)))
+                continue;
+
+            const vec3 facing = texelFetch(guide, tap, 0).xyz;
+            if (dot(facing, facing) <= 0.0)
+                continue;
+
+            const float w = (x == 0 ? 0.5 : 0.25) * (y == 0 ? 0.5 : 0.25);
+            sum += texelFetch(source, tap, 0).a * w;
+            weight += w;
+        }
+
+    // The centre is a surface, so the weight is at least a quarter.
+    return sum / weight;
 }
 
 /// Where the trace's ray through `pixel` ended up, `away` along it.
@@ -129,11 +157,15 @@ void main()
     // **How noisy this pixel still is, which is what makes the brightness test mean anything.** A
     // difference of one against a variance of four is nothing; the same difference against a settled
     // pixel is an edge. The epsilon is a divide guard and nothing else.
-    const float spread = ATROUS_LUMINANCE_SIGMA * sqrt(texelFetch(moments, at, 0).b) + 1e-4;
+    const float spread = ATROUS_LUMINANCE_SIGMA * sqrt(varianceAround(at)) + 1e-4;
     const float here = dot(texelFetch(source, at, 0).rgb, LUMINANCE_WEIGHTS);
 
+    // What the average leaves of the variance, for the next level: each tap's own, by the square of
+    // its weight, over the square of the whole — the variance of a weighted mean of independent
+    // samples.
     vec3 sum = vec3(0.0);
     float weight = 0.0;
+    float variance = 0.0;
 
     for (int y = -2; y <= 2; ++y)
         for (int x = -2; x <= 2; ++x)
@@ -158,14 +190,15 @@ void main()
             const float coplanar = exp(-offset / (ATROUS_PLANE_SIGMA * footprint));
 
             // The third of SVGF's three, and the only one about the light rather than the surface.
-            const vec3 light = texelFetch(source, tap, 0).rgb;
-            const float lit = exp(-abs(here - dot(light, LUMINANCE_WEIGHTS)) / spread);
+            const vec4 light = texelFetch(source, tap, 0);
+            const float lit = exp(-abs(here - dot(light.rgb, LUMINANCE_WEIGHTS)) / spread);
 
             const float w = kernelAt(x) * kernelAt(y) * facing * coplanar * lit;
-            sum += light * w;
+            sum += light.rgb * w;
             weight += w;
+            variance += light.a * w * w;
         }
 
     // The centre always passes its own tests, so the weight can only be zero if it underflowed.
-    imageStore(filtered, at, vec4(weight > 0.0 ? sum / weight : texelFetch(source, at, 0).rgb, 1.0));
+    imageStore(filtered, at, weight > 0.0 ? vec4(sum / weight, variance / (weight * weight)) : texelFetch(source, at, 0));
 }

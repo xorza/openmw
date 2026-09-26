@@ -1,6 +1,5 @@
 #include "bluenoise.hpp"
 
-#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <cstddef>
@@ -8,6 +7,8 @@
 #include <limits>
 #include <numeric>
 #include <random>
+#include <utility>
+#include <vector>
 
 #include "shaders/scene.h"
 
@@ -51,9 +52,14 @@ namespace Rtx
                 for (int dy = -sRadius; dy <= sRadius; ++dy)
                     for (int dx = -sRadius; dx <= sRadius; ++dx)
                     {
-                        const float squared = static_cast<float>(dx * dx + dy * dy);
+                        // In double and rounded once: two libraries' `exp` may part in a double's
+                        // last place, which rounds to one float but where it lies half way, and a
+                        // float `exp` gives no such margin. A kernel an ulp apart is an energy an
+                        // ulp apart, a tie broken the other way, and another tile.
+                        const double squared = static_cast<double>(dx * dx + dy * dy);
+                        const double sigma = static_cast<double>(sSigma);
                         mKernel[static_cast<std::size_t>((dy + sRadius) * sSide + (dx + sRadius))]
-                            = std::exp(-squared / (2.0f * sSigma * sSigma));
+                            = static_cast<float>(std::exp(-squared / (2.0 * sigma * sigma)));
                     }
             }
 
@@ -124,9 +130,19 @@ namespace Rtx
         {
             Field field;
 
+            // **Fisher–Yates written out, and not `std::shuffle`**, whose algorithm is each standard
+            // library's own: two toolchains shuffled one seed into two tiles, and traced different
+            // noise. `mt19937`'s words are the standard's to the bit. The bound is a word times the
+            // count, shifted down, which is biased by at most the count in two to the thirty-two —
+            // a part in a million here — and is one answer on every machine.
             std::vector<std::size_t> order(sCount);
             std::iota(order.begin(), order.end(), std::size_t{ 0 });
-            std::shuffle(order.begin(), order.end(), std::mt19937(seed));
+            std::mt19937 words(seed);
+            for (std::size_t last = sCount - 1; last > 0; --last)
+            {
+                const auto pick = static_cast<std::size_t>((std::uint64_t{ words() } * (last + 1)) >> 32);
+                std::swap(order[last], order[pick]);
+            }
             for (std::size_t i = 0; i < sInitialOnes; ++i)
                 field.set(order[i], true);
 

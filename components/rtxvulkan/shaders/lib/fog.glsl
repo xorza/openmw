@@ -387,8 +387,7 @@ Ray fogColumnRayAt(uvec2 column, vec2 inside)
 /// frames the column's froxels cover the block rather than one line through it.
 Ray fogColumnRay(uvec2 column)
 {
-    return fogColumnRayAt(
-        column, vec2(randomAt(column + uvec2(17u, 5u), STREAM_FOG), randomAt(column + uvec2(3u, 29u), STREAM_FOG)));
+    return fogColumnRayAt(column, unitPair(column, STREAM_FOG_COLUMN));
 }
 
 /// What the air holds `depth` of the way through the grid, on the line from one slice's sample to
