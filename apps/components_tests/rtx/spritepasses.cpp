@@ -304,6 +304,29 @@ namespace Rtx
             layer.addEmitter(0.1f, osg::Vec3f(1.0f, 0.0f, -1.0f));
             layer.addSprite(osg::Vec3f(2.0f, 0.0f, 0.0f), 6.0f);
 
+            // Snow level with the eye and beside it, whose balls reach the plane the eye stands in
+            // without holding the eye: seen at the frame's side where they are, and nowhere else.
+            layer.addEmitter(0.0f, osg::Vec3f());
+            for (float x : { 1.0f, 2.5f })
+                for (float y : { -4.0f, 4.0f })
+                    for (float z : { -2.0f, 2.0f })
+                        layer.addSprite(osg::Vec3f(x, y, z), 3.0f);
+
+            // Streaks running from in front of the eye to behind it, beside it, a fiftieth as wide as
+            // they are long as rain is: the directions that meet one go round past the frame's side,
+            // and for the second past the one straight back too, where the angles either side of it
+            // are a whole turn apart. That one is met from the frame's first two tile columns, and
+            // an arc taken from the lower angle to the higher without turning the short way round
+            // reaches only the last three: tile 0 is where it is lost.
+            for (const osg::Vec3f& behind : { osg::Vec3f(-20.0f, 1.0f, 0.0f), osg::Vec3f(-20.0f, -1.0f, 0.0f) })
+            {
+                const osg::Vec3f ahead(20.0f, 3.0f, 0.0f);
+                osg::Vec3f axis = behind - ahead;
+                const float length = axis.normalize();
+                layer.addEmitter(0.02f, axis);
+                layer.addSprite((ahead + behind) * 0.5f, 0.5f * length);
+            }
+
             for (const osg::Vec2f jitter : { osg::Vec2f(0.0f, 0.0f), osg::Vec2f(0.49f, -0.49f) })
             {
                 Shaders::VisibilityConstants constants = lookingAlongX();
@@ -440,6 +463,40 @@ namespace Rtx
             // slack the jitter needs is the whole of what it covers: four tiles at the very most.
             EXPECT_GT(tiles.getEntryCount(), 0u);
             EXPECT_LE(tiles.getEntryCount(), 4u);
+        }
+
+        /// A sprite level with the eye plane and beside the eye reaches the side of the frame it
+        /// stands on, and one far beside it reaches nothing.
+        ///
+        /// **A depth within the radius of the eye's own plane is no reason for every tile**: sent
+        /// there, the snow level with the camera at Nivalis was 141 sprites in every tile of the frame. The frame looks
+        /// along +X with its right along -Y and a half-width of 0.7698. In the horizontal plane the near one is at (-3
+        /// across, 1 deep): an angle of -71.57° with a spread of asin(2.5 / √10) = 52.24°, so -123.8° to -19.33°, which
+        /// the frame sees from its left edge to tan(-19.33°) / 0.7698 = -0.456, the 18th pixel of 64 with a pixel of
+        /// slack: tile columns 0 and 1. The vertical plane holds the eye in its disc, which is every row. The far one
+        /// is at -89.43° with a spread of 4.59°, every direction of it past the frame's 37.6° side.
+        TEST_F(RtxSpriteBinPassTest, aSpriteLevelWithTheEyeReachesTheSideItStandsOn)
+        {
+            Layer layer;
+            layer.addEmitter(0.0f, osg::Vec3f());
+            layer.addSprite(osg::Vec3f(0.5f, 50.0f, 0.0f), 4.0f);
+            layer.addSprite(osg::Vec3f(1.0f, 3.0f, 0.0f), 2.5f);
+
+            const Binned tiles = bin(layer, lookingAlongX(), sPlenty);
+            ASSERT_FALSE(tiles.isUnbinned());
+
+            for (std::size_t tile = 0; tile < tiles.getTileCount(); ++tile)
+            {
+                const std::span<const std::uint32_t> run = tiles.getRun(tile);
+                const bool left = tile % tiles.mAcross <= 1;
+                ASSERT_EQ(run.size(), left ? 1u : 0u) << "tile " << tile;
+                if (left)
+                {
+                    EXPECT_EQ(run.front(), 1u) << "tile " << tile;
+                }
+            }
+
+            EXPECT_EQ(tiles.getEntryCount(), 6u);
         }
 
         /// The orthographic camera slides the eye instead of turning the ray, so a sprite's tiles are
@@ -588,12 +645,25 @@ namespace Rtx
             ASSERT_FALSE(tiles.isUnbinned());
             EXPECT_EQ(tiles.mReport, tiles.getEntryCount());
 
-            std::size_t longest = 0;
-            for (std::size_t tile = 0; tile < tiles.getTileCount(); ++tile)
-                longest = std::max(longest, tiles.getRun(tile).size());
+            // **The puffs whose balls hold the eye, in every tile**: the first three columns stand 2, 3
+            // and 4 ahead of it with a radius of 25, so a puff holds the eye where x² + z² ≤ 625, which
+            // is |z| ≤ 24.9, 24.8 and 24.7 — the nine at -24 to 24 of each column, 27 in all. The
+            // rest of those columns are level with the eye's plane without holding it, and reach
+            // only the tiles that can see them.
+            std::vector<std::uint32_t> holding;
+            for (std::uint32_t at = 0; at < 60; ++at)
+            {
+                const osg::Vec3f& position = layer.mSprites[at].mPosition;
+                if (position.x() * position.x() + position.z() * position.z() <= 625.0f)
+                    holding.push_back(at);
+            }
+            ASSERT_EQ(holding.size(), 27u);
 
-            // The sixty puffs about the eye, at the least, in every tile.
-            EXPECT_GE(longest, 60u);
+            for (std::size_t tile = 0; tile < tiles.getTileCount(); ++tile)
+            {
+                const std::span<const std::uint32_t> run = tiles.getRun(tile);
+                EXPECT_TRUE(std::includes(run.begin(), run.end(), holding.begin(), holding.end())) << "tile " << tile;
+            }
         }
 
         /// A list with no room for its runs says so in its first entry and names the count in its

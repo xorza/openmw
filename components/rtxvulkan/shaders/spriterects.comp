@@ -14,10 +14,10 @@
 //
 // **A capsule and not a sphere around a quad's corners, and rain is why.** A drop is a long thin
 // streak, so that sphere is as wide as the streak is long — tens of times the width — and a bound
-// that wide crosses the eye plane for every drop falling anywhere near the camera. There are no
-// tangent lines from inside a sphere, so each of those goes into every tile on the screen, and a
-// few dozen drops are nearly the whole list. The capsule's radius is the streak's width instead
-// of its length.
+// that wide holds the eye for every drop falling anywhere near the camera. A sphere that holds the
+// eye is met from every direction, so each of those goes into every tile on the screen, and a few
+// dozen drops are nearly the whole list. The capsule's radius is the streak's width instead of its
+// length.
 
 #include "spritebin.h"
 
@@ -56,21 +56,6 @@ Frame frameOf(Camera camera)
     return frame;
 }
 
-/// The two extreme slopes of the tangent lines from the eye to a circle at `(along, depth)`.
-///
-/// The closed form rather than a projected bounding box, because a box around the sphere is three
-/// times the area at the edge of a wide frame, and every extra tile is a sprite walked by pixels
-/// that cannot see it. Only meaningful where the eye is outside the sphere, which `capsuleTiles`
-/// is what guarantees.
-vec2 tangentSlopes(float along, float depth, float radius)
-{
-    const float behind = depth * depth - radius * radius;
-    const float reach = sqrt(max(along * along + behind, 0.0));
-    const float middle = along * depth;
-
-    return vec2((middle - radius * reach) / behind, (middle + radius * reach) / behind);
-}
-
 /// Where a screen coordinate in minus-one-to-one lands, in whole pixels and generously.
 ///
 /// **A pixel of slack at each end, which is what covers the jitter.** `rayAt` adds half a pixel and
@@ -82,48 +67,24 @@ int toPixel(float coordinate, uint extent, float slack)
     return int(floor((coordinate + 1.0) * 0.5 * float(extent) + slack));
 }
 
-/// Where a ball of `radius` about `centre` lands, in whole pixels, before the frame's edges are
-/// applied: its first column and row in `xy`, its last in `zw`.
+/// Where an orthographic frame sees a ball of `radius` about `centre`, in whole pixels, before the
+/// frame's edges are applied: its first column and row in `xy`, its last in `zw`.
 ///
-/// **Off the frame and not clipped to it**, because a capsule is bounded by two of these and a
-/// rectangle clipped to nothing carries no side to union against: a streak lying across the view
-/// has both its ends past the edge and its middle down the centre of the frame. Given that the
-/// ball's tangent cone is bounded — which for a perspective frame is `depth > radius`, and for an
-/// orthographic one is always.
-ivec4 ballPixels(vec3 centre, float radius, Frame frame)
+/// Every ray runs the same way and the eye slides across the plane instead, so the sphere covers
+/// the coordinates whose ray passes within its radius. Behind the plane is still binned: the march's
+/// own depth test is what rejects it, and this only has to be no tighter than that. **Off the frame
+/// and not clipped to it**, because a capsule is bounded by two of these and a rectangle clipped to
+/// nothing carries no side to union against.
+ivec4 orthographicPixels(vec3 centre, float radius, Frame frame)
 {
     const vec3 toward = centre - bin.mOrigin;
 
-    float lowU;
-    float highU;
-    float lowV;
-    float highV;
+    const float lowU = (dot(toward, frame.mRight) - radius) / frame.mHalfWidth;
+    const float highU = (dot(toward, frame.mRight) + radius) / frame.mHalfWidth;
 
-    if (bin.mCamera.mOrthographic != 0u)
-    {
-        // Every ray runs the same way and the eye slides across the plane instead, so the sphere
-        // covers the coordinates whose ray passes within its radius. Behind the plane is still
-        // binned: the march's own depth test is what rejects it, and this only has to be no
-        // tighter than that.
-        lowU = (dot(toward, frame.mRight) - radius) / frame.mHalfWidth;
-        highU = (dot(toward, frame.mRight) + radius) / frame.mHalfWidth;
-
-        // `rayAt` subtracts the up axis, so a sprite above the eye is at a smaller `v`.
-        lowV = (-dot(toward, frame.mUp) - radius) / frame.mHalfHeight;
-        highV = (-dot(toward, frame.mUp) + radius) / frame.mHalfHeight;
-    }
-    else
-    {
-        const float depth = dot(toward, frame.mForward);
-
-        const vec2 sideways = tangentSlopes(dot(toward, frame.mRight), depth, radius);
-        const vec2 upright = tangentSlopes(-dot(toward, frame.mUp), depth, radius);
-
-        lowU = sideways.x / frame.mHalfWidth;
-        highU = sideways.y / frame.mHalfWidth;
-        lowV = upright.x / frame.mHalfHeight;
-        highV = upright.y / frame.mHalfHeight;
-    }
+    // `rayAt` subtracts the up axis, so a sprite above the eye is at a smaller `v`.
+    const float lowV = (-dot(toward, frame.mUp) - radius) / frame.mHalfHeight;
+    const float highV = (-dot(toward, frame.mUp) + radius) / frame.mHalfHeight;
 
     return ivec4(toPixel(lowU, bin.mCamera.mWidth, -1.0), toPixel(lowV, bin.mCamera.mHeight, -1.0),
         toPixel(highU, bin.mCamera.mWidth, 1.0), toPixel(highV, bin.mCamera.mHeight, 1.0));
@@ -198,41 +159,117 @@ Bound boundOf(GpuSprite sprite, GpuEmitter emitter)
     return bound;
 }
 
-/// The tiles a capsule can be met from, as the rectangle around the two balls that cap it.
-///
-/// **The rectangle around both and not a ball around both**, which is the whole of what a capsule
-/// buys: a streak lying across the frame covers a long thin rectangle, and a ball holding the same
-/// two ends covers the square that rectangle sits in. Both caps in front of the eye, the segment
-/// between them projects to a straight line between their two centres, so a rectangle holding the
-/// caps holds the cylinder as well.
-TileRect capsuleTiles(Bound bound, Frame frame, uint across, uint down)
+/// Half the angle a disc of `radius` about `centre` fills as seen from the eye, in one plane
+/// through the eye: a right angle where the eye stands inside it.
+float spreadOf(vec2 centre, float radius)
 {
-    if (bin.mCamera.mOrthographic == 0u)
+    return asin(min(radius / length(centre), 1.0));
+}
+
+/// How far the eye stands from the segment between `from` and `to`, in the same plane.
+float distanceToSegment(vec2 from, vec2 to)
+{
+    const vec2 along = to - from;
+    const float share = dot(along, along) > 0.0 ? clamp(-dot(from, along) / dot(along, along), 0.0, 1.0) : 0.0;
+
+    return length(from + along * share);
+}
+
+/// The screen coordinate along an axis whose half-extent is `halfExtent` of the direction `angle` from
+/// the view, held to two either side: a right angle or past it is the frame's edge on that side,
+/// chosen before the tangent is taken, so what it makes of a right angle `PI` rounds to either side
+/// of is never what comes back.
+float coordinateOf(float angle, float halfExtent)
+{
+    const float quarter = 0.5 * PI;
+    return angle <= -quarter ? -2.0 : angle >= quarter ? 2.0 : clamp(tan(angle) / halfExtent, -2.0, 2.0);
+}
+
+/// The screen coordinates, in minus one to one, that the rays meeting a capsule take along one axis
+/// of a perspective frame: the lowest in `x` and the highest in `y`, held to two either side, so a
+/// side that reaches past the frame lands off it, and `x` past `y` where the frame sees none of it.
+/// `from` and `to` are the caps' centres as `(across, depth)` in the plane of the axis and the view
+/// direction, where an angle is taken from the view direction towards `across`.
+///
+/// **The arc of directions and not the tangent lines' slopes**, because a slope stands for a
+/// direction only in front of the eye. The capsule's cross-section in that plane is the stadium
+/// about the segment between the caps, and seen from outside it the directions that meet it are one
+/// arc under a half turn, whose two ends are tangent to the caps' discs. So the second cap's wedge is
+/// turned the short way to the first's, and the arc runs from the lower end of the two to the
+/// higher. The frame sees the half turn about the view direction; the arc, or its copy a whole turn
+/// round, meets it at most once, and an end past the right angle is the frame's edge.
+///
+/// **Only where the eye stands inside the stadium is every coordinate reached**, and not wherever a
+/// cap reaches the plane through the eye: that plane runs out sideways for ever, and the snow falling
+/// level with the camera, however far to the side and whether or not the frame can see it, sent
+/// everywhere is 141 sprites in every tile of a 2560x1440 frame at Nivalis, each walked by the trace
+/// and the composite at every pixel.
+vec2 capsuleSpan(vec2 from, vec2 to, float radius, float halfExtent)
+{
+    const float quarter = 0.5 * PI;
+    const float whole = 2.0 * PI;
+
+    const float towards = atan(from.x, from.y);
+    float turn = atan(to.x, to.y) - towards;
+    turn -= whole * round(turn / whole);
+
+    const float spread = spreadOf(from, radius);
+    const float otherSpread = spreadOf(to, radius);
+    const float lowest = towards + min(-spread, turn - otherSpread);
+    const float highest = towards + max(spread, turn + otherSpread);
+
+    float low = quarter;
+    float high = -quarter;
+    for (int copy = -1; copy <= 1; ++copy)
     {
-        const float from = dot(bound.mFrom - bin.mOrigin, frame.mForward);
-        const float to = dot(bound.mTo - bin.mOrigin, frame.mForward);
-
-        // Wholly behind the eye, where no ray of a frame that only looks forward can reach it. The
-        // march's own depth test says the same, so this is a tile saved rather than a sprite lost.
-        if (from <= -bound.mRadius && to <= -bound.mRadius)
-            return noTiles();
-
-        // **A cap the eye is inside, or level with.** There are no tangent lines from a point on or
-        // inside a circle, and neither is there a straight projected segment once the capsule
-        // reaches the plane through the eye — so it goes in every tile rather than being reasoned
-        // about.
-        if (from <= bound.mRadius || to <= bound.mRadius)
-            return TileRect(uvec2(0u), uvec2(across - 1u, down - 1u));
+        const float shift = whole * float(copy);
+        const float seenFrom = max(lowest + shift, -quarter);
+        const float seenTo = min(highest + shift, quarter);
+        const bool meets = seenFrom < seenTo;
+        low = meets ? min(low, seenFrom) : low;
+        high = meets ? max(high, seenTo) : high;
     }
 
-    ivec4 rect = ballPixels(bound.mFrom, bound.mRadius, frame);
-    if (bound.mOriented)
+    // An arc the frame sees none of leaves its two ends where they started, past each other at the
+    // frame's two edges, and the span they make is empty.
+    const bool inside = distanceToSegment(from, to) <= radius;
+    return vec2(coordinateOf(inside ? -quarter : low, halfExtent), coordinateOf(inside ? quarter : high, halfExtent));
+}
+
+/// The tiles a capsule can be met from.
+///
+/// **In perspective, the span each screen axis sees, and one rectangle across the two**, because a
+/// ray meets the capsule only where both of its coordinates do. Orthographic, the rectangle around
+/// the two balls that cap it: a streak lying across the frame covers a long thin rectangle, and a
+/// ball holding the same two ends covers the square that rectangle sits in.
+TileRect capsuleTiles(Bound bound, Frame frame)
+{
+    if (bin.mCamera.mOrthographic != 0u)
     {
-        const ivec4 other = ballPixels(bound.mTo, bound.mRadius, frame);
-        rect = ivec4(min(rect.xy, other.xy), max(rect.zw, other.zw));
+        ivec4 rect = orthographicPixels(bound.mFrom, bound.mRadius, frame);
+        if (bound.mOriented)
+        {
+            const ivec4 other = orthographicPixels(bound.mTo, bound.mRadius, frame);
+            rect = ivec4(min(rect.xy, other.xy), max(rect.zw, other.zw));
+        }
+
+        return tilesOf(rect);
     }
 
-    return tilesOf(rect);
+    const vec3 from = bound.mFrom - bin.mOrigin;
+    const vec3 to = bound.mTo - bin.mOrigin;
+    const float fromDepth = dot(from, frame.mForward);
+    const float toDepth = dot(to, frame.mForward);
+
+    const vec2 sideways = capsuleSpan(vec2(dot(from, frame.mRight), fromDepth), vec2(dot(to, frame.mRight), toDepth),
+        bound.mRadius, frame.mHalfWidth);
+
+    // `rayAt` subtracts the up axis, so a sprite above the eye is at a smaller `v`.
+    const vec2 upright = capsuleSpan(vec2(-dot(from, frame.mUp), fromDepth), vec2(-dot(to, frame.mUp), toDepth),
+        bound.mRadius, frame.mHalfHeight);
+
+    return tilesOf(ivec4(toPixel(sideways.x, bin.mCamera.mWidth, -1.0), toPixel(upright.x, bin.mCamera.mHeight, -1.0),
+        toPixel(sideways.y, bin.mCamera.mWidth, 1.0), toPixel(upright.y, bin.mCamera.mHeight, 1.0)));
 }
 
 void main()
@@ -246,11 +283,10 @@ void main()
     const GpuEmitter emitter = EmitterTable(bin.mEmitters).at[held.mEmitter];
 
     const uint across = spriteTilesOver(bin.mCamera.mWidth);
-    const uint down = spriteTilesOver(bin.mCamera.mHeight);
 
     // Every lane of the sprite works its rectangle out for itself: a dozen operations against a
     // shared-memory exchange and the barrier that would order it.
-    const TileRect rect = capsuleTiles(boundOf(held, emitter), frameOf(bin.mCamera), across, down);
+    const TileRect rect = capsuleTiles(boundOf(held, emitter), frameOf(bin.mCamera));
 
     if (lane == 0u)
         SpriteRects(bin.mRects).at[sprite] = packSpriteRect(rect.mFrom, rect.mTo);
