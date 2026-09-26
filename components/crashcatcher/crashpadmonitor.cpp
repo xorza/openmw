@@ -144,6 +144,13 @@ namespace Crash
 #endif
         };
 
+        /// What the last report of a session was, which an issue is filled in with.
+        struct LastReport
+        {
+            std::string mTitle;
+            std::vector<std::string> mSummary;
+        };
+
         /// What the game told the monitor on its command line, and what the monitor learnt since.
         struct Monitor : MonitorArguments
         {
@@ -177,6 +184,10 @@ namespace Crash
             std::mutex mReportMutex;
             std::vector<std::filesystem::path> mDumps;
             bool mCrashed = false;
+
+            /// A crash is the last report of a session, and a hang the last of one the player ended.
+            /// Guarded as the dumps are.
+            LastReport mLastReport;
 
             /// Whether the player's End ended the game: written by the watch, read once it is joined.
             bool mEnded = false;
@@ -472,6 +483,7 @@ namespace Crash
                     const std::lock_guard lock(mMonitor.mReportMutex);
                     mMonitor.mDumps.push_back(dump);
                     mMonitor.mCrashed = mMonitor.mCrashed || facts.mNotes.mKind == ReportKind::Crash;
+                    mMonitor.mLastReport = { title(facts), lines };
                 }
 
                 std::string text;
@@ -606,68 +618,58 @@ namespace Crash
             return package.mZip;
         }
 
-        /// **What the player is told once the game crashed or was ended**: `message`, then a button to
-        /// the folder that holds the report and one to where issues are reported. The box comes back
-        /// after either, until the player closes it.
-        void tellPlayer(const Monitor& monitor, const std::string& title, const std::string& message,
-            const std::filesystem::path& folder)
-        {
-            enum Button : int
-            {
-                Close,
-                ShowFolder,
-                OpenIssues,
-            };
-            std::vector<SDL_MessageBoxButtonData> buttons{
-                { 0, ShowFolder, "Open the folder" },
-            };
-            if (!monitor.mIssues.empty())
-                buttons.push_back({ 0, OpenIssues, "Report an issue" });
-            buttons.push_back(
-                { SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT | SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, Close, "Close" });
-
-            const SDL_MessageBoxData box{ SDL_MESSAGEBOX_ERROR | SDL_MESSAGEBOX_BUTTONS_LEFT_TO_RIGHT, nullptr,
-                title.c_str(), message.c_str(), static_cast<int>(buttons.size()), buttons.data(), nullptr };
-            for (;;)
-            {
-                int chosen = Close;
-                if (SDL_ShowMessageBox(&box, &chosen) != 0 || chosen == Close)
-                    return;
-                SDL_OpenURL(chosen == ShowFolder ? folderUrl(folder).c_str() : monitor.mIssues.c_str());
-            }
-        }
-
-        /// The dialog once the game is gone, where it crashed or the player ended it: the package, or
-        /// where it could not be written, the dumps and the log it would have held.
-        void tellPlayerOfReport(const Monitor& monitor, bool crashed, std::span<const std::filesystem::path> dumps,
-            const std::filesystem::path& package)
+        /// **What the player is told once the game crashed or was ended**: the package, or where it
+        /// could not be written, the dumps and the log it would have held. One button does the
+        /// reporting: it opens a new issue filled in with the report, then the folder, which opens
+        /// over the browser, so the file is there to be dragged in. A message box closes on any
+        /// button, so one that does it all needs no second showing.
+        void tellPlayer(const Monitor& monitor, bool crashed, std::span<const std::filesystem::path> dumps,
+            const std::filesystem::path& package, const LastReport& report)
         {
             const std::string title = monitor.mApplication + (crashed ? " has crashed" : " was ended");
             std::string message = crashed ? monitor.mApplication + " has crashed.\n\n"
                                           : monitor.mApplication + " stopped responding and was ended.\n\n";
 
-            std::filesystem::path folder;
-            if (!package.empty())
-            {
-                folder = package.parent_path();
-                message += "A report of what happened is saved in one file:\n" + Files::pathToUnicodeString(package)
-                    + "\n\n";
-                message += monitor.mIssues.empty() ? "Sending it helps to fix it."
-                                                   : "Please attach this file to a new issue at\n" + monitor.mIssues;
-            }
+            const bool packaged = !package.empty();
+            const std::filesystem::path folder = packaged ? package.parent_path() : dumps.back().parent_path();
+            if (packaged)
+                message += "A report of what happened is saved in one file:\n" + Files::pathToUnicodeString(package);
             else
             {
-                folder = dumps.back().parent_path();
                 message += "A report is saved in\n";
                 for (const std::filesystem::path& dump : dumps)
                     message += Files::pathToUnicodeString(dump) + "\n";
-                message
-                    += "\nand the log says what happened:\n" + Files::pathToUnicodeString(monitor.getLog()) + "\n\n";
-                message += monitor.mIssues.empty() ? "Sending them helps to fix it."
-                                                   : "Please attach these files to a new issue at\n" + monitor.mIssues;
+                message += "\nand the log says what happened:\n" + Files::pathToUnicodeString(monitor.getLog());
             }
+            message += "\n\n";
 
-            tellPlayer(monitor, title, message, folder);
+            const bool issues = !monitor.mIssues.empty();
+            const std::string attach
+                = packaged ? Files::pathToUnicodeString(package.filename()) : "the log and the dump";
+            if (issues)
+                message += "Report the crash opens this folder and a new issue at\n" + monitor.mIssues
+                    + "\nPlease attach " + (packaged ? "the file" : "the files") + " to it.";
+            else
+                message += packaged ? "Sending it helps to fix it." : "Sending them helps to fix it.";
+
+            enum Button : int
+            {
+                Close,
+                Report,
+            };
+            const std::array<SDL_MessageBoxButtonData, 2> buttons{ {
+                { 0, Report, issues ? "Report the crash" : "Open the folder" },
+                { SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT | SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, Close, "Close" },
+            } };
+            const SDL_MessageBoxData box{ SDL_MESSAGEBOX_ERROR | SDL_MESSAGEBOX_BUTTONS_LEFT_TO_RIGHT, nullptr,
+                title.c_str(), message.c_str(), static_cast<int>(buttons.size()), buttons.data(), nullptr };
+
+            int chosen = Close;
+            if (SDL_ShowMessageBox(&box, &chosen) != 0 || chosen != Report)
+                return;
+            if (issues)
+                SDL_OpenURL(newIssueUrl(monitor.mIssues, report.mTitle, report.mSummary, attach).c_str());
+            SDL_OpenURL(folderUrl(folder).c_str());
         }
 
         /// The command line as UTF-8, which is what Crashpad's own entry hands `HandlerMain`: on
@@ -723,16 +725,18 @@ namespace Crash
 
         std::vector<std::filesystem::path> dumps;
         bool crashed = false;
+        LastReport report;
         {
             const std::lock_guard lock(monitor.mReportMutex);
             dumps = monitor.mDumps;
             crashed = monitor.mCrashed;
+            report = monitor.mLastReport;
         }
         const std::filesystem::path package = packageSession(monitor, dumps);
 
         // Once the game is gone, so the box does not stand over a window that no longer draws.
         if (monitor.mDialog && (crashed || monitor.mEnded) && !dumps.empty())
-            tellPlayerOfReport(monitor, crashed, dumps, package);
+            tellPlayer(monitor, crashed, dumps, package, report);
 
         std::exit(result);
     }

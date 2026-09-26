@@ -39,27 +39,47 @@ namespace Crash
 
             return "";
         }
+
+        std::string kindPrefix(const CrashFacts& facts)
+        {
+            return std::string(kindOf(facts.mNotes.mKind)) + ": ";
+        }
+
+        std::string reasonOf(const CrashFacts& facts)
+        {
+            // The game gives no reason for a hang, which only its monitor saw.
+            return facts.mNotes.mKind == ReportKind::Hang
+                ? "no frame for " + std::to_string(facts.mStalledFor) + " seconds"
+                : std::string(facts.mNotes.mReason);
+        }
+
+        std::string titleOf(const CrashFacts& facts, const std::string& kind, const std::string& reason)
+        {
+            // The reason first where the code that asked gave one, because it is the reason the
+            // exception was raised: `std::terminate` raises its own, which names nothing of its cause.
+            std::string title = kind;
+            if (!reason.empty())
+                title += reason;
+            else if (!facts.mException.empty())
+                title += facts.mException;
+            else
+                title += "no exception was recorded";
+            return title;
+        }
+    }
+
+    std::string title(const CrashFacts& facts)
+    {
+        return titleOf(facts, kindPrefix(facts), reasonOf(facts));
     }
 
     void summarise(const CrashFacts& facts, std::vector<std::string>& lines)
     {
         const NotesRead& notes = facts.mNotes;
-        const std::string kind = std::string(kindOf(notes.mKind)) + ": ";
+        const std::string kind = kindPrefix(facts);
+        const std::string reason = reasonOf(facts);
 
-        // The game gives no reason for a hang, which only its monitor saw.
-        const std::string reason = notes.mKind == ReportKind::Hang
-            ? "no frame for " + std::to_string(facts.mStalledFor) + " seconds"
-            : std::string(notes.mReason);
-
-        // The reason first where the code that asked gave one, because it is the reason the
-        // exception was raised: `std::terminate` raises its own, which names nothing of its cause.
-        std::string headline = kind;
-        if (!reason.empty())
-            headline += reason;
-        else if (!facts.mException.empty())
-            headline += facts.mException;
-        else
-            headline += "no exception was recorded";
+        std::string headline = titleOf(facts, kind, reason);
         if (facts.mThread != 0)
             headline += " in thread " + std::to_string(facts.mThread);
         lines.push_back(std::move(headline));

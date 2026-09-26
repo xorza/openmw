@@ -40,6 +40,31 @@ namespace Crash
         /// Every size and offset of a zip without Zip64 is four bytes.
         constexpr std::uint64_t sLargest = 0xFFFFFFFFu;
 
+        /// The longest new-issue address to hand GitHub: measured in September 2026, a body of 6000
+        /// bytes opens the page, and 7500 answer 500 and 8200 answer 414.
+        constexpr std::size_t sLongestUrl = 6000;
+
+        /// Appends `text` to `into` with every byte but the unreserved ones and `kept` percent-encoded:
+        /// UTF-8 as it is, byte by byte.
+        void percentEncode(std::string& into, std::string_view text, std::string_view kept)
+        {
+            static constexpr char sHex[] = "0123456789ABCDEF";
+            for (const char c : text)
+            {
+                const auto byte = static_cast<unsigned char>(c);
+                const bool unreserved = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+                    || c == '-' || c == '.' || c == '_' || c == '~';
+                if (unreserved || kept.find(c) != std::string_view::npos)
+                    into += c;
+                else
+                {
+                    into += '%';
+                    into += sHex[byte >> 4];
+                    into += sHex[byte & 0xF];
+                }
+            }
+        }
+
         /// Where a local header keeps the CRC, which the sizes follow: known once the data is written.
         constexpr std::streamoff sCrcAt = 14;
 
@@ -353,26 +378,46 @@ namespace Crash
 
     std::string folderUrl(const std::filesystem::path& folder)
     {
-        static constexpr char sHex[] = "0123456789ABCDEF";
-
-        std::string url = "file://";
         const std::u8string path = folder.generic_u8string();
+        std::string url = "file://";
         // A drive's path, "C:/...", gets the slash a POSIX one begins with.
         if (!path.starts_with(u8'/'))
             url += '/';
-        for (const char8_t c : path)
+        percentEncode(url, { reinterpret_cast<const char*>(path.data()), path.size() }, "/:");
+        return url;
+    }
+
+    std::string newIssueUrl(
+        std::string_view issues, std::string_view title, std::span<const std::string> summary, std::string_view attach)
+    {
+        std::string url(issues);
+        url += "/new?title=";
+        percentEncode(url, title, {});
+        url += "&body=";
+        percentEncode(
+            url, "<!-- Drag " + std::string(attach) + " from the folder that opened into this box. -->\n\n```\n", {});
+
+        std::string closing;
+        percentEncode(closing, "```\n", {});
+        std::string cut;
+        percentEncode(cut, "[the rest is in " + std::string(attach) + "]\n", {});
+
+        // A line fits where what must follow it fits too: the closing after the last, and before it,
+        // the line that says the rest was cut, which the next line may need.
+        std::string line;
+        for (std::size_t i = 0; i < summary.size(); ++i)
         {
-            const bool kept = (c >= u8'a' && c <= u8'z') || (c >= u8'A' && c <= u8'Z') || (c >= u8'0' && c <= u8'9')
-                || c == u8'-' || c == u8'.' || c == u8'_' || c == u8'~' || c == u8'/' || c == u8':';
-            if (kept)
-                url += static_cast<char>(c);
-            else
+            line.clear();
+            percentEncode(line, summary[i] + "\n", {});
+            const std::size_t after = i + 1 == summary.size() ? 0 : cut.size();
+            if (url.size() + line.size() + after + closing.size() > sLongestUrl)
             {
-                url += '%';
-                url += sHex[c >> 4];
-                url += sHex[c & 0xF];
+                url += cut;
+                break;
             }
+            url += line;
         }
+        url += closing;
         return url;
     }
 }

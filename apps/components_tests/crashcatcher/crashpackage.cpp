@@ -1,4 +1,6 @@
 #include <algorithm>
+#include <cctype>
+#include <cstddef>
 #include <cstdint>
 #include <ctime>
 #include <filesystem>
@@ -208,6 +210,103 @@ namespace
         EXPECT_EQ(Crash::folderUrl(Files::pathFromUnicodeString("/home/x/My Games/ü#1_a-b.c~")),
             "file:///home/x/My%20Games/%C3%BC%231_a-b.c~");
 #endif
+    }
+
+    /// The text a percent-encoded query value stands for, and nothing where a byte is left bare that
+    /// the encoding must not leave: the reserved characters a value would end or split at.
+    std::optional<std::string> decoded(std::string_view value)
+    {
+        std::string text;
+        for (std::size_t i = 0; i < value.size(); ++i)
+        {
+            const char c = value[i];
+            if (c == '%' && i + 2 < value.size() && std::isxdigit(static_cast<unsigned char>(value[i + 1]))
+                && std::isxdigit(static_cast<unsigned char>(value[i + 2])))
+            {
+                text += static_cast<char>(std::stoi(std::string(value.substr(i + 1, 2)), nullptr, 16));
+                i += 2;
+            }
+            else if (std::isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '.' || c == '_' || c == '~')
+                text += c;
+            else
+                return std::nullopt;
+        }
+        return text;
+    }
+
+    /// The title and the body of a new-issue address, decoded, where it is one.
+    struct Issue
+    {
+        std::string mTitle;
+        std::string mBody;
+    };
+
+    std::optional<Issue> issueOf(std::string_view url, std::string_view issues)
+    {
+        const std::string head = std::string(issues) + "/new?title=";
+        const std::size_t body = url.find("&body=");
+        if (!url.starts_with(head) || body == std::string_view::npos)
+            return std::nullopt;
+        const std::optional<std::string> title = decoded(url.substr(head.size(), body - head.size()));
+        const std::optional<std::string> text = decoded(url.substr(body + 6));
+        if (!title || !text)
+            return std::nullopt;
+        return Issue{ *title, *text };
+    }
+
+    /// **A new issue, filled in**: the title and every line of the summary, in a code block after a
+    /// comment that asks for the file. Every character a query would end or split at is encoded:
+    /// '&', '=', '#', '+', ' ', a newline and a character outside ASCII. The title's encoding is
+    /// checked byte for byte: ':' is %3A and ' ' is %20.
+    TEST(CrashPackageUrlTest, anIssueCarriesTheTitleAndTheSummary)
+    {
+        const std::vector<std::string> summary{ "Crash: SIGSEGV at 0x10 in thread 7",
+            "Crash: note of thread 7, which crashed: loading the cell \"a & b = c #1 + ü\"" };
+        const std::string url
+            = Crash::newIssueUrl("https://github.com/o/r/issues", "Crash: SIGSEGV", summary, "OpenMW-crash-x.zip");
+
+        EXPECT_TRUE(url.starts_with("https://github.com/o/r/issues/new?title=Crash%3A%20SIGSEGV&body=")) << url;
+        const std::optional<Issue> issue = issueOf(url, "https://github.com/o/r/issues");
+        ASSERT_TRUE(issue.has_value()) << url;
+        EXPECT_EQ(issue->mTitle, "Crash: SIGSEGV");
+        EXPECT_EQ(issue->mBody,
+            "<!-- Drag OpenMW-crash-x.zip from the folder that opened into this box. -->\n\n```\n"
+            "Crash: SIGSEGV at 0x10 in thread 7\n"
+            "Crash: note of thread 7, which crashed: loading the cell \"a & b = c #1 + ü\"\n"
+            "```\n");
+    }
+
+    /// **A summary too long for GitHub is cut at a line**: the address stays within the 6000 bytes
+    /// GitHub serves, it keeps as many whole lines as leave room for the cut line, and the body says
+    /// where the rest is. A line of 100 "a" and its newline encode to 103 bytes, and the cut line,
+    /// "[the rest is in OpenMW-crash-x.zip]" and a newline, to 29 kept bytes and seven encoded ones,
+    /// 29 + 7 * 3 = 50, so the kept lines end within 103 + 50 of the limit. A summary that
+    /// fits is not cut, and its last line needs no room for the cut line after it.
+    TEST(CrashPackageUrlTest, aLongSummaryIsCutAtALineWithinGithubsLimit)
+    {
+        const std::string issues = "https://github.com/o/r/issues";
+        const std::vector<std::string> summary(200, std::string(100, 'a'));
+        const std::string url = Crash::newIssueUrl(issues, "Crash: SIGSEGV", summary, "OpenMW-crash-x.zip");
+
+        EXPECT_LE(url.size(), 6000u);
+        EXPECT_GT(url.size() + 103 + 50, 6000u);
+        const std::optional<Issue> issue = issueOf(url, issues);
+        ASSERT_TRUE(issue.has_value());
+        EXPECT_TRUE(issue->mBody.ends_with(std::string(100, 'a') + "\n[the rest is in OpenMW-crash-x.zip]\n```\n"))
+            << issue->mBody.substr(issue->mBody.size() - 200);
+
+        // Every kept line is whole: the lines between the opening and the cut are 100 "a" each.
+        const std::size_t first = issue->mBody.find("```\n") + 4;
+        const std::size_t cut = issue->mBody.find("[the rest");
+        EXPECT_EQ((cut - first) % 101, 0u);
+
+        // One line fewer than the limit leaves room for: the whole summary, uncut.
+        const std::size_t kept = (cut - first) / 101;
+        const std::vector<std::string> fits(kept, std::string(100, 'a'));
+        const std::optional<Issue> whole
+            = issueOf(Crash::newIssueUrl(issues, "Crash: SIGSEGV", fits, "OpenMW-crash-x.zip"), issues);
+        ASSERT_TRUE(whole.has_value());
+        EXPECT_EQ(whole->mBody.find("[the rest"), std::string::npos);
     }
 
     /// **A session is packaged from what is on disk**: the log first, then every dump that is there,

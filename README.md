@@ -76,8 +76,9 @@ When it crashes
 
 The game writes a report of every crash, and of every hang longer than 20 seconds. Once the game
 is gone, the log and every dump of the session go into one file, `OpenMW-crash-<time>.zip` under
-`crashes` in the user data folder, and a dialog names it. Attach that file to a
-[new issue](https://github.com/xorza/openmw-rtx/issues). Inside it:
+`crashes` in the user data folder, and a dialog names it. Its **Report the crash** button opens a
+[new issue](https://github.com/xorza/openmw-rtx/issues) filled in with the crash, and the folder,
+so the file can be dragged into the issue. Inside it:
 
 * `openmw.log`. Its last lines, which begin `Crash:` or `Hang:`, say what happened and what the
   game was doing.

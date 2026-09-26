@@ -47,6 +47,7 @@ namespace
             "Crash: dump C:/Users/x/crashes/reports/1.dmp",
         };
         EXPECT_EQ(lines, expected);
+        EXPECT_EQ(Crash::title(facts), "Crash: EXCEPTION_ACCESS_VIOLATION reading 0x12204cfe000");
     }
 
     /// A reason given by the code that asked leads, and the exception it was raised as follows
@@ -62,6 +63,7 @@ namespace
         std::vector<std::string> lines;
         Crash::summarise(terminate, lines);
         EXPECT_EQ(lines[0], "Crash: std::terminate on an uncaught exception: bad in thread 7");
+        EXPECT_EQ(Crash::title(terminate), "Crash: std::terminate on an uncaught exception: bad");
         EXPECT_EQ(lines[1], "Crash: raised as SIGABRT");
         EXPECT_EQ(lines[2], "Crash: no thread noted anything");
         EXPECT_EQ(lines[3], "Crash: no dump was written");
@@ -76,6 +78,7 @@ namespace
         lines.clear();
         Crash::summarise(report, lines);
         EXPECT_EQ(lines[0], "Report: a contract broken in thread 7");
+        EXPECT_EQ(Crash::title(report), "Report: a contract broken");
         EXPECT_EQ(lines[1], "Report: note of thread 7, which asked: placing");
 
         Crash::CrashFacts hang;
@@ -87,11 +90,13 @@ namespace
         lines.clear();
         Crash::summarise(hang, lines);
         EXPECT_EQ(lines[0], "Hang: no frame for 20 seconds in thread 7");
+        EXPECT_EQ(Crash::title(hang), "Hang: no frame for 20 seconds");
         EXPECT_EQ(lines[1], "Hang: note of thread 7: compiling");
 
         Crash::CrashFacts nothing;
         lines.clear();
         Crash::summarise(nothing, lines);
         EXPECT_EQ(lines[0], "Crash: no exception was recorded");
+        EXPECT_EQ(Crash::title(nothing), "Crash: no exception was recorded");
     }
 }

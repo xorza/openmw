@@ -56,4 +56,11 @@ namespace Crash
     /// and the path with forward slashes, every byte but the unreserved ones and the separators
     /// percent-encoded as UTF-8.
     std::string folderUrl(const std::filesystem::path& folder);
+
+    /// **A new issue, filled in**: the address of GitHub's new-issue page of `issues`, a repository's
+    /// issues page, with `title` and a body that asks, in a comment the issue does not show, for
+    /// `attach` to be dragged in, then holds `summary` as code. Lines of the summary that would make
+    /// the address longer than GitHub serves are left out, and the body says where they are.
+    std::string newIssueUrl(
+        std::string_view issues, std::string_view title, std::span<const std::string> summary, std::string_view attach);
 }
