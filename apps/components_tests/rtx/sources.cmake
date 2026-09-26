@@ -27,7 +27,7 @@ set(RTX_TEST_FILES
     rtx/fogbuilder.cpp
     rtx/formats.cpp
     rtx/frameimage.cpp
-    rtx/frameoptions.cpp
+    rtx/framesampling.cpp
     rtx/frameworld.cpp
     rtx/graphlight.hpp
     rtx/groundreader.cpp

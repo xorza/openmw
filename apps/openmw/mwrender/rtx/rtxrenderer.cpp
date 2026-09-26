@@ -649,7 +649,8 @@ namespace MWRender
             // are traced under and the next launch does not refuse at construction what this one
             // refused here.
             Log(Debug::Warning) << "Ray tracing kept the upscaler it had: " << what.what();
-            Settings::rtx().mUpscale.set(std::string(Rtx::sUpscaleNames.name(mRenderer->getUpscale())));
+            Settings::rtx().mUpscale.set(
+                std::string(Rtx::sUpscaleNames.name(mRenderer->getProfile().mUpscaling.mMode)));
         }
     }
 
@@ -928,10 +929,6 @@ namespace MWRender
         // sequence twice, and a game's frame number carries the loading screen's frames with it.
         constants->mFrame = mRun.getSampleFrame().value_or(static_cast<std::uint32_t>(frame.mWhen.getFrameNumber()));
 
-        // **The profile's rules for the textures, read off the backend**, which holds the one copy:
-        // what it was made with, and then whatever a setting moved.
-        Rtx::describeTexturing(mRenderer->getProfile(), *constants);
-
         return constants;
     }
 
@@ -941,26 +938,25 @@ namespace MWRender
         const Rtx::WorldReading read = mSky.read(
             frame.mSky, frame.mWorld, frame.mPrecipitation, frame.mWhen.getSimulationTime(), mMirror.getReach());
 
-        const float exposureBias = Rtx::describeWorld(read, mFogDrift, constants);
-
         // **The schedule's and not the profile's**, because a warm-up is not averaged in — a picture
         // of a half-built cell in the sum is what `RtxRun::getAccumulated` exists to keep out.
-        const std::uint32_t accumulated = mRun.getAccumulated();
+        // Nothing of the profile is handed back: the backend reads its own.
+        Rtx::FrameOptions options{
+            .mAccumulate = mRun.getAccumulated(),
+            .mSinceLast = getFrameClock().getStatedStep(),
+            .mReadBack = mRun.wantsFrameCopy(),
+        };
 
         // **The bias is carried rather than worked out here**, because a room is the exception to
         // the rule that would derive it — `Rtx::Skylight::mExposureBias`. Whichever light this cell
         // got settled it, and a second derivation at the frame is a second place to get the
         // exception wrong.
-        //
+        Rtx::describeWorld(read, mFogDrift, constants, options);
+
         // **Timed, because a profiler cannot read it.** The record and the submit are almost
         // entirely inside the driver, which carries no frame pointer, so perf attributes what they
         // cost to an address with no caller. `Rtx::Timing::Trace` says what the row is for.
         const std::chrono::steady_clock::time_point tracing = std::chrono::steady_clock::now();
-
-        Rtx::FrameOptions options = Rtx::FrameOptions::forFrame(
-            mRenderer->getProfile(), accumulated, getFrameClock().getStatedStep(), exposureBias);
-        options.mReadBack = mRun.wantsFrameCopy();
-        options.mSkySeconds = read.mSkySeconds;
 
         // What the debug modes drew, read off the world root here, after the game's own update
         // has rebuilt them for this frame and before the frame is recorded.

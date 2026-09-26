@@ -138,11 +138,14 @@ namespace Rtx::Testing
                     << what << ": " << (after - before) << " allocations across " << measuredFrames << " frames";
             };
 
-            measure("a plain frame", FrameOptions{ .mReconstruction = { .mFilter = false } }, false);
-            measure("a filtered frame", FrameOptions{ .mReconstruction = { .mFilter = true } }, false);
-            measure("an accumulating frame", FrameOptions{ .mAccumulate = 1, .mReconstruction = { .mFilter = true } },
-                false);
-            measure("a body walking", FrameOptions{ .mReconstruction = { .mFilter = true } }, true);
+            measure(
+                "a plain frame", FrameOptions{ .mReconstruction = ReconstructionRequest{ .mFilter = false } }, false);
+            measure(
+                "a filtered frame", FrameOptions{ .mReconstruction = ReconstructionRequest{ .mFilter = true } }, false);
+            measure("an accumulating frame",
+                FrameOptions{ .mAccumulate = 1, .mReconstruction = ReconstructionRequest{ .mFilter = true } }, false);
+            measure(
+                "a body walking", FrameOptions{ .mReconstruction = ReconstructionRequest{ .mFilter = true } }, true);
 
             // **And the read back, which the harness does every frame and the window does never.**
             // Warmed by one call, because the first sizes the caller's vector.

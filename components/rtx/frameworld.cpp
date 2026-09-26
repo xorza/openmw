@@ -31,22 +31,6 @@ namespace Rtx
         extractor.extractFalling(*fall, osg::Matrixf::translate(eye), anchor, frameNumber);
     }
 
-    float sunGlareAmount(const Shaders::VisibilityConstants& frame)
-    {
-        if (frame.mGlareStrength <= 0.0f || frame.mGlareAngleMax <= 0.0f)
-            return 0.0f;
-
-        // `getAngleToSunInRadians`: the eye's own forward against the sun's, both unit. Clamped
-        // before the arc cosine, which a dot a rounding past one would hand a NaN.
-        const osg::Vec3f forward = frame.mCamera.mForward;
-        const osg::Vec3f sun = frame.mSun.mDirection;
-        const float cosine
-            = std::clamp((forward * sun) / std::max(forward.length() * sun.length(), 1.0e-6f), -1.0f, 1.0f);
-        const float angle = std::acos(cosine);
-
-        return frame.mGlareStrength * (1.0f - std::min(1.0f, angle / frame.mGlareAngleMax));
-    }
-
     Shaders::CloudDeck noDeck()
     {
         Shaders::CloudDeck deck{};
@@ -129,7 +113,8 @@ namespace Rtx
         return offsets;
     }
 
-    float describeWorld(const WorldReading& reading, FogDrift& drift, Shaders::VisibilityConstants& constants)
+    void describeWorld(
+        const WorldReading& reading, FogDrift& drift, Shaders::VisibilityConstants& constants, FrameOptions& options)
     {
         const Daylight& day = reading.mDaylight;
 
@@ -225,10 +210,8 @@ namespace Rtx
         constants.mRainOnWater = reading.mRainOnWater;
         constants.mShelterHeight = reading.mShelterHeight;
 
-        constants.mGlareColour = reading.mGlareColour;
-        constants.mGlareAngleMax = reading.mGlareAngleMax;
-        constants.mGlareStrength = reading.mGlareStrength;
-
-        return light.mExposureBias;
+        options.mExposureBias = light.mExposureBias;
+        options.mSkySeconds = reading.mSkySeconds;
+        options.mGlare = reading.mSunGlare;
     }
 }

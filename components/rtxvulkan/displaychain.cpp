@@ -6,7 +6,6 @@
 #include <span>
 #include <variant>
 
-#include <components/rtx/frameworld.hpp>
 #include <components/rtx/shaders/camera.h>
 #include <components/rtx/shaders/gbuffer.h>
 #include <components/rtx/shaders/line.h>
@@ -27,9 +26,9 @@ namespace Rtx
         /// carries the puffs' transmittance wherever it is not the picture's coverage, which is
         /// the same test `spritecomposite.rgen` makes — and where that composite drew nothing, the
         /// pass finds out for itself from what it is handed here.
-        Shaders::ToneConstants toneFor(const Shaders::VisibilityConstants& frame, const VkDeviceAddress spriteTileList,
-            const VkDeviceAddress textureTexels, std::uint32_t width, std::uint32_t height, std::uint32_t tracedWidth,
-            std::uint32_t tracedHeight)
+        Shaders::ToneConstants toneFor(const Shaders::VisibilityConstants& frame, const SunGlare& fader,
+            const VkDeviceAddress spriteTileList, const VkDeviceAddress textureTexels, std::uint32_t width,
+            std::uint32_t height, std::uint32_t tracedWidth, std::uint32_t tracedHeight)
         {
             assert(spriteTileList != 0 && "a curve told no tile list to test the puffs by");
             assert(textureTexels != 0 && "a curve told no texel counts to test the star sheet by");
@@ -43,8 +42,8 @@ namespace Rtx
                 .mCoverAlpha = frame.mTransparentBackground == 0 ? 1u : 0u,
                 .mCamera = Shaders::cameraOnGrid(frame.mCamera, width, height),
                 .mStars = frame.mStars,
-                .mGlareColour = frame.mGlareColour,
-                .mGlareAmount = sunGlareAmount(frame),
+                .mGlareColour = fader.mColour,
+                .mGlareAmount = fader.amountFor(frame),
             };
         }
     }
@@ -138,8 +137,9 @@ namespace Rtx
                 .mBloom = what.mBloom ? mBloom.getPyramid() : nullptr,
                 .mTextures = what.mInputs.mTextures,
                 .mTarget = what.mTarget,
-                .mConstants = toneFor(what.mSampled, what.mSpriteTileList, what.mInputs.mTextureTexels,
-                    what.mExtent.width, what.mExtent.height, channels.getWidth(), channels.getHeight()),
+                .mConstants = toneFor(what.mSampled, what.mGlare.has_value() ? what.mGlare->mFader : SunGlare{},
+                    what.mSpriteTileList, what.mInputs.mTextureTexels, what.mExtent.width, what.mExtent.height,
+                    channels.getWidth(), channels.getHeight()),
             });
         closeZone(what.mTimer, commands);
 

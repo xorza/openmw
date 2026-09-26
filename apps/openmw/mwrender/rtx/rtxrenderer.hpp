@@ -93,10 +93,6 @@ namespace MWRender
         explicit RtxRenderer(const RendererSpec& spec, const RtxSetup* run = nullptr);
         ~RtxRenderer() override;
 
-        /// No GLSL is compiled here, so no model is given a program: the shader visitor is off, and
-        /// a model's state is read as the loader left it.
-        void configureResources(Resource::ResourceSystem& resources) override;
-
         /// A plain group: the lights are gathered on this renderer's own walk, so nothing here
         /// wants a light manager's method.
         osg::ref_ptr<osg::Group> createSceneRoot() override;
@@ -125,18 +121,6 @@ namespace MWRender
         SDL_Window* getWindow() const override { return mWindow.get(); }
 
         void attachWorld(RenderingManager& world, osg::Group& worldRoot) override;
-        void adoptTraversalRoot(osg::Group& root) override;
-
-        /// Read off the seam at the trace, so nothing to put anywhere.
-        void applyViewMask() override {}
-        void applyWorldShown() override {}
-
-        /// The driver's sleep where the driver paces, and the seam's limiter where it does not,
-        /// asked every frame. What either held is the frame's `Sleep` row.
-        bool holdFrame() override;
-
-        /// The limit, as the interval the driver's sleep holds two presents apart.
-        void applyFrameRateLimit() override;
 
         void advance(double simulationTime) override;
         void eventTraversal() override;
@@ -214,6 +198,24 @@ namespace MWRender
         /// renderer's budget of world views — and answers how long that took. From the frame's
         /// own `Views` phase, and from the run's hook.
         double drawViews();
+
+    protected:
+        /// No GLSL is compiled here, so no model is given a program: the shader visitor is off, and
+        /// a model's state is read as the loader left it.
+        void configureResources(Resource::ResourceSystem& resources) override;
+
+        void adoptTraversalRoot(osg::Group& root) override;
+
+        /// Read off the seam at the trace, so nothing to put anywhere.
+        void applyViewMask() override {}
+        void applyWorldShown() override {}
+
+        /// The driver's sleep where the driver paces, and the seam's limiter where it does not,
+        /// asked every frame. What either held is the frame's `Sleep` row.
+        bool holdFrame() override;
+
+        /// The limit, as the interval the driver's sleep holds two presents apart.
+        void applyFrameRateLimit() override;
 
     private:
         /// Builds everything from the setup, which is spent here. Delegated to, so `mRun` can bind

@@ -8,7 +8,6 @@
 #include <osg/Vec2f>
 #include <osg/Vec3f>
 
-#include "reconstruction.hpp"
 #include "shaders/visibility.h"
 
 namespace Rtx
@@ -62,16 +61,6 @@ namespace Rtx
     /// `Rtx::contract` holds it.
     std::optional<Shaders::VisibilityConstants> makeOrthographicCameraFromView(const osg::Matrixf& view,
         float worldWidth, float worldHeight, std::uint32_t width, std::uint32_t height, float near, float far);
-
-    /// Writes what the run's profile decides for every trace into `constants`: how much of the
-    /// painted light to divide out of a texture, and whether the frame shows the albedo alone.
-    ///
-    /// **Both hosts of a trace call it**, the world's frame and a picture inside the interface, so
-    /// a map tile and a doll follow the rules the frame does. A picture that skips it is traced
-    /// with a delight of nought: its textures keep the light painted into them, and the picture's
-    /// own light lands on top. The caller and not the backend, because a frame states both fields
-    /// and a test states them per frame.
-    void describeTexturing(const RenderProfile& profile, Shaders::VisibilityConstants& constants);
 
     /// Where inside its pixel frame `index` should sample, in pixels and centred on zero, in the
     /// image's axes. Halton in bases two and three — 1/2, 1/4, 3/4, 1/8 and 1/3, 2/3, 1/9 —

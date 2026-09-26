@@ -421,7 +421,8 @@ namespace Rtx
             std::vector<std::uint8_t> reference;
             mRenderer->resize(extents.mRenderWidth, extents.mRenderHeight);
             mRenderer->setScene(Rtx::SceneSlot::world(), scene, {});
-            mRenderer->renderFrame(camera, FrameOptions{ .mReconstruction = { .mFilter = false } });
+            mRenderer->renderFrame(
+                camera, FrameOptions{ .mReconstruction = ReconstructionRequest{ .mFilter = false } });
             mRenderer->readPixels(reference);
 
             // **Several frames, because a temporal upscaler has nothing on the first.** The camera
@@ -510,7 +511,8 @@ namespace Rtx
             for (std::uint32_t frame = 0; frame < sFrames; ++frame)
             {
                 whole.mFrame = frame;
-                mRenderer->renderFrame(whole, FrameOptions{ .mReconstruction = { .mFilter = false } });
+                mRenderer->renderFrame(
+                    whole, FrameOptions{ .mReconstruction = ReconstructionRequest{ .mFilter = false } });
             }
             mRenderer->readPixels(reference);
 
@@ -627,13 +629,13 @@ namespace Rtx
                 return extents;
             };
 
-            EXPECT_EQ(upscaling->getUpscale(), Upscale::Performance);
+            EXPECT_EQ(upscaling->getProfile().mUpscaling.mMode, Upscale::Performance);
             const FrameExtents fast = drawAndRead();
             EXPECT_EQ(fast.mRenderWidth * 2u, fast.mOutputWidth) << "performance traces half of each side";
 
             // **Off, which is the direction that used to build a feature for no upscaling at all.**
             upscaling->setUpscale(Upscale::Off);
-            EXPECT_EQ(upscaling->getUpscale(), Upscale::Off);
+            EXPECT_EQ(upscaling->getProfile().mUpscaling.mMode, Upscale::Off);
 
             const FrameExtents plain = drawAndRead();
             EXPECT_EQ(plain.mRenderWidth, plain.mOutputWidth) << "nothing upscales, so the two extents are one";
@@ -641,7 +643,7 @@ namespace Rtx
 
             // And back, over a runtime that was left up.
             upscaling->setUpscale(Upscale::Quality);
-            EXPECT_EQ(upscaling->getUpscale(), Upscale::Quality);
+            EXPECT_EQ(upscaling->getProfile().mUpscaling.mMode, Upscale::Quality);
 
             const FrameExtents fine = drawAndRead();
             EXPECT_LT(fine.mRenderWidth, fine.mOutputWidth);
@@ -658,7 +660,7 @@ namespace Rtx
                 ASSERT_TRUE(mode.has_value()) << name << " is on the menu and spells no mode";
 
                 upscaling->setUpscale(*mode);
-                ASSERT_EQ(upscaling->getUpscale(), *mode) << name;
+                ASSERT_EQ(upscaling->getProfile().mUpscaling.mMode, *mode) << name;
 
                 const FrameExtents at = drawAndRead();
                 EXPECT_GT(at.mRenderWidth, before) << name << " traced no more than the mode before it";

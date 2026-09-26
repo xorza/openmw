@@ -264,6 +264,12 @@ namespace Rtx::Testing
         // Tests provoke errors deliberately and assert on them; aborting would take the suite down
         // with the first one.
         options.mValidation.mAbortOnError = false;
+        // One, because a measured exposure makes every pixel depend on the whole frame's histogram,
+        // and a test hand-computes a pixel. A test of the eye asks per frame (`FrameOptions`).
+        options.mProfile.mExposure = 1.0f;
+        // And no painted light divided out, so a texture a test hands over is the albedo it traces,
+        // which is what its expectation is computed from. A test of the estimate asks per frame.
+        options.mProfile.mDelight = 0.0f;
 
         return options;
     }

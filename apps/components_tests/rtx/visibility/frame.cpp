@@ -363,10 +363,10 @@ namespace Rtx::Testing
             constexpr std::uint32_t size = 64;
             Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
-            camera.mShow = Shaders::SHOW_ALBEDO;
 
             std::vector<std::uint8_t> pixels;
-            EXPECT_EQ(countHits(makeWall(), {}, camera, size, pixels), size * size);
+            EXPECT_EQ(
+                countHits(makeWall(), {}, camera, size, pixels, Shot{ .mShow = SurfaceView::Albedo }), size * size);
 
             ASSERT_EQ(pixels.size(), std::size_t{ size } * size * 4);
             for (std::size_t i = 0; i < pixels.size(); i += 4)
@@ -404,7 +404,7 @@ namespace Rtx::Testing
             const std::uint8_t expected = displayedGrey(exposed);
 
             std::vector<std::uint8_t> measured;
-            renderPicture(makeWall(), {}, camera, size, measured);
+            renderPicture(makeWall(), {}, camera, size, measured, Shot{ .mShow = SurfaceView::Albedo });
 
             ASSERT_EQ(measured.size(), pixels.size());
             for (std::size_t i = 0; i < measured.size(); i += 4)
@@ -511,10 +511,8 @@ namespace Rtx::Testing
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
 
             const auto covered = [&](float acrossX) {
-                camera.mCamera.mJitter = osg::Vec2f(acrossX, 0.0f);
-
                 std::vector<std::uint8_t> pixels;
-                return countHits(scene, {}, camera, size, pixels);
+                return countHits(scene, {}, camera, size, pixels, Shot{ .mOffset = osg::Vec2f(acrossX, 0.0f) });
             };
 
             const std::uint32_t centred = covered(0.0f);
@@ -562,7 +560,6 @@ namespace Rtx::Testing
             // them reads as neither.
             camera.mSkyHorizon = osg::Vec3f(0.0f, 0.25f, 0.0f);
             camera.mSkyZenith = osg::Vec3f(0.0f, 0.25f, 0.0f);
-            camera.mShow = Shaders::SHOW_ALBEDO;
 
             // The last column the wall covers, and the first one past it.
             constexpr std::size_t row = std::size_t{ size / 2 } * size;
@@ -571,10 +568,10 @@ namespace Rtx::Testing
             };
 
             std::vector<std::uint8_t> hard;
-            countHits(scene, {}, camera, size, hard, { .mFrames = 16 });
+            countHits(scene, {}, camera, size, hard, { .mFrames = 16, .mShow = SurfaceView::Albedo });
 
             std::vector<std::uint8_t> soft;
-            countHits(scene, {}, camera, size, soft, { .mFrames = 16, .mJitter = true });
+            countHits(scene, {}, camera, size, soft, { .mFrames = 16, .mJitter = true, .mShow = SurfaceView::Albedo });
 
             // Unjittered, every one of the sixteen samples the same point, so the two columns are
             // the wall's byte and the sky's with nothing between them.
@@ -676,7 +673,8 @@ namespace Rtx::Testing
                 {
                     Shaders::VisibilityConstants sampled = camera;
                     sampled.mFrame = frame;
-                    mRenderer->renderFrame(sampled, FrameOptions{ .mReconstruction = { .mJitter = true } });
+                    mRenderer->renderFrame(
+                        sampled, FrameOptions{ .mReconstruction = ReconstructionRequest{ .mJitter = true } });
                 }
 
                 std::vector<float> motion;
@@ -1069,8 +1067,6 @@ namespace Rtx::Testing
 
             Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 30.0f, size, size, 10000.0f);
-            camera.mShow = Shaders::SHOW_ALBEDO;
-            camera.mDelight = 0.0f;
 
             struct Seen
             {
@@ -1084,7 +1080,8 @@ namespace Rtx::Testing
                 camera.mArms = arms;
 
                 std::vector<std::uint8_t> pixels;
-                EXPECT_EQ(countHits(scene, textures, camera, size, pixels), size * size);
+                EXPECT_EQ(countHits(scene, textures, camera, size, pixels, Shot{ .mShow = SurfaceView::Albedo }),
+                    size * size);
                 requireFrame(pixels, size);
 
                 // Two floats a pixel: clip depth, then distance from the eye.

@@ -231,9 +231,11 @@ namespace MWRender
             // time-of-day fade by the weather's `Glare_View`. The glare node hangs under the sun's
             // own transform, so a sun the weather manager has hidden for the night or a sky `tsky`
             // turned off draws none.
-            .mGlareColour = mGlareColour,
-            .mGlareAngleMax = mGlareAngleMax,
-            .mGlareStrength = skyShown && sky.mSunUp ? mGlareMax * sky.mGlareFade * weather.mGlareView : 0.0f,
+            .mSunGlare = Rtx::SunGlare{
+                .mColour = mGlareColour,
+                .mAngleMax = mGlareAngleMax,
+                .mStrength = skyShown && sky.mSunUp ? mGlareMax * sky.mGlareFade * weather.mGlareView : 0.0f,
+            },
         };
     }
 }

@@ -2,6 +2,7 @@
 
 #include <cassert>
 #include <chrono>
+#include <cmath>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -15,6 +16,7 @@
 #include <osg/Group>
 #include <osg/Stats>
 
+#include <components/misc/frameclock.hpp>
 #include <components/misc/frameratelimiter.hpp>
 #include <components/resource/resourcesystem.hpp>
 #include <components/resource/scenemanager.hpp>
@@ -141,8 +143,26 @@ namespace MWRender
 
     void Renderer::renderLoadingFrame(const double targetFrameRate)
     {
+        openNestedFrame();
         applyLoadingBudget(targetFrameRate);
         renderGuiFrame();
+    }
+
+    float Renderer::openNestedFrame()
+    {
+        assert(mClock != nullptr && "a frame before the host's clock was handed over");
+
+        const std::chrono::steady_clock::duration stood = awaitFrame();
+
+        // **A clock that states its step counts the loop's frames and no others.** How many
+        // loading frames a run draws is the wall's answer, and a clock stepped by them would age
+        // the resource caches differently in two runs of one build — the reference time `repeat`
+        // once found doing exactly that. Such a frame stands for nothing of the world's.
+        if (mClock->getStatedStep().has_value())
+            return 0.0f;
+
+        mClock->advance(std::chrono::duration_cast<std::chrono::duration<double>>(stood).count());
+        return static_cast<float>(mClock->getStep());
     }
 
     void Renderer::setViewMask(const unsigned int mask)
@@ -217,6 +237,28 @@ namespace MWRender
             placement.mFlags |= SDL_WINDOW_BORDERLESS;
 
         return placement;
+    }
+
+    osg::Vec2i WindowPlacement::fittedSize(const osg::Vec2i& points, const osg::Vec2i& pixels) const
+    {
+        const auto along = [](int asked, int point, int pixel) {
+            return pixel > 0 ? static_cast<int>(std::lround(static_cast<double>(asked) * point / pixel)) : asked;
+        };
+        return osg::Vec2i(along(mWidth, points.x(), pixels.x()), along(mHeight, points.y(), pixels.y()));
+    }
+
+    void WindowPlacement::fit(SDL_Window* window) const
+    {
+        osg::Vec2i points;
+        osg::Vec2i pixels;
+        SDL_GetWindowSize(window, &points.x(), &points.y());
+        SDL_GetWindowSizeInPixels(window, &pixels.x(), &pixels.y());
+
+        if (pixels != points)
+        {
+            const osg::Vec2i fitted = fittedSize(points, pixels);
+            SDL_SetWindowSize(window, fitted.x(), fitted.y());
+        }
     }
 
     void applyWindowHints()

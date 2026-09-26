@@ -160,7 +160,6 @@ namespace Rtx
         camera->mAmbient = irradianceOf(mRequest.mLight.mAmbient);
         camera->mTransparentBackground = mRequest.mClear.a() < 1.f ? 1 : 0;
         camera->mRayMask = mRequest.mRayMask;
-        describeTexturing(mRenderer.getProfile(), *camera);
 
         return camera;
     }

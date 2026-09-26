@@ -9,6 +9,7 @@
 #include <vector>
 
 #include <osg/Timer>
+#include <osg/Vec2i>
 #include <osg/Vec3f>
 #include <osg/ref_ptr>
 
@@ -229,7 +230,7 @@ namespace MWRender
         /// over once, before the first frame, and outlives this. The rasterizer's viewer stamps the
         /// wall for itself; the ray tracer stamps what this says, which is what makes a stated step
         /// a run that repeats.
-        void setFrameClock(const Misc::FrameClock& clock) { mClock = &clock; }
+        void setFrameClock(Misc::FrameClock& clock) { mClock = &clock; }
 
         /// `[Video] framerate limit`, in frames a second, or nought for none. Once, beside the
         /// clock and before the first frame: the setting is the launcher's and is not offered while
@@ -247,6 +248,18 @@ namespace MWRender
         /// interval from the frame before it: a clock of each hold's own went stale while the
         /// other ran, and the first frame after a switch stood for the whole of the other's run.
         std::chrono::steady_clock::duration awaitFrame();
+
+        /// Opens a frame the game's loop is not running — a loading screen's, a message box's, a
+        /// video's — as the loop opens its own: held by `awaitFrame`, and a wall clock moved on by
+        /// what it stood for. Answers how long it stands for, which a nested loop steps its
+        /// interface by: nought under a stated step, whose clock counts the loop's frames alone.
+        /// Without it a nested frame was paced by a limiter of its own that knew nothing of the
+        /// driver's, and stamped and stepped the interface by the outer frame's time.
+        float openNestedFrame();
+
+        /// What `setFrameRateLimit` handed over, nought before it has: the one copy, which a loop
+        /// that paces a thread of its own reads.
+        float getFrameRateLimit() const { return mFrameRateLimit; }
 
         /// Stamps the next frame. Simulation time stops when the game is paused; reference time
         /// does not.
@@ -310,7 +323,8 @@ namespace MWRender
         virtual void beginLoading() {}
         virtual void endLoading() {}
 
-        /// One frame of the loading screen, at the rate the screen is drawn at.
+        /// One frame of the loading screen, at the rate the screen is drawn at, opened as
+        /// `openNestedFrame` opens one.
         void renderLoadingFrame(double targetFrameRate);
 
         /// The frame without the GUI, into an image. The screenshot console command and the save
@@ -377,9 +391,6 @@ namespace MWRender
         /// What `setFrameClock` handed over. Asserts that it has.
         const Misc::FrameClock& getFrameClock() const;
 
-        /// What `setFrameRateLimit` handed over, nought before it has.
-        float getFrameRateLimit() const { return mFrameRateLimit; }
-
         /// `setFrameRateLimit`'s hook, with the limit already kept, for a renderer that paces its
         /// own frames by it.
         virtual void applyFrameRateLimit() {}
@@ -409,7 +420,7 @@ namespace MWRender
 
     private:
         Resource::ResourceSystem* mResources = nullptr;
-        const Misc::FrameClock* mClock = nullptr;
+        Misc::FrameClock* mClock = nullptr;
         float mFrameRateLimit = 0.0f;
 
         /// What `awaitFrame` sleeps in where `holdFrame` did not hold, made anew by
@@ -445,9 +456,22 @@ namespace MWRender
     {
         int mX = 0;
         int mY = 0;
+
+        /// The window's size in pixels, which is what `[Video]`'s resolution means.
         int mWidth = 0;
         int mHeight = 0;
         std::uint32_t mFlags = 0;
+
+        /// The size in the display's points that gives a window `mWidth` by `mHeight` pixels, for a
+        /// window made at `points` that came out `pixels` wide: a display that scales takes a size
+        /// in points, and its scale is only known once there is a window. In the exact ratio, which
+        /// a scale of one and a half needs: upstream's `width / (pixels / points)` divided in whole
+        /// numbers and left such a window at one and a half times the resolution asked for.
+        osg::Vec2i fittedSize(const osg::Vec2i& points, const osg::Vec2i& pixels) const;
+
+        /// Resizes `window`, made at this placement, to `fittedSize`, where that differs. What both
+        /// renderers' windows go through the moment they exist.
+        void fit(SDL_Window* window) const;
     };
 
     /// What every renderer asks SDL for, out of the video settings. `surfaceFlag` names what is

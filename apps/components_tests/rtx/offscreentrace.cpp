@@ -12,6 +12,7 @@
 #include <osg/MatrixTransform>
 #include <osg/Node>
 #include <osg/PrimitiveSet>
+#include <osg/Vec2f>
 #include <osg/Vec3f>
 #include <osg/ref_ptr>
 
@@ -97,11 +98,11 @@ namespace Rtx
             EXPECT_EQ(renderer.mViewDropped, (std::vector<std::uint32_t>{ 0 }));
         }
 
-        /// **A picture is traced under the run's texture rules, as the frame is.** The profile is
-        /// the renderer's, and two of them apart say the trace reads it rather than a default: a
-        /// picture that skips it is traced with a delight of nought and keeps the light painted
-        /// into its textures.
-        TEST(RtxOffscreenTraceTest, aPictureIsTracedUnderTheRunsTextureRules)
+        /// **A picture states none of what its sampling decides, whatever the profile says.** The
+        /// renderer applies its own texture rules to a picture as to a frame (`Rtx::sampleFrame`),
+        /// and a field a picture stated would be a second writer — which the sampling refuses. Two
+        /// profiles apart, so a picture that copied the profile in would show here.
+        TEST(RtxOffscreenTraceTest, aPictureLeavesItsSamplingToTheRenderer)
         {
             Testing::CountingRenderer renderer;
             OffscreenTrace world(renderer,
@@ -117,8 +118,9 @@ namespace Rtx
                 world.traceInto(GuiSlot::at(0), false);
 
                 ASSERT_TRUE(renderer.mTraced.has_value());
-                EXPECT_EQ(renderer.mTraced->mDelight, delight);
-                EXPECT_EQ(renderer.mTraced->mShow, albedo ? Shaders::SHOW_ALBEDO : Shaders::SHOW_SHADED);
+                EXPECT_EQ(renderer.mTraced->mDelight, 0.0f);
+                EXPECT_EQ(renderer.mTraced->mShow, 0u);
+                EXPECT_EQ(renderer.mTraced->mCamera.mJitter, osg::Vec2f());
             }
         }
 

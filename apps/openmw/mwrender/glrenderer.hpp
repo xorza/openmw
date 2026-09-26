@@ -75,18 +75,12 @@ namespace MWRender
         explicit GlRenderer(const RendererSpec& spec);
         ~GlRenderer() override;
 
-        void configureResources(Resource::ResourceSystem& resources) override;
-
         float getGroundReach() const override;
         SDL_Window* getWindow() const override { return mWindow; }
 
         osg::ref_ptr<osg::Group> createSceneRoot() override;
         void attachWorld(RenderingManager& world, osg::Group& worldRoot) override;
         void detachWorld() override;
-        void adoptTraversalRoot(osg::Group& root) override;
-        void applyViewMask() override;
-        void applyWorldShown() override;
-        bool toggleOwnRenderMode(RenderMode mode) override;
 
         PostProcessor* getPostProcessor() override;
 
@@ -113,7 +107,6 @@ namespace MWRender
         void renderGui() override;
         void beginLoading() override;
         void endLoading() override;
-        void applyLoadingBudget(double targetFrameRate) override;
 
         void capture(osg::Image& image, int width, int height) override;
         void setScreenshotWriter(SceneUtil::AsyncScreenCaptureOperation& writer) override;
@@ -155,6 +148,14 @@ namespace MWRender
         /// renderer can take its drawn cameras down once a frame, between the traversals, as
         /// upstream's `WindowManager::onFrame` did.
         void setMapOverlay(GlMapOverlay* overlay) { mMapOverlay = overlay; }
+
+    protected:
+        void configureResources(Resource::ResourceSystem& resources) override;
+        void adoptTraversalRoot(osg::Group& root) override;
+        void applyViewMask() override;
+        void applyWorldShown() override;
+        bool toggleOwnRenderMode(RenderMode mode) override;
+        void applyLoadingBudget(double targetFrameRate) override;
 
     private:
         /// The overlay the debug keys toggle, and the per-frame dump `OPENMW_OSG_STATS_FILE` asks

@@ -179,12 +179,6 @@ namespace Rtx
         return camera;
     }
 
-    void describeTexturing(const RenderProfile& profile, Shaders::VisibilityConstants& constants)
-    {
-        constants.mDelight = profile.mDelight;
-        constants.mShow = static_cast<std::uint32_t>(profile.mShow);
-    }
-
     osg::Vec2f haltonJitter(std::uint32_t index)
     {
         // Counted from one, because the sequence's zeroth term is the origin — a frame that sampled

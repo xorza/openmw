@@ -15,6 +15,7 @@
 
 #include "debuglines.hpp"
 #include "framedigest.hpp"
+#include "frameoptions.hpp"
 #include "guirenderer.hpp"
 #include "latencyreport.hpp"
 #include "memoryreport.hpp"
@@ -198,69 +199,6 @@ namespace Rtx
         std::uint32_t mReducedTextureCount = 0;
     };
 
-    /// What a frame is asked for, beyond where the camera stands.
-    struct FrameOptions
-    {
-        /// How many frames have gone into the running sum, this one included; zero is no averaging.
-        /// The sum is kept in floating point, because eight bits would round every sample and clip
-        /// the sun's disc.
-        std::uint32_t mAccumulate = 0;
-
-        /// How long this frame stands for, in seconds, or nothing to take it off the wall clock. The
-        /// eye adapts and the upscaler tunes itself by it, so a measured run states it
-        /// (`Misc::FrameClock`) or two runs of one build draw different pictures.
-        std::optional<float> mSinceLast = std::nullopt;
-
-        /// How long the sky has been running, in seconds of its own clock (`Sky::skyStep`), which the
-        /// ripple field steps by, sixty ticks to one of these. Here and not in the constants, because
-        /// only the host reads it, and in double, because a tick is a sixtieth and ten hours in a
-        /// float resolve a quarter of one.
-        double mSkySeconds = 0.0;
-
-        /// What to multiply the measured exposure by: the hour, which the histogram cannot see
-        /// (`Rtx::Skylight::mExposureBias`). A fixed `mExposure` is not touched by it.
-        float mExposureBias = 1.0f;
-
-        /// What the frame asks of the reconstruction, before the upscaler has its say —
-        /// `Reconstruction::resolve` is the rule. A run states it once in its `RenderProfile` and
-        /// `forFrame` carries it; a frame of its own may ask otherwise, which is how a reference
-        /// and the frame it is compared against come off one renderer.
-        ReconstructionRequest mReconstruction;
-
-        /// What to scale the frame by before the display curve, or nothing to measure it off the
-        /// frame. One by default, because a measured exposure makes every pixel depend on the whole
-        /// frame's histogram; a picture wants it measured, so a run's profile says so.
-        std::optional<float> mExposure = 1.0f;
-
-        /// What the game's debug modes drew, over the picture and under the interface. A tool and
-        /// not the picture: nothing traces it, and a frame with none pays nothing for it.
-        DebugLines mDebug;
-
-        /// Whether the frame leaves its picture in host memory for `FrameResult::mPixels`,
-        /// copied by the frame's own commands after the display curve and before the interface,
-        /// and digests what it traced for `FrameResult::mDigest` on the way. For a run that hashes
-        /// every frame: a copy the frame records rides the queue behind the trace and comes back
-        /// with the frame's report, where a readback of the frame just drawn is a submit of its
-        /// own and a wait the ring would otherwise overlap.
-        bool mReadBack = false;
-
-        /// What a run decided once and what this frame stands for: `accumulate` is the schedule's,
-        /// because a warm-up is not averaged in, and `sinceLast` and `exposureBias` are what a
-        /// profile cannot know.
-        static FrameOptions forFrame(const RenderProfile& profile, const std::uint32_t accumulate,
-            const std::optional<float> sinceLast, const float exposureBias)
-        {
-            return FrameOptions{
-                .mAccumulate = accumulate,
-                .mSinceLast = sinceLast,
-                .mExposureBias = exposureBias,
-                .mReconstruction = profile.mReconstruction,
-                .mExposure = profile.mExposure,
-                .mDebug = {},
-            };
-        }
-    };
-
     /// One stretch of a frame, measured by the device's own clock — what each dispatch and each
     /// structure build cost, which a wall clock around a submit cannot tell.
     struct GpuSpan
@@ -421,9 +359,6 @@ namespace Rtx
         /// target, so the old extents describe a camera nothing will accept. Throws where the mode
         /// cannot be reached, and a caller that offers the mode catches it and stays where it was.
         virtual void setUpscale(Upscale upscale) = 0;
-
-        /// Which mode the frames are traced under, which a refused mode leaves where it was.
-        virtual Upscale getUpscale() const = 0;
 
         /// How the presented image meets the monitor's refresh. Costs a swapchain rebuild, so a
         /// settings-change call and not a frame one.

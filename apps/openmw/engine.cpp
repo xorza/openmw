@@ -663,8 +663,7 @@ void OMW::Engine::go()
 
     setWindowIcon();
 
-    mEnvironment.setFrameRateLimit(Settings::video().mFramerateLimit);
-    mRenderer->setFrameRateLimit(mEnvironment.getFrameRateLimit());
+    mRenderer->setFrameRateLimit(Settings::video().mFramerateLimit);
 
     prepareEngine();
 

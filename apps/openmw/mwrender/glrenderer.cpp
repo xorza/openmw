@@ -236,16 +236,7 @@ namespace MWRender
                 }
             }
 
-            // Since we use physical resolution internally, we have to create the window with scaled resolution,
-            // but we can't get the scale before the window exists, so instead we have to resize aftewards.
-            int w, h;
-            SDL_GetWindowSize(mWindow, &w, &h);
-            int dw, dh;
-            SDL_GL_GetDrawableSize(mWindow, &dw, &dh);
-            if (dw != w || dh != h)
-            {
-                SDL_SetWindowSize(mWindow, width / (dw / w), height / (dh / h));
-            }
+            placement.fit(mWindow);
 
             osg::ref_ptr<osg::GraphicsContext::Traits> traits = new osg::GraphicsContext::Traits;
             SDL_GetWindowPosition(mWindow, &traits->x, &traits->y);

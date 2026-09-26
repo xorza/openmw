@@ -251,6 +251,10 @@ namespace Rtx
     /// handed to the backend inside `RendererOptions` and read there. A frame reads what the run
     /// was handed rather than asking the registry per knob per frame, and only a menu moves it
     /// afterwards: `Renderer::setUpscale` changes `mUpscaling`, which `getProfile` then answers.
+    /// What a frame is scaled by before the display curve: a fixed scale, or nothing to measure it
+    /// off the frame.
+    using ExposureRule = std::optional<float>;
+
     struct RenderProfile
     {
         /// What the upscaler is built with.
@@ -259,8 +263,7 @@ namespace Rtx
         /// What every frame asks of the reconstruction, before the upscaler has its say —
         /// `Reconstruction::resolve` is the rule. Jitter is off unless something puts the frames
         /// back together; the filter is off for a reference, because a thousand filtered frames
-        /// converge on the filter's opinion. Carried into every frame by `FrameOptions::forFrame`,
-        /// and read by the backend off the frame and never from here.
+        /// converge on the filter's opinion. A frame may ask otherwise (`FrameOptions`).
         ReconstructionRequest mReconstruction;
 
         /// How much of the painted lighting to divide out of a texture. Nought hands the trace
@@ -271,10 +274,9 @@ namespace Rtx
         /// maps themselves.
         SurfaceView mShow = SurfaceView::Shaded;
 
-        /// What to scale the frame by before the display curve, or nothing to measure it off the
-        /// frame. A picture wants it measured, and a reference wants it held still. Carried into
-        /// every frame like `mReconstruction`, and read off the frame.
-        std::optional<float> mExposure;
+        /// What to scale the frame by before the display curve. A picture wants it measured, and a
+        /// reference wants it held still. A frame may ask otherwise, like `mReconstruction`.
+        ExposureRule mExposure;
 
         /// How long to hold the queue after every frame's trace, in milliseconds, or nought to
         /// hold it not at all. A held queue keeps the device that far behind the host, so every

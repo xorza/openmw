@@ -989,8 +989,8 @@ Lua worker; `RenderingManager::renderFrame` → `RtxRenderer::renderFrame(frame)
 | c    | Placing | `TracedOverlay::finish()`: the map tiles whose copies came back are painted                                                |            |
 | d    | Placing | `handOver`: `WorldMirror::hand` → `SceneUploader::hand` (11.4)                                                            | `Place` = `Bake` + `Textures` + `Upload` |
 | e    | Views   | `drawViews()`: every subject picture and up to three world pictures (section 6.5)                                          | `Views`    |
-| f    | Tracing | `describeTrace`: `makeCameraFromView(view, fov, renderW, renderH, near 1, far 200000)`, the arms' camera, `rayMaskOf(viewMask)`, the sample index from the run or the frame number, delight from the profile. A view with no basis is refused, said once, and the frame its placements opened is closed with no trace (`Rtx::Renderer::skipFrame`) |  |
-| g    | Tracing | `trace`: `SkyReader::read` → `WorldReading`; `describeWorld` → the exposure bias; `FrameOptions::forFrame`; `DebugWalk::walk`; `Renderer::renderFrame(constants, options)` | `Trace` |
+| f    | Tracing | `describeTrace`: `makeCameraFromView(view, fov, renderW, renderH, near 1, far 200000)`, the arms' camera, `rayMaskOf(viewMask)`, the sample index from the run or the frame number. A view with no basis is refused, said once, and the frame its placements opened is closed with no trace (`Rtx::Renderer::skipFrame`) |  |
+| g    | Tracing | `trace`: `SkyReader::read` → `WorldReading`; the schedule's `FrameOptions`; `describeWorld` → the world's constants and the exposure bias, the sky's clock and the glare in the options; `DebugWalk::walk`; `Renderer::renderFrame(constants, options)` | `Trace` |
 | h    | Run     | the report is closed and handed to `RtxRun::frame`; the window title once a second                                        |            |
 
 ### 11.3 The walk: `WorldMirror::mirror`
@@ -1061,7 +1061,7 @@ submit, then places.
 
 | zone                   | what it does                                                                                       |
 |------------------------|----------------------------------------------------------------------------------------------------|
-|                        | `FrameRing::begin`; `Reconstruction::resolve`; `sampleCamera` (jitter, the previous camera for motion); the glare query zeroed |
+|                        | `FrameRing::begin`; `Reconstruction::resolve` over the profile and the frame's asks; `Rtx::sampleFrame` (jitter, the surface view, the previous camera for motion); the glare query zeroed |
 | `ripples`, `waves`     | the wake stepped and pressed where the world stands in a sea; the sea's tiles for the clock         |
 | `shelter`, `shade`, `sprites` | the sprite tables taken; drops under a roof zeroed; sprites shaded and binned into tiles     |
 | `air`, `column`        | the fog's depth and in-scatter per column; the volume integrated                                    |

@@ -366,7 +366,7 @@ namespace Rtx::Testing
 
             // The exposure measured rather than pinned, which is the whole subject.
             const auto shot = [&](const Shaders::VisibilityConstants& camera) {
-                mRenderer->renderFrame(camera, FrameOptions{ .mExposure = std::nullopt });
+                mRenderer->renderFrame(camera, FrameOptions{ .mExposure = ExposureRule{} });
                 mRenderer->readPixels(pixels);
                 return meanByte();
             };
@@ -433,7 +433,9 @@ namespace Rtx::Testing
                 Shaders::VisibilityConstants sampled = camera;
                 sampled.mFrame = frame;
                 mRenderer->renderFrame(sampled,
-                    FrameOptions{ .mAccumulate = 0, .mReconstruction = { .mFilter = filter }, .mExposure = 1.0f });
+                    FrameOptions{ .mAccumulate = 0,
+                        .mReconstruction = ReconstructionRequest{ .mFilter = filter },
+                        .mExposure = 1.0f });
             };
 
             const auto radiance = [&] {

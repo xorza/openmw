@@ -13,6 +13,7 @@
 #include <osg/Timer>
 #include <osg/ref_ptr>
 
+#include <components/misc/frameclock.hpp>
 #include <components/myguiplatform/myguiplatform.hpp>
 #include <components/resource/resourcesystem.hpp>
 #include <components/sdlutil/vsyncmode.hpp>
@@ -145,6 +146,48 @@ namespace MWRender
             EXPECT_LT(free, std::chrono::milliseconds(2)) << "and the wall is what stood";
 
             EXPECT_EQ(renderer.mLimits, (std::vector<float>{ 200.0f, 0.0f }));
+        }
+
+        /// **A nested frame is opened as the loop opens its own**: held to the limit, and a wall
+        /// clock moved on by what it stood for, so a loading screen or a message box stamps and
+        /// steps the interface by its own time and not the outer frame's. At 200 frames a second the
+        /// hold is 5 ms, which is the step the frame answers and the clock takes.
+        ///
+        /// **A clock that states its step moves by the loop's frames alone**: a nested frame of a
+        /// measured run stands for nothing and leaves the clock where the loop put it, because how
+        /// many a run draws is the wall's answer.
+        TEST(RendererTest, aNestedFrameStepsAWallClockAndLeavesAStatedOne)
+        {
+            RecordingRenderer renderer;
+            renderer.setFrameRateLimit(200.0f);
+
+            Misc::FrameClock wall;
+            renderer.setFrameClock(wall);
+            renderer.awaitFrame();
+            EXPECT_FLOAT_EQ(renderer.openNestedFrame(), 0.005f);
+            EXPECT_DOUBLE_EQ(wall.getStep(), 0.005);
+
+            Misc::FrameClock stated(1.0f / 60.0f);
+            renderer.setFrameClock(stated);
+            stated.advance(0.0);
+            const double now = stated.getNow();
+            EXPECT_EQ(renderer.openNestedFrame(), 0.0f);
+            EXPECT_EQ(stated.getNow(), now) << "a nested frame moved a clock whose steps are the loop's";
+        }
+
+        /// **A window is sized so that its pixels are the resolution asked for, at any scale.** Asked
+        /// for 3840 by 2160 on a display at one and a half, a window made at that many points comes
+        /// out 5760 by 3240 pixels, and the size that gives the pixels asked for is 3840 × 3840 /
+        /// 5760 = 2560 by 1440 points. Upstream's `3840 / (5760 / 3840)` divided in whole numbers,
+        /// came to 3840 again, and left the window at one and a half times the resolution. At a
+        /// scale of two the two agree, and at one there is nothing to fit.
+        TEST(RendererTest, aWindowIsFittedSoItsPixelsAreTheResolutionAsked)
+        {
+            const WindowPlacement asked{ .mWidth = 3840, .mHeight = 2160 };
+
+            EXPECT_EQ(asked.fittedSize(osg::Vec2i(3840, 2160), osg::Vec2i(5760, 3240)), osg::Vec2i(2560, 1440));
+            EXPECT_EQ(asked.fittedSize(osg::Vec2i(3840, 2160), osg::Vec2i(7680, 4320)), osg::Vec2i(1920, 1080));
+            EXPECT_EQ(asked.fittedSize(osg::Vec2i(3840, 2160), osg::Vec2i(3840, 2160)), osg::Vec2i(3840, 2160));
         }
 
         /// **One opening for both holds.** Held by the renderer for three frames, by the limiter

@@ -9,6 +9,7 @@
 
 #include <components/rtx/debuglines.hpp>
 #include <components/rtx/shaders/visibility.h>
+#include <components/rtx/sunglare.hpp>
 
 #include "bloompass.hpp"
 #include "exposurepass.hpp"
@@ -79,10 +80,11 @@ namespace Rtx
         /// Whether the lens spreads the picture: a picture inside the interface is a diagram.
         bool mBloom = false;
 
-        /// The sun's share, eased at the query's own rate, or nothing for a picture, which is
-        /// mapped with no share at all.
+        /// The sun glare fader and the sun's share, eased at the query's own rate, or nothing for a
+        /// picture, which is mapped with no glare at all.
         struct Glare
         {
+            SunGlare mFader;
             float mSeconds;
             bool mReset;
         };

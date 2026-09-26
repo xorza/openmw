@@ -50,6 +50,9 @@ set(RTX_FILES
     framedigest.hpp
     frameimage.cpp
     frameimage.hpp
+    frameoptions.hpp
+    framesampling.cpp
+    framesampling.hpp
     framespend.hpp
     frameextents.hpp
     frameworld.cpp
@@ -148,6 +151,8 @@ set(RTX_FILES
     spritelistsize.cpp
     spritelistsize.hpp
     stepped.hpp
+    sunglare.cpp
+    sunglare.hpp
     surfaceview.hpp
     surface.cpp
     surface.hpp

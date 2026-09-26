@@ -18,10 +18,11 @@
 #include <osg/Vec2f>
 #include <vulkan/vulkan_core.h>
 
-#include <components/rtx/camera.hpp>
 #include <components/rtx/contract.hpp>
 #include <components/rtx/framedigest.hpp>
 #include <components/rtx/frameimage.hpp>
+#include <components/rtx/frameoptions.hpp>
+#include <components/rtx/framesampling.hpp>
 #include <components/rtx/memoryreport.hpp>
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/runs.hpp>
@@ -93,14 +94,6 @@ namespace Rtx
                 return {};
 
             return Presenter::getInstanceExtensions(options.mWindow);
-        }
-
-        /// How much wider the arms' image plane is than the eye's, per axis —
-        /// `VisibilityConstants::mArmsSpread`.
-        osg::Vec2f armsSpreadOf(const Shaders::VisibilityConstants& frame)
-        {
-            return osg::Vec2f(frame.mArms.mRight.length() / frame.mCamera.mRight.length(),
-                frame.mArms.mUp.length() / frame.mCamera.mUp.length());
         }
     }
 
@@ -360,52 +353,6 @@ namespace Rtx
             .mSea = held.getCounts().mWater > 0 || !std::isinf(camera.mWaterLevel),
             .mMapped = held.getCounts().mMapped > 0,
         };
-    }
-
-    Shaders::VisibilityConstants VulkanRenderer::sampleCamera(const Shaders::VisibilityConstants& camera,
-        const DeviceScene& scene, const Reconstruction& reconstruction,
-        const Shaders::VisibilityConstants* previous) const
-    {
-        Shaders::VisibilityConstants sampled = camera;
-
-        // Where in the pixel this frame samples. Filled here rather than by the caller because the
-        // sequence belongs to the frame index, which is the renderer's to walk.
-        if (reconstruction.mJitter)
-            sampled.mCamera.mJitter = haltonJitter(camera.mFrame);
-
-        // The two consequences of the reconstruction the trace reads for itself: where its draws
-        // come from, and how far the shown pixel narrows every texture level. A picture's
-        // `Reconstruction{}` says the tile and nought.
-        sampled.mNoise
-            = reconstruction.mNoise == NoiseSource::WhiteHash ? Shaders::NOISE_WHITE_HASH : Shaders::NOISE_BLUE_TILE;
-        sampled.mLevelBias = reconstruction.mLevelBias;
-
-        // The arms' eye samples where the world's does, or the two halves of one frame would be
-        // reconstructed from two grids.
-        sampled.mArms.mJitter = sampled.mCamera.mJitter;
-        sampled.mArmsSpread = armsSpreadOf(camera);
-
-        // The scene's answer and not the camera's: a cell with no cloud in it has nothing for the
-        // medium walk to find, wherever it is looked at from. The arms are the scene's and the
-        // camera's both: a map draws none.
-        const InstanceCounts& counts = scene.getCounts();
-        sampled.mMediumInFrame = counts.mMedium > 0 ? 1 : 0;
-        sampled.mAdditiveInFrame = counts.mAdditive > 0 ? 1 : 0;
-        sampled.mArmsInFrame = counts.mFirstPerson > 0 && (camera.mRayMask & Shaders::MASK_FIRST_PERSON) != 0 ? 1 : 0;
-
-        // The one subtraction of two world points, and it happens here. Two camera positions a
-        // step apart subtract exactly in a float; the same difference taken on the device, between
-        // coordinates six figures long, would be rounding. A picture has no last frame and keeps
-        // the caller's nothing.
-        if (previous != nullptr)
-        {
-            sampled.mCameraMotion = camera.mOrigin - previous->mOrigin;
-            sampled.mPreviousForward = previous->mCamera.mForward;
-            sampled.mPreviousRight = previous->mCamera.mRight;
-            sampled.mPreviousUp = previous->mCamera.mUp;
-        }
-
-        return sampled;
     }
 
     void VulkanRenderer::setScene(const SceneSlot slot, const SceneDesc& scene, std::span<const TextureData> textures)
@@ -834,11 +781,12 @@ namespace Rtx
         // What reconstructs this frame, decided once and by one rule. Every switch below reads
         // this rather than working the interaction out again; the same value goes back in the frame
         // result, so what a run reports and what it did are one answer.
-        const Reconstruction reconstruction
-            = Reconstruction::resolve(mProfile.mUpscaling, options.mReconstruction, getExtents());
+        const Reconstruction reconstruction = Reconstruction::resolve(
+            mProfile.mUpscaling, options.mReconstruction.value_or(mProfile.mReconstruction), getExtents());
         frame.mReconstruction = reconstruction;
 
-        Shaders::VisibilityConstants sampled = sampleCamera(camera, *mWorld, reconstruction, &mPreviousCamera);
+        Shaders::VisibilityConstants sampled
+            = sampleFrame(camera, options, mProfile, reconstruction, mWorld->getCounts(), &mPreviousCamera);
 
         // The launch the misses are counted against, which is the traced extent and not the shown one.
         frame.mCountedRays = mCounting ? sampled.mCamera.mWidth * sampled.mCamera.mHeight : 0u;
@@ -963,8 +911,8 @@ namespace Rtx
         const float sinceLastSeconds = 0.001f * sinceLastMs;
         Display::Exposure exposure
             = Display::Measured{ .mSeconds = sinceLastSeconds, .mReset = historyLost, .mBias = options.mExposureBias };
-        if (options.mExposure.has_value())
-            exposure = Display::Fixed{ *options.mExposure };
+        if (const ExposureRule rule = options.mExposure.value_or(mProfile.mExposure); rule.has_value())
+            exposure = Display::Fixed{ *rule };
         else
             historyRead = true;
 
@@ -978,7 +926,8 @@ namespace Rtx
                 .mTarget = target,
                 .mExposure = exposure,
                 .mBloom = true,
-                .mGlare = Display::Glare{ .mSeconds = sinceLastSeconds, .mReset = historyLost },
+                .mGlare
+                = Display::Glare{ .mFader = options.mGlare, .mSeconds = sinceLastSeconds, .mReset = historyLost },
                 .mDebug = options.mDebug,
                 .mDebugVertices = &frame.mDebugVertices,
                 .mTimer = &timer,
@@ -1090,7 +1039,8 @@ namespace Rtx
             = describeInputs(traced, mView, camera, mView.getColour(), mViewCounts, FrameSlot{});
 
         // Nothing reconstructs a picture, so nothing jitters it, and it has no frame before it.
-        Shaders::VisibilityConstants sampled = sampleCamera(camera, traced, Reconstruction{}, nullptr);
+        Shaders::VisibilityConstants sampled
+            = sampleFrame(camera, FrameOptions{}, mProfile, Reconstruction{}, traced.getCounts(), nullptr);
 
         // The world's ripple field where the picture is of the world, which is the one place it
         // could have a wake in it; a subject of its own stands in no sea.

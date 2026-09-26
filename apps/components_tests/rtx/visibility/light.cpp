@@ -442,7 +442,6 @@ namespace Rtx::Testing
 
             Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -150.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
-            camera.mShow = Shaders::SHOW_ALBEDO;
 
             const auto render = [&](AlphaMode mode, float alphaRef) {
                 SceneDesc scene = makeWall();
@@ -458,7 +457,8 @@ namespace Rtx::Testing
 
                 std::vector<std::uint8_t> pixels;
                 // Something is behind every hole, so every ray lands on one surface or the other.
-                EXPECT_EQ(countHits(scene, textures, camera, size, pixels), size * size);
+                EXPECT_EQ(countHits(scene, textures, camera, size, pixels, Shot{ .mShow = SurfaceView::Albedo }),
+                    size * size);
                 return pixels;
             };
 
@@ -649,46 +649,44 @@ namespace Rtx::Testing
             const std::array<osg::Vec4f, 4> tangents{ osg::Vec4f(tangent, 1.0f), osg::Vec4f(tangent, 1.0f),
                 osg::Vec4f(tangent, 1.0f), osg::Vec4f(tangent, 1.0f) };
 
-            const auto litAbout = [&](const osg::Vec3f& vertexNormal, std::uint8_t metal, bool leaning,
-                                      std::uint32_t show, float tint) {
-                const std::array<osg::Vec3f, 4> normals{ vertexNormal, vertexNormal, vertexNormal, vertexNormal };
-                const std::array<std::uint8_t, 4> mapTexel{ metal, 128, 255, 255 };
-                const std::array<TextureData, 3> textures{ describeTexel(sBaseTexel, 0), describeTexel(mapTexel, 1),
-                    describeTexel(sLeaningTexel, 2) };
-                const osg::Vec3f colour(tint, tint, tint);
-                const std::array<osg::Vec3f, 4> colours{ colour, colour, colour, colour };
+            const auto litAbout
+                = [&](const osg::Vec3f& vertexNormal, std::uint8_t metal, bool leaning, SurfaceView show, float tint) {
+                      const std::array<osg::Vec3f, 4> normals{ vertexNormal, vertexNormal, vertexNormal, vertexNormal };
+                      const std::array<std::uint8_t, 4> mapTexel{ metal, 128, 255, 255 };
+                      const std::array<TextureData, 3> textures{ describeTexel(sBaseTexel, 0),
+                          describeTexel(mapTexel, 1), describeTexel(sLeaningTexel, 2) };
+                      const osg::Vec3f colour(tint, tint, tint);
+                      const std::array<osg::Vec3f, 4> colours{ colour, colour, colour, colour };
 
-                SceneDesc scene;
-                const Index mesh = scene.addMesh(MeshArrays{ .mPositions = sWallQuad,
-                    .mNormals = normals,
-                    .mTexCoords = sQuadUv,
-                    .mColours = colours,
-                    .mTangents = tangents,
-                    .mIndices = sQuadIndices });
-                const Index diffuse = scene.textures().add(VFS::Path::NormalizedView("base.dds"));
-                const Index map = scene.textures().add(
-                    VFS::Path::NormalizedView("base_spec.dds"), TextureWrap::Repeat, TextureEncoding::Data);
-                const Index normalMap = scene.textures().add(
-                    VFS::Path::NormalizedView("base_n.dds"), TextureWrap::Repeat, TextureEncoding::Data);
-                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                    .mMesh = mesh,
-                    .mMaterial = scene.addMaterial(Material{ .mDiffuse = diffuse,
-                        .mNormal = leaning ? normalMap : sNoIndex,
-                        .mSpecular = map,
-                        .mVertexColour = VertexColour::Tint }) });
-                scene.addLight(Light{
-                    .mPosition = osg::Vec3f(0.0f, -50.0f, 0.0f),
-                    .mIntensity = osg::Vec3f(4000.0f, 4000.0f, 4000.0f),
-                    .mReach = 500.0f,
-                });
+                      SceneDesc scene;
+                      const Index mesh = scene.addMesh(MeshArrays{ .mPositions = sWallQuad,
+                          .mNormals = normals,
+                          .mTexCoords = sQuadUv,
+                          .mColours = colours,
+                          .mTangents = tangents,
+                          .mIndices = sQuadIndices });
+                      const Index diffuse = scene.textures().add(VFS::Path::NormalizedView("base.dds"));
+                      const Index map = scene.textures().add(
+                          VFS::Path::NormalizedView("base_spec.dds"), TextureWrap::Repeat, TextureEncoding::Data);
+                      const Index normalMap = scene.textures().add(
+                          VFS::Path::NormalizedView("base_n.dds"), TextureWrap::Repeat, TextureEncoding::Data);
+                      scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                          .mMesh = mesh,
+                          .mMaterial = scene.addMaterial(Material{ .mDiffuse = diffuse,
+                              .mNormal = leaning ? normalMap : sNoIndex,
+                              .mSpecular = map,
+                              .mVertexColour = VertexColour::Tint }) });
+                      scene.addLight(Light{
+                          .mPosition = osg::Vec3f(0.0f, -50.0f, 0.0f),
+                          .mIntensity = osg::Vec3f(4000.0f, 4000.0f, 4000.0f),
+                          .mReach = 500.0f,
+                      });
 
-                Shaders::VisibilityConstants shown = camera;
-                shown.mShow = show;
-                std::vector<std::uint8_t> pixels;
-                EXPECT_GT(countHits(scene, textures, shown, size, pixels), 0u);
-                return osg::Vec3f(mRadiance[centre], mRadiance[centre + 1], mRadiance[centre + 2]);
-            };
-            const auto lit = [&](std::uint8_t metal, bool leaning, std::uint32_t show = Shaders::SHOW_SHADED,
+                      std::vector<std::uint8_t> pixels;
+                      EXPECT_GT(countHits(scene, textures, camera, size, pixels, Shot{ .mShow = show }), 0u);
+                      return osg::Vec3f(mRadiance[centre], mRadiance[centre + 1], mRadiance[centre + 2]);
+                  };
+            const auto lit = [&](std::uint8_t metal, bool leaning, SurfaceView show = SurfaceView::Shaded,
                                  float tint = 1.0f) { return litAbout(normal, metal, leaning, show, tint); };
 
             // The pixel on the host: the diffuse half about `shading` and the lobe about `facing`, at a
@@ -724,9 +722,8 @@ namespace Rtx::Testing
             EXPECT_NEAR(lit(0, false).x(), dielectric, dielectric * 1e-4f) << "a dielectric";
 
             const float tinted = expected(normal, normal, 0.0f, 0.25f);
-            EXPECT_NEAR(lit(0, false, Shaders::SHOW_SHADED, 0.25f).x(), tinted, tinted * 1e-4f)
-                << "a tinted dielectric";
-            EXPECT_EQ(lit(0, false, Shaders::SHOW_SPECULAR, 0.25f), osg::Vec3f(0.01f, 0.01f, 0.01f))
+            EXPECT_NEAR(lit(0, false, SurfaceView::Shaded, 0.25f).x(), tinted, tinted * 1e-4f) << "a tinted dielectric";
+            EXPECT_EQ(lit(0, false, SurfaceView::Specular, 0.25f), osg::Vec3f(0.01f, 0.01f, 0.01f))
                 << "the tint on the reflectance";
 
             // The same through the leaning map, decoded as `2 * byte / 255 - 1`.
@@ -751,19 +748,19 @@ namespace Rtx::Testing
             ASSERT_NEAR(facing * toEye, 0.03f, 1e-6f);
             facing.normalize();
             const float leaned = expected(away, facing, 0.0f);
-            EXPECT_NEAR(litAbout(away, 0, false, Shaders::SHOW_SHADED, 1.0f).x(), leaned, leaned * 1e-4f)
+            EXPECT_NEAR(litAbout(away, 0, false, SurfaceView::Shaded, 1.0f).x(), leaned, leaned * 1e-4f)
                 << "a vertex normal leaning past the eye";
             const float dropped = irradiance * base * (away * toLamp) * Shaders::INV_PI;
             EXPECT_GT(std::abs(leaned - dropped), dropped * 1e-2f) << "a kept lobe that adds nothing";
 
             // And the views of the same inputs: the mapped normal as `0.5 + 0.5 n`, the painted
             // roughness, and the reflectance of a metal, which is its base colour.
-            const osg::Vec3f shownNormal = lit(0, true, Shaders::SHOW_NORMAL);
+            const osg::Vec3f shownNormal = lit(0, true, SurfaceView::Normal);
             const osg::Vec3f wantedNormal = mapped * 0.5f + osg::Vec3f(0.5f, 0.5f, 0.5f);
             for (int axis = 0; axis < 3; ++axis)
                 EXPECT_NEAR(shownNormal[axis], wantedNormal[axis], 1e-5f) << axis;
-            EXPECT_EQ(lit(0, false, Shaders::SHOW_ROUGHNESS), osg::Vec3f(roughness, roughness, roughness));
-            EXPECT_EQ(lit(255, false, Shaders::SHOW_SPECULAR), osg::Vec3f(base, base, base));
+            EXPECT_EQ(lit(0, false, SurfaceView::Roughness), osg::Vec3f(roughness, roughness, roughness));
+            EXPECT_EQ(lit(255, false, SurfaceView::Specular), osg::Vec3f(base, base, base));
         }
 
         /// **A map that stands in is read as no map**, in every role an object's map has: a normal

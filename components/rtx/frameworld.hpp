@@ -9,11 +9,13 @@
 #include <osg/Vec2f>
 #include <osg/Vec3f>
 
+#include "frameoptions.hpp"
 #include "moonbuilder.hpp"
 #include "shaders/sky.h"
 #include "shaders/visibility.h"
 #include "skybuilder.hpp"
 #include "skylight.hpp"
+#include "sunglare.hpp"
 
 namespace osg
 {
@@ -93,20 +95,10 @@ namespace Rtx
         /// occluder box and not a number decided here.
         float mShelterHeight = 0.0f;
 
-        /// The sun glare fader as the game states it, `Shaders::VisibilityConstants::mGlare*`:
-        /// the colour in the display's own values, the angle off the axis it has faded out at, and
-        /// the most of the picture it washes on this frame — nought where no sun is drawn.
-        osg::Vec3f mGlareColour;
-        float mGlareAngleMax = 0.0f;
-        float mGlareStrength = 0.0f;
+        /// The sun glare fader as the game states it this frame, which the frame's options carry
+        /// to the display chain.
+        SunGlare mSunGlare;
     };
-
-    /// How much of the glare fader's colour this frame lays over the picture before the share of
-    /// the sun the eye could see is multiplied in: the strength, faded by how far the eye's axis
-    /// stands from the sun — `SunGlareCallback`'s `1 - min(1, angle / angleMax)`, times `_Max`
-    /// and the two fades the reading already folded into the strength. Nought for a frame with no
-    /// fader in it, and nought past the angle.
-    float sunGlareAmount(const Shaders::VisibilityConstants& frame);
 
     /// How far the air has been carried downwind since a run began, in world units: the integral
     /// of the wind over the sky's clock, kept across frames by whoever traces them. What the
@@ -146,12 +138,14 @@ namespace Rtx
     /// reduced against the scale's tile in double and handed over as a fraction of it.
     std::array<osg::Vec3f, Shaders::FOG_SCALES> fogOffsets(const osg::Vec2d& carried, double skySeconds);
 
-    /// Writes the frame's world half into the constants it is traced with, and answers what to hold
-    /// the frame's measured exposure back by — `Skylight::mExposureBias`, carried. The camera's
-    /// half is the builders' (`makeCameraFromView`) and is left alone. The order is the whole of
-    /// what this is for: the stars before the sky's budget, the budget before the air, and both
-    /// before the deck. One call and not twenty assignments per host, or a field added to one host
-    /// is forgotten in the other. `drift` is stepped here by this reading's clock and wind, because
-    /// the heading it blows along is the deck's, which is settled here and nowhere else.
-    float describeWorld(const WorldReading& reading, FogDrift& drift, Shaders::VisibilityConstants& constants);
+    /// Writes the frame's world half into the constants it is traced with, and into the options
+    /// what rides beside them: the exposure's bias (`Skylight::mExposureBias`, carried), the sky's
+    /// clock and the glare fader. The camera's half is the builders' (`makeCameraFromView`) and is
+    /// left alone, and so is every option the world does not decide. The order is the whole of what
+    /// this is for: the stars before the sky's budget, the budget before the air, and both before
+    /// the deck. One call and not twenty assignments per host, or a field added to one host is
+    /// forgotten in the other. `drift` is stepped here by this reading's clock and wind, because the
+    /// heading it blows along is the deck's, which is settled here and nowhere else.
+    void describeWorld(
+        const WorldReading& reading, FogDrift& drift, Shaders::VisibilityConstants& constants, FrameOptions& options);
 }

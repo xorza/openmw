@@ -76,6 +76,14 @@ namespace Rtx
         }
 
         /// A reading whose numbers are distinct, so a field taken from the wrong one shows.
+        /// `describeWorld` for a test that reads the constants, with the options it wrote handed back.
+        FrameOptions describe(const WorldReading& reading, FogDrift& drift, Shaders::VisibilityConstants& constants)
+        {
+            FrameOptions options;
+            describeWorld(reading, drift, constants, options);
+            return options;
+        }
+
         WorldReading reading()
         {
             return WorldReading{
@@ -106,9 +114,11 @@ namespace Rtx
                 .mSkySeconds = 47.5,
                 .mRainOnWater = 0.35f,
                 .mShelterHeight = 8992.0f,
-                .mGlareColour = osg::Vec3f(1.0f, 0.745f, 0.306f),
-                .mGlareAngleMax = 0.5236f,
-                .mGlareStrength = 0.125f,
+                .mSunGlare = SunGlare{
+                    .mColour = osg::Vec3f(1.0f, 0.745f, 0.306f),
+                    .mAngleMax = 0.5236f,
+                    .mStrength = 0.125f,
+                },
             };
         }
 
@@ -206,7 +216,8 @@ namespace Rtx
 
             Rtx::Shaders::VisibilityConstants constants{};
             FogDrift drift;
-            describeWorld(read, drift, constants);
+            FrameOptions options;
+            describeWorld(read, drift, constants, options);
 
             const Skylight& light = read.mDaylight.mLight;
             EXPECT_EQ(constants.mSun.mDirection, light.mSun.mPosition);
@@ -250,13 +261,13 @@ namespace Rtx
             WorldReading waterLater = read;
             waterLater.mSeconds = read.mSeconds + 1.0;
             Shaders::VisibilityConstants waterMoved{};
-            describeWorld(waterLater, drift, waterMoved);
+            describe(waterLater, drift, waterMoved);
             EXPECT_EQ(drift.get(), osg::Vec2d());
 
             WorldReading later = read;
             later.mSkySeconds = read.mSkySeconds + 1.0;
             Shaders::VisibilityConstants blown{};
-            describeWorld(later, drift, blown);
+            describe(later, drift, blown);
             EXPECT_NEAR(drift.get().x(), 378.0, 1e-3);
             EXPECT_NEAR(drift.get().y(), 504.0, 1e-3);
             expectOffsets(blown, drift.get(), later.mSkySeconds);
@@ -272,7 +283,7 @@ namespace Rtx
             still.mOutdoors = false;
             still.mSkySeconds = later.mSkySeconds + 1.0;
             Shaders::VisibilityConstants becalmed{};
-            describeWorld(still, drift, becalmed);
+            describe(still, drift, becalmed);
             EXPECT_EQ(becalmed.mSeaHeading, osg::Vec2f(1.0f, 0.0f));
             EXPECT_NEAR(drift.get().x(), 378.0, 1e-3);
             EXPECT_NEAR(drift.get().y(), 504.0, 1e-3);
@@ -287,9 +298,13 @@ namespace Rtx
             EXPECT_EQ(constants.mWaterTime, splitSeconds(read.mSeconds)) << "the game wrote this nowhere either";
             EXPECT_EQ(constants.mRainOnWater, read.mRainOnWater);
             EXPECT_EQ(constants.mShelterHeight, read.mShelterHeight);
-            EXPECT_EQ(constants.mGlareColour, read.mGlareColour);
-            EXPECT_EQ(constants.mGlareAngleMax, read.mGlareAngleMax);
-            EXPECT_EQ(constants.mGlareStrength, read.mGlareStrength);
+            // And beside the constants, what the display chain and the ripples take: the glare as the
+            // reading stated it, the sky's clock, and the hour's bias.
+            EXPECT_EQ(options.mGlare.mColour, read.mSunGlare.mColour);
+            EXPECT_EQ(options.mGlare.mAngleMax, read.mSunGlare.mAngleMax);
+            EXPECT_EQ(options.mGlare.mStrength, read.mSunGlare.mStrength);
+            EXPECT_EQ(options.mSkySeconds, read.mSkySeconds);
+            EXPECT_EQ(options.mExposureBias, light.mExposureBias);
 
             // The deck and the stars come out of the builders both hosts share, and this is the one
             // place that says the frame is handed what those built rather than a second reading.
@@ -342,7 +357,7 @@ namespace Rtx
             day.mDaylight.mLight.mDaylightGain = 4.0f;
             Shaders::VisibilityConstants lifted{};
             FogDrift dayDrift;
-            describeWorld(day, dayDrift, lifted);
+            describe(day, dayDrift, lifted);
 
             EXPECT_EQ(constants.mDaylightGain, 1.0f);
             EXPECT_EQ(lifted.mDaylightGain, 4.0f);
@@ -376,8 +391,7 @@ namespace Rtx
         {
             Shaders::VisibilityConstants frame{};
             frame.mCamera.mForward = osg::Vec3f(0.0f, 1.0f, 0.0f);
-            frame.mGlareAngleMax = osg::DegreesToRadians(30.0f);
-            frame.mGlareStrength = 0.5f;
+            SunGlare fader{ .mAngleMax = osg::DegreesToRadians(30.0f), .mStrength = 0.5f };
 
             // Straight at it, ten degrees off, thirty off and past thirty: one, two thirds, nought
             // and nought of the strength.
@@ -385,7 +399,7 @@ namespace Rtx
                 const float off = osg::DegreesToRadians(degrees);
                 frame.mSun
                     = Shaders::sunSource(osg::Vec3f(std::sin(off), std::cos(off), 0.0f), osg::Vec3f(1.0f, 1.0f, 1.0f));
-                return sunGlareAmount(frame);
+                return fader.amountFor(frame);
             };
 
             EXPECT_FLOAT_EQ(amountAt(0.0f), 0.5f);
@@ -393,7 +407,7 @@ namespace Rtx
             EXPECT_NEAR(amountAt(30.0f), 0.0f, 1e-6f);
             EXPECT_EQ(amountAt(45.0f), 0.0f);
 
-            frame.mGlareStrength = 0.0f;
+            fader.mStrength = 0.0f;
             EXPECT_EQ(amountAt(0.0f), 0.0f);
         }
 
@@ -494,7 +508,7 @@ namespace Rtx
             constants.mTransparentBackground = 1;
 
             FogDrift drift;
-            describeWorld(distinctReading(), drift, constants);
+            describe(distinctReading(), drift, constants);
 
             EXPECT_EQ(constants.mOrigin, osg::Vec3f(1.0f, 2.0f, 3.0f));
             EXPECT_EQ(constants.mCamera.mForward, osg::Vec3f(0.0f, 1.0f, 0.0f));
@@ -517,7 +531,7 @@ namespace Rtx
         {
             Rtx::Shaders::VisibilityConstants constants{};
             FogDrift drift;
-            describeWorld(WorldReading{}, drift, constants);
+            describe(WorldReading{}, drift, constants);
 
             // **One statement of "no sun", and the disc reads it too.** There is no second field to
             // leave set: a frame with no irradiance draws no disc, casts nothing and lights no haze.
@@ -561,7 +575,7 @@ namespace Rtx
 
             Shaders::VisibilityConstants world{};
             FogDrift drift;
-            describeWorld(room, drift, world);
+            describe(room, drift, world);
 
             EXPECT_EQ(world.mClouds.mTexture, Rtx::Shaders::NO_TEXTURE);
             EXPECT_EQ(world.mStars.mTexture, Rtx::Shaders::NO_TEXTURE);
@@ -584,7 +598,7 @@ namespace Rtx
             // flag's doing rather than the assembly dropping a moon it was handed.
             room.mOutdoors = true;
             Shaders::VisibilityConstants open{};
-            describeWorld(room, drift, open);
+            describe(room, drift, open);
             EXPECT_EQ(open.mMoons[0].mAlpha, 1.0f);
             EXPECT_EQ(open.mMoons[0].mSource.mIrradiance, osg::Vec3f(0.05f, 0.05f, 0.06f));
         }
@@ -601,14 +615,15 @@ namespace Rtx
 
             Shaders::VisibilityConstants lit{};
             FogDrift drift;
-            EXPECT_FLOAT_EQ(describeWorld(open, drift, lit), 0.375f);
+            EXPECT_FLOAT_EQ(describe(open, drift, lit).mExposureBias, 0.375f);
 
             WorldReading room = open;
             room.mOutdoors = false;
             room.mDaylight.mLight.mExposureBias = 0.625f;
 
             Shaders::VisibilityConstants inside{};
-            EXPECT_FLOAT_EQ(describeWorld(room, drift, inside), 0.625f) << "the flag reached a number that is not its";
+            EXPECT_FLOAT_EQ(describe(room, drift, inside).mExposureBias, 0.625f)
+                << "the flag reached a number that is not its";
         }
 
         /// Air under a dome is lit by it, and air with no dome over it keeps the colour it was
@@ -630,8 +645,8 @@ namespace Rtx
             Shaders::VisibilityConstants outside{};
             Shaders::VisibilityConstants inside{};
             FogDrift drift;
-            describeWorld(open, drift, outside);
-            describeWorld(room, drift, inside);
+            describe(open, drift, outside);
+            describe(room, drift, inside);
 
             EXPECT_NE(outside.mFogColour, inside.mFogColour) << "one flag, and it decided nothing";
 
@@ -660,8 +675,8 @@ namespace Rtx
             Shaders::VisibilityConstants night{};
             Shaders::VisibilityConstants stars{};
             FogDrift drift;
-            describeWorld(dark, drift, night);
-            describeWorld(starry, drift, stars);
+            describe(dark, drift, night);
+            describe(starry, drift, stars);
 
             EXPECT_GT(stars.mStars.mGlow.x(), night.mStars.mGlow.x()) << "the fade decided nothing";
             EXPECT_GT(stars.mClouds.mShadowed.x(), night.mClouds.mShadowed.x())

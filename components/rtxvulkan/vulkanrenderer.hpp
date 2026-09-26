@@ -87,7 +87,6 @@ namespace Rtx
         MemoryReport getMemoryReport() const override;
         void resize(std::uint32_t width, std::uint32_t height) override;
         void setUpscale(Upscale upscale) override;
-        Upscale getUpscale() const override { return mProfile.mUpscaling.mMode; }
 
         void setVerticalSync(SDLUtil::VSyncMode mode) override;
 
@@ -176,16 +175,6 @@ namespace Rtx
         VisibilityInputs describeInputs(const DeviceScene& held, const TraceChain& chain,
             const Shaders::VisibilityConstants& camera, const Image& shown, const Buffer& counts,
             FrameSlot traceSlot) const;
-
-        /// A camera as its trace will sample it: what the caller wrote, plus every field only the
-        /// renderer can fill — the jitter, what the scene behind it holds, and where the eye was.
-        /// The one place a sampled camera is made, for a frame and for a picture inside the
-        /// interface alike, so no field goes missing from either.
-        ///
-        /// @param previous the camera the last frame was traced with, to reproject against, or
-        ///        null for a picture, which has no frame before it.
-        Shaders::VisibilityConstants sampleCamera(const Shaders::VisibilityConstants& camera, const DeviceScene& scene,
-            const Reconstruction& reconstruction, const Shaders::VisibilityConstants* previous) const;
 
         /// @param width, height what the frame is presented at. What it is traced at is the
         ///        upscaler's answer for that, or the same numbers where nothing upscales.

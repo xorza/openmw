@@ -136,7 +136,6 @@ namespace Rtx::Testing
 
             Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
-            camera.mShow = Shaders::SHOW_ALBEDO;
 
             constexpr std::array<std::uint8_t, 4> redTexel{ 255, 0, 0, 255 };
             constexpr std::array<std::uint8_t, 4> blueTexel{ 0, 0, 255, 255 };
@@ -187,7 +186,7 @@ namespace Rtx::Testing
 
             Testing::poseByOneBone(scene, body.mMesh, osg::Matrixf::translate(0.0f, 0.0f, 2.0f));
             mRenderer->placeScene(Rtx::SceneSlot::world(), scene);
-            mRenderer->renderFrame(camera, FrameOptions{ .mExposure = 1.0f });
+            mRenderer->renderFrame(camera, FrameOptions{ .mShow = SurfaceView::Albedo });
 
             std::vector<std::uint8_t> shown;
             mRenderer->readPixels(shown);
@@ -212,7 +211,6 @@ namespace Rtx::Testing
 
             Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
-            camera.mShow = Shaders::SHOW_ALBEDO;
 
             constexpr std::array<std::uint8_t, 4> redTexel{ 255, 0, 0, 255 };
             constexpr std::array<std::uint8_t, 4> blueTexel{ 0, 0, 255, 255 };
@@ -226,7 +224,7 @@ namespace Rtx::Testing
             mRenderer->resize(size, size);
             const TextureData first = describeTexel(redTexel, 0);
             mRenderer->setScene(Rtx::SceneSlot::world(), scene, std::span(&first, 1));
-            mRenderer->renderFrame(camera, FrameOptions{ .mExposure = 1.0f });
+            mRenderer->renderFrame(camera, FrameOptions{ .mShow = SurfaceView::Albedo });
 
             // **A hue rather than a pair of exact bytes.** The tone curve rolls a saturated colour
             // off short of the display's end and carries it toward white as it goes, so a full-red
@@ -254,7 +252,7 @@ namespace Rtx::Testing
             mRenderer->extendScene(Rtx::SceneSlot::world(), scene, std::span(&second, 1));
             EXPECT_EQ(mRenderer->describeHeld(Rtx::SceneSlot::world()).mTextureCount, 2u);
 
-            mRenderer->renderFrame(camera, FrameOptions{ .mExposure = 1.0f });
+            mRenderer->renderFrame(camera, FrameOptions{ .mShow = SurfaceView::Albedo });
             mRenderer->readPixels(shown);
 
             // The nearer wall wears the texture that was appended, which is only true if its
@@ -266,7 +264,7 @@ namespace Rtx::Testing
             // one behind it has to be red again, sampled from a descriptor nothing rewrote.
             scene.placements().drop(1, Stander::Walk);
             mRenderer->placeScene(Rtx::SceneSlot::world(), scene);
-            mRenderer->renderFrame(camera, FrameOptions{ .mExposure = 1.0f });
+            mRenderer->renderFrame(camera, FrameOptions{ .mShow = SurfaceView::Albedo });
             mRenderer->readPixels(shown);
 
             EXPECT_TRUE(wearsRed(centre)) << "the texture already uploaded was disturbed by the append";
@@ -296,7 +294,7 @@ namespace Rtx::Testing
             EXPECT_EQ(mRenderer->getSceneStats().mTextureCount, 1u);
             EXPECT_EQ(mRenderer->getSceneStats().mTextureBytes, redTexel.size() + map);
 
-            mRenderer->renderFrame(camera, FrameOptions{ .mExposure = 1.0f });
+            mRenderer->renderFrame(camera, FrameOptions{ .mShow = SurfaceView::Albedo });
             mRenderer->readPixels(shown);
 
             EXPECT_TRUE(wearsRed(centre)) << "the texture that survived lost its slot";
@@ -319,7 +317,7 @@ namespace Rtx::Testing
             ASSERT_TRUE(scene.textures().isFree(0u));
 
             mRenderer->setScene(Rtx::SceneSlot::world(), scene, std::span(&second, 1));
-            mRenderer->renderFrame(camera, FrameOptions{ .mExposure = 1.0f });
+            mRenderer->renderFrame(camera, FrameOptions{ .mShow = SurfaceView::Albedo });
             mRenderer->readPixels(shown);
 
             EXPECT_TRUE(wearsBlue(centre)) << "the description landed at its position rather than its slot";
@@ -341,12 +339,12 @@ namespace Rtx::Testing
 
             Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
-            camera.mShow = Shaders::SHOW_ALBEDO;
 
             // No textures at all, so the array is allocated with nothing in it. The untextured
             // material's 0.5 encoded: `1.055 * 0.5^(1/2.4) - 0.055` is 0.735, or 187 of 255.
             std::vector<std::uint8_t> plain;
-            EXPECT_EQ(countHits(makeWall(), {}, camera, size, plain), size * size);
+            EXPECT_EQ(
+                countHits(makeWall(), {}, camera, size, plain, Shot{ .mShow = SurfaceView::Albedo }), size * size);
             EXPECT_NEAR(plain[centre], 187, 1);
 
             // The same wall carrying two textures. Two and not one, because an empty array is
@@ -370,7 +368,8 @@ namespace Rtx::Testing
                 MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = mesh, .mMaterial = material });
 
             std::vector<std::uint8_t> shown;
-            EXPECT_EQ(countHits(textured, textures, camera, size, shown), size * size);
+            EXPECT_EQ(
+                countHits(textured, textures, camera, size, shown, Shot{ .mShow = SurfaceView::Albedo }), size * size);
             EXPECT_EQ(shown[centre], 255) << "red";
             EXPECT_EQ(shown[centre + 1], 0) << "green";
             EXPECT_EQ(shown[centre + 2], 0) << "blue";
@@ -378,7 +377,8 @@ namespace Rtx::Testing
             // And back down to none, which was as broken as the way up and is the direction a cell
             // change actually takes when a player walks out of a rich interior.
             std::vector<std::uint8_t> again;
-            EXPECT_EQ(countHits(makeWall(), {}, camera, size, again), size * size);
+            EXPECT_EQ(
+                countHits(makeWall(), {}, camera, size, again, Shot{ .mShow = SurfaceView::Albedo }), size * size);
             EXPECT_EQ(again, plain);
         }
 
@@ -530,13 +530,12 @@ namespace Rtx::Testing
 
             Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
-            camera.mShow = Shaders::SHOW_ALBEDO;
 
             const auto shownAt = [&](float delight, const TextureData& texture) {
-                camera.mDelight = delight;
-
                 std::vector<std::uint8_t> pixels;
-                EXPECT_EQ(countHits(scene, std::span(&texture, 1), camera, size, pixels), size * size);
+                EXPECT_EQ(countHits(scene, std::span(&texture, 1), camera, size, pixels,
+                              Shot{ .mShow = SurfaceView::Albedo, .mDelight = delight }),
+                    size * size);
                 return static_cast<int>(pixels[centre]);
             };
 
@@ -583,11 +582,11 @@ namespace Rtx::Testing
 
             Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
-            camera.mShow = Shaders::SHOW_ALBEDO;
-            camera.mDelight = 1.0f;
 
             std::vector<std::uint8_t> pixels;
-            ASSERT_EQ(countHits(scene, std::span(&painted.mData, 1), camera, size, pixels), size * size);
+            ASSERT_EQ(countHits(scene, std::span(&painted.mData, 1), camera, size, pixels,
+                          Shot{ .mShow = SurfaceView::Albedo, .mDelight = 1.0f }),
+                size * size);
 
             constexpr std::uint32_t row = size / 2;
             for (const std::uint32_t x : { 0u, 1u, 2u, 28u, 36u, size - 1 })
@@ -643,7 +642,6 @@ namespace Rtx::Testing
 
             Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
-            camera.mDelight = 0.0f;
 
             // A level down, because the turned card is seen obliquely and its cone would read a
             // third of a level into the ladder's next grey; the claim is the packing, not the level.
@@ -687,8 +685,6 @@ namespace Rtx::Testing
 
             Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
-            camera.mShow = Shaders::SHOW_ALBEDO;
-            camera.mDelight = 0.0f;
 
             const auto albedoUnder = [&](VertexColour mode, std::span<const osg::Vec3f> colours) {
                 SceneDesc scene;
@@ -700,7 +696,9 @@ namespace Rtx::Testing
                     MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = mesh, .mMaterial = material });
 
                 std::vector<std::uint8_t> pixels;
-                EXPECT_EQ(countHits(scene, std::span(&grey, 1), camera, size, pixels), size * size);
+                EXPECT_EQ(
+                    countHits(scene, std::span(&grey, 1), camera, size, pixels, Shot{ .mShow = SurfaceView::Albedo }),
+                    size * size);
 
                 return std::array<int, 3>{ pixels[centre], pixels[centre + 1], pixels[centre + 2] };
             };
@@ -966,8 +964,6 @@ namespace Rtx::Testing
 
             Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
-            camera.mShow = Shaders::SHOW_ALBEDO;
-            camera.mDelight = 0.0f;
 
             const std::array<osg::Vec2f, 4> onRed{ osg::Vec2f(0.25f, 0.25f), osg::Vec2f(0.25f, 0.25f),
                 osg::Vec2f(0.25f, 0.25f), osg::Vec2f(0.25f, 0.25f) };
@@ -995,7 +991,8 @@ namespace Rtx::Testing
                     MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = mesh, .mMaterial = material });
 
                 std::vector<std::uint8_t> pixels;
-                EXPECT_EQ(countHits(scene, textures, camera, size, pixels), size * size);
+                EXPECT_EQ(countHits(scene, textures, camera, size, pixels, Shot{ .mShow = SurfaceView::Albedo }),
+                    size * size);
                 return std::array<int, 3>{ pixels[centre], pixels[centre + 1], pixels[centre + 2] };
             };
 
@@ -1276,10 +1273,10 @@ namespace Rtx::Testing
             const auto renderAt = [&](float distance, float levelBias) {
                 Shaders::VisibilityConstants camera = Testing::makeCamera(
                     osg::Vec3f(0.0f, -distance, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
-                camera.mShow = Shaders::SHOW_ALBEDO;
 
                 std::vector<std::uint8_t> pixels;
-                countHits(scene, textures, camera, size, pixels, Shot{ .mLevelEpsilon = levelBias });
+                countHits(scene, textures, camera, size, pixels,
+                    Shot{ .mLevelEpsilon = levelBias, .mShow = SurfaceView::Albedo });
                 return centreOf(pixels);
             };
 
@@ -1349,7 +1346,6 @@ namespace Rtx::Testing
 
             Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
-            camera.mShow = Shaders::SHOW_ALBEDO;
 
             /// @param second the texture slot and diffuse transform of the layer on the right.
             const auto render = [&](Index second, const osg::Vec4f& secondTransform) {
@@ -1374,7 +1370,8 @@ namespace Rtx::Testing
                     .mTransform = osg::Matrixf::identity(), .mMesh = mesh, .mMaterial = scene.addMaterial(material) });
 
                 std::vector<std::uint8_t> pixels;
-                EXPECT_EQ(countHits(scene, textures, camera, size, pixels), size * size);
+                EXPECT_EQ(countHits(scene, textures, camera, size, pixels, Shot{ .mShow = SurfaceView::Albedo }),
+                    size * size);
                 return pixels;
             };
 
@@ -1468,7 +1465,7 @@ namespace Rtx::Testing
 
             // The three columns of the middle row, in the view `show`, with the texture in slot
             // `standsIn` described as the stand-in.
-            const auto render = [&](std::uint32_t show, bool flattened, std::optional<Index> standsIn = std::nullopt) {
+            const auto render = [&](SurfaceView show, bool flattened, std::optional<Index> standsIn = std::nullopt) {
                 std::array<TextureData, 4> described = textures;
                 if (standsIn.has_value())
                     described[*standsIn].mSource = TextureSource::StandIn;
@@ -1504,10 +1501,8 @@ namespace Rtx::Testing
                 scene.addInstance(MeshInstance{
                     .mTransform = osg::Matrixf::identity(), .mMesh = mesh, .mMaterial = scene.addMaterial(material) });
 
-                Shaders::VisibilityConstants shown = camera;
-                shown.mShow = show;
                 std::vector<std::uint8_t> pixels;
-                EXPECT_EQ(countHits(scene, described, shown, size, pixels), size * size);
+                EXPECT_EQ(countHits(scene, described, camera, size, pixels, Shot{ .mShow = show }), size * size);
 
                 std::array<osg::Vec3f, 3> columns;
                 for (std::size_t at = 0; at < columns.size(); ++at)
@@ -1532,7 +1527,7 @@ namespace Rtx::Testing
             const float second = 0.484375f;
             const float rough = 64.0f / 255.0f;
 
-            const std::array stackNormal = render(Shaders::SHOW_NORMAL, false);
+            const std::array stackNormal = render(SurfaceView::Normal, false);
             const std::array<osg::Vec3f, 3> wantedNormal{ carried(leaning),
                 carried(leaning * (1.0f - second) + osg::Vec3f(0.0f, 0.0f, 1.0f) * second),
                 carried(osg::Vec3f(0.0f, 0.0f, 1.0f)) };
@@ -1541,19 +1536,19 @@ namespace Rtx::Testing
                     EXPECT_NEAR(stackNormal[at][axis], wantedNormal[at][axis], 1e-5f)
                         << "column " << at << " axis " << axis;
 
-            const std::array stackRough = render(Shaders::SHOW_ROUGHNESS, false);
+            const std::array stackRough = render(SurfaceView::Roughness, false);
             EXPECT_EQ(stackRough[0].x(), 1.0f) << "a Lambert layer alone keeps the Lambert surface's roughness";
             EXPECT_NEAR(stackRough[1].x(), (1.0f - second) + second * rough, 1e-6f);
             EXPECT_NEAR(stackRough[2].x(), rough, 1e-6f);
 
-            const std::array stackSpecular = render(Shaders::SHOW_SPECULAR, false);
+            const std::array stackSpecular = render(SurfaceView::Specular, false);
             EXPECT_EQ(stackSpecular[0].x(), 0.0f) << "a Lambert layer alone reflects nothing";
             EXPECT_NEAR(stackSpecular[1].x(), Shaders::DIELECTRIC_F0 * second, 1e-7f);
             EXPECT_NEAR(stackSpecular[2].x(), Shaders::DIELECTRIC_F0, 1e-7f);
 
-            const std::array flatNormal = render(Shaders::SHOW_NORMAL, true);
-            const std::array flatRough = render(Shaders::SHOW_ROUGHNESS, true);
-            const std::array flatSpecular = render(Shaders::SHOW_SPECULAR, true);
+            const std::array flatNormal = render(SurfaceView::Normal, true);
+            const std::array flatRough = render(SurfaceView::Roughness, true);
+            const std::array flatSpecular = render(SurfaceView::Specular, true);
             for (std::size_t at = 0; at < 3; ++at)
             {
                 for (int axis = 0; axis < 3; ++axis)
@@ -1565,11 +1560,11 @@ namespace Rtx::Testing
             }
 
             const osg::Vec3f cardNormal = facing * 0.5f + osg::Vec3f(0.5f, 0.5f, 0.5f);
-            const std::array noRelief = render(Shaders::SHOW_NORMAL, false, 1);
-            const std::array unauthoredSpecular = render(Shaders::SHOW_SPECULAR, false, 2);
-            const std::array unauthoredRough = render(Shaders::SHOW_ROUGHNESS, false, 2);
-            const std::array noGlossSpecular = render(Shaders::SHOW_SPECULAR, true, 3);
-            const std::array noGlossRough = render(Shaders::SHOW_ROUGHNESS, true, 3);
+            const std::array noRelief = render(SurfaceView::Normal, false, 1);
+            const std::array unauthoredSpecular = render(SurfaceView::Specular, false, 2);
+            const std::array unauthoredRough = render(SurfaceView::Roughness, false, 2);
+            const std::array noGlossSpecular = render(SurfaceView::Specular, true, 3);
+            const std::array noGlossRough = render(SurfaceView::Roughness, true, 3);
             for (std::size_t at = 0; at < 3; ++at)
             {
                 EXPECT_EQ(noRelief[at], cardNormal) << "a normal map that stands in, column " << at;
@@ -1620,8 +1615,6 @@ namespace Rtx::Testing
 
             Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(100.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
-            camera.mShow = Shaders::SHOW_ALBEDO;
-            camera.mDelight = 0.0f;
 
             const auto shown = [&](bool ground, std::uint8_t height, bool flagged, bool standsIn = false) {
                 const std::array<std::uint8_t, 4> heightTexel{ 128, 128, 255, height };
@@ -1660,7 +1653,7 @@ namespace Rtx::Testing
                     .mTransform = osg::Matrixf::identity(), .mMesh = mesh, .mMaterial = scene.addMaterial(material) });
 
                 std::vector<std::uint8_t> pixels;
-                EXPECT_GT(countHits(scene, textures, camera, size, pixels), 0u);
+                EXPECT_GT(countHits(scene, textures, camera, size, pixels, Shot{ .mShow = SurfaceView::Albedo }), 0u);
                 return mRadiance[centre];
             };
 
@@ -1702,7 +1695,6 @@ namespace Rtx::Testing
 
             Shaders::VisibilityConstants camera = Testing::makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
-            camera.mShow = Shaders::SHOW_ALBEDO;
 
             SceneDesc scene;
             const Index mesh
@@ -1734,7 +1726,8 @@ namespace Rtx::Testing
 
             const std::array<TextureData, 2> stackTextures{ describeTexel(redTexel), describeTexel(greenTexel) };
             std::vector<std::uint8_t> pixels;
-            EXPECT_EQ(countHits(scene, stackTextures, camera, size, pixels), size * size);
+            EXPECT_EQ(countHits(scene, stackTextures, camera, size, pixels, Shot{ .mShow = SurfaceView::Albedo }),
+                size * size);
             everyPixelIs(pixels, "the stack");
 
             // Two more frames with the placement ended after each, as the uploader ends it, so
@@ -1747,7 +1740,7 @@ namespace Rtx::Testing
             {
                 scene.placements().advance();
                 mRenderer->placeScene(Rtx::SceneSlot::world(), scene);
-                mRenderer->renderFrame(camera, FrameOptions{ .mExposure = 1.0f });
+                mRenderer->renderFrame(camera, FrameOptions{ .mShow = SurfaceView::Albedo });
                 ASSERT_TRUE(mRenderer->finishFrame().has_value());
             }
             scene.placements().advance();
@@ -1769,7 +1762,7 @@ namespace Rtx::Testing
             // Into the standing world: the arrival stands the composite empty, and the placement
             // `extendScene` ends in bakes it.
             mRenderer->extendScene(Rtx::SceneSlot::world(), scene, std::span(&composite, 1));
-            mRenderer->renderFrame(camera, FrameOptions{ .mExposure = 1.0f });
+            mRenderer->renderFrame(camera, FrameOptions{ .mShow = SurfaceView::Albedo });
             ASSERT_TRUE(mRenderer->finishFrame().has_value());
             encodeLastFrame(size, pixels);
             everyPixelIs(pixels, "arrived into a standing world");
@@ -1777,14 +1770,16 @@ namespace Rtx::Testing
             // And from nothing, where there is no placement before the first trace.
             const std::array<TextureData, 3> flattenedTextures{ describeTexel(redTexel), describeTexel(greenTexel),
                 composite };
-            EXPECT_EQ(countHits(scene, flattenedTextures, camera, size, pixels), size * size);
+            EXPECT_EQ(countHits(scene, flattenedTextures, camera, size, pixels, Shot{ .mShow = SurfaceView::Albedo }),
+                size * size);
             everyPixelIs(pixels, "built from nothing");
 
             TextureData standingIn = composite;
             standingIn.mSource = TextureSource::StandIn;
             const std::array<TextureData, 3> standInTextures{ describeTexel(redTexel), describeTexel(greenTexel),
                 standingIn };
-            EXPECT_EQ(countHits(scene, standInTextures, camera, size, pixels), size * size);
+            EXPECT_EQ(countHits(scene, standInTextures, camera, size, pixels, Shot{ .mShow = SurfaceView::Albedo }),
+                size * size);
             everyPixelIs(pixels, "a composite that stands in");
         }
     }

@@ -30,7 +30,9 @@
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/visibility.h>
 #include <components/rtx/slot.hpp>
+#include <components/rtx/sunglare.hpp>
 #include <components/rtx/surface.hpp>
+#include <components/rtx/surfaceview.hpp>
 #include <components/rtx/texturedata.hpp>
 #include <components/rtx/wavecascade.hpp>
 #include <components/rtx/wavespectrum.hpp>
@@ -292,6 +294,17 @@ namespace Rtx::Testing
 
         /// What the debug modes drew, over the picture. Nothing, for every test not about it.
         DebugLines mDebug;
+
+        /// What every pixel is painted with and how much painted light is divided out, over the
+        /// harness's profile — which paints the light and divides out none (`describeRenderer`).
+        std::optional<SurfaceView> mShow;
+        std::optional<float> mDelight;
+
+        /// A fixed offset in the pixel for every frame, where the shot does not jitter.
+        std::optional<osg::Vec2f> mOffset;
+
+        /// The sun glare fader over the picture. None, for every test not about it.
+        SunGlare mGlare;
     };
 
     class RtxVisibilityTest : public Testing::RendererTest
@@ -329,11 +342,15 @@ namespace Rtx::Testing
                 mRenderer->renderFrame(sampled,
                     FrameOptions{ .mAccumulate = shot.mFrames > 0 && shot.mAverage ? frame + 1 : 0,
                         .mSkySeconds = static_cast<double>(frame) * static_cast<double>(shot.mSkyStep),
-                        .mReconstruction = { .mFilter = shot.mFilter,
+                        .mGlare = shot.mGlare,
+                        .mReconstruction = ReconstructionRequest{ .mFilter = shot.mFilter,
                             .mJitter = shot.mJitter,
                             .mNoise = shot.mNoise,
                             .mLevelEpsilon = shot.mLevelEpsilon },
                         .mExposure = shot.mExposure,
+                        .mDelight = shot.mDelight,
+                        .mShow = shot.mShow,
+                        .mJitter = shot.mOffset,
                         .mDebug = shot.mDebug });
 
                 // Every frame hits the same primary geometry, so the last one's count is the answer
@@ -435,9 +452,11 @@ namespace Rtx::Testing
         /// it measures is the exposure pass. Every other test over this fixture is about what the
         /// trace computed, which `countHits` gives without a display transform over it.
         void renderPicture(const SceneDesc& scene, std::span<const TextureData> textures,
-            const Shaders::VisibilityConstants& camera, std::uint32_t size, std::vector<std::uint8_t>& pixels)
+            const Shaders::VisibilityConstants& camera, std::uint32_t size, std::vector<std::uint8_t>& pixels,
+            Shot shot = {})
         {
-            renderShot(scene, textures, camera, size, Shot{ .mExposure = std::nullopt });
+            shot.mExposure = std::nullopt;
+            renderShot(scene, textures, camera, size, shot);
             mRenderer->readPixels(pixels);
 
             requireFrame(pixels, size);

@@ -107,7 +107,7 @@ namespace Rtx::Shaders
 
         /// The sun glare fader's wash: its colour, and how much of it this frame lays over the
         /// whole picture before the share of the sun the eye could see — `SunGlarePass`, bound
-        /// beside the exposure — is multiplied in. `Rtx::sunGlareAmount` folds the angle;
+        /// beside the exposure — is multiplied in. `Rtx::SunGlare::amountFor` folds the angle;
         /// `glare.h` says whose wash this is. Nought for a picture inside the interface.
         vec3 mGlareColour;
         float mGlareAmount;

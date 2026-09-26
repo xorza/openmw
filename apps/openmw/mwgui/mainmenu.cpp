@@ -28,8 +28,7 @@ namespace MWGui
 {
     void MenuVideo::run()
     {
-        Misc::FrameRateLimiter frameRateLimiter
-            = Misc::makeFrameRateLimiter(MWBase::Environment::get().getFrameRateLimit());
+        Misc::FrameRateLimiter frameRateLimiter = Misc::makeFrameRateLimiter(mFrameRateLimit);
         const MWBase::WindowManager& windowManager = *MWBase::Environment::get().getWindowManager();
         bool paused = false;
         while (mRunning)
@@ -54,8 +53,9 @@ namespace MWGui
         }
     }
 
-    MenuVideo::MenuVideo(const VFS::Manager* vfs)
+    MenuVideo::MenuVideo(const VFS::Manager* vfs, float frameRateLimit)
         : mRunning(true)
+        , mFrameRateLimit(frameRateLimit)
     {
         // Use black background to correct aspect ratio
         mVideoBackground = MyGUI::Gui::getInstance().createWidgetReal<MyGUI::ImageBox>(
@@ -98,11 +98,13 @@ namespace MWGui
         }
     }
 
-    MainMenu::MainMenu(int w, int h, const VFS::Manager* vfs, const std::string& versionDescription)
+    MainMenu::MainMenu(
+        int w, int h, const VFS::Manager* vfs, const std::string& versionDescription, float frameRateLimit)
         : WindowBase("openmw_mainmenu.layout")
         , mWidth(w)
         , mHeight(h)
         , mVFS(vfs)
+        , mFrameRateLimit(frameRateLimit)
         , mButtonBox(nullptr)
         , mBackground(nullptr)
     {
@@ -260,7 +262,7 @@ namespace MWGui
         if (mHasAnimatedMenu)
         {
             if (!mVideo)
-                mVideo.emplace(mVFS);
+                mVideo.emplace(mVFS, mFrameRateLimit);
 
             const auto& viewSize = MyGUI::RenderManager::getInstance().getViewSize();
             int screenWidth = viewSize.width;

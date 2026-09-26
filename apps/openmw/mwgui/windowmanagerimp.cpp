@@ -44,8 +44,6 @@
 #include <components/widgets/tags.hpp>
 #include <components/widgets/widgets.hpp>
 
-#include <components/misc/frameratelimiter.hpp>
-
 #include <components/l10n/manager.hpp>
 
 #include <components/lua_ui/util.hpp>
@@ -319,7 +317,8 @@ namespace MWGui
         mGuiModeStates[GM_Recharge] = GuiModeState(recharge.get());
         mWindows.push_back(std::move(recharge));
 
-        auto menu = std::make_unique<MainMenu>(w, h, mResourceSystem->getVFS(), mVersionDescription);
+        auto menu = std::make_unique<MainMenu>(
+            w, h, mResourceSystem->getVFS(), mVersionDescription, mRenderer.getFrameRateLimit());
         mGuiModeStates[GM_MainMenu] = GuiModeState(menu.get());
         mWindows.push_back(std::move(menu));
 
@@ -768,14 +767,10 @@ namespace MWGui
 
         if (block)
         {
-            Misc::FrameRateLimiter frameRateLimiter
-                = Misc::makeFrameRateLimiter(MWBase::Environment::get().getFrameRateLimit());
             while (mMessageBoxManager->readPressedButton(false) == -1
                 && !MWBase::Environment::get().getStateManager()->hasQuitRequest())
             {
-                const float dt
-                    = std::chrono::duration_cast<std::chrono::duration<float>>(frameRateLimiter.getLastFrameDuration())
-                          .count();
+                const float dt = mRenderer.openNestedFrame();
 
                 mKeyboardNavigation->onFrame();
                 mMessageBoxManager->onFrame(dt);
@@ -788,8 +783,6 @@ namespace MWGui
                 }
                 else
                     mRenderer.renderGuiFrame();
-
-                frameRateLimiter.limit();
             }
 
             mMessageBoxManager->resetInteractiveMessageBox();
@@ -2091,13 +2084,9 @@ namespace MWGui
             MWBase::Environment::get().getSoundManager()->pauseSounds(
                 MWSound::VideoPlayback, ~MWSound::Type::Movie & MWSound::Type::Mask);
 
-        Misc::FrameRateLimiter frameRateLimiter
-            = Misc::makeFrameRateLimiter(MWBase::Environment::get().getFrameRateLimit());
         while (mVideoWidget->update() && !MWBase::Environment::get().getStateManager()->hasQuitRequest())
         {
-            const float dt
-                = std::chrono::duration_cast<std::chrono::duration<float>>(frameRateLimiter.getLastFrameDuration())
-                      .count();
+            const float dt = mRenderer.openNestedFrame();
 
             MWBase::Environment::get().getInputManager()->update(dt, true, false);
 
@@ -2116,8 +2105,6 @@ namespace MWGui
 
                 mRenderer.renderGuiFrame();
             }
-
-            frameRateLimiter.limit();
         }
         mVideoWidget->stop();
 

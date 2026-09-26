@@ -103,7 +103,7 @@ namespace MWGui
 
     double LoadingScreen::getTargetFrameRate() const
     {
-        double frameRateLimit = MWBase::Environment::get().getFrameRateLimit();
+        double frameRateLimit = mRenderer.getFrameRateLimit();
         if (frameRateLimit > 0)
             return std::min(frameRateLimit, mTargetFrameRate);
         else

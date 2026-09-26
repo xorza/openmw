@@ -101,8 +101,7 @@ namespace Rtx::Testing
         const Rtx::SceneStats& getSceneStats() const override { return mStats; }
         Rtx::MemoryReport getMemoryReport() const override { return {}; }
         void resize(std::uint32_t, std::uint32_t) override {}
-        void setUpscale(Upscale upscale) override { mUpscale = upscale; }
-        Upscale getUpscale() const override { return mUpscale; }
+        void setUpscale(Upscale upscale) override { mProfile.mUpscaling.mMode = upscale; }
         void setVerticalSync(SDLUtil::VSyncMode) override {}
         bool pacesFrames() const override { return false; }
         void setPacing(const Rtx::Pacing&) override {}
@@ -238,8 +237,5 @@ namespace Rtx::Testing
     private:
         Rtx::SceneStats mStats;
         std::uint32_t mGuiTextures = 0;
-
-        /// Whatever it was last told, since nothing here traces and no mode can be refused.
-        Upscale mUpscale = Upscale::Off;
     };
 }

@@ -51,6 +51,8 @@ namespace MWRender
         if (mWindow == nullptr)
             throw std::runtime_error(std::string("failed to create SDL window: ") + SDL_GetError());
 
+        placement.fit(mWindow.get());
+
         // Read once here, and `mAskedSince` left at nought, so the first `fit` acts on a size that
         // counts as settled rather than waiting the settle out with no viewport set.
         std::uint32_t width = 0;

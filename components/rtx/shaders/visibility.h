@@ -500,17 +500,6 @@ namespace Rtx::Shaders
         /// precipitation's own range and a cell's height over it.
         float mShelterHeight;
 
-        /// The sun glare fader, as the game states it — `glare.h`. The colour is
-        /// `Weather_Sun_Glare_Fader_Color` doubled and clamped, in the display's own values and not
-        /// in light, because that is the space the rasterizer adds it in; the angle is `_Angle_Max` in
-        /// radians, past which the wash is nothing; the strength is `_Max` times the time-of-day
-        /// fade times the weather's `Glare_View`, and nought where no sun is drawn. What is left to
-        /// multiply is the angle's own term and how much of the sun's quad the rays could see,
-        /// which `tone.comp` reads off `SunGlareCount`'s easing.
-        vec3 mGlareColour;
-        float mGlareAngleMax;
-        float mGlareStrength;
-
         /// How many columns and rows of froxels stand in front of the camera.
         ///
         /// **The froxel grid, said once.** `puffLight` reads it once per covering sprite,
@@ -562,8 +551,8 @@ namespace Rtx::Shaders
 
     // Pinned for the reason `scene.h` gives: the side that writes these bytes and the side that
     // reads them are different compilers.
-    static_assert(offsetof(VisibilityConstants, mTables) == 1200, "GpuTables must land eight-aligned and last");
-    static_assert(sizeof(VisibilityConstants) == 1368, "VisibilityConstants must be scalar-packed on every side");
+    static_assert(offsetof(VisibilityConstants, mTables) == 1176, "GpuTables must land eight-aligned and last");
+    static_assert(sizeof(VisibilityConstants) == 1344, "VisibilityConstants must be scalar-packed on every side");
 #endif
 
 #ifdef RTX_HOST

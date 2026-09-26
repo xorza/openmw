@@ -58,7 +58,6 @@ namespace MWBase
         LuaManager* mLuaManager = nullptr;
         Resource::ResourceSystem* mResourceSystem = nullptr;
         L10n::Manager* mL10nManager = nullptr;
-        float mFrameRateLimit = 0;
         float mFrameDuration = 0;
 
     public:
@@ -123,10 +122,6 @@ namespace MWBase
         Misc::NotNullPtr<Resource::ResourceSystem> getResourceSystem() const { return mResourceSystem; }
 
         Misc::NotNullPtr<L10n::Manager> getL10nManager() const { return mL10nManager; }
-
-        float getFrameRateLimit() const { return mFrameRateLimit; }
-
-        void setFrameRateLimit(float value) { mFrameRateLimit = value; }
 
         float getFrameDuration() const { return mFrameDuration; }
 

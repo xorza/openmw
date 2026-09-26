@@ -551,11 +551,10 @@ namespace Rtx::Testing
                 camera.mSun
                     = Shaders::sunSource(osg::Vec3f(std::sin(off), std::cos(off), 0.0f), osg::Vec3f(4.0f, 4.0f, 4.0f));
 
-                camera.mGlareColour = osg::Vec3f(1.0f, 0.0f, 0.0f);
-                camera.mGlareAngleMax = osg::DegreesToRadians(90.0f);
-                camera.mGlareStrength = strength;
-
-                renderShot(scene, sheet, camera, size, Shot{ .mResetHistory = true });
+                const SunGlare fader{ .mColour = osg::Vec3f(1.0f, 0.0f, 0.0f),
+                    .mAngleMax = osg::DegreesToRadians(90.0f),
+                    .mStrength = strength };
+                renderShot(scene, sheet, camera, size, Shot{ .mResetHistory = true, .mGlare = fader });
 
                 std::vector<std::uint8_t> pixels;
                 mRenderer->readPixels(pixels);
