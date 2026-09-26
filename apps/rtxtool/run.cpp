@@ -234,22 +234,37 @@ namespace RtxTool
     namespace
     {
         /// A field written as a number, or a throw naming the view, the field and what was written.
+        /// The throw for a field of `view` that says `text` and is `which`: the view, the field and
+        /// what was written, whole.
+        [[noreturn]] void refuseField(
+            const std::string& view, std::string_view field, std::string_view text, std::string_view which)
+        {
+            throw std::runtime_error(std::format("view \"{}\" has {} \"{}\", which {}", view, field, text, which));
+        }
+
         float parseNumber(const std::string& view, std::string_view field, const std::string& text)
         {
             const std::optional<float> value = parseFloat(text);
             if (!value.has_value())
-                throw std::runtime_error(
-                    "view \"" + view + "\" has " + std::string(field) + " \"" + text + "\", which is not a number");
+                refuseField(view, field, text, "is not a number");
 
             return *value;
+        }
+
+        osg::Vec3f parsePoint(const std::string& view, std::string_view field, const std::string& text)
+        {
+            const std::optional<osg::Vec3f> point = parseVec3(text);
+            if (!point.has_value())
+                refuseField(view, field, text, "is not three numbers separated by commas");
+
+            return *point;
         }
 
         float parseSpeed(const std::string& view, const std::string& text)
         {
             const float speed = parseNumber(view, "speed", text);
             if (!(speed > 0.0f))
-                throw std::runtime_error("view \"" + view + "\" has speed \"" + text
-                    + "\", which is not a positive number of units a second");
+                refuseField(view, "speed", text, "is not a positive number of units a second");
 
             return speed;
         }
@@ -258,8 +273,7 @@ namespace RtxTool
         {
             const float hour = parseNumber(view, "hour", text);
             if (!(hour >= 0.0f) || !(hour < 24.0f))
-                throw std::runtime_error("view \"" + view + "\" has hour \"" + text
-                    + "\", which is not an hour of the day from 0 up to but not including 24");
+                refuseField(view, "hour", text, "is not an hour of the day from 0 up to but not including 24");
 
             return hour;
         }
@@ -271,8 +285,7 @@ namespace RtxTool
         std::string parseWeather(const std::string& view, const std::string& text)
         {
             if (!Rtx::weatherIndex(text).has_value())
-                throw std::runtime_error("view \"" + view + "\" has weather \"" + text
-                    + "\", which is none of the weathers the content files name");
+                refuseField(view, "weather", text, "is none of the weathers the content files name");
 
             return text;
         }
@@ -419,9 +432,9 @@ namespace RtxTool
             if (field == "cell")
                 view.mStand.mCell = value;
             else if (field == "pos")
-                view.mStand.mEye = parseVec3(value, "pos");
+                view.mStand.mEye = parsePoint(section, field, value);
             else if (field == "look")
-                view.mStand.mLook = parseVec3(value, "look");
+                view.mStand.mLook = parsePoint(section, field, value);
             else if (field == "note")
                 view.mNote = value;
             else if (field == "to")

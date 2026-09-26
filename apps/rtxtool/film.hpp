@@ -82,7 +82,7 @@ namespace RtxTool
         float mCutDistance = 16384.0f;
 
         /// What is drawn and not written after a cut.
-        float mWarmupSeconds = 2.0f;
+        float mWarmupSeconds = sWarmupByDefault;
 
         /// The frame's vertical field of view, in degrees, and its width over its height: what a
         /// pan's pace is read against.
@@ -188,10 +188,21 @@ namespace RtxTool
     /// would play on after this one. Returns how many it removed.
     std::size_t clearFrames(const std::filesystem::path& frames);
 
+    /// The encoder a film is written with: H.264, which every player decodes.
+    inline constexpr std::string_view sVideoCodec = "libx264";
+
+    /// Its constant rate factor, the quality it holds: eighteen is what "visually lossless" means
+    /// in practice for H.264.
+    inline constexpr int sVideoQuality = 18;
+
+    /// The pixel layout every player reads, where H.264's default out of RGB frames is one most
+    /// of them do not.
+    inline constexpr std::string_view sVideoPixels = "yuv420p";
+
     /// The ffmpeg line that encodes the frames in `frames` into `video` at `framesPerSecond`, for
-    /// the system's shell. H.264 at CRF 18, which is what "visually lossless" means in practice,
-    /// under the slow preset; yuv420p, which every player decodes; the index at the front, so a
-    /// browser plays it before it has it all; and an odd side padded by one, which H.264 refuses.
+    /// the system's shell: `sVideoCodec` at `sVideoQuality` under the slow preset, in
+    /// `sVideoPixels`; the index at the front, so a browser plays it before it has it all; and an
+    /// odd side padded by one, which H.264 refuses.
     std::string encodeCommand(
         const std::filesystem::path& frames, const std::filesystem::path& video, float framesPerSecond);
 }

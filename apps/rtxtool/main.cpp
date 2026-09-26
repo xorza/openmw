@@ -155,6 +155,22 @@ namespace RtxTool
             return variables["weather"].as<std::string>();
         }
 
+        /// The point `--<name>` names, or nothing where the line names none. Text that names no point
+        /// is refused, quoted whole.
+        std::optional<osg::Vec3f> pointGiven(const bpo::variables_map& variables, const char* name)
+        {
+            const std::string& text = variables[name].as<std::string>();
+            if (text.empty())
+                return std::nullopt;
+
+            const std::optional<osg::Vec3f> point = parseVec3(text);
+            if (!point.has_value())
+                throw std::runtime_error(
+                    std::format("--{} is not three numbers separated by commas: \"{}\"", name, text));
+
+            return point;
+        }
+
         /// Every view a run names, settled: a condition named on the command line is every
         /// place's, and none of them keeps its own.
         std::vector<Rtx::Stop> stopsFrom(
@@ -449,10 +465,10 @@ namespace RtxTool
 
             // Anything given on the command line wins over the view, which is the rule `stopFor`
             // already follows for the hour and the sky.
-            if (const std::optional<osg::Vec3f> origin = parseVec3(variables["pos"].as<std::string>(), "--pos"))
+            if (const std::optional<osg::Vec3f> origin = pointGiven(variables, "pos"))
                 staged.mStand.mEye = origin;
 
-            if (const std::optional<osg::Vec3f> target = parseVec3(variables["look"].as<std::string>(), "--look"))
+            if (const std::optional<osg::Vec3f> target = pointGiven(variables, "look"))
                 staged.mStand.mLook = target;
 
             return staged;
@@ -757,16 +773,6 @@ namespace RtxTool
 
             return runHosted(variables, command.mConfig, command.mResources, std::move(request), true);
         }
-
-        /// How long `check` holds the queue after every frame's trace, in milliseconds, where the
-        /// line names no `--hold` of its own.
-        ///
-        /// **Always, so a hazard that needs two frames in flight shows on the first frame of every
-        /// run rather than on one run in four.** A held queue keeps the device that far behind the
-        /// host, so every frame is recorded over a frame still running; `Rtx::StressPass` says
-        /// what the hold is timed as. Eight is the hold the barrier gate ran under before it moved
-        /// here, and half a frame at the target, so a place is not much slower for it.
-        constexpr double sCheckHoldMs = 8.0;
 
         /// Every claim the tree makes about what the renderer is handed and what it draws, asked
         /// of a real game at each place of a suite.

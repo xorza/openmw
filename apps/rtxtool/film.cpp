@@ -23,16 +23,6 @@ namespace RtxTool
 {
     namespace
     {
-        std::string_view trimmed(std::string_view text)
-        {
-            const auto blank = [](char c) { return c == ' ' || c == '\t' || c == '\r'; };
-            while (!text.empty() && blank(text.front()))
-                text.remove_prefix(1);
-            while (!text.empty() && blank(text.back()))
-                text.remove_suffix(1);
-            return text;
-        }
-
         /// Reads one keys file, a line at a time, naming the line in whatever it refuses.
         ///
         /// **Its own reader and not the settings parser `views.cfg` is read with**, because that
@@ -139,14 +129,10 @@ namespace RtxTool
         private:
             osg::Vec3f vector(std::string_view field, std::string_view value) const
             {
-                try
-                {
-                    return *parseVec3(value, field);
-                }
-                catch (const std::runtime_error& error)
-                {
-                    refuse(error.what());
-                }
+                const std::optional<osg::Vec3f> point = parseVec3(value);
+                if (!point.has_value())
+                    refuse(std::format("{} \"{}\" is not three numbers separated by commas", field, value));
+                return *point;
             }
 
             std::string_view mSource;
@@ -536,9 +522,9 @@ namespace RtxTool
     {
         const std::string line = std::format(
             "ffmpeg -hide_banner -loglevel warning -y -framerate {} -i {} -vf \"pad=ceil(iw/2)*2:ceil(ih/2)*2\" "
-            "-c:v libx264 -preset slow -crf 18 -pix_fmt yuv420p -movflags +faststart {}",
-            framesPerSecond, shellWord(frames / std::format("%0{}d{}", sFrameDigits, sFrameExtension)),
-            shellWord(video));
+            "-c:v {} -preset slow -crf {} -pix_fmt {} -movflags +faststart {}",
+            framesPerSecond, shellWord(frames / std::format("%0{}d{}", sFrameDigits, sFrameExtension)), sVideoCodec,
+            sVideoQuality, sVideoPixels, shellWord(video));
 
 #if defined(_WIN32)
         // `cmd /c` takes the whole line in one more pair of quotes.

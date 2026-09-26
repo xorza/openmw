@@ -9,7 +9,9 @@
 #include <boost/program_options/options_description.hpp>
 #include <boost/program_options/parsers.hpp>
 #include <boost/program_options/variables_map.hpp>
+#include <osg/Vec3f>
 
+#include <apps/rtxtool/film.hpp>
 #include <apps/rtxtool/options.hpp>
 #include <apps/rtxtool/run.hpp>
 #include <apps/rtxtool/verbs.hpp>
@@ -161,6 +163,32 @@ namespace RtxTool
             EXPECT_TRUE(lineFor("fov").starts_with("with every command but `info`, ")) << lineFor("fov");
 
             EXPECT_FALSE(lineFor("validation").starts_with("with ")) << "nothing to say where every command reads it";
+
+            // **A number a line states is the number the code reads**, formatted from it: eight
+            // milliseconds, four seconds, sixty frames a second for twenty seconds, 800 units at
+            // 69.99 a metre, 16384 units of 8192-unit cells, and the encoder's own three settings.
+            EXPECT_NE(lineFor("hold").find("`check` holds 8 unless"), std::string::npos) << lineFor("hold");
+            EXPECT_NE(lineFor("turn-weather").find("Each crossing takes 4 seconds"), std::string::npos);
+            EXPECT_NE(lineFor("seconds").find("steps 1/60 of a second"), std::string::npos) << lineFor("seconds");
+            EXPECT_NE(lineFor("seconds").find("the 20 seconds nobody named are 1200 frames"), std::string::npos);
+            EXPECT_NE(lineFor("speed").find("11 metres a second by default"), std::string::npos) << lineFor("speed");
+            EXPECT_NE(lineFor("cut-distance").find(": 2 exterior cells by default"), std::string::npos);
+            EXPECT_NE(lineFor("encode").find("with libx264 at CRF 18 in yuv420p"), std::string::npos);
+            EXPECT_EQ(lineFor("warmup").find("forty-five"), std::string::npos) << "the settle it described is gone";
+        }
+
+        /// A point is three numbers and nothing else, spaces around each allowed; anything else is
+        /// no point, the empty text among it, and the caller says so in its own words.
+        TEST(RtxToolOptionsTest, aPointIsThreeNumbersAndNothingElse)
+        {
+            EXPECT_EQ(parseVec3("1,-2.5,3"), osg::Vec3f(1.0f, -2.5f, 3.0f));
+            EXPECT_EQ(parseVec3(" -8292, -73376 ,320 "), osg::Vec3f(-8292.0f, -73376.0f, 320.0f));
+
+            for (const std::string_view text : { "", "1,2", "1,2,3,", "1,,3", "1,2,3,4", "a,b,c", "1,2,3x", ",," })
+                EXPECT_FALSE(parseVec3(text).has_value()) << '"' << text << '"';
+
+            EXPECT_EQ(trimmed(" \tcell = 0,0\r"), "cell = 0,0");
+            EXPECT_EQ(trimmed("  "), "");
         }
 
         /// The names the two tables share: an option's owner and the dispatch's row are the same

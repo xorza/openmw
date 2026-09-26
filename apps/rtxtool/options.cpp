@@ -6,7 +6,6 @@
 #include <format>
 #include <locale>
 #include <sstream>
-#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -17,11 +16,13 @@
 
 #include <components/fallback/validate.hpp>
 #include <components/files/configurationmanager.hpp>
+#include <components/misc/constants.hpp>
 #include <components/rtx/contract.hpp>
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/surfaceview.hpp>
 #include <components/rtx/upscale.hpp>
+#include <components/rtxbench/benchspec.hpp>
 
 #include "film.hpp"
 #include "run.hpp"
@@ -49,6 +50,10 @@ namespace RtxTool
 
         /// The commands that stand under one sky the line names. A film's keys each name their own.
         constexpr Verbs sOneSky = otherThan(Verbs::Info | Verbs::Film);
+
+        /// How long a place runs where nobody says. Twenty because ten left the CPU medians moving
+        /// by more than the changes being measured.
+        constexpr float sSecondsByDefault = 20.0f;
 
         /// Which commands read an option, said the shorter of the two ways.
         ///
@@ -229,14 +234,15 @@ namespace RtxTool
             "a weather a view fixes for itself");
 
         option(Verbs::Bench, "turn-weather", bpo::value<std::string>()->default_value(""),
-            "turn the sky through these weathers while each place runs, comma "
-            "separated and round again — --turn-weather=Rain,Foggy. Each crossing takes four "
-            "seconds of world in place of the weather's own Transition_Delta, a minute for most, "
-            "and the next is asked for as one lands, so the precipitation of the one arriving "
-            "replaces the one leaving halfway through every crossing. **A run under it is not a "
-            "benchmark**: no two places stand under the same sky. It is here because a weather "
-            "turning frees a whole emitter's meshes and textures on an ordinary frame, which is "
-            "the one thing the game does constantly that no other path in this tool could do");
+            std::format("turn the sky through these weathers while each place runs, comma separated and round again — "
+                        "--turn-weather=Rain,Foggy. Each crossing takes {} "
+                        "seconds of world in place of the weather's own Transition_Delta, a minute for most, "
+                        "and the next is asked for as one lands, so the precipitation of the one arriving "
+                        "replaces the one leaving halfway through every crossing. **A run under it is not a "
+                        "benchmark**: no two places stand under the same sky. It is here because a weather "
+                        "turning frees a whole emitter's meshes and textures on an ordinary frame, which is "
+                        "the one thing the game does constantly that no other path in this tool could do",
+                sTurnSeconds));
 
         option(sOneSky, "hour", bpo::value<float>()->default_value(sDefaultHour),
             "what time an exterior's sun is at, on a twenty-four hour clock. An interior is lit "
@@ -262,23 +268,16 @@ namespace RtxTool
             "--views=all runs every view there is, which with `shot --against` is what says what "
             "a change moved");
 
-        option(Verbs::Bench | Verbs::Check, "seconds", bpo::value<float>()->default_value(20.0f),
-            "how many seconds of world to run at each place. World and not wall: the "
-            "world steps a sixtieth of a second per frame however long the frame took, so this is "
-            "twelve hundred frames either way and two builds render the same twelve hundred. Twenty "
-            "because ten left the CPU medians moving by more than the changes being measured");
+        option(Verbs::Bench | Verbs::Check, "seconds", bpo::value<float>()->default_value(sSecondsByDefault),
+            std::format("how many seconds of world to run at each place. World and not wall: the world "
+                        "steps 1/{} of a second per frame however long the frame took, so the {} seconds "
+                        "nobody named are {} frames either way, and two builds render the same frames",
+                Rtx::sStepRate, sSecondsByDefault, Rtx::sStepRate * sSecondsByDefault));
 
-        option(otherThan(Verbs::Info | Verbs::View), "warmup", bpo::value<float>()->default_value(2.0f),
-            "how many seconds of world to draw and throw away before measuring. This "
-            "machine's GPU idles at 315 MHz and ramps under load, and a scene's first frames pay "
-            "for its residency as well. Two rather than three because the ramp and the residency "
-            "are over well inside it: measured interleaved on a hot card, three seconds ran 20 s "
-            "and two ran 19. A process that compiled the launches, rather than finding them in "
-            "the driver's cache, does not measure at all: the driver compiles them a second time "
-            "on a thread of its own over the next seconds and swaps the code in, so such a "
-            "process draws the first stop until no thread of its own has been busy for four "
-            "seconds, then starts the same run again warm, or gives up at forty-five. The log "
-            "says which");
+        option(otherThan(Verbs::Info | Verbs::View), "warmup", bpo::value<float>()->default_value(sWarmupByDefault),
+            "how many seconds of world to draw and throw away before measuring, or after a film's "
+            "cut. This machine's GPU idles at 315 MHz and ramps under load, and a scene's first "
+            "frames pay for its residency as well");
 
         option(sFramed, "hud", bpo::value<bool>()->default_value(false)->implicit_value(true),
             "draw the game's HUD over the picture: the bars, the compass and the cell's name. Off "
@@ -331,11 +330,12 @@ namespace RtxTool
                 .c_str());
 
         option(sFramed, "hold", bpo::value<double>()->default_value(0.0),
-            "hold the queue this many milliseconds behind the host after every frame's trace; "
-            "`check` holds eight unless told otherwise. The other leg of `repeat` runs under it, "
-            "and a `shot --against` its own unheld pictures is the same question of a still: a "
-            "picture that is a function of the frames alone comes out the same however far the "
-            "device trails, and one that read the clock does not");
+            std::format("hold the queue this many milliseconds behind the host after every frame's trace; "
+                        "`check` holds {} unless told otherwise. The other leg of `repeat` runs under it, "
+                        "and a `shot --against` its own unheld pictures is the same question of a still: a "
+                        "picture that is a function of the frames alone comes out the same however far the "
+                        "device trails, and one that read the clock does not",
+                sCheckHoldMs));
 
         option(Verbs::Bench, "json", bpo::value<std::string>()->default_value(""),
             "also write the run to this file as one record, for comparing against the "
@@ -420,9 +420,10 @@ namespace RtxTool
         option(Verbs::Film, "fps", bpo::value<float>()->default_value(pacing.mFramesPerSecond),
             "frames a second of film, which is also what the world steps by");
         option(Verbs::Film, "speed", bpo::value<float>()->default_value(pacing.mSpeed),
-            "world units a second the camera flies between two keys, about eleven metres a second "
-            "by default: a drone and not a run. A flight takes as long as the slowest of its "
-            "changes asks, this and the four after it");
+            std::format("world units a second the camera flies between two keys, {:.0f} metres a second "
+                        "by default: a drone and not a run. A flight takes as long as the slowest of its "
+                        "changes asks, this and the four after it",
+                pacing.mSpeed / Constants::UnitsPerMeter));
         option(Verbs::Film, "pan-seconds", bpo::value<float>()->default_value(pacing.mPanSeconds),
             "how long a pan takes to sweep one image width, or a tilt one image height: the "
             "established limit before judder, which a frame with no motion blur shows sooner");
@@ -435,12 +436,14 @@ namespace RtxTool
         option(Verbs::Film, "still", bpo::value<float>()->default_value(pacing.mStillSeconds),
             "how long a key with no key either side of it stands, and a segment where nothing changes");
         option(Verbs::Film, "cut-distance", bpo::value<float>()->default_value(pacing.mCutDistance),
-            "how far apart two keys can be and still be flown between rather than cut: two exterior "
-            "cells by default. A key in another interior, or inside where the last was out, is "
-            "always a cut");
+            std::format("how far apart two keys can be and still be flown between rather than cut: {:g} "
+                        "exterior cells by default. A key in another interior, or inside where the last "
+                        "was out, is always a cut",
+                pacing.mCutDistance / static_cast<float>(Constants::CellSizeInUnits)));
         option(Verbs::Film, "encode", bpo::value<bool>()->default_value(true)->implicit_value(true),
-            "run ffmpeg over the frames once they are drawn, into H.264 at CRF 18 in yuv420p, which "
-            "every player reads. --encode=false prints the command instead");
+            std::format("run ffmpeg over the frames once they are drawn, with {} at CRF {} in {}, which "
+                        "every player reads. --encode=false prints the command instead",
+                sVideoCodec, sVideoQuality, sVideoPixels));
         option(sFramed, "size",
             bpo::value<std::string>()->default_value(
                 std::format("{}x{}", byDefault.mWindow.mWidth, byDefault.mWindow.mHeight)),
@@ -528,40 +531,36 @@ namespace RtxTool
         return value;
     }
 
-    std::optional<osg::Vec3f> parseVec3(std::string_view text, std::string_view what)
+    std::optional<osg::Vec3f> parseVec3(std::string_view text)
     {
-        if (text.empty())
-            return std::nullopt;
-
-        const auto fail = [&] {
-            throw std::runtime_error(
-                std::string(what) + " is not three numbers separated by commas: \"" + std::string(text) + '"');
-        };
-
         osg::Vec3f result;
         for (int axis = 0; axis < 3; ++axis)
         {
-            while (!text.empty() && text.front() == ' ')
-                text.remove_prefix(1);
-
+            const bool last = axis == 2;
             const std::size_t comma = text.find(',');
-            const std::string_view field = text.substr(0, comma);
+            if ((comma == std::string_view::npos) != last)
+                return std::nullopt;
 
-            const std::optional<float> value = parseFloat(field);
+            const std::optional<float> value = parseFloat(trimmed(text.substr(0, comma)));
             if (!value.has_value())
-                fail();
+                return std::nullopt;
 
             result[axis] = *value;
-
-            const bool last = axis == 2;
-            if ((comma == std::string_view::npos) != last)
-                fail();
-
             if (!last)
-                text = text.substr(comma + 1);
+                text.remove_prefix(comma + 1);
         }
 
         return result;
+    }
+
+    std::string_view trimmed(std::string_view text)
+    {
+        const auto blank = [](char c) { return c == ' ' || c == '\t' || c == '\r'; };
+        while (!text.empty() && blank(text.front()))
+            text.remove_prefix(1);
+        while (!text.empty() && blank(text.back()))
+            text.remove_suffix(1);
+        return text;
     }
 
     namespace

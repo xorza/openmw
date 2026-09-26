@@ -69,6 +69,22 @@ namespace RtxTool
     /// swap halfway, which is what a turn exists for, lands past the twenty seconds a place runs.
     inline constexpr float sTurnSeconds = 4.0f;
 
+    /// How long a place is drawn and thrown away before it is measured, or after a film's cut,
+    /// where nobody says. Two rather than three, because the GPU's clock ramp and the scene's
+    /// residency are over well inside it: measured interleaved on a hot card, three seconds ran
+    /// 20 s and two ran 19.
+    inline constexpr float sWarmupByDefault = 2.0f;
+
+    /// How long `check` holds the queue after every frame's trace, in milliseconds, where the line
+    /// names no `--hold` of its own.
+    ///
+    /// **Always, so a hazard that needs two frames in flight shows on the first frame of every run
+    /// rather than on one run in four.** A held queue keeps the device that far behind the host, so
+    /// every frame is recorded over a frame still running; `Rtx::StressPass` says what the hold is
+    /// timed as. Eight is the hold the barrier gate ran under before it moved here, and half a
+    /// frame at the target, so a place is not much slower for it.
+    inline constexpr double sCheckHoldMs = 8.0;
+
     /// The fallback values that make every weather in `turnThrough` cross in `sTurnSeconds`:
     /// `Weather_<name>_Transition_Delta` set to its reciprocal, written over `fallback` before the
     /// `Fallback::Map` the world reads is made from it. A name that is none of the ten is left to

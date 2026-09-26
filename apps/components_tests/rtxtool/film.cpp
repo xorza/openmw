@@ -118,8 +118,12 @@ namespace RtxTool
             EXPECT_EQ(refusal("# a comment\n\n[a]\ncell = 0,0\npos = 1,2,3\n[b]\n"),
                 "tour.keys:3: key \"a\" names no pos and look");
             EXPECT_EQ(refusal(place + "[b\n"), "tour.keys:5: a section's name is not closed by ]");
-            EXPECT_EQ(refusal(place + "pos = x,2,3\n"),
-                "tour.keys:5: pos is not three numbers separated by commas: \"x,2,3\"");
+            EXPECT_EQ(
+                refusal(place + "pos = 1,2\n"), "tour.keys:5: pos \"1,2\" is not three numbers separated by commas")
+                << "quoted whole, and not from where the reading stopped";
+            EXPECT_EQ(refusal("[a]\ncell = 0,0\npos =\nlook = 1,2,3\n"),
+                "tour.keys:3: pos \"\" is not three numbers separated by commas")
+                << "an empty point is no point, and not one left unsaid";
             EXPECT_EQ(refusal("# nothing\n"), "tour.keys states no keys");
         }
 

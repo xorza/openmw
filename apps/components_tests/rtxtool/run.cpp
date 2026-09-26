@@ -537,6 +537,24 @@ hour = 19.25
             EXPECT_THROW(readViews(std::string(sShip) + "[dawn]\nlike = nowhere\n"), std::runtime_error)
                 << "like a view that is not there";
 
+            // **A camera written badly is refused by the view's name, and an empty one is written
+            // badly.** Read as no camera, it stood the view outside its cell looking at the middle.
+            const auto refusal = [](std::string_view text) {
+                try
+                {
+                    readViews(text);
+                }
+                catch (const std::runtime_error& error)
+                {
+                    return std::string(error.what());
+                }
+                return std::string("nothing was refused");
+            };
+            EXPECT_EQ(refusal("[ship]\ncell = -2,-9\npos = 1,2\n"),
+                "view \"ship\" has pos \"1,2\", which is not three numbers separated by commas");
+            EXPECT_EQ(refusal("[ship]\ncell = -2,-9\nlook =\n"),
+                "view \"ship\" has look \"\", which is not three numbers separated by commas");
+
             EXPECT_THROW(readViews("[dawn]\nlike = dawn\n"), std::runtime_error) << "like itself";
 
             EXPECT_THROW(
