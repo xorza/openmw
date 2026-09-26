@@ -83,6 +83,7 @@ namespace MWRender
         described.mPlayerPosition = player.getRefData().getPosition().asVec3();
 
         described.mGameHour = simulation.getTimeStamp().getHour();
+        described.mGameTime = simulation.getTimeManager()->getGameTime();
         described.mTimeScale = simulation.getTimeManager()->getGameTimeScale();
         described.mWeatherId = simulation.getCurrentWeatherScriptId();
         described.mNextWeatherId = nextWeather;

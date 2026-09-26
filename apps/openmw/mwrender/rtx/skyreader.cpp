@@ -19,6 +19,7 @@
 #include <components/rtx/skylight.hpp>
 #include <components/settings/values.hpp>
 #include <components/sky/moonstate.hpp>
+#include <components/sky/skyclock.hpp>
 #include <components/vfs/manager.hpp>
 
 #include "../precipitation.hpp"
@@ -188,7 +189,7 @@ namespace MWRender
             },
             .mOutdoors = skyShown,
             .mGlare = weather.mGlareView,
-            .mStarRoll = mClock.mStarRoll,
+            .mStarRoll = Sky::starRoll(world.mGameTime),
             .mSky = mSkyContent,
             .mMoons = moons,
             .mClouds = Rtx::CloudCrossing{

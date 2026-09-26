@@ -64,8 +64,8 @@ namespace MWRender
         /// nothing of the sky: `attach`'s pair, where the world is detached.
         void detach(Rtx::SceneDesc& scene);
 
-        /// Moves the sky's clocks on by one frame: the deck's scroll, the stars' roll and the
-        /// seconds the fog drifts by. Every unpaused frame the sky is on, as the rasterizer's dome
+        /// Moves the sky's clocks on by one frame: the deck's scroll and the seconds the fog drifts
+        /// by. Every unpaused frame the sky is on, as the rasterizer's dome
         /// steps its own.
         void step(float seconds, float timeScale, float cloudSpeed) { mClock.step(seconds, timeScale, cloudSpeed); }
 
@@ -84,8 +84,8 @@ namespace MWRender
         Rtx::MoonFaces mMoonFaces;
         Rtx::SkyContent mSkyContent;
 
-        /// The deck, the stars and the fog's seconds, this renderer's own: the dome keeps the same
-        /// clocks for itself and neither reads the other's.
+        /// The deck and the fog's seconds, this renderer's own: the dome keeps its own deck and
+        /// neither reads the other's.
         Sky::SkyClock mClock;
 
         /// What a script paints Secunda, `Moons_Script_Color` decoded, read once as the

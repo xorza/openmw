@@ -124,6 +124,11 @@ namespace MWRender
 
         float mGameHour = 0.0f;
 
+        /// Game seconds since the game began, `MWWorld::DateTimeManager::getGameTime`: what the star
+        /// sphere is turned by (`Sky::starRoll`), as a function of the clock and not a sum of
+        /// frames, so a clock set or run forward turns the stars with it.
+        double mGameTime = 0.0;
+
         /// The `timescale` global: game seconds to each real one, which a renderer steps its own
         /// sky clock by (`Sky::SkyClock`).
         float mTimeScale = 0.0f;

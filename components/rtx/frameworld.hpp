@@ -63,7 +63,7 @@ namespace Rtx
         /// The weather's `Glare_View`, which is what keeps the stars in under an overcast.
         float mGlare = 1.0f;
 
-        /// How far the star sphere has turned and the deck has scrolled — the sky manager's two clocks.
+        /// How far the star sphere has turned, `Sky::starRoll` of the game's clock.
         float mStarRoll = 0.0f;
 
         /// Where the sky's own sheets sit in the scene's texture table.

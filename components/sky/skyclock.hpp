@@ -2,8 +2,8 @@
 #define OPENMW_COMPONENTS_SKY_SKYCLOCK_H
 
 #include <algorithm>
-
-#include <osg/Math>
+#include <cmath>
+#include <numbers>
 
 namespace Sky
 {
@@ -27,22 +27,33 @@ namespace Sky
         return seconds * (std::max(timeScale, 0.0f) / sVanillaTimeScale);
     }
 
+    /// How far the star sphere has turned at `gameSeconds` of game time, in radians about the
+    /// vertical, in [-π, π]: once round in four days, counter-clockwise as the player sees it, as
+    /// Morrowind turns it. **Both renderers turn their stars by this one function**, the
+    /// rasterizer's `SkyManager::update` and the ray tracer's `SkyReader`: an upstream change to
+    /// the rule conflicts at the rasterizer's call, and is made here for both. Taken round the
+    /// circle in double and only then narrowed, because a float's angle a hundred days in resolves
+    /// a hundredth of a degree.
+    inline float starRoll(const double gameSeconds)
+    {
+        constexpr double fourDays = 3600.0 * 96.0;
+        return static_cast<float>(
+            std::remainder(gameSeconds * (-2.0 * std::numbers::pi) / fourDays, 2.0 * std::numbers::pi));
+    }
+
     /// The clocks a renderer that draws no dome runs its sky on: how far the cloud deck has scrolled,
-    /// in texture units, how far the star sphere has rolled, in radians, and how many of the sky's
-    /// own seconds have passed. Neither is a function of the hour: the deck runs on the weather's
-    /// speed and the stars come round once in four days. The rasterizer's `SkyManager` keeps the
-    /// same two inside itself, at upstream's pace, and neither renderer reads the other's.
+    /// in texture units, and how many of the sky's own seconds have passed. Neither is a function
+    /// of the hour: the deck runs on the weather's speed. The rasterizer's `SkyManager` keeps its
+    /// own deck at upstream's pace, and neither renderer reads the other's.
     struct SkyClock
     {
         /// A double, because the fog's drift is the difference of two readings, and ten hours in a
         /// float resolves 0.0039 s — a quarter of a frame at sixty.
         double mSeconds = 0.0;
         float mCloudScroll = 0.0f;
-        float mStarRoll = 0.0f;
 
-        /// Moves every clock on by one frame of `seconds` at `timeScale`, under a deck driven at
-        /// `cloudSpeed`. The deck by the sky's clock, because `Cloud_Speed` is a rate over real
-        /// seconds; the stars by game time, as the rasterizer rolls them.
+        /// Moves both clocks on by one frame of `seconds` at `timeScale`, under a deck driven at
+        /// `cloudSpeed`: by the sky's clock, because `Cloud_Speed` is a rate over real seconds.
         void step(const float seconds, const float timeScale, const float cloudSpeed)
         {
             const float skySeconds = skyStep(seconds, timeScale);
@@ -52,9 +63,6 @@ namespace Sky
             mCloudScroll += skySeconds * cloudSpeed / 400.f;
             if (mCloudScroll >= 4.f)
                 mCloudScroll -= 4.f;
-
-            // rotate the stars by 360 degrees every 4 days
-            mStarRoll += timeScale * seconds * osg::DegreesToRadians(360.f) / (3600 * 96.f);
         }
     };
 }
