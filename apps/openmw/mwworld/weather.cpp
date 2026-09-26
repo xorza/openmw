@@ -27,6 +27,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <utility>
 
 namespace MWWorld
 {
@@ -680,6 +681,19 @@ namespace MWWorld
         }
     }
 
+    void WeatherManager::holdWeather(ESM::RefId current, ESM::RefId next, float crossed)
+    {
+        const bool arrived = crossed >= 1.0f && !next.empty();
+        const bool crossing = !arrived && crossed > 0.0f && !next.empty() && next != current;
+
+        mCurrentWeather = arrived ? next : current;
+        mNextWeather = crossing ? next : ESM::RefId();
+        mQueuedWeather = {};
+        mTransitionFactor = crossing ? 1.0f - crossed : 0.0f;
+        mFastForward = false;
+        mHeld = true;
+    }
+
     void WeatherManager::modRegion(ESM::RefId regionID, const std::map<ESM::RefId, uint8_t>& chances)
     {
         // Sets the region's probability for various weather patterns. Note that this appears to be saved permanently.
@@ -737,7 +751,7 @@ namespace MWWorld
     {
         MWWorld::ConstPtr player = MWMechanics::getPlayer();
 
-        if (!paused || mFastForward)
+        if (!std::exchange(mHeld, false) && (!paused || mFastForward))
         {
             // Add new transitions when either the player's current external region changes.
             if (updateWeatherTime() || updateWeatherRegion(player.getCell()->getCell()->getRegion()))

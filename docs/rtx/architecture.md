@@ -1152,11 +1152,19 @@ memory refused included — throws `Rtx::DeviceError`, which ends the game with 
 ## 14. Harness, instruments, tests
 
 `openmw-rtxtool <verb>` drives a real game headless: `info`, `scene`, `shot`, `view`, `bench`,
-`check`. `RtxTool::Session` (`apps/rtxtool/session.hpp`) is both the `OMW::EngineHost` and the
+`check`, `film`. `RtxTool::Session` (`apps/rtxtool/session.hpp`) is both the `OMW::EngineHost` and the
 `MWRender::RtxRun`: it makes the renderer with itself installed, states the frame step, runs
-the schedule in `beforeFrame` (a teleport, an aimed camera, a turned sky, a flown route), and
-collects every frame in `frame`. `Rtx::Check` (`components/rtxbench/benchrun.hpp`) lists what
-`check` asserts.
+the schedule in `beforeFrame` (a teleport, an aimed camera, a turned sky, a flown route, a
+followed track), and collects every frame in `frame`. `Rtx::Check`
+(`components/rtxbench/benchrun.hpp`) lists what `check` asserts.
+
+**A film is a list of stops.** `view --keys` appends the key it stands at on every Home press, and
+`film --keys` splits the keys into takes (`apps/rtxtool/film.hpp`): a cut where two keys are in
+different spaces or too far apart, a flight otherwise. Each take is one stop, whose
+`Rtx::CameraTrack` (`components/rtxbench/cameratrack.hpp`) gives the eye, the facing, the hour and
+the sky at every frame, a monotone cubic Hermite spline per channel. The session moves the eye,
+runs the clock forward and holds the sky (`MWWorld::WeatherManager::holdWeather`) on every frame,
+and writes each measured frame as a numbered PNG, which ffmpeg then encodes.
 
 `components/rtxbench` holds the instruments both hosts share, because the game measures
 itself: the run's length, what a place came to, frame times and hashes, the scene digest, the

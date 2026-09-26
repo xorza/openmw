@@ -3,6 +3,7 @@
 #include <charconv>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <exception>
 #include <filesystem>
 #include <format>
@@ -25,6 +26,7 @@
 #include <components/debug/debugging.hpp>
 #include <components/debug/debuglog.hpp>
 #include <components/files/configurationmanager.hpp>
+#include <components/files/conversion.hpp>
 #include <components/platform/platform.hpp>
 #include <components/platform/process.hpp>
 #include <components/rtx/error.hpp>
@@ -44,6 +46,7 @@
 #include <components/settings/windowmode.hpp>
 
 #include "compare.hpp"
+#include "film.hpp"
 #include "options.hpp"
 #include "run.hpp"
 #include "verbs.hpp"
@@ -745,6 +748,7 @@ namespace RtxTool
             Rtx::SessionRequest request = sessionFor(command, framed, std::move(stops), validationFrom(variables));
             request.mQuitAtEnd = frames > 0;
             request.mSetup.mHeadless = false;
+            request.mKeys = variables["keys"].as<std::string>();
 
             // **On the wall, because somebody is watching.** A stepped world runs as fast as the
             // card draws it, which at two hundred frames a second is three times over; a window
@@ -821,6 +825,94 @@ namespace RtxTool
             return runHosted(variables, command.mConfig, command.mResources, std::move(request));
         }
 
+        /// A film of the keys a window wrote: every take drawn headless, its frames numbered through
+        /// the film, then encoded.
+        ///
+        /// **The plan first, whatever follows.** A film is an hour of rendering, and the lengths the
+        /// keys came to are where a wrong one shows: a flight of forty seconds where ten were meant
+        /// is a key too far away, and the plan says so before a frame is drawn.
+        ///
+        /// **Stepped at the film's own rate, settled and unvalidated.** The world moves a frame's
+        /// worth between frames, so the water and the people move at their own speed in the video;
+        /// every walk waits for the cells it collects, so no cell arrives on screen; and the layers,
+        /// which a film does not ask about, stay off unless named, as a bench's do.
+        int commandFilm(const Command& command)
+        {
+            const bpo::variables_map& variables = command.mVariables;
+            Framed framed = frameFrom(command);
+
+            // Watched and never summed, like a bench.
+            framed.mProfile.mRadianceWidth = Rtx::RadianceWidth::Shown;
+
+            const std::filesystem::path keys = variables["keys"].as<std::string>();
+            if (keys.empty())
+                throw std::runtime_error("a film needs --keys=<file>, the keys `view --keys` appends on Home");
+
+            FilmPacing pacing;
+            pacing.mFramesPerSecond = variables["fps"].as<float>();
+            pacing.mSpeed = variables["speed"].as<float>();
+            pacing.mPanSeconds = variables["pan-seconds"].as<float>();
+            pacing.mHourSeconds = variables["hour-seconds"].as<float>();
+            pacing.mCrossingSeconds = variables["crossing"].as<float>();
+            pacing.mStillSeconds = variables["still"].as<float>();
+            pacing.mCutDistance = variables["cut-distance"].as<float>();
+            pacing.mWarmupSeconds = variables["warmup"].as<float>();
+            pacing.mFieldOfView = framed.mWindow.mFieldOfView;
+            pacing.mAspect = static_cast<float>(framed.mWindow.mWidth) / static_cast<float>(framed.mWindow.mHeight);
+            pacing.mDay = framed.mDay;
+
+            for (const auto& [name, value] :
+                { std::pair{ "fps", pacing.mFramesPerSecond }, std::pair{ "speed", pacing.mSpeed },
+                    std::pair{ "pan-seconds", pacing.mPanSeconds }, std::pair{ "hour-seconds", pacing.mHourSeconds },
+                    std::pair{ "crossing", pacing.mCrossingSeconds }, std::pair{ "still", pacing.mStillSeconds } })
+                if (!(value > 0.0f))
+                    throw std::runtime_error(std::format("--{} is {}, which is not more than nought", name, value));
+            if (!(pacing.mCutDistance >= 0.0f) || !(pacing.mWarmupSeconds >= 0.0f))
+                throw std::runtime_error("--cut-distance and --warmup cannot be less than nought");
+
+            const FilmPlan plan = planFilm(loadKeys(keys), pacing);
+            out() << describePlan(plan) << std::flush;
+            if (variables["plan"].as<bool>())
+                return 0;
+
+            const std::filesystem::path directory
+                = variables["out"].defaulted() ? "film" : variables["out"].as<std::string>();
+            const std::filesystem::path frames = directory / "frames";
+            std::filesystem::create_directories(frames);
+            if (const std::size_t cleared = clearFrames(frames); cleared > 0)
+                out() << std::format("cleared {} frames of the last film\n", cleared);
+
+            applyHostedSettings(framed.mWindow);
+
+            Rtx::SessionRequest request
+                = sessionFor(command, framed, stopsFor(plan, frames), validationForMeasuring(variables));
+            request.mSetup.mStep = 1.0f / pacing.mFramesPerSecond;
+            request.mSetup.mSettled = true;
+
+            if (const int status = runHosted(variables, command.mConfig, command.mResources, std::move(request));
+                status != 0)
+                return status;
+
+            const std::filesystem::path video = directory / (keys.stem().string() + ".mp4");
+            const std::string encode = encodeCommand(frames, video, pacing.mFramesPerSecond);
+            if (!variables["encode"].as<bool>())
+            {
+                out() << "\nthe frames are in " << Files::pathToUnicodeString(frames) << "; to encode them:\n"
+                      << encode << '\n';
+                return 0;
+            }
+
+            out() << "\nencoding: " << encode << '\n' << std::flush;
+            if (std::system(encode.c_str()) != 0)
+            {
+                out() << "the encoder failed; the frames are in " << Files::pathToUnicodeString(frames) << '\n';
+                return 1;
+            }
+
+            out() << "the film is " << Files::pathToUnicodeString(video) << '\n';
+            return 0;
+        }
+
         /// One verb: which command it is, the line `--help` prints for it, and what it does.
         ///
         /// **Which one it is and not what it is called**, because `verbs.hpp` holds the names: an
@@ -840,7 +932,7 @@ namespace RtxTool
         /// forgotten in the other was either a command nobody could find or a line of help nothing
         /// answered. In the order `--help` prints them, which is the order they were written to be
         /// read in rather than a sorted one.
-        constexpr std::array<Verb, 6> sVerbs{
+        constexpr std::array<Verb, 7> sVerbs{
             Verb{ Verbs::Info, "report the device this renderer would run on", commandInfo },
             Verb{ Verbs::Scene, "read a place and report what the renderer would be handed", commandScene },
             Verb{ Verbs::Shot,
@@ -850,6 +942,7 @@ namespace RtxTool
             Verb{ Verbs::Bench, "time a run of frames at each place of a suite", commandBench },
             Verb{ Verbs::Check, "assert what the renderer is handed and what it draws, at every place of a suite",
                 commandCheck },
+            Verb{ Verbs::Film, "fly through the keys `view --keys` wrote, into frames and a video", commandFilm },
         };
 
         void printUsage(const bpo::options_description& options)

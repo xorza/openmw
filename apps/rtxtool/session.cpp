@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <format>
+#include <fstream>
 #include <memory>
 #include <optional>
 #include <ostream>
@@ -49,7 +50,9 @@
 #include <components/esm/refid.hpp>
 #include <components/esm3/loadregn.hpp>
 #include <components/esm3/loadskil.hpp>
+#include <components/files/conversion.hpp>
 #include <components/misc/rng.hpp>
+#include <components/rtx/contract.hpp>
 #include <components/rtx/framespend.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/skylight.hpp>
@@ -60,6 +63,7 @@
 #include <components/rtxbench/frametimes.hpp>
 #include <components/rtxbench/gpuclock.hpp>
 
+#include "film.hpp"
 #include "run.hpp"
 
 namespace RtxTool
@@ -215,7 +219,7 @@ namespace RtxTool
         return world != nullptr && !world->getPlayerPtr().isEmpty();
     }
 
-    void Session::aimCamera(const osg::Vec3f& eye, const osg::Vec3f& look)
+    void Session::aimCamera(const osg::Vec3f& eye, const osg::Vec3f& rotation)
     {
         MWRender::Camera* camera = MWBase::Environment::get().getWorld()->getRenderingManager()->getCamera();
 
@@ -227,7 +231,6 @@ namespace RtxTool
 
         // The body's rotation, negated into the camera's own angles the way
         // `Camera::rotateCameraToTrackingPtr` negates a tracked body's.
-        const osg::Vec3f rotation = Rtx::Stand{ .mCell = {}, .mEye = eye, .mLook = look }.getRotation();
         camera->setPitch(-rotation.x(), true);
         camera->setYaw(-rotation.z(), true);
     }
@@ -396,12 +399,7 @@ namespace RtxTool
             // **The walls come off, because a view file names where a camera stands.** Half of them
             // are inside a rock or over the sea, and a body dropped there either falls or cannot be
             // put there at all.
-            //
-            // **Toggled until it is off, because the call reports rather than sets.** `tcl` is the
-            // same call, and a session that had already used it would otherwise turn collision back
-            // on.
-            if (world.toggleCollisionMode())
-                world.toggleCollisionMode();
+            turnCollisionOff(world);
 
             // **Read after that toggle and not before.** Turning collision on calls
             // `World::adjustPosition`, which drops the player onto the ground — so a camera placed
@@ -412,6 +410,21 @@ namespace RtxTool
         }
         else if (stop.mStand.mEye.has_value())
         {
+            // **A take's body goes where its camera flies, through whatever is in the way**, so the
+            // cells stream in around the camera and not around a body stopped by a hill it flew
+            // over. **The game's clock stops**, because the track states the hour on every frame:
+            // at the game's time scale of thirty, a clock left running adds half a second of world
+            // time to every frame of sixty.
+            if (stop.mSchedule.mTrack.has_value())
+            {
+                turnCollisionOff(world);
+
+                world.getTimeManager()->setGameTimeScale(0.0f);
+                const MWWorld::TimeStamp now = world.getTimeStamp();
+                mProgress.mClockFrom = now.getDay() * 24.0 + now.getHour();
+                mProgress.mFacing = stop.mStand.getRotation();
+            }
+
             mProgress.standAt(*stop.mStand.mEye, stop.mStand.getLook());
 
             // **Here as well as every frame**, because a frame drawn between this and the first
@@ -473,7 +486,6 @@ namespace RtxTool
             return;
 
         const ESM::Position& stood = player.getRefData().getPosition();
-        const osg::Vec3f standing(stood.pos[0], stood.pos[1], stood.pos[2]);
 
         // **The heading the engine measures**, which is clockwise from north rather than
         // counter-clockwise from east, and horizontal: a route follows the ground the cells are
@@ -503,11 +515,54 @@ namespace RtxTool
         // flat in z, so it keeps the height it began at. One with a destination takes its height
         // from the line between the two ends, which is what a view states when it names both.
         mProgress.mFlown += along * step;
+        moveBodyTo(mProgress.mFlown);
+    }
+
+    void Session::moveBodyTo(const osg::Vec3f& eye)
+    {
+        MWBase::World& world = *MWBase::Environment::get().getWorld();
+        const MWWorld::Ptr player = world.getPlayerPtr();
+        const ESM::Position& stood = player.getRefData().getPosition();
 
         // **`moveObjectBy` and not `moveObject`, because the player is an actor.** The actor's
         // position lives in the physics world as well, and a move that writes only the world's
         // copy is written back over it on the next step.
-        world.moveObjectBy(player, mProgress.mFlown - standing, true);
+        world.moveObjectBy(player, eye - osg::Vec3f(stood.pos[0], stood.pos[1], stood.pos[2]), true);
+    }
+
+    void Session::turnCollisionOff(MWBase::World& world)
+    {
+        // **Toggled until it is off, because the call reports rather than sets.** `tcl` is the same
+        // call, and a session that had already used it would otherwise turn collision back on.
+        if (world.toggleCollisionMode())
+            world.toggleCollisionMode();
+    }
+
+    void Session::follow()
+    {
+        const Rtx::Stop& stop = mRequest.mStops[mAt];
+        const std::uint32_t warmup = stop.mSchedule.mSpec.getWarmup();
+
+        // The frame about to be drawn is the take's `mSeen - warmup`th, counted from nought, since
+        // `frame` counts it before it measures it.
+        const Rtx::TrackPose pose
+            = stop.mSchedule.mTrack->pose(mProgress.mSeen > warmup ? mProgress.mSeen - warmup : 0);
+
+        mProgress.mFlown = pose.mEye;
+        mProgress.mFacing = pose.mRotation;
+        moveBodyTo(pose.mEye);
+
+        MWBase::World& world = *MWBase::Environment::get().getWorld();
+
+        world.holdWeather(ESM::Weather::indexToRefId(static_cast<int>(pose.mWeather)),
+            ESM::Weather::indexToRefId(static_cast<int>(pose.mNextWeather)), pose.mCrossed);
+
+        // **Run forward to the track's hour and never set to it**, because only an advance keeps the
+        // day, the month and the days passed in step with the hour, which the moons read.
+        const MWWorld::TimeStamp now = world.getTimeStamp();
+        const double behind = mProgress.mClockFrom + pose.mHoursOn - (now.getDay() * 24.0 + now.getHour());
+        if (behind > 0.0)
+            world.advanceTime(behind, true);
     }
 
     void Session::aim()
@@ -516,12 +571,18 @@ namespace RtxTool
         if (stop.mSchedule.mFreeCamera || !stop.mStand.mEye.has_value())
             return;
 
+        if (stop.mSchedule.mTrack.has_value())
+        {
+            aimCamera(mProgress.mFlown, mProgress.mFacing);
+            return;
+        }
+
         const std::optional<Rtx::Route>& route = stop.mSchedule.mRoute;
         const osg::Vec3f look = route.has_value() && route->mLookTo.has_value()
             ? *route->mLookTo
             : mProgress.mFlown + (mProgress.mFromLook - mProgress.mFrom);
 
-        aimCamera(mProgress.mFlown, look);
+        aimCamera(mProgress.mFlown, Rtx::Stand{ .mCell = {}, .mEye = mProgress.mFlown, .mLook = look }.getRotation());
     }
 
     void Session::turnWeather()
@@ -608,7 +669,9 @@ namespace RtxTool
         // **The route runs over the measured frames and not the warm-up.** Warming up is the GPU
         // coming off its idle clock; flying during it would start the measurement partway along
         // and leave the first crossing outside the numbers.
-        if (mProgress.mSeen >= mRequest.mStops[mAt].mSchedule.mSpec.getWarmup())
+        if (mRequest.mStops[mAt].mSchedule.mTrack.has_value())
+            follow();
+        else if (mProgress.mSeen >= mRequest.mStops[mAt].mSchedule.mSpec.getWarmup())
         {
             fly();
             turnWeather();
@@ -635,7 +698,16 @@ namespace RtxTool
         // state array is the engine's, pumped once a frame on this thread.
         const bool down = SDL_GetKeyboardState(nullptr)[SDL_SCANCODE_HOME] != 0;
         if (down && !mPrintKeyHeld)
+        {
             Debug::getRawStdout() << describeStanding(*mStood) << std::flush;
+
+            if (!mRequest.mKeys.empty())
+            {
+                std::ofstream(mRequest.mKeys, std::ios::app) << '\n' << describeKey(*mStood);
+                Log(Debug::Info) << "Ray tracing session: a film's key appended to "
+                                 << Files::pathToUnicodeString(mRequest.mKeys);
+            }
+        }
         mPrintKeyHeld = down;
     }
 
@@ -646,7 +718,11 @@ namespace RtxTool
 
     bool Session::wantsFrameCopy() const
     {
-        return !mDone && mStarted && mRequest.mStops[mAt].mActions.mHash;
+        if (mDone || !mStarted)
+            return false;
+
+        const Rtx::Actions& actions = mRequest.mStops[mAt].mActions;
+        return actions.mHash || actions.mFilm.has_value();
     }
 
     void Session::frame(const MWRender::FrameContext& context, const MWRender::FrameReport& report)
@@ -738,6 +814,16 @@ namespace RtxTool
 
         const std::uint32_t drawn = mProgress.mSeen - warmup;
 
+        // Numbered here, where the frame is traced, for `writeFilmFrame` to find when its picture
+        // comes back.
+        if (const std::optional<Rtx::Actions::Film>& film = stop.mActions.mFilm; film.has_value())
+        {
+            Rtx::contract(mProgress.mFilmPending < mProgress.mFilmFrames.size(),
+                "more of a film's frames in flight than the ring holds");
+            mProgress.mFilmFrames[mProgress.mFilmPending++]
+                = StopProgress::FilmFrame{ .mFrame = report.mFrame, .mNumber = film->mFirst + drawn - 1 };
+        }
+
         // The scene of this frame under the number the backend gave the frame, which is what the
         // picture finds its row by when it comes back. A frame the warm-up drew has no row.
         if (stop.mActions.mHash)
@@ -772,6 +858,33 @@ namespace RtxTool
 
         if (mRequest.mStops[mAt].mActions.mHash)
             keepPicture(finished, extents);
+
+        if (mRequest.mStops[mAt].mActions.mFilm.has_value())
+            writeFilmFrame(finished, extents);
+    }
+
+    void Session::writeFilmFrame(const Rtx::FrameResult& finished, const Rtx::FrameExtents& extents)
+    {
+        std::array<StopProgress::FilmFrame, 4>& pending = mProgress.mFilmFrames;
+        const auto end = pending.begin() + static_cast<std::ptrdiff_t>(mProgress.mFilmPending);
+        const auto found = std::find_if(
+            pending.begin(), end, [&](const StopProgress::FilmFrame& one) { return one.mFrame == finished.mFrame; });
+        Rtx::contract(found != end, "a film's measured frame came back that `frame` never numbered");
+
+        const std::uint32_t number = found->mNumber;
+        std::copy(found + 1, end, found);
+        --mProgress.mFilmPending;
+
+        // **A film with a frame missing is a film cut short**: the encoder reads the sequence up to
+        // its first gap, so a picture that did not come back ends the run rather than leaving one.
+        if (finished.mPixels.empty())
+        {
+            abandon(std::format("frame {} of the film came back without its picture", number));
+            return;
+        }
+
+        Rtx::writePng(mRequest.mStops[mAt].mActions.mFilm->mDirectory / frameName(number), extents.mOutputWidth,
+            extents.mOutputHeight, finished.mPixels);
     }
 
     void Session::keepPicture(const Rtx::FrameResult& finished, const Rtx::FrameExtents& extents)
@@ -861,8 +974,12 @@ namespace RtxTool
         place.mView = stop.mName;
         place.mCell = stop.mStand.mCell;
         place.mNote = stop.mNote;
-        place.mHour = MWBase::Environment::get().getWorld()->getTimeStamp().getHour();
-        place.mWeather = stop.mSky.mWeather.value_or(std::string());
+        // **The hour and the sky of one moment, the stop's last frame**, so a stop the sky turned
+        // over, or a film's take that crossed from one weather to another, is not reported at its
+        // closing hour under its opening sky.
+        const MWBase::World& world = *MWBase::Environment::get().getWorld();
+        place.mHour = world.getTimeStamp().getHour();
+        place.mWeather = Rtx::weatherName(static_cast<std::uint32_t>(world.getCurrentWeatherScriptId()));
         place.mFrames = mProgress.mSamples.size();
         place.mWallSeconds = mProgress.mWallMs / 1000.0;
         for (std::size_t at = 0; at < Rtx::sTimingCount; ++at)

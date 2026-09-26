@@ -314,6 +314,8 @@ namespace MWWorld
 
         void changeWeather(ESM::RefId region, ESM::RefId id) override;
 
+        void holdWeather(ESM::RefId current, ESM::RefId next, float crossed) override;
+
         const MWWorld::WeatherStore& getAllWeather() const override;
 
         int getCurrentWeatherScriptId() const override;

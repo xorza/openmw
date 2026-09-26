@@ -281,6 +281,14 @@ namespace MWWorld
          * @param ID of the weather setting to shift to
          */
         void changeWeather(ESM::RefId regionID, ESM::RefId weatherID);
+
+        /// Stands the sky `crossed` of the way from `current` to `next` for the next update, which
+        /// then neither advances the crossing nor starts one of its own: what a harness composing
+        /// each frame of a film holds the sky at. The game's own transition cannot, since it runs
+        /// on a clock of its own at the rate each weather fixes. One update and no longer, so
+        /// nothing is left held once the harness stops asking.
+        void holdWeather(ESM::RefId current, ESM::RefId next, float crossed);
+
         void modRegion(ESM::RefId regionID, const std::map<ESM::RefId, uint8_t>& chances);
         const std::map<ESM::RefId, uint8_t>& getRegionChances(ESM::RefId regionID) const;
         void playerTeleported(const ESM::RefId& playerRegion, bool isExterior);
@@ -369,6 +377,7 @@ namespace MWWorld
         ESM::RefId mCurrentWeather;
         ESM::RefId mNextWeather;
         ESM::RefId mQueuedWeather;
+        bool mHeld = false;
         std::map<ESM::RefId, RegionWeather> mRegions;
         MWRender::WeatherResult& mResult = mSky.mWeather;
 

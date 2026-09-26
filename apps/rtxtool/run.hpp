@@ -47,6 +47,11 @@ namespace RtxTool
     /// next run draws again. The day too, which the block has no key for and the moons hang on.
     std::string describeCommand(const Rtx::Stop& stop);
 
+    /// The same place as one key of a film: the block, and the day, which a film's key reads and a
+    /// view does not. What `view --keys` appends on Home. A condition the block leaves out is the
+    /// file's own, which is what a key reads it as.
+    std::string describeKey(const Rtx::Stop& stop);
+
     /// Where a window stands, whole: the line for a person, the block for the view file and the
     /// command for the next run. What a window prints on the key and again where it was left.
     std::string describeStanding(const Rtx::Stop& stop);

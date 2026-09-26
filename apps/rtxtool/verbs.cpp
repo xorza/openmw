@@ -23,6 +23,7 @@ namespace RtxTool
             std::pair{ Verbs::View, std::string_view("view") },
             std::pair{ Verbs::Bench, std::string_view("bench") },
             std::pair{ Verbs::Check, std::string_view("check") },
+            std::pair{ Verbs::Film, std::string_view("film") },
         } };
     }
 

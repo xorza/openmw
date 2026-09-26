@@ -4,6 +4,8 @@
 set(RTXTOOL_FILES
     compare.cpp
     compare.hpp
+    film.cpp
+    film.hpp
     options.cpp
     options.hpp
     run.cpp

@@ -23,6 +23,7 @@
 #include <components/rtx/surfaceview.hpp>
 #include <components/rtx/upscale.hpp>
 
+#include "film.hpp"
 #include "run.hpp"
 #include "verbs.hpp"
 
@@ -45,6 +46,9 @@ namespace RtxTool
         /// The commands that frame the world, which is every one that builds a `Framed`.
         /// `info` is the one that does not: it reports on a device and draws nothing.
         constexpr Verbs sFramed = otherThan(Verbs::Info);
+
+        /// The commands that stand under one sky the line names. A film's keys each name their own.
+        constexpr Verbs sOneSky = otherThan(Verbs::Info | Verbs::Film);
 
         /// Which commands read an option, said the shorter of the two ways.
         ///
@@ -218,7 +222,7 @@ namespace RtxTool
                 Rtx::sSurfaceViewNames.list())
                 .c_str());
 
-        option(sFramed, "weather", bpo::value<std::string>()->default_value(std::string(sDefaultWeather)),
+        option(sOneSky, "weather", bpo::value<std::string>()->default_value(std::string(sDefaultWeather)),
             "which weather's sun, sky and precipitation an exterior stands under, named as the "
             "content files spell it: Clear, Cloudy, Foggy, Overcast, Rain, Thunderstorm, Ashstorm, "
             "Blight, Snow, Blizzard. The ones that drop something drop it here too. Given, it beats "
@@ -234,14 +238,15 @@ namespace RtxTool
             "turning frees a whole emitter's meshes and textures on an ordinary frame, which is "
             "the one thing the game does constantly that no other path in this tool could do");
 
-        option(sFramed, "hour", bpo::value<float>()->default_value(sDefaultHour),
+        option(sOneSky, "hour", bpo::value<float>()->default_value(sDefaultHour),
             "what time an exterior's sun is at, on a twenty-four hour clock. An interior is lit "
             "by its own lamps and does not care. Given, it beats an hour a view fixes for itself");
 
         option(sFramed, "day", bpo::value<int>()->default_value(byDefault.mDay),
             "which day the world stands on, counted from the one a new game starts — 16 Last Seed, "
             "where both moons are full. It is the moons this decides and nothing else: their phase "
-            "runs on a three-day cycle and the hour they rise on a twenty-four day one");
+            "runs on a three-day cycle and the hour they rise on a twenty-four day one. A film's key "
+            "that names a day of its own keeps it");
 
         option(Verbs::View | Verbs::Bench, "frames", bpo::value<std::uint32_t>()->default_value(0),
             "how many frames to run: `view` closes after this many instead of waiting to be "
@@ -398,9 +403,44 @@ namespace RtxTool
             "hash names the frame and never where in it. A PNG a frame on the frame path, some "
             "sixty milliseconds each, so a run under this is further still from a benchmark");
 
-        option(Verbs::Shot | Verbs::Check, "out", bpo::value<std::string>()->default_value(""),
+        option(Verbs::Shot | Verbs::Check | Verbs::Film, "out", bpo::value<std::string>()->default_value(""),
             "the directory to write every picture into, as <view>.png beside <view>-doll.png, "
-            "<view>-map.png and <view>-textures.png: \"shot\" and \"check\" unless named");
+            "<view>-map.png and <view>-textures.png, or a film's frames/000000.png onwards and "
+            "<keys>.mp4: \"shot\", \"check\" and \"film\" unless named");
+
+        const FilmPacing pacing;
+        option(Verbs::View | Verbs::Film, "keys", bpo::value<std::string>()->default_value(""),
+            "a film's keys file: `view` appends the key it stands at to it on every Home press, and "
+            "`film` flies through its keys. A key is the block Home prints, so Home output pasted "
+            "into a file is keys too; a key may add `seconds` (how long the flight to it takes), "
+            "`hold` (how long the camera rests on it) and `cut` (true to cut before it, false to "
+            "fly to it however far)");
+        option(Verbs::Film, "plan", bpo::bool_switch(),
+            "print the takes and the length of every segment, and why, then stop without drawing");
+        option(Verbs::Film, "fps", bpo::value<float>()->default_value(pacing.mFramesPerSecond),
+            "frames a second of film, which is also what the world steps by");
+        option(Verbs::Film, "speed", bpo::value<float>()->default_value(pacing.mSpeed),
+            "world units a second the camera flies between two keys, about eleven metres a second "
+            "by default: a drone and not a run. A flight takes as long as the slowest of its "
+            "changes asks, this and the four after it");
+        option(Verbs::Film, "pan-seconds", bpo::value<float>()->default_value(pacing.mPanSeconds),
+            "how long a pan takes to sweep one image width, or a tilt one image height: the "
+            "established limit before judder, which a frame with no motion blur shows sooner");
+        option(Verbs::Film, "hour-seconds", bpo::value<float>()->default_value(pacing.mHourSeconds),
+            "seconds of film a game hour takes where two keys' hours differ: the time-lapse's pace. "
+            "The clock runs forward only, so a key at an earlier hour is reached the next day");
+        option(Verbs::Film, "crossing", bpo::value<float>()->default_value(pacing.mCrossingSeconds),
+            "the least a crossing into another weather takes. The sky crosses over the whole of the "
+            "segment between two keys whatever it takes");
+        option(Verbs::Film, "still", bpo::value<float>()->default_value(pacing.mStillSeconds),
+            "how long a key with no key either side of it stands, and a segment where nothing changes");
+        option(Verbs::Film, "cut-distance", bpo::value<float>()->default_value(pacing.mCutDistance),
+            "how far apart two keys can be and still be flown between rather than cut: two exterior "
+            "cells by default. A key in another interior, or inside where the last was out, is "
+            "always a cut");
+        option(Verbs::Film, "encode", bpo::value<bool>()->default_value(true)->implicit_value(true),
+            "run ffmpeg over the frames once they are drawn, into H.264 at CRF 18 in yuv420p, which "
+            "every player reads. --encode=false prints the command instead");
         option(sFramed, "size",
             bpo::value<std::string>()->default_value(
                 std::format("{}x{}", byDefault.mWindow.mWidth, byDefault.mWindow.mHeight)),

@@ -82,6 +82,7 @@ set(RTX_TEST_FILES
     rtxbench/benchrecord.cpp
     rtxbench/benchrun.cpp
     rtxbench/benchspec.cpp
+    rtxbench/cameratrack.cpp
     rtxbench/cardwatch.cpp
     rtxbench/drivercache.cpp
     rtxbench/framehashes.cpp
@@ -90,6 +91,7 @@ set(RTX_TEST_FILES
     rtxbench/runrecord.cpp
     rtxbench/scenedigest.cpp
     rtxtool/compare.cpp
+    rtxtool/film.cpp
     rtxtool/options.cpp
     rtxtool/run.cpp
     sky/skyclock.cpp

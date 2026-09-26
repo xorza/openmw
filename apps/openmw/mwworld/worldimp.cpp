@@ -1835,6 +1835,11 @@ namespace MWWorld
         mWeatherManager->changeWeather(region, id);
     }
 
+    void World::holdWeather(ESM::RefId current, ESM::RefId next, float crossed)
+    {
+        mWeatherManager->holdWeather(current, next, crossed);
+    }
+
     void World::modRegion(ESM::RefId regionid, const std::map<ESM::RefId, uint8_t>& chances)
     {
         mWeatherManager->modRegion(regionid, chances);

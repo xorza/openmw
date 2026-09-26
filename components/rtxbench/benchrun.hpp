@@ -14,6 +14,7 @@
 
 #include "benchrecord.hpp"
 #include "benchspec.hpp"
+#include "cameratrack.hpp"
 #include "runsetup.hpp"
 
 namespace Rtx
@@ -175,6 +176,11 @@ namespace Rtx
 
         std::optional<Route> mRoute;
 
+        /// The flight a film's take makes through its keys, frame by frame over the measured
+        /// frames, with the hour and the sky it runs under: what a take has in place of a route.
+        /// The warm-up stands at its first frame.
+        std::optional<CameraTrack> mTrack;
+
         /// How many differently-seeded frames to average into one picture, or nought for none. A
         /// converged reference is the only ground truth a sampled renderer has: error falls as the
         /// square root of this, a hundred is a clean picture and a thousand is a reference.
@@ -228,6 +234,16 @@ namespace Rtx
         /// A word to look for among the textures the scene around this place is wearing — what a
         /// frame would trace, rather than what the content files say stands near.
         std::string mFind;
+
+        /// Where every measured frame is written as a numbered PNG, a film's frames: the directory,
+        /// and the number the stop's first measured frame takes, so a take's frames follow the take
+        /// before's whatever order they come back in.
+        struct Film
+        {
+            std::filesystem::path mDirectory;
+            std::uint32_t mFirst = 0;
+        };
+        std::optional<Film> mFilm;
 
         /// Whether every measured frame is read back and hashed, which serialises every frame
         /// against the device and so stops the run being a benchmark.
@@ -291,6 +307,9 @@ namespace Rtx
         /// what a pair that differed is diffed pixel by pixel from, since a hash says which frame
         /// and never where in it.
         std::filesystem::path mPictures;
+
+        /// Where a window appends a film's key on every Home press, or empty for none.
+        std::filesystem::path mKeys;
 
         /// perf's control fifo, or empty where the run is not being profiled.
         std::filesystem::path mPerfControl;

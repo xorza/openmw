@@ -59,7 +59,7 @@ namespace RtxTool
             const ToolOptions options = makeOptions(Rtx::ValidationLevel::Off);
 
             EXPECT_EQ(options.complainAbout(parse(options, { "--views=balmora" }), Verbs::View),
-                "`view` does not read --views, which belongs to every command but `info` and `view`.\n");
+                "`view` does not read --views, which belongs to every command but `info`, `view` and `film`.\n");
 
             EXPECT_EQ(options.complainAbout(parse(options, { "--views=balmora" }), Verbs::Bench), "")
                 << "the command the option belongs to takes it";
@@ -71,6 +71,13 @@ namespace RtxTool
             EXPECT_EQ(options.complainAbout(parse(options, { "--view=balmora" }), Verbs::Bench),
                 "`bench` does not read --view, which belongs to `scene`, `shot` and `view`.\n");
             EXPECT_EQ(options.complainAbout(parse(options, { "--view=balmora" }), Verbs::Shot), "");
+
+            // A film's keys each name their own sky, so one sky on the line would be thrown away.
+            EXPECT_EQ(options.complainAbout(parse(options, { "--hour=6" }), Verbs::Film),
+                "`film` does not read --hour, which belongs to every command but `info` and `film`.\n");
+            EXPECT_EQ(options.complainAbout(parse(options, { "--keys=tour.keys" }), Verbs::View), "")
+                << "a window writes the keys a film reads";
+            EXPECT_EQ(options.complainAbout(parse(options, { "--keys=tour.keys", "--day=3" }), Verbs::Film), "");
         }
 
         /// Every option on the line is answered for, and each of them once.
@@ -91,7 +98,7 @@ namespace RtxTool
             // An option written twice is worth one complaint.
             const bpo::parsed_options twice = parse(options, { "--out=a", "--out=b" });
             EXPECT_EQ(options.complainAbout(twice, Verbs::Bench),
-                "`bench` does not read --out, which belongs to `shot` and `check`.\n");
+                "`bench` does not read --out, which belongs to `shot`, `check` and `film`.\n");
         }
 
         /// Every option says which commands read it, and the ones that say "all of them" say it.
@@ -132,7 +139,7 @@ namespace RtxTool
             EXPECT_EQ(options.complainAbout(parse(options, { "--size=8x8" }), Verbs::Check), "")
                 << "`check` frames a camera through the same request every other command does";
 
-            for (const std::string_view name : { "info", "scene", "shot", "view", "bench", "check" })
+            for (const std::string_view name : { "info", "scene", "shot", "view", "bench", "check", "film" })
                 EXPECT_EQ(options.complainAbout(parse(options, { "--validation=off" }), verbNamed(name)), "") << name;
         }
 
@@ -145,11 +152,12 @@ namespace RtxTool
             const auto lineFor
                 = [&](const std::string& name) { return options.mDescription.find(name, false).description(); };
 
-            EXPECT_TRUE(lineFor("views").starts_with("with every command but `info` and `view`, ")) << lineFor("views");
+            EXPECT_TRUE(lineFor("views").starts_with("with every command but `info`, `view` and `film`, "))
+                << lineFor("views");
             EXPECT_TRUE(lineFor("find").starts_with("with `scene`, ")) << lineFor("find");
 
-            // Five of the six read a camera, so the line names the one that does not rather than
-            // the five that do.
+            // Six of the seven read a camera, so the line names the one that does not rather than
+            // the six that do.
             EXPECT_TRUE(lineFor("fov").starts_with("with every command but `info`, ")) << lineFor("fov");
 
             EXPECT_FALSE(lineFor("validation").starts_with("with ")) << "nothing to say where every command reads it";
@@ -163,14 +171,16 @@ namespace RtxTool
             EXPECT_EQ(verbNamed("shot"), Verbs::Shot);
             EXPECT_EQ(verbName(Verbs::Check), "check");
             EXPECT_EQ(verbNamed("check"), Verbs::Check);
+            EXPECT_EQ(verbName(Verbs::Film), "film");
+            EXPECT_EQ(verbNamed("film"), Verbs::Film);
             EXPECT_EQ(verbNamed("nonesuch"), Verbs::None);
             EXPECT_EQ(verbName(Verbs::Bench | Verbs::Check), "") << "a set of two is not a command";
             EXPECT_EQ(verbName(Verbs::None), "");
 
-            EXPECT_EQ(countVerbs(Verbs::Every), 6u) << "the six `--help` prints";
+            EXPECT_EQ(countVerbs(Verbs::Every), 7u) << "the seven `--help` prints";
             EXPECT_EQ(countVerbs(Verbs::None), 0u);
             EXPECT_EQ(otherThan(Verbs::Every), Verbs::None);
-            EXPECT_EQ(countVerbs(otherThan(Verbs::Shot)), 5u);
+            EXPECT_EQ(countVerbs(otherThan(Verbs::Shot)), 6u);
             EXPECT_TRUE(holds(Verbs::Bench | Verbs::Check, Verbs::Check));
             EXPECT_FALSE(holds(Verbs::Bench | Verbs::Check, Verbs::Shot));
 

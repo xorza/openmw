@@ -134,6 +134,19 @@ namespace RtxTool
         /// Flies the player along the current stop's route by one frame's worth.
         void fly();
 
+        /// Puts the player's body at `eye`, where a route or a track has the camera this frame.
+        static void moveBodyTo(const osg::Vec3f& eye);
+
+        /// Turns the player's collision off, as `tcl` does.
+        static void turnCollisionOff(MWBase::World& world);
+
+        /// Stands the eye, the clock and the sky where the current stop's track is at the frame about
+        /// to be drawn: a film's take. The warm-up stands at the track's first frame.
+        void follow();
+
+        /// Writes a film's frame as the numbered picture it is, where `finished` is one.
+        void writeFilmFrame(const Rtx::FrameResult& finished, const Rtx::FrameExtents& extents);
+
         /// Moves the sky one frame along the stop's list of weathers.
         void turnWeather();
 
@@ -149,8 +162,9 @@ namespace RtxTool
         /// `mFlown`; nothing where the stop named no camera or gave it to the player.
         void aim();
 
-        /// Points the game's camera along `look` from `eye`, for as long as nothing else moves it.
-        void aimCamera(const osg::Vec3f& eye, const osg::Vec3f& look);
+        /// Stands the game's camera at `eye` facing `rotation`, `Rtx::Stand::getRotation`'s angles,
+        /// for as long as nothing else moves it.
+        void aimCamera(const osg::Vec3f& eye, const osg::Vec3f& rotation);
 
         /// What one stop has come to so far. `restart` rather than an assignment from a default,
         /// because the samples are reserved once for the longest stop of the run.
@@ -183,6 +197,23 @@ namespace RtxTool
             /// gravity steps the actor between frames and a step taken from where it landed compounds
             /// the fall.
             osg::Vec3f mFlown;
+
+            /// Which way a track faces this frame, as `Rtx::TrackPose::mRotation`.
+            osg::Vec3f mFacing;
+
+            /// The game's clock at a track's first frame, in hours since the game began: what the
+            /// track's hours run on from.
+            double mClockFrom = 0.0;
+
+            /// Which frame of the film each frame in flight is, by the backend's number: a picture
+            /// comes back a frame or two after the frame it was traced as, and is numbered by that.
+            struct FilmFrame
+            {
+                std::uint64_t mFrame = 0;
+                std::uint32_t mNumber = 0;
+            };
+            std::array<FilmFrame, 4> mFilmFrames{};
+            std::size_t mFilmPending = 0;
 
             /// The cell the last flown frame was drawn in, so a change of it is a boundary crossed.
             /// Compared as an address and never read, which is all an identity needs.

@@ -17,6 +17,8 @@ set(RTX_BENCH_FILES
     benchrun.hpp
     benchspec.cpp
     benchspec.hpp
+    cameratrack.cpp
+    cameratrack.hpp
     cardwatch.cpp
     cardwatch.hpp
     drivercache.cpp

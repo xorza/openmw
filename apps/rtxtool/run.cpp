@@ -133,6 +133,11 @@ namespace RtxTool
             stop.mSky.mWeather.value_or(std::string(sDefaultWeather)));
     }
 
+    std::string describeKey(const Rtx::Stop& stop)
+    {
+        return describeBlock(stop) + std::format("day = {}\n", stop.mSky.mDay.value_or(0));
+    }
+
     std::string describeStanding(const Rtx::Stop& stop)
     {
         return describeSpot(stop) + describeBlock(stop) + describeCommand(stop);

@@ -221,6 +221,9 @@ namespace MWBase
 
         virtual void changeWeather(ESM::RefId region, ESM::RefId id) = 0;
 
+        /// @see MWWorld::WeatherManager::holdWeather
+        virtual void holdWeather(ESM::RefId current, ESM::RefId next, float crossed) = 0;
+
         virtual const MWWorld::WeatherStore& getAllWeather() const = 0;
 
         virtual int getCurrentWeatherScriptId() const = 0;
