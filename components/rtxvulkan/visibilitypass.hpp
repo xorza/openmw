@@ -1,14 +1,19 @@
 #pragma once
 
 #include <array>
+#include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
+#include <future>
 #include <memory>
 #include <string>
 #include <string_view>
+#include <thread>
 
 #include <vulkan/vulkan_core.h>
 
+#include <components/rtx/kernelprogress.hpp>
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/shaders/visibility.h>
 
@@ -155,7 +160,8 @@ namespace Rtx
     {
     public:
         /// Uploads the blue-noise tile and the lobe's table, which the pass owns because they belong
-        /// to the sampler and to the surface model and not to the scene or the camera.
+        /// to the sampler and to the surface model and not to the scene or the camera, and starts
+        /// making the kernels, which it returns without: `awaitKernels`.
         ///
         /// @param textureLayout the layout of the bindless array this will be handed at record
         ///        time, because a pipeline layout names every set it will ever see.
@@ -170,6 +176,15 @@ namespace Rtx
         VisibilityPass(const Device& device, const std::filesystem::path& shaderDirectory,
             const SetLayout& textureLayout, const SetLayout& channelLayout, const SetLayout& volumeLayout,
             bool counting, bool specialize, Reorder reorder);
+
+        /// Waits for every kernel, and rethrows what making one threw — every time it is asked,
+        /// so a caller that caught it once cannot go on to record with a table half empty. Ahead
+        /// of anything that records a launch of this pass, and an atomic load once they are made.
+        void awaitKernels() const;
+
+        /// The same, waiting `patience` at most, and how many are made. For a host drawing a loading
+        /// screen while it waits, which the unbounded wait would freeze.
+        KernelProgress awaitKernels(std::chrono::milliseconds patience) const;
 
         /// Writes the frame's block: `constants` with what only the passes know filled in — the
         /// tiles' widths, the lamps' grid, the froxel grid and where every table is, the bin's
@@ -223,12 +238,35 @@ namespace Rtx
             VkExtent2D traced, GpuTimer* timer) const;
 
     private:
-        /// Makes every kernel this pass can ever need, before it returns, because the frame path
-        /// must not be able to compile: the trace took 2.8 seconds on a cold cache, and a frame
-        /// that stopped for one was `Xid 109, CTX SWITCH TIMEOUT` and a device reset. In parallel,
-        /// because the driver's cache is internally synchronised: twenty-four kernels take 6.3 s
-        /// of wall time cold, and `PipelineCache` outlives the process.
+        enum class Kernel
+        {
+            Visibility,
+            Scatter,
+            Depth,
+            Integrate,
+            SpriteComposite,
+            SpriteShelter,
+            SpriteEmitters,
+        };
+
+        /// One kernel to make: which of the pass's launches, and for the two tables, which tuple.
+        struct Wanted
+        {
+            Kernel mKernel = Kernel::Visibility;
+            VisibilityVariant mVariant;
+        };
+
+        /// Starts making every kernel this pass can ever need, on a thread of its own, because the
+        /// frame path must not be able to compile: the trace took 2.8 seconds on a cold cache, and
+        /// a frame that stopped for one was `Xid 109, CTX SWITCH TIMEOUT` and a device reset. Off
+        /// the caller's thread, because the whole set takes ten seconds cold and the window has to
+        /// go on answering meanwhile. In parallel, because the driver's cache is internally
+        /// synchronised, and `PipelineCache` outlives the process.
         void compileEvery(const std::filesystem::path& shaders, VkDescriptorSetLayout textureLayout);
+
+        /// Makes the one kernel `wanted` names, into its slot. On a hand of `compileEvery`'s, each
+        /// writing a slot no other hand does.
+        void compile(const Wanted& wanted, const std::filesystem::path& shaders, VkDescriptorSetLayout textureLayout);
 
         /// The shared sets every kernel of the pass reads. A pipeline layout names every set it will
         /// ever be handed, and the kernels are handed the same.
@@ -311,5 +349,16 @@ namespace Rtx
         /// And one for the pass that integrates the columns, which takes no tuple at all: every
         /// question was answered by the pass that filled the froxels.
         std::unique_ptr<ComputePipeline> mIntegratePipeline;
+
+        /// How many kernels `compileEvery` makes, and how many of them the hands have made so far.
+        std::uint32_t mKernelCount = 0;
+        std::atomic<std::uint32_t> mKernelsMade{ 0 };
+
+        /// Whether the compile is over, and what it threw. Shared, because a shared future answers
+        /// every time it is asked and a plain one answers once.
+        std::shared_future<void> mKernels;
+
+        /// What the hands are started from. Last, so it is joined before any table it fills goes.
+        std::jthread mCompiling;
     };
 }

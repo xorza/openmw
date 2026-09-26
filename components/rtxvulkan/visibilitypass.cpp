@@ -3,12 +3,15 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <chrono>
 #include <cstddef>
 #include <filesystem>
+#include <future>
 #include <memory>
 #include <span>
 #include <string_view>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include <components/rtx/bluenoise.hpp>
@@ -231,44 +234,14 @@ namespace Rtx
 
     void VisibilityPass::compileEvery(const std::filesystem::path& shaders, VkDescriptorSetLayout textureLayout)
     {
-        const std::filesystem::path depth = shaders / "fogdepth.rgen.spv";
-        const std::filesystem::path scatter = shaders / "fogscatter.rgen.spv";
-        const std::filesystem::path integrate = shaders / "fogintegrate.comp.spv";
-        const std::filesystem::path spriteComposite = shaders / "spritecomposite.rgen.spv";
-        const std::filesystem::path raygen = shaders / "visibility.rgen.spv";
-        const std::filesystem::path anyHit = shaders / "visibility.rahit.spv";
-        const std::array<std::filesystem::path, Shaders::MISS_RECORD_COUNT> miss{ shaders / "visibility.rmiss.spv" };
-        const std::filesystem::path hitModule = shaders / "visibilityhit.rchit.spv";
-        const std::array<HitShader, Shaders::HIT_SHADER_COUNT> hit{
-            HitShader{ .mModule = hitModule, .mSpecialization = sSurfaceHit },
-            HitShader{ .mModule = hitModule, .mSpecialization = sTerrainHit },
-            HitShader{ .mModule = hitModule, .mSpecialization = sWaterHit },
-        };
-
-        // No tuple and no specialization, because it reads what the pass before it wrote and
-        // has no opinion about the sky. Made here rather than among the table below so that the
-        // table stays one entry per tuple.
-        mDepthPipeline = std::make_unique<TracePipeline>(
-            mDevice, sBindings, sharedSets(textureLayout), TraceShaders{ .mRaygen = depth }, "fog depth");
-        mIntegratePipeline = std::make_unique<ComputePipeline>(
-            mDevice, sBindings, 0, sharedSets(textureLayout), integrate, "fog integrate");
-        mSpriteCompositePipeline = std::make_unique<TracePipeline>(mDevice, sBindings, sharedSets(textureLayout),
-            TraceShaders{ .mRaygen = spriteComposite, .mRaygenConstantBytes = sizeof(Shaders::PuffConstants) },
-            "sprite composite");
-        mSpriteShelterPipeline = std::make_unique<TracePipeline>(mDevice, sBindings, sharedSets(textureLayout),
-            TraceShaders{ .mRaygen = shaders / "spriteshelter.rgen.spv" }, "sprite shelter");
-        mSpriteEmittersPipeline = std::make_unique<TracePipeline>(mDevice, sBindings, sharedSets(textureLayout),
-            TraceShaders{ .mRaygen = shaders / "spriteemitters.rgen.spv" }, "sprite emitters");
-
-        /// One kernel to make: which tuple, and which of the two modules.
-        struct Wanted
-        {
-            VisibilityVariant mVariant;
-            bool mVolume = false;
-        };
+        // Queued after the tuples, which take seconds apiece where these take tens of milliseconds:
+        // a hand takes up whatever is next, and a tuple taken last is the whole batch waiting on
+        // one hand.
+        constexpr std::array singles{ Kernel::Depth, Kernel::Integrate, Kernel::SpriteComposite, Kernel::SpriteShelter,
+            Kernel::SpriteEmitters };
 
         std::vector<Wanted> wanted;
-        wanted.reserve(2 * VisibilityVariant::sCount);
+        wanted.reserve(2 * VisibilityVariant::sCount + singles.size());
 
         // Every tuple, or the full one alone, which every frame then runs on: its constants are
         // all true and the shaders' own tests answer the rest. The froxels' launch once per tuple
@@ -282,46 +255,122 @@ namespace Rtx
                             continue;
 
                         const VisibilityVariant variant{ .mSun = sun, .mMoons = moons, .mSea = sea, .mMaps = maps };
-                        wanted.push_back(Wanted{ .mVariant = variant });
+                        wanted.push_back(Wanted{ .mKernel = Kernel::Visibility, .mVariant = variant });
                         if (!maps || !mSpecialize)
-                            wanted.push_back(Wanted{ .mVariant = variant, .mVolume = true });
+                            wanted.push_back(Wanted{ .mKernel = Kernel::Scatter, .mVariant = variant });
                     }
 
-        const std::thread::id caller = std::this_thread::get_id();
+        for (const Kernel single : singles)
+            wanted.push_back(Wanted{ .mKernel = single });
+
+        mKernelCount = static_cast<std::uint32_t>(wanted.size());
 
         // So that a hand's validation error reaches whoever asked for these pipelines. The
         // layers report on the thread that made the call, and the log files by thread because the
         // test binary runs tests in parallel against one of them — an error left filed under a
         // hand is one nobody ever collects.
-        runInParallel(
-            wanted.size(), [caller] { return AdoptedThread(caller); },
-            [&](const std::size_t at) {
-                const VisibilityVariant variant = wanted[at].mVariant;
-                const bool volume = wanted[at].mVolume;
+        const std::thread::id caller = std::this_thread::get_id();
 
-                // One word per `constant_id`, in the order `lib/variants.glsl` declares them. The
-                // volume traces no primary ray and so adds no miss, but its froxels are a boundary
-                // the finiteness count watches, so it counts under the same word as the trace.
-                const std::array<std::uint32_t, 6> specialization{ mCounting, variant.mSun ? 1u : 0u,
-                    variant.mMoons ? 1u : 0u, variant.mSea ? 1u : 0u, mReorder, variant.mMaps ? 1u : 0u };
+        std::packaged_task<void()> compileAll([this, shaders, textureLayout, caller, wanted = std::move(wanted)] {
+            runInParallel(
+                wanted.size(), [caller] { return AdoptedThread(caller); },
+                [&](const std::size_t at) {
+                    compile(wanted[at], shaders, textureLayout);
+                    mKernelsMade.fetch_add(1, std::memory_order_relaxed);
+                });
+        });
 
-                if (volume)
-                    mScatterPipelines[variant.index()]
-                        = std::make_unique<TracePipeline>(mDevice, sBindings, sharedSets(textureLayout),
-                            TraceShaders{ .mRaygen = scatter }, variant.describe("fog scatter"), specialization);
-                else
-                    mPipelines[variant.index()]
-                        = std::make_unique<TracePipeline>(mDevice, sBindings, sharedSets(textureLayout),
-                            TraceShaders{
-                                .mRaygen = raygen,
-                                .mMiss = miss,
-                                .mHit = hit,
-                                .mHitRecordsPerShader = Shaders::HIT_RECORDS_PER_SHADER,
-                                .mHitRecordData = std::as_bytes(std::span(sHitRecords)),
-                                .mAnyHit = anyHit,
-                            },
-                            variant.describe("visibility"), specialization);
-            });
+        mKernels = compileAll.get_future().share();
+        mCompiling = std::jthread(std::move(compileAll));
+    }
+
+    void VisibilityPass::compile(
+        const Wanted& wanted, const std::filesystem::path& shaders, const VkDescriptorSetLayout textureLayout)
+    {
+        const VisibilityVariant variant = wanted.mVariant;
+
+        // One word per `constant_id`, in the order `lib/variants.glsl` declares them. The volume
+        // traces no primary ray and so adds no miss, but its froxels are a boundary the finiteness
+        // count watches, so it counts under the same word as the trace.
+        const std::array<std::uint32_t, 6> specialization{ mCounting, variant.mSun ? 1u : 0u, variant.mMoons ? 1u : 0u,
+            variant.mSea ? 1u : 0u, mReorder, variant.mMaps ? 1u : 0u };
+
+        switch (wanted.mKernel)
+        {
+            case Kernel::Visibility:
+            {
+                const std::array<std::filesystem::path, Shaders::MISS_RECORD_COUNT> miss{ shaders
+                    / "visibility.rmiss.spv" };
+                const std::filesystem::path hitModule = shaders / "visibilityhit.rchit.spv";
+                const std::array<HitShader, Shaders::HIT_SHADER_COUNT> hit{
+                    HitShader{ .mModule = hitModule, .mSpecialization = sSurfaceHit },
+                    HitShader{ .mModule = hitModule, .mSpecialization = sTerrainHit },
+                    HitShader{ .mModule = hitModule, .mSpecialization = sWaterHit },
+                };
+
+                mPipelines[variant.index()]
+                    = std::make_unique<TracePipeline>(mDevice, sBindings, sharedSets(textureLayout),
+                        TraceShaders{
+                            .mRaygen = shaders / "visibility.rgen.spv",
+                            .mMiss = miss,
+                            .mHit = hit,
+                            .mHitRecordsPerShader = Shaders::HIT_RECORDS_PER_SHADER,
+                            .mHitRecordData = std::as_bytes(std::span(sHitRecords)),
+                            .mAnyHit = shaders / "visibility.rahit.spv",
+                        },
+                        variant.describe("visibility"), specialization);
+                return;
+            }
+            case Kernel::Scatter:
+                mScatterPipelines[variant.index()] = std::make_unique<TracePipeline>(mDevice, sBindings,
+                    sharedSets(textureLayout), TraceShaders{ .mRaygen = shaders / "fogscatter.rgen.spv" },
+                    variant.describe("fog scatter"), specialization);
+                return;
+            // From here on no tuple and no specialization: each reads what a launch before it
+            // wrote, or traces nothing, and has no opinion about the sky.
+            case Kernel::Depth:
+                mDepthPipeline = std::make_unique<TracePipeline>(mDevice, sBindings, sharedSets(textureLayout),
+                    TraceShaders{ .mRaygen = shaders / "fogdepth.rgen.spv" }, "fog depth");
+                return;
+            case Kernel::Integrate:
+                mIntegratePipeline = std::make_unique<ComputePipeline>(mDevice, sBindings, 0, sharedSets(textureLayout),
+                    shaders / "fogintegrate.comp.spv", "fog integrate");
+                return;
+            case Kernel::SpriteComposite:
+                mSpriteCompositePipeline
+                    = std::make_unique<TracePipeline>(mDevice, sBindings, sharedSets(textureLayout),
+                        TraceShaders{ .mRaygen = shaders / "spritecomposite.rgen.spv",
+                            .mRaygenConstantBytes = sizeof(Shaders::PuffConstants) },
+                        "sprite composite");
+                return;
+            case Kernel::SpriteShelter:
+                mSpriteShelterPipeline = std::make_unique<TracePipeline>(mDevice, sBindings, sharedSets(textureLayout),
+                    TraceShaders{ .mRaygen = shaders / "spriteshelter.rgen.spv" }, "sprite shelter");
+                return;
+            case Kernel::SpriteEmitters:
+                mSpriteEmittersPipeline = std::make_unique<TracePipeline>(mDevice, sBindings, sharedSets(textureLayout),
+                    TraceShaders{ .mRaygen = shaders / "spriteemitters.rgen.spv" }, "sprite emitters");
+                return;
+        }
+    }
+
+    void VisibilityPass::awaitKernels() const
+    {
+        mKernels.get();
+    }
+
+    KernelProgress VisibilityPass::awaitKernels(const std::chrono::milliseconds patience) const
+    {
+        if (mKernels.wait_for(patience) == std::future_status::ready)
+        {
+            awaitKernels();
+            return KernelProgress{ .mMade = mKernelCount, .mCount = mKernelCount };
+        }
+
+        // Short of the count until the compile has returned, whatever the hands have counted:
+        // `KernelProgress::isDone` is the promise that nothing is left to wait for.
+        const std::uint32_t made = mKernelsMade.load(std::memory_order_relaxed);
+        return KernelProgress{ .mMade = std::min(made, mKernelCount - 1), .mCount = mKernelCount };
     }
 
     std::uint32_t VisibilityPass::slotOf(const VisibilityVariant variant) const

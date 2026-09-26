@@ -14,6 +14,7 @@ PhysicsProfiler: "Fysikprofilerare"
 
 AskLoadLastSave: "Den senaste sparfilen är ''{save}''. Vill du ladda den?"
 BuildingNavigationMesh: "Bygger navigeringsmesh"
+CompilingShaders: "Kompilerar shaders"
 InitializingData: "Initialiserar data..."
 LoadingExterior: "Laddar område"
 LoadingFailed: "Misslyckades med att ladda sparat spel"

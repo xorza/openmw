@@ -17,6 +17,7 @@
 #include <components/rtx/frameimage.hpp>
 #include <components/rtx/frameoptions.hpp>
 #include <components/rtx/framesampling.hpp>
+#include <components/rtx/kernelprogress.hpp>
 #include <components/rtx/memoryreport.hpp>
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/runs.hpp>
@@ -601,8 +602,15 @@ namespace Rtx
         };
     }
 
+    KernelProgress VulkanRenderer::awaitKernels(const std::chrono::milliseconds patience)
+    {
+        return mPass.awaitKernels(patience);
+    }
+
     Reconstruction VulkanRenderer::renderFrame(const Shaders::VisibilityConstants& camera, const FrameOptions& options)
     {
+        mPass.awaitKernels();
+
         const DeviceScene* const held = mScenes.find(SceneSlot::world());
         assert(held != nullptr && "renderFrame before setScene");
         const DeviceScene& world = *held;
@@ -807,6 +815,8 @@ namespace Rtx
     void VulkanRenderer::traceGuiTexture(
         const GuiSlot texture, const Shaders::VisibilityConstants& camera, const GuiTraceOptions& options)
     {
+        mPass.awaitKernels();
+
         const bool held = mGui.getTextures().holds(texture);
         assert(held && "a trace into a slot nothing holds");
 

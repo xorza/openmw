@@ -48,6 +48,11 @@ namespace MyGUIPlatform
     class Platform;
 }
 
+namespace Loading
+{
+    class Listener;
+}
+
 namespace Misc
 {
     class FrameClock;
@@ -322,6 +327,13 @@ namespace MWRender
         /// on the frame has nothing to change.
         virtual void beginLoading() {}
         virtual void endLoading() {}
+
+        /// Holds the game on the loading screen until whatever this renderer draws the world with is
+        /// compiled, telling `listener` the step and how far it has come. Each report draws a frame
+        /// of the screen, which is what keeps the window answering and the crash catcher's heartbeat
+        /// going. Once, at start, inside the loading screen the content is read under. The
+        /// rasterizer compiles as it draws and has nothing to wait for.
+        virtual void awaitShaders(Loading::Listener& listener) {}
 
         /// One frame of the loading screen, at the rate the screen is drawn at, opened as
         /// `openNestedFrame` opens one.

@@ -145,6 +145,10 @@ namespace MWRender
         /// this renderer draws ends here, with a world in it or not.
         void renderGui() override;
 
+        /// A step of its own on the loading screen, where the kernels are not all made by the time
+        /// the content is read: `Rtx::Renderer::awaitKernels`.
+        void awaitShaders(Loading::Listener& listener) override;
+
         void capture(osg::Image& image, int width, int height) override;
         void saveScreenshot() override;
 

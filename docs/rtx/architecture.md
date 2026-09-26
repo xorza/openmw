@@ -166,7 +166,7 @@ adopted camera after the frame is described, and a renderer reads it at the mome
 | caller                             | calls                                                                                              |
 |------------------------------------|----------------------------------------------------------------------------------------------------|
 | `OMW::Engine::go`                  | `createRenderer` or `EngineHost::createRenderer`, `setFrameClock`, `setFrameRateLimit`; `awaitFrame` then `advance` per loop |
-| `OMW::Engine::prepareEngine`       | `setTraversalRoot`, `prepareResources`, `setScreenshotWriter`, `getWindow`                          |
+| `OMW::Engine::prepareEngine`       | `setTraversalRoot`, `prepareResources`, `setScreenshotWriter`, `getWindow`, `awaitShaders`          |
 | `OMW::Engine::frame`               | `getStartTick`, `getStats`, `eventTraversal`, `updateTraversal`                                     |
 | `RenderingManager` ctor and dtor   | `createSceneRoot`, `attachWorld`, `getCamera`, `getCompileOperation`, `detachWorld`                 |
 | `RenderingManager` per frame       | `describeFrame(frame)` between the traversals, `renderFrame(frame)` after the update                |
@@ -964,7 +964,8 @@ asserted so.
    the window, vsync, validation, hit counting for a run only, the profile); groundcover on is
    refused; `Rtx::createVulkanRenderer(options)`; `mWindow.fit`; no GL context is asserted.
 3. `VulkanRenderer`'s constructor: the instance, the device with its pipeline cache, the three
-   set layouts, every launch compiled (about six seconds on a cold cache), the shared passes,
+   set layouts, every launch started compiling on a thread of `VisibilityPass`'s own (about ten
+   seconds on a cold cache, which the constructor does not wait for), the shared passes,
    the frame's chain, the display chain, the media, the scene slots, the interface and the
    picture tracer, the upscaler where the mode wants one, the presenter
    where there is a window, the targets at the surface's extent.
@@ -973,7 +974,11 @@ asserted so.
    shader visitor off), `setScreenshotWriter`, `WindowManager` (`createGuiPlatform`,
    `MyGUI::Gui`, `registerFactories`), `InputManager` (the window and the listener),
    `World::init` → `RenderingManager` (`createSceneRoot`, `attachWorld`, the camera,
-   `createGround` per worldspace on demand).
+   `createGround` per worldspace on demand). The content is read under the loading screen, and
+   `awaitShaders` follows it there as a step of its own, "Compiling Shaders", where
+   `Renderer::awaitKernels` says the launches are not all made yet: each report draws a loading
+   frame, which answers the window and beats the crash catcher's heart. Every trace waits for
+   them as well, so a host that never asks is only held on its first.
 5. `attachWorld`: the scene root under the world root; `WorldMirror::attach` makes the
    `ContentSource`; `SkyReader::attach` puts the moons' faces and the sky's sheets into the
    scene and holds them.
@@ -1123,6 +1128,7 @@ the presenter whether the swapchain wants a rebuild before it compares the exten
 |------------------------------|-----------------------------|----------------------------------------------------------------------------------|
 | the main thread              | the engine                  | every seam call, every walk, every Vulkan submit and wait, the GUI                |
 | the cell reader              | `Rtx::CellSupply` (`Worker`) | `CellReader`, the land and object storages, templates and images through `ContentSource`; `Monitor` in between |
+| the launches' compile        | `VisibilityPass` (`jthread`, then `runInParallel`) | `vkCreate*Pipelines` into the pass's tables, from construction until `awaitKernels` says done; nothing else of the pass |
 | the driver's compile threads | the driver                  | rebuild the launches from what they measured and swap them in; the pinned arithmetic traces the same frame on either |
 | the work queue, the Lua worker | upstream                  | preloading, the screenshot writer; scripts                                        |
 

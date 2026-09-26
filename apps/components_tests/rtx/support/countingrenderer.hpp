@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -9,6 +10,7 @@
 #include <vector>
 
 #include <components/rtx/guirenderer.hpp>
+#include <components/rtx/kernelprogress.hpp>
 #include <components/rtx/memoryreport.hpp>
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/refusal.hpp>
@@ -108,6 +110,7 @@ namespace Rtx::Testing
         void awaitFrame() override {}
         void endSimulation(bool) override {}
         std::optional<Rtx::LatencyReport> describeLatency() const override { return std::nullopt; }
+        Rtx::KernelProgress awaitKernels(std::chrono::milliseconds) override { return {}; }
         Rtx::FrameExtents getExtents() const override { return {}; }
         Rtx::Reconstruction renderFrame(const Rtx::Shaders::VisibilityConstants&, const Rtx::FrameOptions&) override
         {

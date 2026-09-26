@@ -14,6 +14,7 @@ PhysicsProfiler: "Profilowanie fizyki"
 
 AskLoadLastSave: "Ostatni zapis to ''{save}''. Czy chcesz go wczytać?"
 BuildingNavigationMesh: "Tworzenie siatki nawigacyjnej"
+CompilingShaders: "Kompilowanie shaderów"
 InitializingData: "Inicjalizacja..."
 LoadingExterior: "Wczytywanie obszaru zewnętrznego"
 LoadingFailed: "Nie udało się wczytać zapisu gry"

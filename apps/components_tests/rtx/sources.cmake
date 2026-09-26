@@ -177,6 +177,7 @@ set(RTX_GPU_TEST_FILES
     rtx/visibility/fog.cpp
     rtx/visibility/frame.cpp
     rtx/visibility/framecost.cpp
+    rtx/visibility/kernels.cpp
     rtx/visibility/light.cpp
     rtx/visibility/sea.cpp
     rtx/visibility/sky.cpp

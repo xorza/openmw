@@ -103,6 +103,12 @@ namespace Rtx::Testing
     /// @param validation off only for `getUnvalidatedRenderer`, which says why.
     RendererOptions describeRenderer(std::uint32_t width, std::uint32_t height, bool validation = true);
 
+    /// Holds until every kernel `renderer` started making as it was made is made, and throws what
+    /// making one threw. Before its validation errors are taken for the renderer's making: a kernel
+    /// is made on a thread of its own after the constructor returns, and what the layers raise
+    /// meanwhile is filed under whoever made the renderer.
+    void awaitKernels(Renderer& renderer);
+
     /// The renderer the pixel tests trace through, built once for the binary on the first ask. Throws
     /// where it cannot be built, which fails the test that asked rather than skipping it.
     ///
@@ -111,12 +117,11 @@ namespace Rtx::Testing
     /// backend that passes this file is correct.
     ///
     /// **One for the binary, and a second is what a slow test is made of.** Measured with the
-    /// on-disk pipeline cache warm: `createRenderer` costs 700–870 ms, the first `setScene` on the
-    /// result costs another 900–1150 ms because it compiles every kernel the trace can need — see
-    /// `VulkanRenderer::setScene` — and every `resize`, `setScene`, `renderFrame` and `readPixels`
-    /// after that costs between one and fifteen. So a test that traces through this one is free and
-    /// a test that stands up its own costs the suite two seconds. Only an upscaler needs its own,
-    /// because the mode is fixed when the renderer is built.
+    /// on-disk pipeline cache warm and the layers loaded: building it and waiting out every kernel
+    /// the trace can need costs three seconds, and every `resize`, `setScene`, `renderFrame` and
+    /// `readPixels` after that costs between one and fifteen milliseconds. So a test that traces
+    /// through this one is free and a test that stands up its own costs the suite three seconds.
+    /// Only an upscaler needs its own, because the mode is fixed when the renderer is built.
     VulkanRenderer& getRenderer();
 
     /// What the layers raised while `getRenderer`'s renderer was made, for the reason

@@ -2,7 +2,7 @@
 
 ## What this is
 
-A fork of OpenMW 0.52 whose purpose is an **experimental ray-traced renderer**. Upstream OpenMW
+A fork of OpenMW whose purpose is an **experimental ray-traced renderer**. Upstream OpenMW
 stays the host engine — cells, references, physics, scripts, animation, weather, GUI. It stops
 owning the picture.
 

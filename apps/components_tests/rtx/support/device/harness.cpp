@@ -1,5 +1,6 @@
 #include "harness.hpp"
 
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <span>
@@ -12,6 +13,7 @@
 #include <vulkan/vulkan_core.h>
 
 #include <components/files/configurationmanager.hpp>
+#include <components/rtx/kernelprogress.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtxvulkan/instance.hpp>
 #include <components/rtxvulkan/physicaldevice.hpp>
@@ -92,6 +94,7 @@ namespace Rtx::Testing
         {
             // Every test resizes to what it needs; one texel is only what the first target costs.
             auto renderer = std::make_unique<VulkanRenderer>(describeRenderer(1, 1, validation));
+            awaitKernels(*renderer);
             if (validation)
                 renderer->takeValidationErrors(rendererMadeWith());
             return renderer;
@@ -208,6 +211,13 @@ namespace Rtx::Testing
         options.mProfile.mDelight = 0.0f;
 
         return options;
+    }
+
+    void awaitKernels(Renderer& renderer)
+    {
+        while (!renderer.awaitKernels(std::chrono::milliseconds(100)).isDone())
+        {
+        }
     }
 
     VulkanRenderer& getRenderer()

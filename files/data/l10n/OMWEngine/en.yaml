@@ -14,6 +14,7 @@ PhysicsProfiler: "Physics Profiler"
 
 AskLoadLastSave: "The most recent save is ''{save}''. Do you want to load it?"
 BuildingNavigationMesh: "Building Navigation Mesh"
+CompilingShaders: "Compiling Shaders"
 InitializingData: "Initializing Data..."
 LoadingExterior: "Loading Area"
 LoadingFailed: "Failed to load saved game"

@@ -313,6 +313,7 @@ namespace Rtx
                 try
                 {
                     sUpscaling = std::make_unique<VulkanRenderer>(options);
+                    Testing::awaitKernels(*sUpscaling);
                 }
                 catch (const Unsupported& obstacle)
                 {

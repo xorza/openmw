@@ -593,6 +593,7 @@ void OMW::Engine::prepareEngine()
             asyncListener.update();
         dataLoading.get();
     }
+    mRenderer->awaitShaders(*listener);
     mSoundManager->warmStoreSounds();
     listener->loadingOff();
 

@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cassert>
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <optional>
@@ -17,6 +18,7 @@
 #include "framedigest.hpp"
 #include "frameoptions.hpp"
 #include "guirenderer.hpp"
+#include "kernelprogress.hpp"
 #include "latencyreport.hpp"
 #include "memoryreport.hpp"
 #include "mesh.hpp"
@@ -391,6 +393,14 @@ namespace Rtx
         /// The driver's timings of the newest finished frame, or nothing where the driver paces
         /// nothing or has finished nothing yet.
         virtual std::optional<LatencyReport> describeLatency() const = 0;
+
+        /// How many of the kernels a trace needs are made, waiting `patience` at most for the rest,
+        /// and rethrowing what making one threw. The renderer starts making them as it is made, on
+        /// threads of its own, and returns without them — ten seconds on a cold cache — so a host
+        /// shows this on a loading screen rather than a window that stopped answering. Every call
+        /// that traces waits for them first, so a host that never asks is right all the same, and
+        /// held on its first trace instead.
+        virtual KernelProgress awaitKernels(std::chrono::milliseconds patience) = 0;
 
         /// Traces one frame; `setScene` first, which is an assert. Returns before the device has
         /// drawn it, so the caller can place the next one meanwhile, and `finishFrame` reads back

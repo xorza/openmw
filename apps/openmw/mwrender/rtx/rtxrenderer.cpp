@@ -27,6 +27,7 @@
 #include <osg/Timer>
 
 #include <components/debug/debuglog.hpp>
+#include <components/loadinglistener/loadinglistener.hpp>
 #include <components/misc/frameclock.hpp>
 #include <components/myguiplatform/myguiplatform.hpp>
 #include <components/myguirtx/rendermanager.hpp>
@@ -38,6 +39,7 @@
 #include <components/rtx/frameimage.hpp>
 #include <components/rtx/framespend.hpp>
 #include <components/rtx/frameworld.hpp>
+#include <components/rtx/kernelprogress.hpp>
 #include <components/rtx/moonbuilder.hpp>
 #include <components/rtx/namedenum.hpp>
 #include <components/rtx/pacing.hpp>
@@ -490,6 +492,27 @@ namespace MWRender
 
         mTimer.leave(ended);
         mPhase.step(Phase::Between, Phase::Gui);
+    }
+
+    void RtxRenderer::awaitShaders(Loading::Listener& listener)
+    {
+        Rtx::KernelProgress progress = mRenderer->awaitKernels(std::chrono::milliseconds::zero());
+        if (progress.isDone())
+            return;
+
+        listener.setLabel("#{OMWEngine:CompilingShaders}");
+        listener.setProgressRange(progress.mCount);
+
+        // **Under a frame of the loading screen's**, which draws at 120 a second at most, so what
+        // paces the screen is the screen and not this wait. Every report draws, the count moved or
+        // not, and the draw is what pumps the window's events and beats the crash catcher's heart:
+        // one kernel alone takes seconds cold.
+        constexpr std::chrono::milliseconds patience{ 8 };
+        while (!progress.isDone())
+        {
+            listener.setProgress(progress.mMade);
+            progress = mRenderer->awaitKernels(patience);
+        }
     }
 
     osg::ref_ptr<osg::Image> RtxRenderer::readFrame(const int width, const int height, const Rtx::Channels channels)

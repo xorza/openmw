@@ -10,6 +10,7 @@
 
 #include <components/rtx/frameimage.hpp>
 #include <components/rtx/guirenderer.hpp>
+#include <components/rtx/kernelprogress.hpp>
 #include <components/rtx/memoryreport.hpp>
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/refusal.hpp>
@@ -90,6 +91,7 @@ namespace Rtx
         std::optional<LatencyReport> describeLatency() const override;
         FrameExtents getExtents() const override;
         const RenderProfile& getProfile() const override { return mProfile; }
+        KernelProgress awaitKernels(std::chrono::milliseconds patience) override;
         Reconstruction renderFrame(const Shaders::VisibilityConstants& camera, const FrameOptions& options) override;
         std::uint64_t getFrameCount() const override;
         std::optional<FrameResult> finishFrame() override;
@@ -222,8 +224,8 @@ namespace Rtx
 
         /// The passes every trace runs, whichever camera it is for, before the two chains that
         /// hold them. Built here and once: every kernel the trace can ever need is compiled by
-        /// `mPass` — 6.3 s on a cold cache, measured — and a frame that stopped for one was a
-        /// device reset.
+        /// `mPass`, on threads of its own — ten seconds on a cold cache, measured — and waited for
+        /// ahead of every trace, because a frame that stopped for one was a device reset.
         VisibilityPass mPass;
         CompositePass mComposite;
 

@@ -66,6 +66,7 @@ set(RTX_FILES
     held.hpp
     instancerecord.cpp
     instancerecord.hpp
+    kernelprogress.hpp
     latencyreport.hpp
     light.hpp
     menu.hpp
