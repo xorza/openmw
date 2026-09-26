@@ -101,8 +101,6 @@ set(RTX_TEST_FILES
 )
 
 set(RTX_TEST_SUPPORT
-    rtx/allocations.cpp
-    rtx/allocations.hpp
     rtx/countingrenderer.hpp
     rtx/displaycurve.hpp
     rtx/fakeland.hpp
@@ -182,9 +180,13 @@ set(RTX_TEST_FILES_UPSTREAM
     rtx/nifsurface.cpp
 )
 
-# This fork's tests of what a build without the ray tracer compiles as well. They stand in
-# upstream's own list, so that build runs them too, and are named here for the fork's flags.
+# This fork's tests of what a build without the ray tracer compiles as well, and the allocation
+# counter they read. They stand in upstream's own list, so that build runs them too, and are named
+# here for the fork's flags.
 set(RTX_TEST_FILES_EITHER
     misc/frameclock.cpp
+    rtx/allocations.cpp
+    rtx/allocations.hpp
     sceneutil/paintedtexture.cpp
+    terrain/refstack.cpp
 )
