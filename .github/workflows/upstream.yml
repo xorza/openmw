@@ -148,6 +148,28 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y clang-format-14
 
+      # **The merge, as far as git takes it, from the shell and not from the agent.** Branching and
+      # merging need no judgement, and every call the agent spends on them is a turn it does not
+      # spend on a conflict: the run of 2026-09-26 used all sixty of its turns on one conflict and
+      # the search around it, two of them refused. What git cannot merge is left in the tree with
+      # its markers, for the agent. The list of those files is not handed over as an output,
+      # because a file name is upstream's and a name with a newline in it writes a line of its own
+      # into `GITHUB_OUTPUT`; the agent asks git for it.
+      - name: The merge, as far as git takes it
+        if: steps.upstream.outputs.behind != '0' && steps.upstream.outputs.waiting == '0'
+        env:
+          BRANCH: ${{ steps.upstream.outputs.branch }}
+        run: |
+          git checkout -b "$BRANCH"
+
+          # One means conflicts are left, which are the agent's; anything past it is an error.
+          status=0
+          git merge --no-ff --no-commit upstream/master || status=$?
+          if [ "$status" -gt 1 ]; then
+            exit "$status"
+          fi
+          echo "files git could not merge: $(git diff --name-only --diff-filter=U | wc -l)"
+
       # Pinned to a commit like every other action here. This one ships most days, so the
       # version beside it is what says how old the pin has grown.
       - uses: anthropics/claude-code-action@cfc3eb22bfed5c26ef66e3223c982af27e4524de # v1.0.231
@@ -192,20 +214,27 @@ jobs:
             `upstream/master` is fetched already and is ahead of master. You do not fetch
             anything: the step before this one did it.
 
-            1. Branch `${{ steps.upstream.outputs.branch }}` off master, exactly that name: the
-               step after you looks the pull request up by it. Merge `upstream/master` into it
-               with `--no-ff`, which is the shape every earlier upstream merge in this history
-               has.
+            Every command you run is one command: no `&&`, `;` or pipe. Your allowed tools refuse
+            every joined form, and a refused call still spends one of your turns.
+
+            1. You are on branch `${{ steps.upstream.outputs.branch }}`, made off master by the
+               step before you, with `upstream/master` merged into it `--no-ff --no-commit`: what
+               git merged is staged, and every file it could not merge is in the tree with its
+               markers. `git diff --name-only --diff-filter=U` lists those. Do not branch or merge
+               again: the step after you looks the pull request up by that branch's name.
             2. Resolve every conflict on its own terms. Never take one side wholesale. Both sides
                usually have to survive: upstream's change to a line and this fork's reason for
                having moved that line. Where a resolution is a judgement rather than a mechanical
-               merge, keep a note of it for the body.
+               merge, keep a note of it for the body. Where upstream changes a rule that this fork
+               keeps a second copy of for its own renderer, the copy changes with it, although git
+               shows no conflict there: AGENTS.md says where the ray tracer's side lives.
             3. Run `CI/check_clang_format.sh` and fix what it names. Run it bare, with nothing
                before it and no pipe after it: that is the one form your allowed tools admit, and
                `CLANG_FORMAT` in your environment already names `clang-format-14`. That is the
                tree's own check and exactly what the format job of `rtx.yml` runs, so a branch
                that passes it here passes it there.
-            4. Push the branch. Open a pull request against master with `gh pr create`, not a
+            4. Commit the merge with `git commit --no-edit`, which keeps git's own merge message.
+               Push the branch. Open a pull request against master with `gh pr create`, not a
                draft, titled "Merge upstream/master". Write the body to a file and pass
                `--body-file`: it is long, and a shell argument that long is a shell argument that
                breaks. Put in it:
@@ -217,8 +246,8 @@ jobs:
                Do not edit anything under `.github/`: a merge that changes what CI runs is a
                merge a human reads first, so leave the conflict and say so.
 
-            If a conflict defeats you, push the branch with its markers in place and open the
-            pull request anyway. Put what is unresolved in the first line of the body. A branch
+            If a conflict defeats you, commit it with its markers in place (`git commit -a
+            --no-edit`), push the branch and open the pull request anyway. Put what is unresolved in the first line of the body. A branch
             somebody can take over beats a run that threw its work away.
 
           # The newest Opus, where the account's default is whatever its plan names: a merge that
